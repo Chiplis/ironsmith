@@ -131,7 +131,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "Equip {2}",
-          "target": "Marath, Will of the Wild"
+          "target": "Marath, Will of the Wild",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "activateAbility",

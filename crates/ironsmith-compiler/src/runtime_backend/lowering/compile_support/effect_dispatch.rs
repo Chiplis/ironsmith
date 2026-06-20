@@ -3500,6 +3500,7 @@ fn compile_subject_verb_effect(
             filter,
             abilities,
             duration,
+            condition,
         } => {
             let modifications = lower_granted_ability_grant_modifications(abilities)?;
             if modifications.is_empty() {
@@ -3510,6 +3511,10 @@ fn compile_subject_verb_effect(
             }
 
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let resolved_condition = condition
+                .as_ref()
+                .map(|condition| resolve_tagged_top_library_condition(condition, ctx))
+                .transpose()?;
             let mut apply = crate::effects::ApplyContinuousEffect::new(
                 crate::continuous::EffectTarget::Filter(resolved_filter),
                 modifications[0].clone(),
@@ -3519,6 +3524,9 @@ fn compile_subject_verb_effect(
 
             for modification in modifications.iter().skip(1) {
                 apply = apply.with_additional_modification(modification.clone());
+            }
+            if let Some(condition) = resolved_condition {
+                apply = apply.with_condition(condition);
             }
 
             Ok((vec![Effect::new(apply)], Vec::new()))

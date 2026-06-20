@@ -2144,7 +2144,7 @@ fn rewrite_lexed_for_each_exiled_reveal_until_then_bottom_uses_consult() {
 
     let parsed = parse_effect_sentence_lexed(&lexed)
         .expect("for-each exiled reveal-until-bottom sentence should parse");
-    let debug = format!("{parsed:#?}");
+    let debug = format!("{parsed:?}");
 
     assert!(debug.contains("ForEachTagged"), "{debug}");
     assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
@@ -3219,6 +3219,81 @@ fn attach_up_to_one_target_equipment_to_it_parses_target_object() {
 }
 
 #[test]
+fn attach_any_number_equipment_to_it_parses_counted_object_set() {
+    let tokens = lex_line("Attach any number of Equipment you control to it.", 0)
+        .expect("rewrite lexer should classify attach clause");
+    let parsed = parse_effect_sentence_lexed(&tokens).expect("attach clause should parse");
+
+    let [
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Attach { object, target },
+                ..
+            },
+        ),
+    ] = parsed.as_slice()
+    else {
+        panic!("expected attach effect, got {parsed:?}");
+    };
+
+    let crate::cards::builders::TargetAst::WithCount(inner, count) = object else {
+        panic!("expected counted attachment object, got {object:?}");
+    };
+    assert_eq!(*count, crate::cards::builders::ChoiceCount::any_number());
+    assert!(
+        matches!(inner.as_ref(), crate::cards::builders::TargetAst::Object(filter, None, _)
+            if filter.subtypes.contains(&crate::Subtype::Equipment)
+                && filter.controller == Some(crate::cards::builders::PlayerFilter::You)
+                && filter.zone == Some(crate::Zone::Battlefield)),
+        "expected counted Equipment-you-control object filter, got {inner:?}"
+    );
+    assert!(matches!(
+        target,
+        crate::cards::builders::TargetAst::Tagged(tag, _)
+            if tag.as_str() == crate::cards::builders::IT_TAG
+    ));
+}
+
+#[test]
+fn attach_any_number_equipment_to_it_lowers_without_targeting_equipment()
+-> Result<(), CardTextError> {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Armed and Armored Variant")
+        .mana_cost(super::util::parse_scryfall_mana_cost("{1}{W}").unwrap())
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Vehicles you control become artifact creatures until end of turn. Choose a Dwarf you control. Attach any number of Equipment you control to it.",
+        )?;
+
+    let effects = &def
+        .spell_effect
+        .as_ref()
+        .expect("spell should lower")
+        .segments[0]
+        .default_effects;
+    let attach = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
+        .expect("attach effect should be present");
+
+    assert!(matches!(
+        &attach.objects,
+        crate::target::ChooseSpec::WithCount(inner, count)
+            if *count == ChoiceCount::any_number()
+                && matches!(inner.as_ref(), crate::target::ChooseSpec::All(filter)
+                    if filter.subtypes.contains(&Subtype::Equipment)
+                        && filter.controller == Some(crate::target::PlayerFilter::You)
+                        && filter.zone == Some(Zone::Battlefield))
+    ));
+    assert!(
+        !effects.iter().any(|effect| effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .is_some_and(|target_only| target_only.target == attach.objects)),
+        "non-target Equipment attachments should not get a target-only prelude: {effects:#?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn amass_where_x_clause_replaces_unbound_x() {
     let tokens = lex_line(
         "Amass Orcs X, where X is the number of Equipment attached to this creature.",
@@ -3704,6 +3779,30 @@ fn rewrite_etb_where_x_total_power_of_sacrificed_creatures_uses_the_sacrifice_re
         !debug.contains("zone: Some(Battlefield)"),
         "sacrificed creatures should not be collapsed to a battlefield-only filter, got {debug}"
     );
+}
+
+#[test]
+fn rewrite_where_x_number_of_creatures_of_chosen_type_is_board_count() {
+    let tokens = lex_line(
+        "where X is the number of creatures they control of the chosen type",
+        0,
+    )
+    .expect("rewrite lexer should classify chosen-type count clause");
+
+    let parsed = super::keyword_static::parse_where_x_is_number_of_filter_value(&tokens)
+        .expect("chosen-type count where-x clause should parse");
+
+    match parsed.unhinted() {
+        crate::effect::Value::Count(filter) => {
+            assert_eq!(filter.card_types, vec![CardType::Creature]);
+            assert_eq!(
+                filter.controller,
+                Some(crate::target::PlayerFilter::IteratedPlayer)
+            );
+            assert!(filter.chosen_creature_type);
+        }
+        other => panic!("expected chosen-type creature count, got {other:?}"),
+    }
 }
 
 #[test]
@@ -6809,6 +6908,25 @@ fn equal_to_dynamic_token_count_can_use_opponent_count() {
             && debug.contains("CountPlayers")
             && debug.contains("Opponent"),
         "expected dynamic create count to use opponent count, got {debug}"
+    );
+}
+
+#[test]
+fn token_with_each_opponent_trigger_validates_inner_iterated_player_binding() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wizard Token Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, create a 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent.\"",
+        )
+        .expect("quoted token trigger with each-opponent damage should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CreateTokenEffect")
+            && debug.contains("SpellCast")
+            && debug.contains("ForPlayersEffect")
+            && debug.contains("IteratedPlayer"),
+        "expected created token trigger to keep its own each-opponent binding, got {debug}"
     );
 }
 
@@ -14485,6 +14603,88 @@ fn rewrite_lowered_simple_card_parses() -> Result<(), CardTextError> {
 }
 
 #[test]
+fn rewrite_lowered_nonattacking_nonblocking_target_pump_keeps_target() -> Result<(), CardTextError>
+{
+    let lexed = lex_line(
+        "Target nonattacking, nonblocking creature gets +0/+2 until end of turn.",
+        0,
+    )
+    .expect("target pump should lex");
+    let parsed_sentence =
+        parse_effect_sentence_lexed(&lexed).expect("target pump sentence should parse");
+    let [
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::Pump {
+                        target: sentence_target,
+                        ..
+                    },
+                ..
+            },
+        ),
+    ] = parsed_sentence.as_slice()
+    else {
+        panic!("expected target pump sentence, got {parsed_sentence:#?}");
+    };
+    let crate::cards::builders::TargetAst::Object(filter, target_span, _) = sentence_target else {
+        panic!("expected target object, got {sentence_target:#?}");
+    };
+    assert!(target_span.is_some(), "expected explicit target span");
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert!(
+        filter.nonattacking,
+        "expected nonattacking target: {filter:?}"
+    );
+    assert!(
+        filter.nonblocking,
+        "expected nonblocking target: {filter:?}"
+    );
+
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Unlikely Alliance")
+        .card_types(vec![CardType::Enchantment]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "{1}{W}: Target nonattacking, nonblocking creature gets +0/+2 until end of turn."
+            .to_string(),
+        false,
+    )?;
+    let ability = definition
+        .abilities
+        .first()
+        .expect("rewrite lowering should produce one ability");
+    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+        panic!("expected activated ability, got {ability:?}");
+    };
+
+    assert_eq!(activated.choices.len(), 1, "{activated:#?}");
+    let crate::target::ChooseSpec::Target(target) = &activated.choices[0] else {
+        panic!("expected target choice, got {:#?}", activated.choices);
+    };
+    let crate::target::ChooseSpec::Object(filter) = target.as_ref() else {
+        panic!("expected object target choice, got {target:#?}");
+    };
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert!(
+        filter.nonattacking,
+        "expected nonattacking target: {filter:?}"
+    );
+    assert!(
+        filter.nonblocking,
+        "expected nonblocking target: {filter:?}"
+    );
+
+    let effects = &activated.effects.segments[0].default_effects;
+    let apply = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
+        .expect("expected continuous pump effect");
+    assert_ne!(apply.target_spec, Some(crate::target::ChooseSpec::Source));
+    assert_eq!(apply.target_spec.as_ref(), Some(&activated.choices[0]));
+    Ok(())
+}
+
+#[test]
 fn rewrite_lowered_mana_ability_preserves_fixed_mana_groups() -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Shared Ring")
         .card_types(vec![CardType::Artifact]);
@@ -14737,6 +14937,23 @@ fn token_definition_keeps_multiple_creature_subtypes() {
     assert_eq!(
         token.card.subtypes,
         vec![Subtype::Zombie, Subtype::Employee]
+    );
+}
+
+#[test]
+fn token_definition_recognizes_fractal_creature_tokens() {
+    let token =
+        super::compile_support::token_definition_for("0/0 green and blue Fractal creature token")
+            .expect("Fractal token should be recognized");
+
+    assert_eq!(token.card.subtypes, vec![Subtype::Fractal]);
+    assert_eq!(
+        token.card.color_indicator,
+        Some(crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLUE))
+    );
+    assert_eq!(
+        token.card.power_toughness,
+        Some(crate::PowerToughness::fixed(0, 0))
     );
 }
 
@@ -15697,6 +15914,33 @@ fn rewrite_lexed_triggered_line_keeps_unique_life_leader_intervening_if() {
         "{debug}"
     );
     assert!(debug.contains("MostLifeTied"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_keeps_toughness_greater_than_power_gate() {
+    let text = "At the beginning of combat on your turn, if you control three or more creatures that each have toughness greater than their power, transform this creature.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify Catapult-style trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("Catapult-style triggered line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        debug.contains("BeginningOfCombat") && debug.contains("You"),
+        "{debug}"
+    );
+    assert!(debug.contains("PlayerHasAtLeast"), "{debug}");
+    assert!(debug.contains("power_toughness_relation"), "{debug}");
+    assert!(debug.contains("ToughnessGreaterThanPower"), "{debug}");
+    assert!(
+        !debug.contains("toughness: Some(GreaterThanExpr(SourcePower))"),
+        "{debug}"
+    );
+    assert!(
+        !debug.contains("power: Some(LessThanExpr(SourceToughness))"),
+        "{debug}"
+    );
+    assert!(debug.contains("Transform"), "{debug}");
 }
 
 #[test]

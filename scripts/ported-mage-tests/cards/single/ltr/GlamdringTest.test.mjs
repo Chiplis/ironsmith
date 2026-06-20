@@ -7,8 +7,65 @@ registerPortedMageTests({
       "name": "tooExpensiveToCastForFree",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setUp()"
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Healing Salve",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "In Garruk's Wake",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Blue Sun's Zenith",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Glamdring",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Blur Sliver",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "Equip {3}",
+          "target": "Blur Sliver"
         },
         {
           "op": "attack",
@@ -32,8 +89,65 @@ registerPortedMageTests({
       "name": "canCastForFree",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setUp()"
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Healing Salve",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "In Garruk's Wake",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Blue Sun's Zenith",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Glamdring",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Blur Sliver",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "Equip {3}",
+          "target": "Blur Sliver"
         },
         {
           "op": "attack",
@@ -76,8 +190,65 @@ registerPortedMageTests({
       "name": "enoughCardsInGraveyardToCastInGarruksWake",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setUp()"
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Healing Salve",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "In Garruk's Wake",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Blue Sun's Zenith",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Glamdring",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Blur Sliver",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "Equip {3}",
+          "target": "Blur Sliver"
         },
         {
           "op": "addCard",

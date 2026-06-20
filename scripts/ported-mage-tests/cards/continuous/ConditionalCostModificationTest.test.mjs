@@ -65,12 +65,8 @@ registerPortedMageTests({
       "name": "test_ModificationNormal",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "mod",
-          "player": 0,
-          "name": "EquipAbility.class",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"mod\", playerA, new SimpleStaticAbility(new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\")))"
         },
         {
           "op": "addCard",
@@ -131,12 +127,8 @@ registerPortedMageTests({
       "name": "test_ModificationConditionalActive",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "mod",
-          "player": 0,
-          "name": "new SimpleStaticAbility(\n                new ConditionalCostModificationEffect(\n                        new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\"),\n                        MyTurnCondition.instance,\n                        \"\"\n                )\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"mod\", playerA, new SimpleStaticAbility( new ConditionalCostModificationEffect( new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\"), MyTurnCondition.instance, \"\" ) ))"
         },
         {
           "op": "addCard",
@@ -197,12 +189,8 @@ registerPortedMageTests({
       "name": "test_ModificationConditionalNotActive",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "mod",
-          "player": 0,
-          "name": "new SimpleStaticAbility(\n                new ConditionalCostModificationEffect(\n                        new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\"),\n                        NotMyTurnCondition.instance,\n                        \"\"\n                )\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"mod\", playerA, new SimpleStaticAbility( new ConditionalCostModificationEffect( new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\"), NotMyTurnCondition.instance, \"\" ) ))"
         },
         {
           "op": "addCard",
@@ -263,12 +251,8 @@ registerPortedMageTests({
       "name": "test_ModificationConditionalNotActiveWithOtherEffect",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "mod",
-          "player": 0,
-          "name": "new SimpleStaticAbility(\n                new ConditionalCostModificationEffect(\n                        new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\"),\n                        NotMyTurnCondition.instance,\n                        new SpellsCostIncreasingAllEffect(1, new FilterCard(), TargetController.ANY),\n                        \"\"\n                )\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"mod\", playerA, new SimpleStaticAbility( new ConditionalCostModificationEffect( new AbilitiesCostReductionControllerEffect(EquipAbility.class, \"equip\"), NotMyTurnCondition.instance, new SpellsCostIncreasingAllEffect(1, new FilterCard(), TargetController.ANY), \"\" ) ))"
         },
         {
           "op": "addCard",

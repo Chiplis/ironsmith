@@ -156,6 +156,89 @@ registerPortedMageTests({
           "player": 0,
           "name": "Gandalf of the Secret Fire",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain",
+          "count": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Fire",
+          "target": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "addTargetAmount(playerA, playerB, 2)"
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "checkCardCounters(\"1: fire//ice has 3 time counters\", 2, PhaseStep.POSTCOMBAT_MAIN, playerA, \"Fire // Ice\", CounterType.TIME, 3)"
+        },
+        {
+          "op": "unsupported",
+          "source": "checkCardCounters(\"2: fire//ice has 2 time counters\", 3, PhaseStep.PRECOMBAT_MAIN, playerA, \"Fire // Ice\", CounterType.TIME, 2)"
+        },
+        {
+          "op": "unsupported",
+          "source": "checkCardCounters(\"3: fire//ice has 1 time counters\", 5, PhaseStep.PRECOMBAT_MAIN, playerA, \"Fire // Ice\", CounterType.TIME, 1)"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Cast Fire"
+        },
+        {
+          "op": "unsupported",
+          "source": "addTargetAmount(playerA, playerB, 2)"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 7,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 16
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
         }
       ]
     },

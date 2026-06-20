@@ -11,12 +11,8 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addCard",
-          "zone": "lose life effect",
-          "player": 0,
-          "name": "new SimpleActivatedAbility(\n                new LoseLifeAllPlayersEffect(20),\n                new ManaCostsImpl<>(\"\"))",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"lose life effect\", playerA, new SimpleActivatedAbility( new LoseLifeAllPlayersEffect(20), new ManaCostsImpl<>(\"\")) )"
         },
         {
           "op": "addCard",
@@ -106,12 +102,8 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addCard",
-          "zone": "lose game effect",
-          "player": 0,
-          "name": "new SimpleActivatedAbility(\n                new LoseGameSourceControllerEffect(),\n                new ManaCostsImpl<>(\"\"))",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"lose game effect\", playerA, new SimpleActivatedAbility( new LoseGameSourceControllerEffect(), new ManaCostsImpl<>(\"\")) )"
         },
         {
           "op": "addCard",
@@ -170,12 +162,8 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addCard",
-          "zone": "win game effect",
-          "player": 0,
-          "name": "new SimpleActivatedAbility(\n                new WinGameSourceControllerEffect(),\n                new ManaCostsImpl<>(\"\"))",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"win game effect\", playerA, new SimpleActivatedAbility( new WinGameSourceControllerEffect(), new ManaCostsImpl<>(\"\")) )"
         },
         {
           "op": "addCard",

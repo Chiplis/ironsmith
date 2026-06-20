@@ -217,7 +217,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Icefeather Aven using Morph",
-          "target": "TestPlayer.NO_TARGET"
+          "target": "TestPlayer.NO_TARGET",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "attack",
@@ -901,7 +902,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Sagu Mauler using Morph",
-          "target": "TestPlayer.NO_TARGET"
+          "target": "TestPlayer.NO_TARGET",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "castSpell",

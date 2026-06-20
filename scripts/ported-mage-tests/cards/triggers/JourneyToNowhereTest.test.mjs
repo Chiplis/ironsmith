@@ -213,7 +213,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Boomerang",
-          "target": "Journey to Nowhere"
+          "target": "Journey to Nowhere",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "castSpell",

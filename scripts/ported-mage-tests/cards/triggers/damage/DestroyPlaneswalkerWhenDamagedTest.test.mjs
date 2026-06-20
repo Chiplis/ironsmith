@@ -7,12 +7,8 @@ registerPortedMageTests({
       "name": "nullFilterTest",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "nullFilterDPwD",
-          "player": 0,
-          "name": "new DestroyPlaneswalkerWhenDamagedTriggeredAbility()",
-          "custom": true,
-          "oracleText": "None"
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"nullFilterDPwD\", playerA, new DestroyPlaneswalkerWhenDamagedTriggeredAbility(), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD)"
         },
         {
           "op": "addCard",

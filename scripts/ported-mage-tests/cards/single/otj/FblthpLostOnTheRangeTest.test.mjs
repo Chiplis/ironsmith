@@ -306,6 +306,47 @@ registerPortedMageTests({
           "player": 0,
           "name": "Fblthp, Lost on the Range",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Life // Death",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Bayou",
+          "count": 3
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "Plot"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Life // Death",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Bayou",
+          "tapped": true,
+          "count": 3
         }
       ]
     }

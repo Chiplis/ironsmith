@@ -94,6 +94,69 @@ registerPortedMageTests({
           "player": 1,
           "name": "Island",
           "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Ice",
+          "target": "Silvercoat Lion"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Time Stop",
+          "target": "TestPlayer.NO_TARGET"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 2,
+          "phase": "UPKEEP"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Fire // Ice",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Time Stop",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "assertTapped(\"Silvercoat Lion\", false)"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
         }
       ]
     },

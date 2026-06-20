@@ -1722,9 +1722,83 @@ fn rewrite_validate_effect_for_iterated_player(
             return Ok(());
         }
     }
+    if let Some(create_token) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
+        if !iterated_player_bound {
+            rewrite_validate_unbound_iterated_player(
+                format!("{:?}", create_token.controller),
+                context,
+            )?;
+            if let Some(controller_target) = &create_token.controller_target {
+                rewrite_validate_unbound_iterated_player(
+                    format!("{controller_target:?}"),
+                    context,
+                )?;
+            }
+            rewrite_validate_unbound_iterated_player(format!("{:?}", create_token.count), context)?;
+        }
+        return rewrite_validate_card_definition_for_iterated_player(
+            &create_token.token,
+            "created token definition",
+        );
+    }
 
     if !iterated_player_bound {
         rewrite_validate_unbound_iterated_player(format!("{effect:?}"), context)?;
+    }
+    Ok(())
+}
+
+fn rewrite_validate_ability_for_iterated_player(
+    ability: &Ability,
+    context: &str,
+) -> Result<(), CardTextError> {
+    match &ability.kind {
+        AbilityKind::Triggered(triggered) => {
+            rewrite_validate_effects_for_iterated_player(
+                triggered.effects.flattened_default_effects(),
+                false,
+                context,
+            )?;
+            rewrite_validate_choose_specs_for_iterated_player(&triggered.choices, false, context)?;
+            if let Some(intervening_if) = &triggered.intervening_if {
+                rewrite_validate_condition_for_iterated_player(intervening_if, false, context)?;
+            }
+            Ok(())
+        }
+        AbilityKind::Activated(activated) => {
+            rewrite_validate_effects_for_iterated_player(
+                activated.effects.flattened_default_effects(),
+                false,
+                context,
+            )?;
+            rewrite_validate_choose_specs_for_iterated_player(&activated.choices, false, context)?;
+            for restriction in &activated.activation_restrictions {
+                rewrite_validate_condition_for_iterated_player(restriction, false, context)?;
+            }
+            if let Some(condition) = &activated.activation_condition {
+                rewrite_validate_condition_for_iterated_player(condition, false, context)?;
+            }
+            Ok(())
+        }
+        AbilityKind::Static(static_ability) => {
+            rewrite_validate_unbound_iterated_player(format!("{static_ability:?}"), context)
+        }
+    }
+}
+
+fn rewrite_validate_card_definition_for_iterated_player(
+    card_definition: &crate::cards::CardDefinition,
+    context: &str,
+) -> Result<(), CardTextError> {
+    for ability in &card_definition.abilities {
+        rewrite_validate_ability_for_iterated_player(ability, context)?;
+    }
+    if let Some(spell_effect) = &card_definition.spell_effect {
+        rewrite_validate_effects_for_iterated_player(
+            spell_effect.flattened_default_effects(),
+            false,
+            context,
+        )?;
     }
     Ok(())
 }

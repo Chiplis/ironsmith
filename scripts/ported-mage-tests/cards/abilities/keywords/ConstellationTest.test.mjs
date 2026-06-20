@@ -49,7 +49,7 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "assertDaxosBoost(true)"
+          "source": "if (true) { assertPowerToughness(playerA, daxosCard, 5, 5); assertType(daxosCard, CardType.CREATURE, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), true); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), true); } else { assertPowerToughness(playerA, daxosCard, 0, 0); assertNotSubtype(daxosCard, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), false); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), false); }"
         }
       ]
     },
@@ -99,7 +99,7 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "assertDaxosBoost(false)"
+          "source": "if (false) { assertPowerToughness(playerA, daxosCard, 5, 5); assertType(daxosCard, CardType.CREATURE, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), true); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), true); } else { assertPowerToughness(playerA, daxosCard, 0, 0); assertNotSubtype(daxosCard, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), false); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), false); }"
         }
       ]
     },
@@ -182,7 +182,7 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "assertDaxosBoost(true)"
+          "source": "if (true) { assertPowerToughness(playerA, daxosCard, 5, 5); assertType(daxosCard, CardType.CREATURE, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), true); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), true); } else { assertPowerToughness(playerA, daxosCard, 0, 0); assertNotSubtype(daxosCard, SubType.DEMON); assertAbility(playerA, daxosCard, FlyingAbility.getInstance(), false); assertAbility(playerA, daxosCard, HasteAbility.getInstance(), false); }"
         }
       ]
     },
@@ -601,8 +601,80 @@ registerPortedMageTests({
       "name": "test_DaxosGotBoostAndNewTypeByDependencyEffects_RegularWay",
       "operations": [
         {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Swamp",
+          "count": 4
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Mephidross Vampire",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Swamp",
+          "count": 8
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Archetype of Courage",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plains",
+          "count": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment"
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "count": 1
+        },
+        {
+          "op": "assertAbility",
+          "player": "dax fly",
+          "name": 3,
+          "ability": "BEGIN_COMBAT",
+          "expected": 0
+        },
+        {
           "op": "unsupported",
-          "source": "playDaxosAndVampire(false)"
+          "source": "checkSubType(\"dax is vampire\", 3, PhaseStep.BEGIN_COMBAT, playerA, daxosCard, SubType.VAMPIRE, true)"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -610,8 +682,80 @@ registerPortedMageTests({
       "name": "test_DaxosGotBoostAndNewTypeByDependencyEffects_DifferentWay",
       "operations": [
         {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Swamp",
+          "count": 4
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Mephidross Vampire",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Swamp",
+          "count": 8
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Archetype of Courage",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plains",
+          "count": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment"
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Daxos's Torment",
+          "count": 1
+        },
+        {
+          "op": "assertAbility",
+          "player": "dax fly",
+          "name": 3,
+          "ability": "BEGIN_COMBAT",
+          "expected": 0
+        },
+        {
           "op": "unsupported",
-          "source": "playDaxosAndVampire(true)"
+          "source": "checkSubType(\"dax is vampire\", 3, PhaseStep.BEGIN_COMBAT, playerA, daxosCard, SubType.VAMPIRE, true)"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
         }
       ]
     }

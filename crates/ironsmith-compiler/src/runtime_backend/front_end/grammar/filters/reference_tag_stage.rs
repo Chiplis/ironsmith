@@ -66,6 +66,76 @@ const WITH_WORD: &str = "with";
 const WITHOUT_WORD: &str = "without";
 const BASE_POWER_TOUGHNESS_PREFIX: &[&str] = &["base", "power", "and", "toughness"];
 const POWER_TOUGHNESS_PREFIX: &[&str] = &["power", "and", "toughness"];
+const TOUGHNESS_GREATER_THAN_POWER_PHRASES: &[&[&str]] = &[
+    &["toughness", "greater", "than", "its", "power"],
+    &["toughness", "greater", "than", "their", "power"],
+    &["power", "less", "than", "its", "toughness"],
+    &["power", "less", "than", "their", "toughness"],
+];
+const POWER_GREATER_THAN_TOUGHNESS_PHRASES: &[&[&str]] = &[
+    &["power", "greater", "than", "its", "toughness"],
+    &["power", "greater", "than", "their", "toughness"],
+    &["toughness", "less", "than", "its", "power"],
+    &["toughness", "less", "than", "their", "power"],
+];
+
+fn comparison_references_source_power(comparison: &crate::filter::Comparison) -> bool {
+    matches!(
+        comparison,
+        crate::filter::Comparison::GreaterThanExpr(value)
+            | crate::filter::Comparison::LessThanExpr(value)
+            if matches!(value.as_ref(), crate::effect::Value::SourcePower)
+    )
+}
+
+fn comparison_references_source_toughness(comparison: &crate::filter::Comparison) -> bool {
+    matches!(
+        comparison,
+        crate::filter::Comparison::GreaterThanExpr(value)
+            | crate::filter::Comparison::LessThanExpr(value)
+            if matches!(value.as_ref(), crate::effect::Value::SourceToughness)
+    )
+}
+
+fn clear_redundant_power_toughness_axis_filter(
+    filter: &mut ObjectFilter,
+    relation: crate::filter::PowerToughnessRelation,
+) {
+    match relation {
+        crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower => {
+            if filter
+                .power
+                .as_ref()
+                .is_some_and(comparison_references_source_toughness)
+            {
+                filter.power = None;
+            }
+            if filter
+                .toughness
+                .as_ref()
+                .is_some_and(comparison_references_source_power)
+            {
+                filter.toughness = None;
+            }
+        }
+        crate::filter::PowerToughnessRelation::PowerGreaterThanToughness => {
+            if filter
+                .power
+                .as_ref()
+                .is_some_and(comparison_references_source_toughness)
+            {
+                filter.power = None;
+            }
+            if filter
+                .toughness
+                .as_ref()
+                .is_some_and(comparison_references_source_power)
+            {
+                filter.toughness = None;
+            }
+        }
+    }
+}
 const BASE_WORD: &str = "base";
 const POWER_WORD: &str = "power";
 const TOUGHNESS_WORD: &str = "toughness";
@@ -1035,6 +1105,15 @@ pub(super) fn parse_object_filter_inner(
     if word_slice_contains_phrase(&clause_words, POWER_GREATER_THAN_BASE_POWER_PHRASE) {
         filter.power_greater_than_base_power = true;
     }
+    if word_slice_contains_any_phrase(&clause_words, TOUGHNESS_GREATER_THAN_POWER_PHRASES) {
+        let relation = crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower;
+        filter.power_toughness_relation = Some(relation);
+        clear_redundant_power_toughness_axis_filter(&mut filter, relation);
+    } else if word_slice_contains_any_phrase(&clause_words, POWER_GREATER_THAN_TOUGHNESS_PHRASES) {
+        let relation = crate::filter::PowerToughnessRelation::PowerGreaterThanToughness;
+        filter.power_toughness_relation = Some(relation);
+        clear_redundant_power_toughness_axis_filter(&mut filter, relation);
+    }
 
     let mut saw_permanent = false;
     let mut saw_spell = false;
@@ -1721,6 +1800,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.nonhistoric
         || filter.power.is_some()
         || filter.power_parity.is_some()
+        || filter.power_toughness_relation.is_some()
         || filter.toughness.is_some()
         || filter.total_power_toughness.is_some()
         || filter.mana_value.is_some()
@@ -1783,6 +1863,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.nonhistoric
         || filter.power.is_some()
         || filter.power_parity.is_some()
+        || filter.power_toughness_relation.is_some()
         || filter.toughness.is_some()
         || filter.total_power_toughness.is_some()
         || filter.mana_value.is_some()

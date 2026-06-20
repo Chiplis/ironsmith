@@ -55,7 +55,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "ability": "{1}, {T}, Sacrifice a creature",
-          "target": "Helm of Possession"
+          "target": "Helm of Possession",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "setChoice",

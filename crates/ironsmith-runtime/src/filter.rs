@@ -21,8 +21,8 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 pub use ironsmith_core::filter_model::{
     AlternativeCastKind, Comparison, CounterConstraint, ObjectFilter, ObjectRef, ParityRequirement,
-    PlayerFilter, PtReference, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
-    TaggedOpbjectRelation, TargetabilityConstraint,
+    PlayerFilter, PowerToughnessRelation, PtReference, SourcePowerRelation, StackObjectKind,
+    TaggedObjectConstraint, TaggedOpbjectRelation, TargetabilityConstraint,
 };
 
 fn normalize_name_for_match(name: &str) -> String {
@@ -2401,6 +2401,33 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             }
         }
+        if let Some(relation) = self.power_toughness_relation {
+            let Some(power) = resolve_object_power_for_filter(
+                object,
+                game,
+                PtReference::Effective,
+                allow_calculated_pt,
+            ) else {
+                return false;
+            };
+            let Some(toughness) = resolve_object_toughness_for_filter(
+                object,
+                game,
+                PtReference::Effective,
+                allow_calculated_pt,
+            ) else {
+                return false;
+            };
+            match relation {
+                PowerToughnessRelation::PowerGreaterThanToughness if power <= toughness => {
+                    return false;
+                }
+                PowerToughnessRelation::ToughnessGreaterThanPower if toughness <= power => {
+                    return false;
+                }
+                _ => {}
+            }
+        }
 
         if let Some(relation) = self.power_relative_to_source {
             let Some(candidate_power) = resolve_object_power_for_filter(
@@ -2985,6 +3012,26 @@ impl ObjectFilterExt for ObjectFilter {
             };
             if effective_power <= base_power {
                 return false;
+            }
+        }
+        if let Some(relation) = self.power_toughness_relation {
+            let Some(power) = resolve_snapshot_power_for_filter(snapshot, PtReference::Effective)
+            else {
+                return false;
+            };
+            let Some(toughness) =
+                resolve_snapshot_toughness_for_filter(snapshot, PtReference::Effective)
+            else {
+                return false;
+            };
+            match relation {
+                PowerToughnessRelation::PowerGreaterThanToughness if power <= toughness => {
+                    return false;
+                }
+                PowerToughnessRelation::ToughnessGreaterThanPower if toughness <= power => {
+                    return false;
+                }
+                _ => {}
             }
         }
 
@@ -3850,6 +3897,13 @@ impl ObjectFilterExt for ObjectFilter {
             return format!("{} not named {}", parts.join(" "), name);
         }
 
+        if self.power_toughness_relation.is_some()
+            && owner_suffix.is_none()
+            && let Some(controller) = controller_suffix.take()
+        {
+            parts.push(controller);
+        }
+
         if let (Some(power), Some(toughness)) = (&self.power, &self.toughness)
             && let (Comparison::Equal(power_value), Comparison::Equal(toughness_value)) =
                 (power, toughness)
@@ -3877,6 +3931,16 @@ impl ObjectFilterExt for ObjectFilter {
             }
             if self.power_greater_than_base_power {
                 parts.push("with power greater than its base power".to_string());
+            }
+            if let Some(relation) = self.power_toughness_relation {
+                match relation {
+                    PowerToughnessRelation::PowerGreaterThanToughness => {
+                        parts.push("with power greater than its toughness".to_string());
+                    }
+                    PowerToughnessRelation::ToughnessGreaterThanPower => {
+                        parts.push("with toughness greater than its power".to_string());
+                    }
+                }
             }
             if let Some(relation) = self.power_relative_to_source {
                 match relation {
@@ -6181,6 +6245,18 @@ mod tests {
         assert_eq!(filter.power, Some(Comparison::LessThanOrEqual(2)));
         assert_eq!(filter.power_reference, PtReference::Base);
         assert_eq!(filter.description(), "creature with base power 2 or less");
+    }
+
+    #[test]
+    fn test_filter_description_places_controller_before_power_toughness_relation() {
+        let filter = ObjectFilter::creature()
+            .controlled_by(PlayerFilter::You)
+            .with_power_toughness_relation(PowerToughnessRelation::ToughnessGreaterThanPower);
+
+        assert_eq!(
+            filter.description(),
+            "a creature you control with toughness greater than its power"
+        );
     }
 
     #[test]

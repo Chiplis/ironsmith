@@ -810,6 +810,12 @@ fn token_extra_abilities_prefer_with_clause(abilities: &[String]) -> bool {
             if ability.starts_with("\"{") {
                 return true;
             }
+            if ability.starts_with("\"Whenever ")
+                || ability.starts_with("\"When ")
+                || ability.starts_with("\"At ")
+            {
+                return true;
+            }
             ability.to_ascii_lowercase().starts_with(
                 "\"this token saddles mounts and crews vehicles as though its power were ",
             )
@@ -869,7 +875,9 @@ fn normalize_quoted_token_ability_surface(text: &str) -> String {
     }
 
     if !normalized.starts_with('{') {
-        return normalize_token_self_reference_in_quoted_ability(&capitalize_first(&normalized));
+        let normalized =
+            normalize_token_self_reference_in_quoted_ability(&capitalize_first(&normalized));
+        return normalize_quoted_token_trigger_surface(&normalized);
     }
 
     let mut chars: Vec<char> = normalized.chars().collect();
@@ -887,7 +895,9 @@ fn normalize_quoted_token_ability_surface(text: &str) -> String {
             capitalize_next_alpha = false;
         }
     }
-    normalize_token_self_reference_in_quoted_ability(&chars.into_iter().collect::<String>())
+    let normalized =
+        normalize_token_self_reference_in_quoted_ability(&chars.into_iter().collect::<String>());
+    normalize_quoted_token_trigger_surface(&normalized)
 }
 
 fn normalize_token_self_reference_in_quoted_ability(text: &str) -> String {
@@ -907,6 +917,16 @@ fn normalize_token_self_reference_in_quoted_ability(text: &str) -> String {
         .replace("Sacrifice this token, Add ", "Sacrifice this token: Add ")
         .replace("Sacrifice this token, add ", "Sacrifice this token: Add ")
         .replace(": add ", ": Add ")
+}
+
+fn normalize_quoted_token_trigger_surface(text: &str) -> String {
+    if !(text.starts_with("Whenever ") || text.starts_with("When ") || text.starts_with("At ")) {
+        return text.to_string();
+    }
+    let Some((trigger, effect)) = text.split_once(": ") else {
+        return text.to_string();
+    };
+    format!("{trigger}, {}", lowercase_first(effect))
 }
 
 fn token_quoted_ability_needs_terminal_period(text: &str) -> bool {
@@ -6813,6 +6833,9 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         if let Some((head, tail)) = subject.split_once(" not named ") {
             return format!("{} {} not named {}", head.trim(), suffix, tail.trim());
         }
+        if let Some(head) = subject.strip_suffix(" of the chosen type") {
+            return format!("{} {suffix} of the chosen type", head.trim());
+        }
         return format!("{subject} {suffix}");
     }
 
@@ -7230,6 +7253,12 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
 }
 
 pub(super) fn describe_attach_objects_spec(spec: &ChooseSpec) -> String {
+    if let ChooseSpec::WithCount(inner, count) = spec
+        && !inner.is_target()
+        && let Some(text) = describe_counted_attach_objects_spec(inner, count)
+    {
+        return text;
+    }
     if let ChooseSpec::All(filter) = spec
         && filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
@@ -7246,6 +7275,68 @@ pub(super) fn describe_attach_objects_spec(spec: &ChooseSpec) -> String {
         }
     }
     describe_choose_spec(spec)
+}
+
+fn describe_counted_attach_objects_spec(spec: &ChooseSpec, count: &ChoiceCount) -> Option<String> {
+    let filter = match spec.unhinted() {
+        ChooseSpec::All(filter) | ChooseSpec::Object(filter) => filter,
+        _ => return None,
+    };
+    let description = filter.description();
+    let base = strip_leading_article(&description).trim();
+    if base.is_empty() {
+        return None;
+    }
+    let plural = pluralize_relative_object_phrase(base);
+    let count_text = |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
+    let random_suffix = if count.is_random() {
+        if count.is_single() {
+            " chosen at random"
+        } else {
+            " at random"
+        }
+    } else {
+        ""
+    };
+
+    if count.is_single() {
+        return Some(format!("{base}{random_suffix}"));
+    }
+    if count.is_up_to_dynamic_x() {
+        return Some(format!("up to X {plural}{random_suffix}"));
+    }
+    if count.is_dynamic_x() {
+        return Some(format!("X {plural}{random_suffix}"));
+    }
+    Some(match (count.min, count.max) {
+        (0, None) => format!("any number of {plural}{random_suffix}"),
+        (min, None) => {
+            if min == 1 {
+                format!("at least one {base}{random_suffix}")
+            } else {
+                format!("at least {} {plural}{random_suffix}", count_text(min))
+            }
+        }
+        (0, Some(max)) => {
+            if max == 1 {
+                format!("up to one {base}{random_suffix}")
+            } else {
+                format!("up to {} {plural}{random_suffix}", count_text(max))
+            }
+        }
+        (min, Some(max)) if min == max => {
+            if min == 1 {
+                format!("one {base}{random_suffix}")
+            } else {
+                format!("{} {plural}{random_suffix}", count_text(min))
+            }
+        }
+        (min, Some(max)) => format!(
+            "{} to {} {plural}{random_suffix}",
+            count_text(min),
+            count_text(max)
+        ),
+    })
 }
 
 pub(super) fn describe_goad_target(spec: &ChooseSpec) -> String {
@@ -9938,7 +10029,19 @@ pub(super) fn describe_apply_continuous_effect(
         text.push(' ');
         text.push_str(&tail);
     }
-    Some(normalize_each_other_continuous_subject(text))
+    let text = normalize_each_other_continuous_subject(text);
+    if let Some(condition) = &effect.condition
+        && !matches!(effect.until, Until::ThisLeavesTheBattlefield)
+        && !(effect.condition == Some(Condition::SourceIsTapped)
+            && matches!(effect.until, Until::SourceUntaps))
+    {
+        return Some(format!(
+            "If {}, {}",
+            describe_condition(condition),
+            lowercase_first(&text)
+        ));
+    }
+    Some(text)
 }
 
 fn normalize_each_other_continuous_subject(text: String) -> String {

@@ -100,12 +100,8 @@ registerPortedMageTests({
       "name": "test_ExileSpellAndRecastWithReturnAtTheEnd",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "cast from exile",
-          "player": 0,
-          "name": "new SimpleStaticAbility(\n                new PlayFromNotOwnHandZoneAllEffect(StaticFilters.FILTER_CARD, Zone.EXILED, false, TargetController.ANY, Duration.WhileOnBattlefield)\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"cast from exile\", playerA, new SimpleStaticAbility( new PlayFromNotOwnHandZoneAllEffect(StaticFilters.FILTER_CARD, Zone.EXILED, false, TargetController.ANY, Duration.WhileOnBattlefield) ))"
         },
         {
           "op": "addCard",
@@ -250,12 +246,8 @@ registerPortedMageTests({
       "name": "test_ExileSpellAndRecastWithoutReturn",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "cast from exile",
-          "player": 0,
-          "name": "new SimpleStaticAbility(\n                new PlayFromNotOwnHandZoneAllEffect(StaticFilters.FILTER_CARD, Zone.EXILED, false, TargetController.ANY, Duration.WhileOnBattlefield)\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"cast from exile\", playerA, new SimpleStaticAbility( new PlayFromNotOwnHandZoneAllEffect(StaticFilters.FILTER_CARD, Zone.EXILED, false, TargetController.ANY, Duration.WhileOnBattlefield) ))"
         },
         {
           "op": "addCard",
@@ -411,6 +403,68 @@ registerPortedMageTests({
           "player": 0,
           "name": "Mountain",
           "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Fire"
+        },
+        {
+          "op": "unsupported",
+          "source": "addTargetAmount(playerA, \"Feather, the Redeemed\", 2)"
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 2,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
         }
       ]
     },

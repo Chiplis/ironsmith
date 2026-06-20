@@ -84,6 +84,58 @@ registerPortedMageTests({
           "player": 0,
           "name": "Island",
           "count": 7
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 1,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Diluvian Primordial"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Fire // Ice"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Cast Ice"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Diluvian Primordial"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "assertTapped(primordial, true)"
         }
       ]
     },

@@ -65,12 +65,8 @@ registerPortedMageTests({
       "name": "test_PreventDamageNormal",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "prevent",
-          "player": 0,
-          "name": "Duration.WhileOnBattlefield",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"prevent\", playerA, new SimpleStaticAbility(new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT)))"
         },
         {
           "op": "addCard",
@@ -131,12 +127,8 @@ registerPortedMageTests({
       "name": "test_PreventDamageConditionalActive",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "prevent",
-          "player": 0,
-          "name": "new SimpleStaticAbility(\n                new ConditionalPreventionEffect(\n                        new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT),\n                        MyTurnCondition.instance,\n                        \"\"\n                )\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"prevent\", playerA, new SimpleStaticAbility( new ConditionalPreventionEffect( new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT), MyTurnCondition.instance, \"\" ) ))"
         },
         {
           "op": "addCard",
@@ -197,12 +189,8 @@ registerPortedMageTests({
       "name": "test_PreventDamageConditionalNotActive",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "prevent",
-          "player": 0,
-          "name": "new SimpleStaticAbility(\n                new ConditionalPreventionEffect(\n                        new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT),\n                        NotMyTurnCondition.instance,\n                        \"\"\n                )\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"prevent\", playerA, new SimpleStaticAbility( new ConditionalPreventionEffect( new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT), NotMyTurnCondition.instance, \"\" ) ))"
         },
         {
           "op": "addCard",
@@ -263,12 +251,8 @@ registerPortedMageTests({
       "name": "test_PreventDamageConditionalNotActiveWithOtherEffect",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "prevent",
-          "player": 0,
-          "name": "new SimpleStaticAbility(\n                new ConditionalPreventionEffect(\n                        new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT),\n                        new PreventAllDamageToPlayersEffect(Duration.WhileOnBattlefield, false),\n                        NotMyTurnCondition.instance,\n                        \"\"\n                )\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"prevent\", playerA, new SimpleStaticAbility( new ConditionalPreventionEffect( new PreventAllDamageToAllEffect(Duration.WhileOnBattlefield, StaticFilters.FILTER_PERMANENT), new PreventAllDamageToPlayersEffect(Duration.WhileOnBattlefield, false), NotMyTurnCondition.instance, \"\" ) ))"
         },
         {
           "op": "addCard",

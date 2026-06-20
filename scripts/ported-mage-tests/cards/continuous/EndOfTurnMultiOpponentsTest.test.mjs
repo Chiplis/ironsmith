@@ -7,12 +7,8 @@ registerPortedMageTests({
       "name": "test_EndOfTurnMulti",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "boost1",
-          "player": 0,
-          "name": "ALL",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"boost1\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.EndOfTurn)))"
         },
         {
           "op": "addCard",
@@ -144,12 +140,8 @@ registerPortedMageTests({
       "name": "test_UntilYourNextTurnMulti",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "boost1",
-          "player": 0,
-          "name": "ALL",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"boost1\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.UntilYourNextTurn)))"
         },
         {
           "op": "addCard",
@@ -281,12 +273,8 @@ registerPortedMageTests({
       "name": "test_UntilEndOfYourNextTurnMulti",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "boost1",
-          "player": 0,
-          "name": "ALL",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"boost1\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.UntilEndOfYourNextTurn)))"
         },
         {
           "op": "addCard",
@@ -418,12 +406,8 @@ registerPortedMageTests({
       "name": "test_UntilYourNextTurnMulti_Leaved",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "boost1",
-          "player": 0,
-          "name": "ALL",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"boost1\", playerA, new SimpleStaticAbility(Zone.ALL, new BoostAllEffect(1, 1, Duration.UntilYourNextTurn)))"
         },
         {
           "op": "addCard",

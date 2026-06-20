@@ -7,6 +7,31 @@ registerPortedMageTests({
       "name": "testPrecombatLandfall",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Combat Counter\", playerA, new BeginningOfCombatTriggeredAbility( new GainLifeEffect(1) ) )"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Walking Corpse",
+          "count": 1
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -31,6 +56,27 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Mountain"
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Silvercoat Lion",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Grizzly Bears",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Walking Corpse",
+          "defender": 1
         },
         {
           "op": "setStopAt",
@@ -68,6 +114,31 @@ registerPortedMageTests({
       "name": "testPostcombatLandfall",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Combat Counter\", playerA, new BeginningOfCombatTriggeredAbility( new GainLifeEffect(1) ) )"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Walking Corpse",
+          "count": 1
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -87,11 +158,53 @@ registerPortedMageTests({
           "life": 100
         },
         {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Silvercoat Lion",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Grizzly Bears",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Walking Corpse",
+          "defender": 1
+        },
+        {
           "op": "playLand",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Mountain"
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Silvercoat Lion",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Grizzly Bears",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Walking Corpse",
+          "defender": 1
         },
         {
           "op": "setStopAt",
@@ -116,6 +229,31 @@ registerPortedMageTests({
     {
       "name": "testDoubleLandfall",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Combat Counter\", playerA, new BeginningOfCombatTriggeredAbility( new GainLifeEffect(1) ) )"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Walking Corpse",
+          "count": 1
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -143,6 +281,27 @@ registerPortedMageTests({
           "life": 100
         },
         {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Silvercoat Lion",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Grizzly Bears",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Walking Corpse",
+          "defender": 1
+        },
+        {
           "op": "playLand",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -161,6 +320,48 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Mountain"
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Silvercoat Lion",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Grizzly Bears",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Walking Corpse",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Silvercoat Lion",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Grizzly Bears",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Walking Corpse",
+          "defender": 1
         },
         {
           "op": "setStopAt",
@@ -185,6 +386,31 @@ registerPortedMageTests({
     {
       "name": "testDoubleMoraug",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Combat Counter\", playerA, new BeginningOfCombatTriggeredAbility( new GainLifeEffect(1) ) )"
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Walking Corpse",
+          "count": 1
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -212,11 +438,74 @@ registerPortedMageTests({
           "life": 100
         },
         {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Silvercoat Lion",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Grizzly Bears",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Walking Corpse",
+          "defender": 1
+        },
+        {
           "op": "playLand",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Mountain"
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Silvercoat Lion",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Grizzly Bears",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Walking Corpse",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Silvercoat Lion",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Grizzly Bears",
+          "defender": 1
+        },
+        {
+          "op": "attack",
+          "turn": 1,
+          "player": 0,
+          "attacker": "Walking Corpse",
+          "defender": 1
         },
         {
           "op": "setStopAt",

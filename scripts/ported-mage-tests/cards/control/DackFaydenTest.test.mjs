@@ -120,7 +120,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Unsummon",
-          "target": "Ornithopter"
+          "target": "Ornithopter",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "castSpell",

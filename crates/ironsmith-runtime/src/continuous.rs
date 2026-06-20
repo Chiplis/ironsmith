@@ -2253,6 +2253,7 @@ fn filter_matches_with_characteristics(
     structural_filter.power = None;
     structural_filter.toughness = None;
     structural_filter.power_relative_to_source = None;
+    structural_filter.power_toughness_relation = None;
 
     let filter_ctx = game.filter_context_for(effect_controller, Some(effect_source));
     if !structural_filter.matches_non_recursive(&adjusted_object, &filter_ctx, game) {
@@ -2304,6 +2305,24 @@ fn filter_matches_with_characteristics(
         match relation {
             crate::filter::SourcePowerRelation::LessThanSource => {
                 if candidate_power >= source_power {
+                    return false;
+                }
+            }
+        }
+    }
+
+    if let Some(relation) = filter.power_toughness_relation {
+        let (Some(power), Some(toughness)) = (chars.power, chars.toughness) else {
+            return false;
+        };
+        match relation {
+            crate::filter::PowerToughnessRelation::PowerGreaterThanToughness => {
+                if power <= toughness {
+                    return false;
+                }
+            }
+            crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower => {
+                if toughness <= power {
                     return false;
                 }
             }

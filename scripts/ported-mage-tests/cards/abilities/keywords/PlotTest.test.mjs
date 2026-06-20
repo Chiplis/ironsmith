@@ -624,6 +624,113 @@ registerPortedMageTests({
           "player": 0,
           "name": "Kellan Joins Up",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Glorious Anthem",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kellan Joins Up"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Wear // Tear"
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "label": "Cast Wear using Plot",
+          "expected": false
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "label": "Cast Tear using Plot",
+          "expected": false
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Wear using Plot",
+          "expected": true
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Tear using Plot",
+          "expected": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Wear using Plot",
+          "target": "Memnite"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Memnite",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Glorious Anthem",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
         }
       ]
     },
@@ -661,6 +768,113 @@ registerPortedMageTests({
           "player": 0,
           "name": "Kellan Joins Up",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Glorious Anthem",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kellan Joins Up"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Wear // Tear"
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "label": "Cast Wear using Plot",
+          "expected": false
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "label": "Cast Tear using Plot",
+          "expected": false
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Wear using Plot",
+          "expected": true
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Tear using Plot",
+          "expected": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Tear using Plot",
+          "target": "Glorious Anthem"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Glorious Anthem",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
         }
       ]
     },
@@ -697,6 +911,78 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "Kellan Joins Up",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Tangled Florahedron // Tangled Vale",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Kellan Joins Up"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Tangled Florahedron"
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT",
+          "player": 0,
+          "name": "Tangled Florahedron",
+          "count": 1
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "UPKEEP",
+          "player": 0,
+          "label": "Cast Tangled Florahedron using Plot",
+          "expected": false
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Tangled Vale using Plot",
+          "expected": false
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Tangled Florahedron using Plot",
+          "expected": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Tangled Florahedron using Plot"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Tangled Florahedron",
           "count": 1
         }
       ]

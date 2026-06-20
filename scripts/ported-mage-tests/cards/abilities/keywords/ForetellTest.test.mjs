@@ -265,8 +265,122 @@ registerPortedMageTests({
       "name": "testForetellWatcherPlayerA",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupLibrariesEtc()"
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Devilthorn Fox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Canopy Gorger",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Barbtooth Wurm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Alaborn Trooper",
+          "count": 1
+        },
+        {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Elite Vanguard",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Devilthorn Fox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Canopy Gorger",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Barbtooth Wurm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Alaborn Trooper",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Swamp",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Swamp",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Flamespeaker Adept",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Chance-Met Elves",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Scorn Effigy",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -354,8 +468,122 @@ registerPortedMageTests({
       "name": "testForetellWatcherPlayerB",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupLibrariesEtc()"
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Elite Vanguard",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Devilthorn Fox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Canopy Gorger",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Barbtooth Wurm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Alaborn Trooper",
+          "count": 1
+        },
+        {
+          "op": "clearZone",
+          "player": 1,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Elite Vanguard",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Devilthorn Fox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Canopy Gorger",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Barbtooth Wurm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Alaborn Trooper",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Swamp",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Swamp",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Flamespeaker Adept",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Chance-Met Elves",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Scorn Effigy",
+          "count": 1
         },
         {
           "op": "addCard",

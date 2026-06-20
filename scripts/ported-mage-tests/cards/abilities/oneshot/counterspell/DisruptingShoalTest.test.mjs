@@ -318,6 +318,73 @@ registerPortedMageTests({
           "player": 1,
           "name": "Disrupting Shoal",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Far // Away",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Grizzly Bears"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Disrupting Shoal",
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Cast with alternative cost: Exile a blue card with mana value X from your hand (source: Disrupting Shoal"
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Far // Away"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Disrupting Shoal",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Grizzly Bears",
+          "count": 0
         }
       ]
     },
@@ -344,6 +411,73 @@ registerPortedMageTests({
           "player": 1,
           "name": "Disrupting Shoal",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Far // Away",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Centaur Courser"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Disrupting Shoal",
+          "target": "Centaur Courser"
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Cast with alternative cost: Exile a blue card with mana value X from your hand (source: Disrupting Shoal"
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Far // Away"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Disrupting Shoal",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Centaur Courser",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Centaur Courser",
+          "count": 0
         }
       ]
     },
@@ -369,6 +503,73 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 1,
           "name": "Disrupting Shoal",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Far // Away",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Air Elemental"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Disrupting Shoal",
+          "target": "Air Elemental"
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Cast with alternative cost: Exile a blue card with mana value X from your hand (source: Disrupting Shoal"
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Far // Away"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Disrupting Shoal",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Air Elemental",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Air Elemental",
           "count": 1
         }
       ]

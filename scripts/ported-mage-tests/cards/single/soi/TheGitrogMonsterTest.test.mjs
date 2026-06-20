@@ -315,6 +315,116 @@ registerPortedMageTests({
           "player": 0,
           "name": "Forest",
           "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 1,
+          "name": "Rags // Riches",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Island",
+          "count": 7
+        },
+        {
+          "op": "playLand",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Swamp"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "The Gitrog Monster"
+        },
+        {
+          "op": "playLand",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Dryad Arbor"
+        },
+        {
+          "op": "castSpell",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Riches"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "The Gitrog Monster"
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Toxic Deluge"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=6"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Rags // Riches",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Toxic Deluge",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 14
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "The Gitrog Monster",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Dryad Arbor",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
         }
       ]
     }

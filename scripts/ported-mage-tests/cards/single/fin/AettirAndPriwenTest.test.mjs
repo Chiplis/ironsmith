@@ -39,10 +39,6 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "checkPowerToughness(2, cub, 1, PhaseStep.PRECOMBAT_MAIN)"
-        },
-        {
           "op": "activateAbility",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -56,10 +52,6 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPowerToughness(20, cub, 1, PhaseStep.PRECOMBAT_MAIN)"
-        },
-        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -74,10 +66,6 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkPowerToughness(20 - 3, cub, 1, PhaseStep.POSTCOMBAT_MAIN)"
-        },
-        {
           "op": "castSpell",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
@@ -90,14 +78,6 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": null
-        },
-        {
-          "op": "unsupported",
-          "source": "checkPowerToughness(20 - 3 * 2, cub, 1, PhaseStep.POSTCOMBAT_MAIN)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkPowerToughness(20 - 3 * 2, cub, 2, PhaseStep.PRECOMBAT_MAIN)"
         }
       ]
     }

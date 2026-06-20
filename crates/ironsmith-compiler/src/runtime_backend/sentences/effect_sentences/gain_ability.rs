@@ -33,7 +33,8 @@ use super::{Verb, find_verb, parse_effect_chain};
 use crate::ability::Ability;
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
-    ReferenceImports, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TextSpan,
+    PlayerAst, PredicateAst, ReferenceImports, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey,
+    TargetAst, TextSpan,
 };
 use crate::effect::{Until, Value};
 use crate::mana::ManaCost;
@@ -684,6 +685,65 @@ fn parse_ability_duration_with_condition(
     }
 }
 
+fn player_filter_for_gain_condition(player: PlayerAst) -> Option<PlayerFilter> {
+    Some(match player {
+        PlayerAst::Implicit | PlayerAst::You => PlayerFilter::You,
+        PlayerAst::Opponent => PlayerFilter::Opponent,
+        PlayerAst::Any => PlayerFilter::Any,
+        PlayerAst::That => PlayerFilter::IteratedPlayer,
+        PlayerAst::Target => PlayerFilter::target_player(),
+        _ => return None,
+    })
+}
+
+fn condition_from_gain_trailing_predicate(predicate: PredicateAst) -> Option<crate::ConditionExpr> {
+    Some(match predicate {
+        PredicateAst::PlayerControls { player, filter } => crate::ConditionExpr::PlayerControls {
+            player: player_filter_for_gain_condition(player)?,
+            filter,
+        },
+        PredicateAst::PlayerHasAtLeast {
+            player,
+            filter,
+            count,
+        } => crate::ConditionExpr::PlayerHasAtLeast {
+            player: player_filter_for_gain_condition(player)?,
+            filter,
+            count,
+        },
+        PredicateAst::PlayerControlsExactly {
+            player,
+            filter,
+            count,
+        } => crate::ConditionExpr::PlayerControlsExactly {
+            player: player_filter_for_gain_condition(player)?,
+            filter,
+            count,
+        },
+        PredicateAst::PlayerHasAtLeastWithDifferentPowers {
+            player,
+            filter,
+            count,
+        } => crate::ConditionExpr::PlayerHasAtLeastWithDifferentPowers {
+            player: player_filter_for_gain_condition(player)?,
+            filter,
+            count,
+        },
+        PredicateAst::And(left, right) => crate::ConditionExpr::And(
+            Box::new(condition_from_gain_trailing_predicate(*left)?),
+            Box::new(condition_from_gain_trailing_predicate(*right)?),
+        ),
+        PredicateAst::Or(left, right) => crate::ConditionExpr::Or(
+            Box::new(condition_from_gain_trailing_predicate(*left)?),
+            Box::new(condition_from_gain_trailing_predicate(*right)?),
+        ),
+        PredicateAst::Not(inner) => {
+            crate::ConditionExpr::Not(Box::new(condition_from_gain_trailing_predicate(*inner)?))
+        }
+        _ => return None,
+    })
+}
+
 fn subject_verb_grant_abilities_to_target_with_optional_condition(
     target: TargetAst,
     abilities: Vec<GrantedAbilityAst>,
@@ -699,6 +759,24 @@ fn subject_verb_grant_abilities_to_target_with_optional_condition(
         )
     } else {
         EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration)
+    }
+}
+
+fn subject_verb_grant_abilities_all_with_optional_condition(
+    filter: ObjectFilter,
+    abilities: Vec<GrantedAbilityAst>,
+    duration: Until,
+    condition: &Option<crate::ConditionExpr>,
+) -> EffectAst {
+    if let Some(condition) = condition {
+        EffectAst::subject_verb_grant_abilities_all_with_condition(
+            filter,
+            abilities,
+            duration,
+            condition.clone(),
+        )
+    } else {
+        EffectAst::subject_verb_grant_abilities_all(filter, abilities, duration)
     }
 }
 
@@ -1357,12 +1435,12 @@ pub(crate) fn parse_gain_ability_sentence(
     } else {
         None
     };
-    let (duration_phrase, duration_condition) = if words_start_nested_triggered_ability(after_gain)
-    {
-        (None, None)
-    } else {
-        parse_ability_duration_with_condition(after_gain)
-    };
+    let (duration_phrase, mut duration_condition) =
+        if words_start_nested_triggered_ability(after_gain) {
+            (None, None)
+        } else {
+            parse_ability_duration_with_condition(after_gain)
+        };
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
@@ -1428,6 +1506,14 @@ pub(crate) fn parse_gain_ability_sentence(
                 trailing_tail_tokens = tail_tokens;
             }
         }
+    }
+    if duration_condition.is_none()
+        && !trailing_tail_tokens.is_empty()
+        && let Some(predicate) = parse_trailing_if_predicate_lexed(&trailing_tail_tokens)
+        && let Some(condition) = condition_from_gain_trailing_predicate(predicate)
+    {
+        duration_condition = Some(condition);
+        trailing_tail_tokens.clear();
     }
     let mut grants_must_attack = false;
     if !trailing_tail_tokens.is_empty() {
@@ -1976,10 +2062,11 @@ pub(crate) fn parse_gain_ability_sentence(
             duration,
         ));
     } else {
-        effects.push(EffectAst::subject_verb_grant_abilities_all(
+        effects.push(subject_verb_grant_abilities_all_with_optional_condition(
             filter.clone(),
             abilities,
             duration,
+            &duration_condition,
         ));
     }
     if let Some((power, toughness, _, pump_duration, _condition, _for_each)) = following_pump_effect

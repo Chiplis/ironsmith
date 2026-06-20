@@ -304,6 +304,62 @@ registerPortedMageTests({
           "player": 0,
           "name": "Mountain",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Fire",
+          "target": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Cast without paying its mana cost (source: Omniscience"
+        },
+        {
+          "op": "unsupported",
+          "source": "addTargetAmount(playerA, playerB, 2)"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 18
+        },
+        {
+          "op": "unsupported",
+          "source": "assertTapped(\"Island\", false)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertTapped(\"Mountain\", false)"
         }
       ]
     },
@@ -495,6 +551,77 @@ registerPortedMageTests({
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Pillarfield Ox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Far // Away",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "fused Far // Away"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Cast without paying its mana cost (source: Omniscience"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Silvercoat Lion"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Pillarfield Ox"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Far // Away",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Pillarfield Ox",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
           "player": 1,
           "name": "Pillarfield Ox",
           "count": 1

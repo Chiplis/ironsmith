@@ -113,8 +113,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Feral Abomination",
+          "count": 1
+        },
+        {
           "op": "unsupported",
-          "source": "assertIsFoodArtifactToken(playerA, \"Feral Abomination\")"
+          "source": "assertTokenCount(playerA, \"Feral Abomination\", 1)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertType(\"Feral Abomination\", CardType.ARTIFACT, true)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertSubtype(\"Feral Abomination\", SubType.FOOD)"
         },
         {
           "op": "unsupported",
@@ -178,8 +192,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Lizard Blades",
+          "count": 1
+        },
+        {
           "op": "unsupported",
-          "source": "assertIsFoodArtifactToken(playerA, \"Lizard Blades\")"
+          "source": "assertTokenCount(playerA, \"Lizard Blades\", 1)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertType(\"Lizard Blades\", CardType.ARTIFACT, true)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertSubtype(\"Lizard Blades\", SubType.FOOD)"
         },
         {
           "op": "unsupported",
@@ -247,8 +275,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Angel of Mercy",
+          "count": 1
+        },
+        {
           "op": "unsupported",
-          "source": "assertIsFoodArtifactToken(playerA, \"Angel of Mercy\")"
+          "source": "assertTokenCount(playerA, \"Angel of Mercy\", 1)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertType(\"Angel of Mercy\", CardType.ARTIFACT, true)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertSubtype(\"Angel of Mercy\", SubType.FOOD)"
         },
         {
           "op": "assertLife",
@@ -395,8 +437,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Aradara Express",
+          "count": 1
+        },
+        {
           "op": "unsupported",
-          "source": "assertIsFoodArtifactToken(playerA, \"Aradara Express\")"
+          "source": "assertTokenCount(playerA, \"Aradara Express\", 1)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertType(\"Aradara Express\", CardType.ARTIFACT, true)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertSubtype(\"Aradara Express\", SubType.FOOD)"
         },
         {
           "op": "unsupported",
@@ -475,8 +531,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Knight Token",
+          "count": 1
+        },
+        {
           "op": "unsupported",
-          "source": "assertIsFoodArtifactToken(playerA, \"Knight Token\")"
+          "source": "assertTokenCount(playerA, \"Knight Token\", 1)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertType(\"Knight Token\", CardType.ARTIFACT, true)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertSubtype(\"Knight Token\", SubType.FOOD)"
         },
         {
           "op": "assertAbility",
@@ -580,8 +650,22 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Colossapede",
+          "count": 1
+        },
+        {
           "op": "unsupported",
-          "source": "assertIsFoodArtifactToken(playerA, \"Colossapede\")"
+          "source": "assertTokenCount(playerA, \"Colossapede\", 1)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertType(\"Colossapede\", CardType.ARTIFACT, true)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertSubtype(\"Colossapede\", SubType.FOOD)"
         }
       ]
     }

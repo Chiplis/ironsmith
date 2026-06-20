@@ -256,7 +256,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Cerulean Wisps",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "setStopAt",
@@ -344,7 +345,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
           "name": "Cerulean Wisps",
-          "target": "Silvercoat Lion"
+          "target": "Silvercoat Lion",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "castSpell",
@@ -352,7 +354,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Divination",
-          "target": "TestPlayer.NO_TARGET"
+          "target": "TestPlayer.NO_TARGET",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "setStopAt",

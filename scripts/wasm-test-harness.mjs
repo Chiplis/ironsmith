@@ -1,6 +1,110 @@
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 
 export const DEFAULT_PLAYER_NAMES = ["Alice", "Bob"];
+
+// The wasm-lean build ships with an empty baked card registry; card
+// definitions are registered at runtime from the per-card JSON assets the
+// frontend serves from web/ui/public/cards/. In Node we read the same files
+// from disk and register them before any name-based lookup reaches the WASM.
+const CARD_ASSETS_BASE = new URL("../web/ui/public/cards/", import.meta.url);
+const cardSourcePayloadCache = new Map();
+const missingCardRoutes = new Set();
+const gameRegisteredCardRoutes = new WeakMap();
+
+function cardRouteKey(name) {
+  return String(name || "")
+    .trim()
+    .toLocaleLowerCase("en-US")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function readCardSourcePayload(route) {
+  if (missingCardRoutes.has(route)) return null;
+  if (cardSourcePayloadCache.has(route)) return cardSourcePayloadCache.get(route);
+  let payload = null;
+  try {
+    payload = JSON.parse(readFileSync(new URL(`${route}.json`, CARD_ASSETS_BASE), "utf8"));
+  } catch {
+    missingCardRoutes.add(route);
+    return null;
+  }
+  if (!payload || typeof payload !== "object" || !payload.group) {
+    missingCardRoutes.add(route);
+    return null;
+  }
+  cardSourcePayloadCache.set(route, payload);
+  return payload;
+}
+
+export function ensureCardSourcesForNames(game, names) {
+  if (!game || typeof game.registerExternalCardSourcesJson !== "function") return;
+  let registered = gameRegisteredCardRoutes.get(game);
+  if (!registered) {
+    registered = new Set();
+    gameRegisteredCardRoutes.set(game, registered);
+  }
+  const payloads = [];
+  for (const raw of Array.isArray(names) ? names : [names]) {
+    const name = String(raw || "").trim();
+    if (!name) continue;
+    const route = cardRouteKey(name);
+    if (!route || registered.has(route)) continue;
+    registered.add(route);
+    if (typeof game.isKnownCardName === "function") {
+      try {
+        if (game.isKnownCardName(name)) continue;
+      } catch {
+        // fall through to registration
+      }
+    }
+    const payload = readCardSourcePayload(route);
+    if (payload) payloads.push(payload);
+  }
+  if (payloads.length === 0) return;
+  try {
+    game.registerExternalCardSourcesJson(JSON.stringify(payloads));
+  } catch {
+    // Retry one-by-one so a single bad payload doesn't block the rest.
+    for (const payload of payloads) {
+      try {
+        game.registerExternalCardSourcesJson(JSON.stringify(payload));
+      } catch {
+        // leave resolution errors to the engine's unknown-card-name path
+      }
+    }
+  }
+}
+
+function deckEntryName(entry) {
+  if (typeof entry === "string") return entry;
+  if (entry && typeof entry === "object") return entry.name ?? entry.cardName ?? null;
+  return null;
+}
+
+function instrumentWasmGameClass(WasmGame) {
+  if (!WasmGame || WasmGame.__cardSourceInstrumented) return;
+  WasmGame.__cardSourceInstrumented = true;
+  const proto = WasmGame.prototype;
+  const patch = (method, extractNames) => {
+    const original = proto[method];
+    if (typeof original !== "function") return;
+    proto[method] = function (...args) {
+      ensureCardSourcesForNames(this, extractNames(args));
+      return original.apply(this, args);
+    };
+  };
+  patch("addCardToZone", (args) => [args[1]]);
+  patch("addCardToHand", (args) => [args[1]]);
+  patch("startMatch", (args) => {
+    const options = args[0] || {};
+    const lists = [...(options.decks || []), ...(options.sideboards || [])];
+    return lists.flatMap((list) => (list || []).map(deckEntryName));
+  });
+}
 
 export function packageBase(pkg = "root") {
   if (pkg === "root") return "../pkg";
@@ -22,6 +126,7 @@ async function loadWasmRuntime(pkg) {
   const wasmModule = await import(`${base}/ironsmith.js`);
   const wasmBytes = await readFile(new URL(`${base}/ironsmith_bg.wasm`, import.meta.url));
   await wasmModule.default({ module_or_path: wasmBytes });
+  instrumentWasmGameClass(wasmModule.WasmGame);
   return {
     wasmModule,
     packagePath: base.replace(/^\.\.\//, ""),

@@ -26,8 +26,37 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "counter": "CHARGE",
+          "count": 0
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "ability": "Haste",
+          "expected": "0 >= 3"
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "ability": "Flying",
+          "expected": "0 >= 3"
+        },
+        {
           "op": "unsupported",
-          "source": "checkSpacecraft(0)"
+          "source": "assertType(sawship, CardType.ARTIFACT, SubType.SPACECRAFT)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertType(sawship, CardType.CREATURE, isLeveled)"
+        },
+        {
+          "op": "unsupported",
+          "source": "if (isLeveled) { assertPowerToughness(playerA, sawship, 6, 5); }"
         }
       ]
     },
@@ -77,8 +106,37 @@ registerPortedMageTests({
           "source": "assertTapped(devils, true)"
         },
         {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "counter": "CHARGE",
+          "count": 2
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "ability": "Haste",
+          "expected": "2 >= 3"
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "ability": "Flying",
+          "expected": "2 >= 3"
+        },
+        {
           "op": "unsupported",
-          "source": "checkSpacecraft(2)"
+          "source": "assertType(sawship, CardType.ARTIFACT, SubType.SPACECRAFT)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertType(sawship, CardType.CREATURE, isLeveled)"
+        },
+        {
+          "op": "unsupported",
+          "source": "if (isLeveled) { assertPowerToughness(playerA, sawship, 6, 5); }"
         }
       ]
     },
@@ -128,8 +186,37 @@ registerPortedMageTests({
           "source": "assertTapped(giant, true)"
         },
         {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "counter": "CHARGE",
+          "count": 3
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "ability": "Haste",
+          "expected": "3 >= 3"
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "ability": "Flying",
+          "expected": "3 >= 3"
+        },
+        {
           "op": "unsupported",
-          "source": "checkSpacecraft(3)"
+          "source": "assertType(sawship, CardType.ARTIFACT, SubType.SPACECRAFT)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertType(sawship, CardType.CREATURE, isLeveled)"
+        },
+        {
+          "op": "unsupported",
+          "source": "if (isLeveled) { assertPowerToughness(playerA, sawship, 6, 5); }"
         }
       ]
     },
@@ -186,8 +273,37 @@ registerPortedMageTests({
           "source": "assertTapped(devils, true)"
         },
         {
+          "op": "assertCounterCount",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "counter": "CHARGE",
+          "count": 3
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "ability": "Haste",
+          "expected": "3 >= 3"
+        },
+        {
+          "op": "assertAbility",
+          "player": 0,
+          "name": "Galvanizing Sawship",
+          "ability": "Flying",
+          "expected": "3 >= 3"
+        },
+        {
           "op": "unsupported",
-          "source": "checkSpacecraft(3)"
+          "source": "assertType(sawship, CardType.ARTIFACT, SubType.SPACECRAFT)"
+        },
+        {
+          "op": "unsupported",
+          "source": "assertType(sawship, CardType.CREATURE, isLeveled)"
+        },
+        {
+          "op": "unsupported",
+          "source": "if (isLeveled) { assertPowerToughness(playerA, sawship, 6, 5); }"
         }
       ]
     },

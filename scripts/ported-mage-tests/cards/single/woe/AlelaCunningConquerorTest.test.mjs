@@ -73,10 +73,6 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertGoadedByPlayer(carp, playerA)"
-        },
-        {
           "op": "assertLife",
           "player": "playerC",
           "life": 36
@@ -146,14 +142,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertGoadedByPlayer(bears, playerA)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertGoadedByPlayer(devoted, playerA)"
         },
         {
           "op": "assertLife",
@@ -235,10 +223,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertGoadedByPlayer(bears, playerA)"
         },
         {
           "op": "assertLife",

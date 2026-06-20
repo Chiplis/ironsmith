@@ -24,7 +24,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Tergrid, God of Fright \n    private static final String tergridFirstSide = \"Tergrid, God of Fright\"",
+          "name": "Tergrid, God of Fright // Tergrid's Lantern",
           "count": 1
         },
         {
@@ -110,7 +110,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Tergrid, God of Fright \n    private static final String tergridFirstSide = \"Tergrid, God of Fright\"",
+          "name": "Tergrid, God of Fright // Tergrid's Lantern",
           "count": 1
         },
         {
@@ -212,7 +212,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Tergrid, God of Fright \n    private static final String tergridFirstSide = \"Tergrid, God of Fright\"",
+          "name": "Tergrid, God of Fright // Tergrid's Lantern",
           "count": 1
         },
         {

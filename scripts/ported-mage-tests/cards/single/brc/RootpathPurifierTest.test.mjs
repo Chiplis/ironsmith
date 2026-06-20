@@ -40,7 +40,7 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "checkSupertypes()"
+          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_CONTROLLED_PERMANENT_LAND, playerA.getId(), currentGame )) { Assert.assertTrue(permanent.getName() + \" should be basic\", permanent.isBasic(currentGame)); }"
         }
       ]
     },
@@ -113,7 +113,7 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "checkSupertypes()"
+          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_CONTROLLED_PERMANENT_LAND, playerA.getId(), currentGame )) { Assert.assertTrue(permanent.getName() + \" should be basic\", permanent.isBasic(currentGame)); }"
         }
       ]
     },
@@ -186,7 +186,7 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "checkSupertypes()"
+          "source": "for (Permanent permanent : currentGame.getBattlefield().getActivePermanents( StaticFilters.FILTER_CONTROLLED_PERMANENT_LAND, playerA.getId(), currentGame )) { Assert.assertTrue(permanent.getName() + \" should be basic\", permanent.isBasic(currentGame)); }"
         }
       ]
     },

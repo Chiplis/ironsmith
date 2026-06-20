@@ -7,8 +7,46 @@ registerPortedMageTests({
       "name": "testCreatureDamageTargetAndYou",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupBattlefield()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plateau",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Tamanoa",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Spirit Link",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ajani's Pridemate",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -82,8 +120,46 @@ registerPortedMageTests({
       "name": "testCreatureDamageTargetAndSelf",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupBattlefield()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plateau",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Tamanoa",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Spirit Link",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ajani's Pridemate",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -161,8 +237,46 @@ registerPortedMageTests({
       "name": "testSpellDamageTargetAndTarget",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupBattlefield()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plateau",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Tamanoa",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Spirit Link",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ajani's Pridemate",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -231,8 +345,46 @@ registerPortedMageTests({
       "name": "testSpellDamageThreeTargets",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupBattlefield()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plateau",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Tamanoa",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Spirit Link",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ajani's Pridemate",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -310,8 +462,46 @@ registerPortedMageTests({
       "name": "testSpellDamageTargetAndYou",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupBattlefield()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plateau",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Tamanoa",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Spirit Link",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ajani's Pridemate",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -371,8 +561,46 @@ registerPortedMageTests({
       "name": "testSpellDamageTargetAndController",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupBattlefield()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plateau",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Tamanoa",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Spirit Link",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ajani's Pridemate",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -432,8 +660,46 @@ registerPortedMageTests({
       "name": "testSpellDamagePlayerAndControlled",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupBattlefield()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plateau",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Tamanoa",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Spirit Link",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ajani's Pridemate",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Kraken Hatchling",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Wishcoin Crab",
+          "count": 1
         },
         {
           "op": "addCard",

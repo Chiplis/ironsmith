@@ -93,6 +93,66 @@ registerPortedMageTests({
           "player": 1,
           "name": "Memnite",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 2
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "UPKEEP",
+          "player": 0,
+          "ability": "{T}: Each player"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ice",
+          "target": "Memnite"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Island",
+          "tapped": true,
+          "count": 2
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Memnite",
+          "tapped": true,
+          "count": 1
         }
       ]
     },

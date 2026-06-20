@@ -240,14 +240,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertReachesGraveyard(Arrays.asList(\"Raven's Crime\"))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertReachesExile(Arrays.asList(\"Gorgon Recluse\"))"
         }
       ]
     },
@@ -338,14 +330,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Alchemist's Greeting",
           "count": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertReachesGraveyard(Arrays.asList(\"Raven's Crime\", \"Alchemist's Greeting\", \"Grizzly Bears\"))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertReachesExile(Arrays.asList(\"Alchemist's Greeting\"))"
         }
       ]
     },
@@ -448,14 +432,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Alchemist's Greeting",
           "count": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertReachesGraveyard(Arrays.asList(\"Grizzly Bears\"))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertReachesExile(Arrays.asList(\"Raven's Crime\", \"Alchemist's Greeting\", \"Alchemist's Greeting\"))"
         }
       ]
     },
@@ -557,14 +533,6 @@ registerPortedMageTests({
           "op": "assertLife",
           "player": 1,
           "life": 16
-        },
-        {
-          "op": "unsupported",
-          "source": "assertReachesGraveyard(Arrays.asList(\"Grizzly Bears\"))"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertReachesExile(Arrays.asList(\"Alchemist's Greeting\", \"Alchemist's Greeting\"))"
         }
       ]
     }

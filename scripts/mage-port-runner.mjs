@@ -380,6 +380,10 @@ async function applyOperation(context, operation) {
       return assertExileCount(context, operation);
     case "assertLibraryCount":
       return assertZoneCount(context, operation, "library");
+    case "assertLibraryOrder":
+      return assertLibraryOrder(context, operation);
+    case "assertSuspected":
+      return assertSuspected(context, operation);
     case "assertPowerToughness":
       return assertPowerToughness(context, operation);
     case "assertTappedCount":
@@ -407,14 +411,17 @@ function addCard(context, operation) {
   for (let index = 0; index < count; index += 1) {
     let objectId = null;
     if (operation.custom) {
+      const customTypeLine = operation.typeLine || "Creature - Shapeshifter";
+      const isCreature = /\bCreature\b/i.test(customTypeLine);
       objectId = addCustomCardWithAbility(context.game, {
         player,
         zone,
         name,
+        manaCost: operation.manaCost ?? "{0}",
         oracleText: operation.oracleText || "",
-        typeLine: operation.typeLine || "Creature - Shapeshifter",
-        power: operation.power ?? "1",
-        toughness: operation.toughness ?? "1",
+        typeLine: customTypeLine,
+        power: operation.power !== undefined ? operation.power : (isCreature ? "1" : null),
+        toughness: operation.toughness !== undefined ? operation.toughness : (isCreature ? "1" : null),
       });
     } else if (ALLOW_ENGINE_SHIMS && craftFrontFixtureForName(name)) {
       objectId = addCustomCardWithAbility(context.game, {
@@ -768,6 +775,55 @@ async function applySupportedJavaHelper(context, operation) {
       player: checkedLife[3],
       life: checkedLife[4],
     });
+  }
+
+  const wonGame = source.match(/^assertWonTheGame\(([^)]+)\)$/);
+  if (wonGame) {
+    const checkpoint = getCheckpoint(context.game);
+    const player = checkpoint.players[playerIndex(wonGame[1])];
+    assert(player?.hasWon, `expected ${wonGame[1]} to have won the game`);
+    return;
+  }
+  const lostGame = source.match(/^assertLostTheGame\(([^)]+)\)$/);
+  if (lostGame) {
+    const checkpoint = getCheckpoint(context.game);
+    const player = checkpoint.players[playerIndex(lostGame[1])];
+    assert(player?.hasLost, `expected ${lostGame[1]} to have lost the game`);
+    return;
+  }
+
+  const checkedManaPool = source.match(
+    /^checkManaPool\((?:"[^"]*"|[^,]+),\s*(\d+),\s*([^,]+),\s*([^,]+),\s*"([WUBRGC]+)",\s*([^)]+)\)$/,
+  );
+  if (checkedManaPool) {
+    return assertManaPool(context, {
+      turn: Number(checkedManaPool[1]),
+      phase: checkedManaPool[2],
+      player: checkedManaPool[3],
+      colors: checkedManaPool[4],
+      amount: checkedManaPool[5],
+    });
+  }
+  const directManaPool = source.match(
+    /^assertManaPool\(([^,]+),\s*ManaType\.([A-Z]+),\s*([^)]+)\)$/,
+  );
+  if (directManaPool) {
+    const manaTypeToSymbol = {
+      WHITE: "W",
+      BLUE: "U",
+      BLACK: "B",
+      RED: "R",
+      GREEN: "G",
+      COLORLESS: "C",
+    };
+    const symbol = manaTypeToSymbol[directManaPool[2]];
+    if (symbol) {
+      return assertManaPool(context, {
+        player: directManaPool[1],
+        colors: symbol,
+        amount: directManaPool[3],
+      });
+    }
   }
 
   const attached = source.match(/^assertAttachedTo\(([^,]+),\s*(.+),\s*(.+),\s*(true|false)\)$/);
@@ -2134,6 +2190,7 @@ async function settleOneStackObject(context) {
   if (initial === 0) return context.game.uiState();
   for (let step = 0; step < MAX_ADVANCE_STEPS; step += 1) {
     const state = context.game.uiState();
+    if (gameHasEnded(state)) return state;
     const currentIds = stackObjectIds(context.game);
     if (
       state.decision?.kind === "priority" &&
@@ -2585,6 +2642,7 @@ async function advanceTo(context, turn, phase, player, options = {}) {
   const requireAttackersDecision = options.requireAttackersDecision === true;
   for (let step = 0; step < MAX_ADVANCE_STEPS; step += 1) {
     const state = context.game.uiState();
+    if (gameHasEnded(state)) return state;
     if (
       targetPhase === "DECLARE_ATTACKERS" &&
       context.pendingAdditionalCombats > 0 &&
@@ -2630,6 +2688,7 @@ async function advanceToPriorityPlayer(context, player) {
   const targetPlayer = playerIndex(player);
   for (let step = 0; step < MAX_ADVANCE_STEPS; step += 1) {
     const state = context.game.uiState();
+    if (gameHasEnded(state)) return state;
     if (state.decision?.kind === "priority" && state.priority_player === targetPlayer) {
       return state;
     }
@@ -2644,14 +2703,24 @@ async function settleStack(context) {
     if (process.env.MAGE_PORT_STACK_TRACE) {
       console.error(`[mage-port-settle] step=${step} stack=${stackObjectIds(context.game).join(",")} decision=${state.decision?.kind ?? "none"} priority=${state.priority_player ?? ""}`);
     }
+    if (gameHasEnded(state)) return state;
     if (stackObjectIds(context.game).length === 0 && state.decision?.kind === "priority") return state;
     await passOrAnswer(context, state);
   }
   throw new Error("stack did not settle");
 }
 
+function gameHasEnded(state) {
+  return Boolean(state?.game_over || state?.gameOver);
+}
+
 async function passOrAnswer(context, state = context.game.uiState()) {
   if (!state.decision) {
+    // No decision usually means the game has ended (a player lost/won) —
+    // there is nothing to dispatch; let callers fall through to assertions.
+    if (state.game_over || state.gameOver) {
+      return state;
+    }
     return context.game.dispatch({ type: "continue" });
   }
   if (state.decision.kind === "priority") {
@@ -2820,6 +2889,10 @@ async function answerPendingDecisions(context, immediateTarget = undefined) {
 function nextSelectObjectsChoice(context, decision) {
   const queuedTargetIndex = context.targets.findIndex((entry) => entry.player === playerIndex(decision.player));
   const queuedTarget = queuedTargetIndex >= 0 ? context.targets[queuedTargetIndex].value : undefined;
+  if (queuedTarget === "TestPlayer.TARGET_SKIP" && Number(decision.min ?? 0) === 0) {
+    context.targets.splice(queuedTargetIndex, 1);
+    return [];
+  }
   if (context.choices.length === 0) {
     const deferredChoiceIndex = context.deferredChoices.findIndex((entry) =>
       selectObjectsWantedMatches(decision, entry.value),
@@ -3243,6 +3316,25 @@ function chooseTarget(context, decision, wanted) {
   ) {
     return [];
   }
+  if ((wanted === undefined || wanted === null) && requirements.length > 1) {
+    // Multiple distinct requirements with nothing scripted: satisfy each
+    // requirement with one of its own legal targets, avoiding duplicates.
+    const selected = [];
+    for (const requirement of requirements) {
+      const candidates = (requirement.legal_targets || []).filter(
+        (target) => !selected.some((existing) => sameTargetChoice(existing, target)),
+      );
+      selected.push(
+        chooseLegalTarget(
+          context,
+          candidates.length > 0 ? candidates : requirement.legal_targets || [],
+          undefined,
+          decision.player,
+        ),
+      );
+    }
+    return selected;
+  }
   const wantedParts = parseCompoundTargetChoice(wanted);
   if (wantedParts.length > 1 && requirements.length > 1) {
     return requirements.map((requirement, index) =>
@@ -3517,6 +3609,34 @@ function chooseOptions(context, decision, wanted) {
     return selected;
   }
 
+  if (wanted !== null && wanted !== undefined && isLibraryReorderDecision(decision)) {
+    // MAGE reorder prompts put each chosen card on top of the library as it
+    // is picked, so the first scripted choice ends up deepest. The engine
+    // expects the final top-to-bottom order, so collect MAGE-style picks and
+    // reverse them.
+    const chosen = [];
+    const chosenIndices = new Set();
+    const first =
+      findMatchingUnchosenOption(decision, wanted, chosenIndices) ??
+      chooseOption(context, decision, wanted);
+    chosen.push(first);
+    chosenIndices.add(optionIndex(first));
+    while (chosen.length < desiredCount && context.choices.length > 0) {
+      const option = findMatchingUnchosenOption(decision, context.choices[0], chosenIndices);
+      if (!option) break;
+      context.choices.shift();
+      chosen.push(option);
+      chosenIndices.add(optionIndex(option));
+    }
+    for (const option of legalOptions) {
+      if (chosen.length >= desiredCount) break;
+      if (chosenIndices.has(optionIndex(option))) continue;
+      chosen.push(option);
+      chosenIndices.add(optionIndex(option));
+    }
+    return chosen.reverse();
+  }
+
   if (wanted !== null && wanted !== undefined && isTriggeredAbilityOrderDecision(decision)) {
     const bottomChoices = [];
     const bottomIndices = new Set();
@@ -3578,6 +3698,12 @@ function chooseOptions(context, decision, wanted) {
 
 function isTriggeredAbilityOrderDecision(decision) {
   return String(decision.description || "").toLowerCase().startsWith("order triggered abilities");
+}
+
+function isLibraryReorderDecision(decision) {
+  return String(decision.description || "")
+    .toLowerCase()
+    .startsWith("reorder cards to keep on top");
 }
 
 function isDistributionDecision(decision) {
@@ -3919,6 +4045,60 @@ async function assertLife(context, operation) {
     player.life = expected;
   }
   assert(player.life === expected, `expected life ${operation.life} for ${operation.player}, got ${player.life}`);
+}
+
+async function assertSuspected(context, operation) {
+  await prepareAssertion(context, operation);
+  const checkpoint = getCheckpoint(context.game);
+  const wanted = cardName(operation.name);
+  const object = (checkpoint.objects || []).find(
+    (candidate) => cardName(candidate.name) === wanted && candidate.zone === "battlefield",
+  ) ?? (checkpoint.objects || []).find((candidate) => cardName(candidate.name) === wanted);
+  assert(object, `could not find permanent ${operation.name} for suspected assertion`);
+  const actual = Boolean(object.suspected);
+  const expected = Boolean(operation.suspected);
+  assert(
+    actual === expected,
+    `expected ${operation.name} suspected=${expected}, got ${actual}`,
+  );
+}
+
+async function assertLibraryOrder(context, operation) {
+  await prepareAssertion(context, operation);
+  const checkpoint = getCheckpoint(context.game);
+  const names = getLibrary(checkpoint, operation.player, { topFirst: true }).map((card) =>
+    cardName(card.name),
+  );
+  const expected = (operation.cards || []).map((name) => cardName(name));
+  assert(
+    names.length === expected.length,
+    `expected library of ${expected.length} cards, got ${names.length}: [${names.join(", ")}]`,
+  );
+  expected.forEach((name, index) => {
+    assert(
+      names[index] === name,
+      `expected library card #${index} to be ${name}, got ${names[index]} (library: [${names.join(", ")}])`,
+    );
+  });
+}
+
+async function assertManaPool(context, operation) {
+  await prepareAssertion(context, operation);
+  const checkpoint = getCheckpoint(context.game);
+  const player = checkpoint.players[playerIndex(operation.player)];
+  const pool = player.manaPool || {};
+  const colorKeys = { W: "white", U: "blue", B: "black", R: "red", G: "green", C: "colorless" };
+  const expected = numericValue(operation.amount);
+  let actual = 0;
+  for (const symbol of String(operation.colors)) {
+    const key = colorKeys[symbol];
+    assert(key, `unsupported mana pool color symbol: ${symbol}`);
+    actual += Number(pool[key] || 0);
+  }
+  assert(
+    actual === expected,
+    `expected ${expected} ${operation.colors} mana in pool for ${operation.player}, got ${actual}`,
+  );
 }
 
 async function assertPermanentCount(context, operation) {

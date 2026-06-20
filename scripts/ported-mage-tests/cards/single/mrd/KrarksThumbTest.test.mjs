@@ -18,12 +18,8 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addCard",
-          "zone": "Test Trigger",
-          "player": 0,
-          "name": "new KrarksThumbTestTriggeredAbility()",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"Test Trigger\", playerA, new KrarksThumbTestTriggeredAbility())"
         },
         {
           "op": "unsupported",
@@ -92,12 +88,8 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addCard",
-          "zone": "Test Trigger",
-          "player": 0,
-          "name": "new KrarksThumbTestTriggeredAbility()",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"Test Trigger\", playerA, new KrarksThumbTestTriggeredAbility())"
         },
         {
           "op": "unsupported",
@@ -185,12 +177,8 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "addCard",
-          "zone": "Test Trigger",
-          "player": 0,
-          "name": "new KrarksThumbTestTriggeredAbility()",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"Test Trigger\", playerA, new KrarksThumbTestTriggeredAbility())"
         },
         {
           "op": "unsupported",

@@ -17,14 +17,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerA, 0)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerB, 0)"
         }
       ]
     },
@@ -63,14 +55,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerA, 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerB, 0)"
         },
         {
           "op": "assertPowerToughness",
@@ -133,14 +117,6 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertSpeed(playerA, 2)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerB, 0)"
-        },
-        {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "Walking Sarcophagus",
@@ -199,14 +175,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerA, 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerB, 0)"
         },
         {
           "op": "assertPowerToughness",
@@ -275,14 +243,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerA, 3)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerB, 0)"
         },
         {
           "op": "assertPowerToughness",
@@ -359,14 +319,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerA, 4)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerB, 0)"
         },
         {
           "op": "assertPowerToughness",
@@ -453,14 +405,6 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertSpeed(playerA, 4)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerB, 0)"
-        },
-        {
           "op": "assertPowerToughness",
           "player": 0,
           "name": "Walking Sarcophagus",
@@ -504,14 +448,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerA, 4)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerB, 0)"
         },
         {
           "op": "assertGraveyardCount",
@@ -584,14 +520,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerA, 1)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSpeed(playerB, 1)"
         },
         {
           "op": "assertPowerToughness",

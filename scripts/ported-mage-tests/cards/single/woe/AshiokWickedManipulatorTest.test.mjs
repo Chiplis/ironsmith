@@ -53,19 +53,415 @@ registerPortedMageTests({
     },
     {
       "name": "finalPayment_0",
-      "operations": []
+      "operations": [
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 0
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Final Payment",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Scrubland",
+          "count": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Final Payment",
+          "target": "Silvercoat Lion"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": "20 - (false ? 0 : 5)"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "count": 0,
+          "name": "false ? 5 : 0"
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "count": 0,
+          "name": "0 - (false ? 5 : 0)"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Final Payment",
+          "count": 1
+        }
+      ]
     },
     {
       "name": "finalPayment_4",
-      "operations": []
+      "operations": [
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 4
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Final Payment",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Scrubland",
+          "count": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Final Payment",
+          "target": "Silvercoat Lion"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": "20 - (false ? 0 : 5)"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "count": 0,
+          "name": "false ? 5 : 0"
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "count": 0,
+          "name": "4 - (false ? 5 : 0)"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Final Payment",
+          "count": 1
+        }
+      ]
     },
     {
       "name": "finalPayment_5",
-      "operations": []
+      "operations": [
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Final Payment",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Scrubland",
+          "count": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Final Payment",
+          "target": "Silvercoat Lion"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": "20 - (true ? 0 : 5)"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "count": 0,
+          "name": "true ? 5 : 0"
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "count": 0,
+          "name": "5 - (true ? 5 : 0)"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Final Payment",
+          "count": 1
+        }
+      ]
     },
     {
       "name": "finalPayment_10",
-      "operations": []
+      "operations": [
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 10
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Ashiok, Wicked Manipulator",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Final Payment",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Scrubland",
+          "count": 2
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Final Payment",
+          "target": "Silvercoat Lion"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": "20 - (true ? 0 : 5)"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 0
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "count": 0,
+          "name": "true ? 5 : 0"
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 0,
+          "count": 0,
+          "name": "10 - (true ? 5 : 0)"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Final Payment",
+          "count": 1
+        }
+      ]
     },
     {
       "name": "ReplacementCitadel",

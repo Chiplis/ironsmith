@@ -217,6 +217,106 @@ registerPortedMageTests({
           "player": 1,
           "name": "Memnite",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Tergrid, God of Fright // Tergrid's Lantern",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Memnarch",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Tergrid's Lantern"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}: Target player"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "No"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}: Target player"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Yes"
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Yes"
+        },
+        {
+          "op": "setChoice",
+          "player": 1,
+          "value": "Memnite"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": "currentGame.getStartingLife() - 3"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Memnite",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Memnarch",
+          "count": 1
         }
       ]
     },

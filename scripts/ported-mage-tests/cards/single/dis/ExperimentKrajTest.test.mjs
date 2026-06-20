@@ -11,12 +11,8 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addCard",
-          "zone": "Untap creatures",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"Untap creatures\", playerA, ability)"
         },
         {
           "op": "addCard",

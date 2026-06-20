@@ -11,20 +11,12 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addCard",
-          "zone": "untap all creatures",
-          "player": 0,
-          "name": "new SimpleActivatedAbility(\n                new UntapAllControllerEffect(new FilterCreaturePermanent()),\n                new ManaCostsImpl<>(\"\")\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"untap all creatures\", playerA, new SimpleActivatedAbility( new UntapAllControllerEffect(new FilterCreaturePermanent()), new ManaCostsImpl<>(\"\") ))"
         },
         {
-          "op": "addCard",
-          "zone": "draw a card",
-          "player": 0,
-          "name": "new SimpleActivatedAbility(\n                new DrawCardSourceControllerEffect(1),\n                new ManaCostsImpl<>(\"\")\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"draw a card\", playerA, new SimpleActivatedAbility( new DrawCardSourceControllerEffect(1), new ManaCostsImpl<>(\"\") ))"
         },
         {
           "op": "addCard",
@@ -55,16 +47,136 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "activateDrawCardAndUntap()"
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}: You may cast"
         },
         {
-          "op": "unsupported",
-          "source": "activateDrawCardAndUntap()"
+          "op": "setChoice",
+          "player": 0,
+          "value": true
         },
         {
-          "op": "unsupported",
-          "source": "activateDrawCardAndUntap()"
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "draw a"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "untap all"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}: You may cast"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "draw a"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "untap all"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}: You may cast"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "draw a"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "untap all"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
         },
         {
           "op": "setStopAt",
@@ -96,12 +208,8 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addCard",
-          "zone": "draw a card",
-          "player": 0,
-          "name": "new SimpleActivatedAbility(\n                new DrawCardSourceControllerEffect(3),\n                new ManaCostsImpl<>(\"\")\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"draw a card\", playerA, new SimpleActivatedAbility( new DrawCardSourceControllerEffect(3), new ManaCostsImpl<>(\"\") ))"
         },
         {
           "op": "addCard",

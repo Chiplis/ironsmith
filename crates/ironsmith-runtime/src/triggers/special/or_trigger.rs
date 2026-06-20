@@ -3,10 +3,26 @@
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::triggers::{
-    AbilityActivatedTrigger, SpellCastTrigger, ThisAttacksTrigger, TransformsTrigger, Trigger,
-    TriggerEvent, ZoneChangeTrigger, ZonePattern,
+    AbilityActivatedTrigger, AttacksTrigger, CountMode, PlayerRelation, SpellCastTrigger,
+    ThisAttacksTrigger, TransformsTrigger, Trigger, TriggerEvent, ZoneChangeTrigger, ZonePattern,
 };
+use crate::types::CardType;
 use crate::zone::Zone;
+
+fn object_filter_is_your_commander(filter: &ObjectFilter, card_types: &[CardType]) -> bool {
+    if filter.card_types != card_types {
+        return false;
+    }
+    let mut normalized = filter.clone();
+    normalized.zone = None;
+    normalized.card_types.clear();
+    normalized
+        == ObjectFilter {
+            owner: Some(PlayerFilter::You),
+            is_commander: true,
+            ..Default::default()
+        }
+}
 
 /// A trigger that matches if any of the inner triggers match.
 ///
@@ -72,6 +88,48 @@ impl OrTrigger {
             "enters or attacks"
         };
         Some(format!("Whenever {subject} {action}"))
+    }
+
+    fn your_commander_enters_or_attacks_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let (zone_change, attacks, attacks_first) = if let (Some(zone_change), Some(attacks)) = (
+            first.downcast_ref::<ZoneChangeTrigger>(),
+            second.downcast_ref::<AttacksTrigger>(),
+        ) {
+            (zone_change, attacks, false)
+        } else if let (Some(attacks), Some(zone_change)) = (
+            first.downcast_ref::<AttacksTrigger>(),
+            second.downcast_ref::<ZoneChangeTrigger>(),
+        ) {
+            (zone_change, attacks, true)
+        } else {
+            return None;
+        };
+
+        if zone_change.this_object
+            || zone_change.from != ZonePattern::Any
+            || zone_change.to != ZonePattern::Specific(Zone::Battlefield)
+            || zone_change.player != PlayerRelation::Any
+            || zone_change.cause_filter.is_some()
+            || zone_change.during_turn.is_some()
+            || zone_change.count_mode != CountMode::Each
+            || zone_change.this_object_surface.is_some()
+            || !object_filter_is_your_commander(&zone_change.object_filter, &[])
+            || attacks.one_or_more
+            || attacks.min_total_attackers != 1
+            || !object_filter_is_your_commander(&attacks.filter, &[CardType::Creature])
+        {
+            return None;
+        }
+
+        let action = if attacks_first {
+            "attacks or enters"
+        } else {
+            "enters or attacks"
+        };
+        Some(format!("Whenever your commander {action}"))
     }
 
     fn self_enters_or_transforms_display(&self) -> Option<String> {
@@ -238,6 +296,9 @@ impl TriggerMatcher for OrTrigger {
         if let Some(display) = self.self_enters_or_attacks_display() {
             return display;
         }
+        if let Some(display) = self.your_commander_enters_or_attacks_display() {
+            return display;
+        }
         if let Some(display) = self.self_enters_or_transforms_display() {
             return display;
         }
@@ -318,6 +379,29 @@ mod tests {
             crate::events::cause::EventCause::effect(),
             None,
         )
+    }
+
+    #[test]
+    fn display_compacts_your_commander_enters_or_attacks() {
+        let enters = Trigger::enters_battlefield(
+            ObjectFilter::default()
+                .commander()
+                .owned_by(PlayerFilter::You),
+            None,
+        );
+        let attacks = Trigger::attacks(
+            ObjectFilter::creature()
+                .commander()
+                .owned_by(PlayerFilter::You),
+        );
+
+        let trigger = Trigger::or(vec![enters, attacks])
+            .with_intro_surface(crate::triggers::TriggerIntroSurface::Whenever);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever your commander enters or attacks"
+        );
     }
 
     #[test]

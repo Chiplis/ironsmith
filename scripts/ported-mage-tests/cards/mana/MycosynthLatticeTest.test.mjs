@@ -136,7 +136,48 @@ registerPortedMageTests({
     },
     {
       "name": "testColorsWithDifferentCardTypes",
-      "operations": []
+      "operations": [
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mycosynth Lattice",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 0,
+          "name": "Azusa's Many Journeys",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Alrund, God of the Cosmos",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Carnival // Carnage",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        }
+      ]
     }
   ]
 });

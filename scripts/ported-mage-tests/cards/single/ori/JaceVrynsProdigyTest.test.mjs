@@ -33,6 +33,86 @@ registerPortedMageTests({
           "player": 0,
           "name": "Island",
           "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 0,
+          "name": "Taiga",
+          "count": 4
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}: Draw a card, then discard a card."
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "-3",
+          "target": "Fire // Ice"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ice",
+          "target": "Memnite"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Memnite",
+          "tapped": true,
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Island",
+          "tapped": true,
+          "count": 2
         }
       ]
     },

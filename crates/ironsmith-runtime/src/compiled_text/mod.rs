@@ -1706,6 +1706,23 @@ mod tests {
     }
 
     #[test]
+    fn repeated_graveyard_keyword_grants_use_same_is_true_surface() {
+        let lines = merge_ast_surface_lines(vec![
+            "At the beginning of combat on your turn, if there is a creature card with flying in your graveyard, creatures you control gain flying until end of turn.".to_string(),
+            "At the beginning of combat on your turn, if there is a creature card with first strike in your graveyard, creatures you control gain first strike until end of turn.".to_string(),
+            "At the beginning of combat on your turn, if there is a creature card with vigilance in your graveyard, creatures you control gain vigilance until end of turn.".to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "At the beginning of combat on your turn, creatures you control gain flying until end of turn if a creature card in your graveyard has flying. The same is true for first strike and vigilance."
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn repeated_type_additions_use_same_is_true_surface() {
         let lines = merge_ast_surface_lines(vec![
             "Creatures you control are the chosen type in addition to their other types."

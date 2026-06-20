@@ -35,36 +35,20 @@ registerPortedMageTests({
           "count": 5
         },
         {
-          "op": "addCard",
-          "zone": "multicountertrigdcard",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": "None"
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"multicountertrigdcard\", playerA, ability, null, CardType.CREATURE, \"\", Zone.BATTLEFIELD)"
         },
         {
-          "op": "addCard",
-          "zone": "singlecountertrigdcard",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": "None"
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"singlecountertrigdcard\", playerA, ability, null, CardType.CREATURE, \"\", Zone.BATTLEFIELD)"
         },
         {
-          "op": "addCard",
-          "zone": "multicounterreplcard",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": "None"
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"multicounterreplcard\", playerA, ability, null, CardType.CREATURE, \"\", Zone.BATTLEFIELD)"
         },
         {
-          "op": "addCard",
-          "zone": "singlecounterreplcard",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": "None"
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"singlecounterreplcard\", playerA, ability, null, CardType.CREATURE, \"\", Zone.BATTLEFIELD)"
         },
         {
           "op": "setChoice",

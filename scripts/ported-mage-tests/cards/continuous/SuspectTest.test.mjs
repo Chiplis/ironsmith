@@ -26,8 +26,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertSuspected(offender, false)"
+          "op": "assertSuspected",
+          "name": "Repeat Offender",
+          "suspected": false
         }
       ]
     },
@@ -68,8 +69,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertSuspected(offender, true)"
+          "op": "assertSuspected",
+          "name": "Repeat Offender",
+          "suspected": true
         }
       ]
     },
@@ -117,8 +119,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertSuspected(offender, true)"
+          "op": "assertSuspected",
+          "name": "Repeat Offender",
+          "suspected": true
         },
         {
           "op": "assertCounterCount",
@@ -187,8 +190,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertSuspected(offender, true)"
+          "op": "assertSuspected",
+          "name": "Repeat Offender",
+          "suspected": true
         },
         {
           "op": "unsupported",
@@ -253,8 +257,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertSuspected(offender, false)"
+          "op": "assertSuspected",
+          "name": "Repeat Offender",
+          "suspected": false
         }
       ]
     },
@@ -310,8 +315,9 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertSuspected(offender, false)"
+          "op": "assertSuspected",
+          "name": "Repeat Offender",
+          "suspected": false
         },
         {
           "op": "assertCounterCount",

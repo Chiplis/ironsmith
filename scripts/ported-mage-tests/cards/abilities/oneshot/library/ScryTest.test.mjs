@@ -11,6 +11,42 @@ registerPortedMageTests({
           "value": true
         },
         {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Devilthorn Fox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Canopy Gorger",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Barbtooth Wurm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Alaborn Trooper",
+          "count": 1
+        },
+        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -56,8 +92,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertLibrary(playerA, cardD, cardB, cardA)"
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Devilthorn Fox",
+            "Barbtooth Wurm",
+            "Alaborn Trooper"
+          ]
         }
       ]
     },
@@ -67,6 +108,42 @@ registerPortedMageTests({
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Devilthorn Fox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Canopy Gorger",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Barbtooth Wurm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Alaborn Trooper",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -114,8 +191,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertLibrary(playerA, cardD, cardA, cardB)"
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Devilthorn Fox",
+            "Alaborn Trooper",
+            "Barbtooth Wurm"
+          ]
         }
       ]
     },
@@ -125,6 +207,42 @@ registerPortedMageTests({
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Devilthorn Fox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Canopy Gorger",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Barbtooth Wurm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Alaborn Trooper",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -167,8 +285,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertLibrary(playerA, cardC, cardD, cardA)"
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Canopy Gorger",
+            "Devilthorn Fox",
+            "Alaborn Trooper"
+          ]
         }
       ]
     },
@@ -178,6 +301,42 @@ registerPortedMageTests({
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Devilthorn Fox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Canopy Gorger",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Barbtooth Wurm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Alaborn Trooper",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -220,8 +379,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertLibrary(playerA, cardC, cardD, cardB)"
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Canopy Gorger",
+            "Devilthorn Fox",
+            "Barbtooth Wurm"
+          ]
         }
       ]
     },
@@ -231,6 +395,42 @@ registerPortedMageTests({
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Devilthorn Fox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Canopy Gorger",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Barbtooth Wurm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Alaborn Trooper",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -278,8 +478,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertLibrary(playerA, cardB, cardC, cardD)"
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Barbtooth Wurm",
+            "Canopy Gorger",
+            "Devilthorn Fox"
+          ]
         }
       ]
     },
@@ -289,6 +494,42 @@ registerPortedMageTests({
         {
           "op": "setStrictChooseMode",
           "value": true
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "clearZone",
+          "player": 0,
+          "zone": "library"
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Devilthorn Fox",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Canopy Gorger",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Barbtooth Wurm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Alaborn Trooper",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -336,8 +577,13 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertLibrary(playerA, cardA, cardC, cardD)"
+          "op": "assertLibraryOrder",
+          "player": 0,
+          "cards": [
+            "Alaborn Trooper",
+            "Canopy Gorger",
+            "Devilthorn Fox"
+          ]
         }
       ]
     }

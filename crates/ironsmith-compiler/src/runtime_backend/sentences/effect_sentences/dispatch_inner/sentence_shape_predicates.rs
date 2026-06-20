@@ -193,7 +193,14 @@ fn where_x_is_number_tapped_this_way(words: &[&str]) -> bool {
 
 fn prior_effect_words_reference_memory(words: &[&str]) -> bool {
     word_slice_contains_phrase(words, SENTENCE_THIS_WAY_PHRASE)
-        || words.iter().any(|word| {
+        || words.iter().enumerate().any(|(idx, word)| {
+            if *word == SENTENCE_CHOSEN_WORD
+                && words
+                    .get(idx + 1)
+                    .is_some_and(|next| matches!(*next, "type" | "color"))
+            {
+                return false;
+            }
             matches!(
                 *word,
                 "chosen"

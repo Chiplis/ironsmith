@@ -457,7 +457,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Shock",
-          "target": "targetPlayer=PlayerB"
+          "target": "targetPlayer=PlayerB",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "castSpell",
@@ -465,7 +466,8 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Shock",
-          "target": "targetPlayer=PlayerB"
+          "target": "targetPlayer=PlayerB",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "castSpell",

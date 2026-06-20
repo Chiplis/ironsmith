@@ -448,8 +448,18 @@ registerPortedMageTests({
       "name": "testRoarHand",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addDragonToHand(roar)"
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Shivan Dragon",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Draconic Roar",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -513,8 +523,18 @@ registerPortedMageTests({
       "name": "testRoarBattlefield",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addDragonToBattlefield(roar)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Shivan Dragon",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Draconic Roar",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -636,8 +656,18 @@ registerPortedMageTests({
       "name": "testOratorHand",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addDragonToHand(orator)"
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Shivan Dragon",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Orator of Ojutai",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -687,8 +717,18 @@ registerPortedMageTests({
       "name": "testOratorBattlefield",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addDragonToBattlefield(orator)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Shivan Dragon",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Orator of Ojutai",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -782,8 +822,18 @@ registerPortedMageTests({
       "name": "testSentinelsHand",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addDragonToHand(sentinels)"
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Shivan Dragon",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Scaleguard Sentinels",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -835,8 +885,18 @@ registerPortedMageTests({
       "name": "testSentinelsBattlefield",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "addDragonToBattlefield(sentinels)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Shivan Dragon",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Scaleguard Sentinels",
+          "count": 1
         },
         {
           "op": "addCard",

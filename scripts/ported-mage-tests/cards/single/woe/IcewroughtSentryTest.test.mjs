@@ -14,7 +14,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Fire \n\n    \n    private static final String myr = \"Alpha Myr\"",
+          "name": "Fire // Ice",
           "count": 1
         },
         {
@@ -35,7 +35,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "myr",
+          "name": "Alpha Myr",
           "count": 1
         },
         {
@@ -44,7 +44,7 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Ice",
-          "target": "myr"
+          "target": "Alpha Myr"
         },
         {
           "op": "setStopAt",
@@ -74,7 +74,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Fire \n\n    \n    private static final String myr = \"Alpha Myr\"",
+          "name": "Fire // Ice",
           "count": 2
         },
         {
@@ -95,7 +95,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "myr",
+          "name": "Alpha Myr",
           "count": 1
         },
         {
@@ -104,7 +104,7 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Ice",
-          "target": "myr"
+          "target": "Alpha Myr"
         },
         {
           "op": "castSpell",
@@ -112,7 +112,7 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Ice",
-          "target": "myr"
+          "target": "Alpha Myr"
         },
         {
           "op": "setStopAt",
@@ -142,7 +142,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Fire \n\n    \n    private static final String myr = \"Alpha Myr\"",
+          "name": "Fire // Ice",
           "count": 1
         },
         {
@@ -216,7 +216,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 1,
-          "name": "myr",
+          "name": "Alpha Myr",
           "count": 3
         },
         {
@@ -260,7 +260,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "myr",
+          "name": "Alpha Myr",
           "count": 1
         },
         {
@@ -274,7 +274,7 @@ registerPortedMageTests({
           "op": "attack",
           "turn": 1,
           "player": 0,
-          "attacker": "myr",
+          "attacker": "Alpha Myr",
           "defender": 1
         },
         {

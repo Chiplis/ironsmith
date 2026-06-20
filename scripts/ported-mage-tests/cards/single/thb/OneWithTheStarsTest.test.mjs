@@ -21,6 +21,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "unsupported",
+          "source": "for (int i = 0; i < 9; i++) { addCustomCardWithAbility( \"Rainbow\", playerA, new AnyColorManaAbility(), null, CardType.LAND, \"\", Zone.BATTLEFIELD ); }"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -97,6 +101,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "unsupported",
+          "source": "for (int i = 0; i < 4; i++) { addCustomCardWithAbility( \"Rainbow\", playerA, new AnyColorManaAbility(), null, CardType.LAND, \"\", Zone.BATTLEFIELD ); }"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -152,6 +160,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "unsupported",
+          "source": "for (int i = 0; i < 4; i++) { addCustomCardWithAbility( \"Rainbow\", playerA, new AnyColorManaAbility(), null, CardType.LAND, \"\", Zone.BATTLEFIELD ); }"
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
@@ -189,6 +201,10 @@ registerPortedMageTests({
           "player": 0,
           "name": "Bitterblossom",
           "count": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "for (int i = 0; i < 4; i++) { addCustomCardWithAbility( \"Rainbow\", playerA, new AnyColorManaAbility(), null, CardType.LAND, \"\", Zone.BATTLEFIELD ); }"
         },
         {
           "op": "castSpell",

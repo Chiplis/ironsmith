@@ -14,7 +14,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -29,7 +29,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "addTarget",
@@ -57,7 +57,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -95,7 +95,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -110,7 +110,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "addTarget",
@@ -151,7 +151,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -181,7 +181,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -211,7 +211,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "addTarget",
@@ -245,7 +245,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "bottomlessPool",
+          "name": "Bottomless Pool",
           "count": 1
         },
         {
@@ -268,7 +268,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -377,7 +377,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -454,7 +454,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -477,7 +477,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -513,7 +513,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -553,7 +553,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "bottomlessPool"
+          "target": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -611,7 +611,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -654,7 +654,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -694,7 +694,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "bottomlessPool"
+          "target": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -749,7 +749,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "bottomlessPool",
+          "name": "Bottomless Pool",
           "count": 1
         },
         {
@@ -770,7 +770,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -792,7 +792,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -844,7 +844,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -872,7 +872,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -908,7 +908,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "castSpell",
@@ -925,7 +925,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "bottomlessPool"
+          "target": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -976,7 +976,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "bottomlessPool",
+          "name": "Bottomless Pool",
           "count": 2
         }
       ]
@@ -991,7 +991,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -1027,7 +1027,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1067,7 +1067,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "bottomlessPool"
+          "value": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1114,7 +1114,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "bottomlessPool",
+          "name": "Bottomless Pool",
           "count": 2
         }
       ]
@@ -1129,7 +1129,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -1157,7 +1157,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -1206,7 +1206,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "activateAbility",
@@ -1218,7 +1218,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "bottomlessPool"
+          "target": "Bottomless Pool"
         },
         {
           "op": "setStopAt",
@@ -1244,7 +1244,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 4
         },
         {
@@ -1287,7 +1287,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1324,7 +1324,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1366,7 +1366,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\""
+          "target": "Bottomless Pool // Locker Room"
         },
         {
           "op": "waitStackResolved",
@@ -1407,13 +1407,13 @@ registerPortedMageTests({
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 0
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "bottomlessPool",
+          "name": "Bottomless Pool",
           "power": 2,
           "toughness": 2
         },
@@ -1427,14 +1427,14 @@ registerPortedMageTests({
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "power": 7,
           "toughness": 7
         },
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "bottomlessPool",
+          "name": "Bottomless Pool",
           "count": 1
         },
         {
@@ -1446,7 +1446,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         }
       ]
@@ -1461,7 +1461,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 4
         },
         {
@@ -1504,7 +1504,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1541,7 +1541,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1583,7 +1583,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\""
+          "target": "Bottomless Pool // Locker Room"
         },
         {
           "op": "waitStackResolved",
@@ -1625,14 +1625,14 @@ registerPortedMageTests({
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "power": 4,
           "toughness": 4
         },
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "bottomlessPool",
+          "name": "Bottomless Pool",
           "power": 2,
           "toughness": 2
         },
@@ -1646,7 +1646,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "bottomlessPool",
+          "name": "Bottomless Pool",
           "count": 1
         },
         {
@@ -1658,7 +1658,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -1679,7 +1679,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 4
         },
         {
@@ -1722,7 +1722,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1759,7 +1759,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1801,7 +1801,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\""
+          "target": "Bottomless Pool // Locker Room"
         },
         {
           "op": "waitStackResolved",
@@ -1819,7 +1819,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\""
+          "target": "Bottomless Pool // Locker Room"
         },
         {
           "op": "setStopAt",
@@ -1836,13 +1836,13 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "bottomlessPool",
+          "name": "Bottomless Pool",
           "count": 0
         },
         {
           "op": "assertGraveyardCount",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -1855,7 +1855,7 @@ registerPortedMageTests({
         {
           "op": "assertPowerToughness",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "power": 4,
           "toughness": 4
         },
@@ -1875,7 +1875,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -1896,7 +1896,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -1946,7 +1946,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "castSpell",
@@ -1958,7 +1958,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "bottomlessPool"
+          "target": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -1976,7 +1976,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\""
+          "target": "Bottomless Pool // Locker Room"
         },
         {
           "op": "setStopAt",
@@ -2040,7 +2040,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -2076,7 +2076,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -2105,7 +2105,7 @@ registerPortedMageTests({
         {
           "op": "addTarget",
           "player": 0,
-          "target": "bottomlessPool"
+          "target": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -2181,7 +2181,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         }
       ]
@@ -2196,8 +2196,177 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Surgical Suite // Hospital Room",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mirage Mirror",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Tundra",
+          "count": 20
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Memnite",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Bottomless Pool"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "TestPlayer.TARGET_SKIP"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{4}{U}: Unlock the right half."
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Surgical Suite"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{2}: {this} becomes a copy"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Bottomless Pool // Locker Room"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{4}{U}: Unlock the right half."
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{2}: {this} becomes a copy"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Surgical Suite"
+        },
+        {
+          "op": "attack",
+          "turn": 3,
+          "player": 0,
+          "attacker": "Memnite",
+          "defender": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Memnite"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Bottomless Pool // Locker Room",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Surgical Suite",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Hospital Room",
+          "count": 1
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Memnite",
+          "power": 2,
+          "toughness": 2
         }
       ]
     },
@@ -2211,7 +2380,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
-          "name": "\"Bottomless Pool \n    private static final String bottomlessPool = \"Bottomless Pool\"",
+          "name": "Bottomless Pool // Locker Room",
           "count": 1
         },
         {
@@ -2240,7 +2409,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "bottomlessPool"
+          "name": "Bottomless Pool"
         },
         {
           "op": "waitStackResolved",
@@ -2274,7 +2443,7 @@ registerPortedMageTests({
         {
           "op": "setChoice",
           "player": 0,
-          "value": "bottomlessPool"
+          "value": "Bottomless Pool"
         },
         {
           "op": "setStopAt",

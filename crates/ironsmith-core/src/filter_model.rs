@@ -44,6 +44,13 @@ pub enum PtReference {
     Base,
 }
 
+/// Relationship between a candidate object's own power and toughness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerToughnessRelation {
+    PowerGreaterThanToughness,
+    ToughnessGreaterThanPower,
+}
+
 /// Relationship an object may have with a tagged object set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaggedOpbjectRelation {
@@ -429,6 +436,7 @@ pub struct ObjectFilter {
     pub power_reference: PtReference,
     pub power_relative_to_source: Option<SourcePowerRelation>,
     pub power_greater_than_base_power: bool,
+    pub power_toughness_relation: Option<PowerToughnessRelation>,
     pub toughness: Option<Comparison>,
     pub toughness_reference: PtReference,
     pub total_power_toughness: Option<Comparison>,
@@ -467,6 +475,7 @@ impl ObjectFilter {
             || self.power_parity.is_some()
             || self.power_relative_to_source.is_some()
             || self.power_greater_than_base_power
+            || self.power_toughness_relation.is_some()
             || self.distinct_powers
             || self.distinct_creature_types
             || self.toughness.is_some()
@@ -887,6 +896,11 @@ impl ObjectFilter {
 
     pub fn with_power_less_than_source(mut self) -> Self {
         self.power_relative_to_source = Some(SourcePowerRelation::LessThanSource);
+        self
+    }
+
+    pub fn with_power_toughness_relation(mut self, relation: PowerToughnessRelation) -> Self {
+        self.power_toughness_relation = Some(relation);
         self
     }
 
@@ -1859,6 +1873,13 @@ impl ObjectFilter {
             return format!("{} not named {}", parts.join(" "), name);
         }
 
+        if self.power_toughness_relation.is_some()
+            && owner_suffix.is_none()
+            && let Some(controller) = controller_suffix.take()
+        {
+            parts.push(controller);
+        }
+
         if let (Some(power), Some(toughness)) = (&self.power, &self.toughness)
             && let (Comparison::Equal(power_value), Comparison::Equal(toughness_value)) =
                 (power, toughness)
@@ -1886,6 +1907,16 @@ impl ObjectFilter {
             }
             if self.power_greater_than_base_power {
                 parts.push("with power greater than its base power".to_string());
+            }
+            if let Some(relation) = self.power_toughness_relation {
+                match relation {
+                    PowerToughnessRelation::PowerGreaterThanToughness => {
+                        parts.push("with power greater than its toughness".to_string());
+                    }
+                    PowerToughnessRelation::ToughnessGreaterThanPower => {
+                        parts.push("with toughness greater than its power".to_string());
+                    }
+                }
             }
             if let Some(relation) = self.power_relative_to_source {
                 match relation {

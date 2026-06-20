@@ -1514,11 +1514,25 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::DestroyAllOfChosenColor { .. }
                 | SubjectVerbActionAst::Exile { .. }
                 | SubjectVerbActionAst::ExileAll { .. }
+                | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
                 | SubjectVerbActionAst::Sacrifice { .. }
                 | SubjectVerbActionAst::SacrificeAll { .. }
                 | SubjectVerbActionAst::Discard { .. }
+                | SubjectVerbActionAst::DiscardHand
                 | SubjectVerbActionAst::Mill { .. }
                 | SubjectVerbActionAst::SearchLibrary { .. }
+                | SubjectVerbActionAst::ReturnToHand { .. }
+                | SubjectVerbActionAst::ReturnAllToHand { .. }
+                | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
+                | SubjectVerbActionAst::PutIntoHand { .. }
+                | SubjectVerbActionAst::MayMoveToZone { .. }
+                | SubjectVerbActionAst::MoveToZone { .. }
+                | SubjectVerbActionAst::MoveToLibraryNthFromTop { .. }
+                | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
+                | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
+                | SubjectVerbActionAst::PutOntoBattlefield { .. }
+                | SubjectVerbActionAst::ReturnToBattlefield { .. }
+                | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
                 | SubjectVerbActionAst::RevealTop
                 | SubjectVerbActionAst::RevealTagged { .. }
                 | SubjectVerbActionAst::RevealCardsFromHand { .. }
@@ -1531,9 +1545,28 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
+        | EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachTaggedPlayer { effects, .. } => {
             effects.iter().any(effect_can_supply_prior_effect_memory)
         }
+        EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::RepeatProcess { effects, .. }
+        | EffectAst::RepeatEffects { effects, .. } => {
+            effects.iter().any(effect_can_supply_prior_effect_memory)
+        }
+        EffectAst::ChooseOneOf { modes } => modes.iter().any(|mode| {
+            mode.effects
+                .iter()
+                .any(effect_can_supply_prior_effect_memory)
+        }),
+        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+            effect_can_supply_prior_effect_memory(effect)
+                || otherwise.iter().any(effect_can_supply_prior_effect_memory)
+        }
+        EffectAst::TagAffected { effect, .. } => effect_can_supply_prior_effect_memory(effect),
+        EffectAst::MoveTaggedGroupToZone { .. } => true,
         _ => false,
     }
 }
@@ -1551,7 +1584,20 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
             })
         );
     }
+    if effect_references_pending_effect_metric(consumer) {
+        return effect_can_supply_prior_effect_memory(effect);
+    }
     true
+}
+
+fn effect_references_pending_effect_metric(effect: &EffectAst) -> bool {
+    let mut references_pending = false;
+    visit_effect_values(effect, &mut |value| {
+        if value_references_pending_effect_metric(value) {
+            references_pending = true;
+        }
+    });
+    references_pending
 }
 
 fn effect_references_only_other_number_metric(effect: &EffectAst) -> bool {
@@ -1565,6 +1611,21 @@ fn effect_references_only_other_number_metric(effect: &EffectAst) -> bool {
         }
     });
     saw_other_number && !saw_other_event_value
+}
+
+fn value_references_pending_effect_metric(value: &Value) -> bool {
+    match value {
+        Value::SurfaceHinted { value, .. } => value_references_pending_effect_metric(value),
+        Value::PendingEffectMetric { .. } | Value::PendingEffectMetricOffset { .. } => true,
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_references_pending_effect_metric(left)
+                || value_references_pending_effect_metric(right)
+        }
+        Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => value_references_pending_effect_metric(value),
+        _ => false,
+    }
 }
 
 fn value_references_only_other_number_metric(value: &Value) -> bool {
@@ -3909,6 +3970,158 @@ mod tests {
             }
             other => panic!("expected draw effect, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn annotate_effect_sequence_skips_non_memory_middle_effect_for_pending_metric() {
+        let effects = vec![
+            EffectAst::subject_verb_exile_all(ObjectFilter::creature(), false),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::You,
+                SubjectVerbActionAst::CreateTokenWithMods {
+                    name: "0/0 green and blue creature".to_string(),
+                    count: Value::Fixed(1),
+                    dynamic_power_toughness: None,
+                    player: PlayerAst::You,
+                    attached_to: None,
+                    tapped: false,
+                    attacking: false,
+                    exile_at_end_of_combat: false,
+                    sacrifice_at_end_of_combat: false,
+                    sacrifice_at_next_end_step: false,
+                    exile_at_next_end_step: false,
+                    granted_abilities: Vec::new(),
+                },
+            ),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: Value::PendingEffectMetric {
+                        source: EffectMetricSource::AffectedObjects,
+                        metric: EffectMetric::TotalPower,
+                    },
+                },
+            ),
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate pending metric across non-memory effect");
+
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        assert_eq!(annotated.effects[1].assigned_effect_id, None);
+        match &annotated.effects[2].effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Draw { count },
+                ..
+            }) => {
+                assert_eq!(
+                    count,
+                    &Value::EffectMetric {
+                        effect_id: EffectId(0),
+                        source: EffectMetricSource::AffectedObjects,
+                        metric: EffectMetric::TotalPower,
+                    }
+                );
+            }
+            other => panic!("expected draw effect, got {other:?}"),
+        }
+    }
+
+    fn assert_prior_effect_binds_pending_count(prior: EffectAst) {
+        let effects = vec![
+            prior,
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: Value::PendingEffectMetric {
+                        source: EffectMetricSource::AffectedObjects,
+                        metric: EffectMetric::Count,
+                    },
+                },
+            ),
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate pending metric sequence");
+
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        match &annotated.effects[1].effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Draw { count },
+                ..
+            }) => assert_eq!(
+                count,
+                &Value::EffectMetric {
+                    effect_id: EffectId(0),
+                    source: EffectMetricSource::AffectedObjects,
+                    metric: EffectMetric::Count,
+                }
+            ),
+            other => panic!("expected draw effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn annotate_effect_sequence_binds_pending_metric_after_discard_hand() {
+        assert_prior_effect_binds_pending_count(EffectAst::subject_verb_discard_hand(
+            PlayerAst::Any,
+        ));
+    }
+
+    #[test]
+    fn annotate_effect_sequence_binds_pending_metric_after_return_to_hand() {
+        assert_prior_effect_binds_pending_count(EffectAst::subject_verb_return_to_hand(
+            TargetAst::Object(
+                ObjectFilter::creature().in_zone(Zone::Graveyard),
+                None,
+                None,
+            ),
+            false,
+        ));
+    }
+
+    #[test]
+    fn annotate_effect_sequence_binds_pending_metric_after_move_to_zone() {
+        assert_prior_effect_binds_pending_count(EffectAst::subject_verb_move_all_to_zone(
+            TargetAst::Tagged(TagKey::from("exiled_0"), None),
+            Zone::Graveyard,
+            false,
+            ReturnControllerAst::Owner,
+            false,
+            None,
+        ));
+    }
+
+    #[test]
+    fn annotate_effect_sequence_binds_pending_metric_after_shuffle_objects_into_library() {
+        assert_prior_effect_binds_pending_count(
+            EffectAst::subject_verb_shuffle_objects_into_library(
+                PlayerAst::Any,
+                TargetAst::Object(ObjectFilter::permanent(), None, None),
+            ),
+        );
+    }
+
+    #[test]
+    fn annotate_effect_sequence_binds_pending_metric_after_repeat_process_memory_effect() {
+        assert_prior_effect_binds_pending_count(EffectAst::RepeatProcess {
+            effects: vec![EffectAst::subject_verb_pay_any_life(PlayerAst::Any, 0)],
+            continue_effect_index: 0,
+            continue_predicate: IfResultPredicate::Did,
+        });
     }
 
     #[test]

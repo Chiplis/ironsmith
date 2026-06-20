@@ -30,6 +30,16 @@ IGNORED_CALLS = {
 }
 
 
+CUSTOM_ABILITY_ORACLE_TEXT = {
+    'new SimpleActivatedAbility(Zone.ALL, new AddConditionalManaEffect(Mana.RedMana(10), new InstantOrSorcerySpellManaBuilder()), new ManaCostsImpl<>(""))':
+        "{0}: Add {R}{R}{R}{R}{R}{R}{R}{R}{R}{R}. Spend this mana only to cast instant or sorcery spells.",
+    'new SimpleActivatedAbility( new GainLifeEffect(PartyCount.instance), new ManaCostsImpl<>("{0}") )':
+        "{0}: You gain life equal to the number of creatures in your party.",
+    'new SimpleActivatedAbility(new GainLifeEffect(PartyCount.instance), new ManaCostsImpl<>("{0}"))':
+        "{0}: You gain life equal to the number of creatures in your party.",
+}
+
+
 def main():
     if OUTPUT_ROOT.exists():
         shutil.rmtree(OUTPUT_ROOT)
@@ -50,14 +60,16 @@ def main():
         if not tests:
             skipped_empty += 1
             continue
-        file_constants = extract_constants(strip_comments(text), {})
+        stripped_text = strip_comments(text)
+        file_constants = extract_constants(stripped_text, {})
+        helper_methods = extract_helper_methods(stripped_text)
 
         rel = source.relative_to(SOURCE_ROOT)
         out = OUTPUT_ROOT / rel.with_suffix(".test.mjs")
         out.parent.mkdir(parents=True, exist_ok=True)
         test_specs = []
         for name, body, ignore_reason in tests:
-            operations, unsupported = translate_body(body, file_constants)
+            operations, unsupported = translate_body(body, file_constants, helper_methods)
             unsupported_statements += unsupported
             spec = {"name": name, "operations": operations}
             if ignore_reason is not None:
@@ -153,8 +165,87 @@ def extract_constants(text, base_constants):
     return constants
 
 
-def translate_body(body, file_constants=None):
+def extract_helper_methods(text):
+    """Map of private void helper methods (e.g. initLibrary) to their overloads.
+
+    MAGE tests frequently factor shared setup into class-level helpers; inline
+    them so the ported operations include the setup instead of dropping it.
+    Each entry maps name -> list of (param_names, is_varargs, body).
+    """
+    helpers = {}
+    for match in re.finditer(
+        r"(?:private|protected|public)?\s*(?:static\s+)?void\s+(\w+)\s*\(([^)]*)\)\s*\{",
+        text,
+    ):
+        name = match.group(1)
+        preceding = "\n".join(text[: match.start()].splitlines()[-4:])
+        if "@Test" in preceding:
+            continue
+        raw_params = match.group(2).strip()
+        param_names = []
+        is_varargs = False
+        valid = True
+        if raw_params:
+            for param in raw_params.split(","):
+                parts = param.strip().split()
+                if len(parts) < 2:
+                    valid = False
+                    break
+                if "..." in parts[-2]:
+                    is_varargs = True
+                param_names.append(parts[-1])
+        if not valid:
+            continue
+        open_brace = text.index("{", match.end() - 1)
+        close_brace = matching_brace(text, open_brace)
+        if close_brace is None:
+            continue
+        helpers.setdefault(name, []).append(
+            (param_names, is_varargs, text[open_brace + 1 : close_brace])
+        )
+    return helpers
+
+
+def bind_helper_body(overloads, args):
+    """Pick the best-fitting overload and substitute parameters.
+
+    Java overload resolution is type-driven; approximate it by preferring the
+    overload with the most named parameters and rejecting bindings where a
+    player-like parameter is bound to a non-player argument.
+    """
+
+    def looks_like_player(value):
+        return bool(re.search(r"\bplayer[A-D]?\b", value, re.IGNORECASE))
+
+    ranked = sorted(overloads, key=lambda entry: len(entry[0]), reverse=True)
+    for param_names, is_varargs, body in ranked:
+        if is_varargs:
+            if len(args) < len(param_names) - 1:
+                continue
+            bindings = dict(zip(param_names[:-1], args))
+            bindings[param_names[-1]] = ", ".join(args[len(param_names) - 1 :])
+        else:
+            if len(args) != len(param_names):
+                continue
+            bindings = dict(zip(param_names, args))
+        mismatched = any(
+            "player" in name.lower() and value and not looks_like_player(value)
+            for name, value in bindings.items()
+        )
+        if mismatched:
+            continue
+        if not bindings:
+            return body
+        pattern = re.compile(
+            r"\b(" + "|".join(re.escape(name) for name in bindings) + r")\b"
+        )
+        return pattern.sub(lambda m: bindings[m.group(1)], body)
+    return None
+
+
+def translate_body(body, file_constants=None, helpers=None, depth=0):
     constants = dict(file_constants or {})
+    helpers = helpers or {}
     ability_vars = {}
     operations = []
     unsupported = 0
@@ -180,6 +271,28 @@ def translate_body(body, file_constants=None):
             continue
         if statement.startswith(("logger.", "System.", "Assert.", "Assume.")):
             continue
+        helper_call = re.match(r"(?:this\.)?(\w+)\((.*)\)$", statement, re.S)
+        if helper_call and helper_call.group(1) in helpers and depth < 5:
+            # Prefer a direct framework translation when one exists (e.g.
+            # assertLibrary) over inlining the class helper's body.
+            direct = parse_call(statement)
+            direct_op = None
+            if direct:
+                direct_op = translate_call(
+                    direct[0], direct[1], constants, statement, ability_vars
+                )
+            if direct_op is not None and direct_op.get("op") != "unsupported":
+                operations.append(direct_op)
+                continue
+            call_args = split_args(helper_call.group(2)) if helper_call.group(2).strip() else []
+            bound_body = bind_helper_body(helpers[helper_call.group(1)], call_args)
+            if bound_body is not None:
+                inlined_ops, inlined_unsupported = translate_body(
+                    bound_body, constants, helpers, depth + 1
+                )
+                operations.extend(inlined_ops)
+                unsupported += inlined_unsupported
+                continue
         call = parse_call(statement)
         if not call:
             if statement.startswith(("if ", "if(", "for ", "for(", "try", "catch", "while ")):
@@ -197,9 +310,44 @@ def translate_body(body, file_constants=None):
 
 
 def strip_comments(text):
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = re.sub(r"//.*", "", text)
-    return text
+    """Strip Java comments while preserving string literals.
+
+    Card names like "Bottomless Pool // Locker Room" contain "//" inside
+    strings; a naive regex strip truncates them and corrupts the constants.
+    """
+    out = []
+    i = 0
+    n = len(text)
+    in_string = False
+    escaped = False
+    while i < n:
+        char = text[i]
+        if in_string:
+            out.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            i += 1
+            continue
+        if char == '"':
+            in_string = True
+            out.append(char)
+            i += 1
+            continue
+        if char == "/" and i + 1 < n and text[i + 1] == "/":
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        if char == "/" and i + 1 < n and text[i + 1] == "*":
+            end = text.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+            continue
+        out.append(char)
+        i += 1
+    return "".join(out)
 
 
 def split_statements(text):
@@ -287,6 +435,18 @@ def translate_call(name, args, constants, source, ability_vars=None):
                 "player": values[1],
                 "name": values[2],
                 "count": values[3] if len(values) > 3 else 1,
+            }
+        if name == "assertSuspected":
+            return {
+                "op": "assertSuspected",
+                "name": values[0],
+                "suspected": values[1],
+            }
+        if name == "assertLibrary":
+            return {
+                "op": "assertLibraryOrder",
+                "player": values[0],
+                "cards": values[1:],
             }
         if name == "setLife":
             return {"op": "setLife", "player": values[0], "life": values[1]}
@@ -412,14 +572,44 @@ def translate_call(name, args, constants, source, ability_vars=None):
                 "abilities": abilities,
             }
         if name == "addCustomCardWithAbility":
-            return {
-                "op": "addCard",
-                "zone": values[0],
-                "player": values[1],
-                "name": values[2],
-                "custom": True,
-                "oracleText": str(values[3]) if len(values) > 3 else "",
-            }
+            # MAGE signatures:
+            #   (name, player, ability)
+            #   (name, player, extraAbility, removeDefault, cardType, cost, zone, subTypes...)
+            ability_raw = compact(args[2]).strip() if len(args) > 2 else "null"
+            oracle_text = CUSTOM_ABILITY_ORACLE_TEXT.get(re.sub(r"\s+", " ", ability_raw))
+            if len(values) >= 7:
+                card_type = str(values[4]).split(".")[-1].title()
+                subtypes = [str(v).split(".")[-1].title() for v in values[7:]]
+                type_line = card_type + (" - " + " ".join(subtypes) if subtypes else "")
+                if ability_raw not in ("null", "") and oracle_text is None:
+                    return {"op": "unsupported", "source": compact(source)}
+                op = {
+                    "op": "addCard",
+                    "zone": str(values[6]).split(".")[-1],
+                    "player": values[1],
+                    "name": values[0],
+                    "custom": True,
+                    "typeLine": type_line,
+                    "manaCost": values[5],
+                    "oracleText": oracle_text or "",
+                }
+                if card_type != "Creature":
+                    op["power"] = None
+                    op["toughness"] = None
+                return op
+            if oracle_text is not None:
+                return {
+                    "op": "addCard",
+                    "zone": "BATTLEFIELD",
+                    "player": values[1],
+                    "name": values[0],
+                    "custom": True,
+                    "typeLine": "Enchantment",
+                    "power": None,
+                    "toughness": None,
+                    "oracleText": oracle_text,
+                }
+            return {"op": "unsupported", "source": compact(source)}
         if name in IGNORED_CALLS:
             return None
     except Exception:

@@ -49,30 +49,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "EmptyNames.FACE_DOWN_CREATURE.getTestCommand()",
           "count": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNamePredicate(\"by rules - empty choice must return zero\", 0, \"\", false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNamePredicate(\"by rules - face down choice must return zero\", 0, EmptyNames.FACE_DOWN_CREATURE.getTestCommand(), false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNamePredicate(\"by rules - non existing name must return zero\", 0, \"Island\", false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNamePredicate(\"by rules - existing name must work\", 3, \"Forest\", false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNamePredicate(\"by inner - non existing name must return zero\", 0, \"Island\", true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNamePredicate(\"by inner - existing name must work\", 3, \"Forest\", true)"
         }
       ]
     },

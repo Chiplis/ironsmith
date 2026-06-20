@@ -72,6 +72,40 @@ registerPortedMageTests({
           "player": 0,
           "name": "Dizzy Spell",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "Transmute {1}{U}{U}"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Dizzy Spell",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 0
         }
       ]
     },
@@ -97,6 +131,45 @@ registerPortedMageTests({
           "zone": "HAND",
           "player": 0,
           "name": "Perplex",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "Transmute {1}{U}{B}"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Wear // Tear"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Perplex",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Wear // Tear",
           "count": 1
         }
       ]

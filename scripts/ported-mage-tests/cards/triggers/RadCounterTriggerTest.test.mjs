@@ -82,6 +82,71 @@ registerPortedMageTests({
           "player": 1,
           "name": "Elite Vanguard",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Brainstorm",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Plains",
+          "count": 2
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "X=3"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Nuclear Fallout"
+        },
+        {
+          "op": "unsupported",
+          "source": "checkLife(\"life playerB turn 2\", 2, PhaseStep.POSTCOMBAT_MAIN, playerB, 19)"
+        },
+        {
+          "op": "unsupported",
+          "source": "checkLife(\"life playerA turn 3\", 3, PhaseStep.POSTCOMBAT_MAIN, playerA, 20)"
+        },
+        {
+          "op": "unsupported",
+          "source": "checkLife(\"life playerB turn 4\", 4, PhaseStep.POSTCOMBAT_MAIN, playerB, 17)"
+        },
+        {
+          "op": "unsupported",
+          "source": "checkLife(\"life playerA turn 5\", 5, PhaseStep.POSTCOMBAT_MAIN, playerA, 18)"
+        },
+        {
+          "op": "unsupported",
+          "source": "checkLife(\"life playerB turn 6\", 6, PhaseStep.POSTCOMBAT_MAIN, playerB, 17)"
+        },
+        {
+          "op": "unsupported",
+          "source": "checkLife(\"life playerA turn 7\", 7, PhaseStep.POSTCOMBAT_MAIN, playerA, 18)"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 7,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
         }
       ]
     }

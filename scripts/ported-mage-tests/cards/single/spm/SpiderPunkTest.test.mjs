@@ -11,12 +11,8 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addCard",
-          "zone": "{T} deal damage",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"{T} deal damage\", playerA, ability)"
         },
         {
           "op": "addCard",

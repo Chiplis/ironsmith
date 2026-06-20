@@ -364,6 +364,40 @@ registerPortedMageTests({
           "player": 0,
           "name": "Swamp",
           "count": 10
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Driven // Despair",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Cabal Therapy",
+          "target": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Driven"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Driven // Despair",
+          "count": 0
         }
       ]
     },

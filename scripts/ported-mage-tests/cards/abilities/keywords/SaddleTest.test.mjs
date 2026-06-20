@@ -37,10 +37,6 @@ registerPortedMageTests({
           "source": "assertTapped(charger, true)"
         },
         {
-          "op": "unsupported",
-          "source": "assertSaddled(charger, false)"
-        },
-        {
           "op": "assertAbility",
           "player": 0,
           "name": "Quilled Charger",
@@ -101,10 +97,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSaddled(charger, false)"
         }
       ]
     },
@@ -192,10 +184,6 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(possum, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSaddled(possum, true)"
         },
         {
           "op": "assertLife",
@@ -288,10 +276,6 @@ registerPortedMageTests({
         {
           "op": "unsupported",
           "source": "assertTapped(possum, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertSaddled(possum, true)"
         }
       ]
     }

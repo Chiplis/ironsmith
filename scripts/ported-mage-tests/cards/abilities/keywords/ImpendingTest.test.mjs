@@ -81,10 +81,6 @@ registerPortedMageTests({
           "toughness": 5
         },
         {
-          "op": "unsupported",
-          "source": "assertHasImpending(hauntwoods, true)"
-        },
-        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Everywhere",
@@ -155,10 +151,6 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "unsupported",
-          "source": "assertHasImpending(hauntwoods, true)"
-        },
-        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Everywhere",
@@ -227,10 +219,6 @@ registerPortedMageTests({
           "name": "Overlord of the Hauntwoods",
           "counter": "TIME",
           "count": 3
-        },
-        {
-          "op": "unsupported",
-          "source": "assertHasImpending(hauntwoods, true)"
         },
         {
           "op": "assertPermanentCount",
@@ -316,10 +304,6 @@ registerPortedMageTests({
           "name": "Overlord of the Hauntwoods",
           "power": 6,
           "toughness": 5
-        },
-        {
-          "op": "unsupported",
-          "source": "assertHasImpending(hauntwoods, false)"
         },
         {
           "op": "assertPermanentCount",
@@ -422,10 +406,6 @@ registerPortedMageTests({
           "toughness": 5
         },
         {
-          "op": "unsupported",
-          "source": "assertHasImpending(hauntwoods, true)"
-        },
-        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Everywhere",
@@ -526,10 +506,6 @@ registerPortedMageTests({
           "toughness": 5
         },
         {
-          "op": "unsupported",
-          "source": "assertHasImpending(hauntwoods, false)"
-        },
-        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Everywhere",
@@ -622,10 +598,6 @@ registerPortedMageTests({
           "toughness": 5
         },
         {
-          "op": "unsupported",
-          "source": "assertHasImpending(hauntwoods, true)"
-        },
-        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Everywhere",
@@ -716,10 +688,6 @@ registerPortedMageTests({
           "name": "Overlord of the Hauntwoods",
           "power": 6,
           "toughness": 5
-        },
-        {
-          "op": "unsupported",
-          "source": "assertHasImpending(hauntwoods, false)"
         },
         {
           "op": "assertPermanentCount",

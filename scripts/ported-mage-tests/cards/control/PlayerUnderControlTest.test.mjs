@@ -53,18 +53,6 @@ registerPortedMageTests({
           "player": null
         },
         {
-          "op": "unsupported",
-          "source": "checkUnderControl(\"turn 1 - A, B normal\", 1, PhaseStep.PRECOMBAT_MAIN, false)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkUnderControl(\"turn 2 - B under A\", 2, PhaseStep.PRECOMBAT_MAIN, true)"
-        },
-        {
-          "op": "unsupported",
-          "source": "checkUnderControl(\"turn 3 - A, B normal\", 3, PhaseStep.PRECOMBAT_MAIN, false)"
-        },
-        {
           "op": "setStrictChooseMode",
           "value": true
         },

@@ -534,6 +534,84 @@ registerPortedMageTests({
           "player": 1,
           "name": "Island",
           "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Far // Away",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Nyxborn Rollicker using bestow",
+          "target": "Cyclops of One-Eyed Pass"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "fused Far // Away"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": "Cyclops of One-Eyed Pass"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": 0
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Nyxborn Rollicker"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "name": "Cyclops of One-Eyed Pass",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Far // Away",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Nyxborn Rollicker",
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Nyxborn Rollicker",
+          "count": 1
         }
       ]
     },

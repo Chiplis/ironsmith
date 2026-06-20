@@ -29,7 +29,20 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "addEffectToGame()"
+          "source": "addCustomCardWithAbility(\"tester\", playerA, Storyweave.makeAbility())"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
         },
         {
           "op": "castSpell",
@@ -116,7 +129,20 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "addEffectToGame()"
+          "source": "addCustomCardWithAbility(\"tester\", playerA, Storyweave.makeAbility())"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
         },
         {
           "op": "castSpell",
@@ -207,7 +233,20 @@ registerPortedMageTests({
         },
         {
           "op": "unsupported",
-          "source": "addEffectToGame()"
+          "source": "addCustomCardWithAbility(\"tester\", playerA, Storyweave.makeAbility())"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
         },
         {
           "op": "castSpell",

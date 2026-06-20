@@ -266,9 +266,6 @@ def collect_unique_blocks(
             combined_name = (card.get("name") or "").strip()
             if not isinstance(front, dict) or not isinstance(back, dict) or not combined_name:
                 continue
-            if any("Room" in (face.get("type_line") or "") for face in (front, back)):
-                continue
-
             has_fuse = any(
                 "Fuse" in (face.get("oracle_text") or "") for face in (front, back)
             )
@@ -359,8 +356,13 @@ def collect_unique_blocks(
         parse_block = "\n".join(lines[1:]).strip()
         key = name.casefold()
         score = require_score(name, name)
-        if key not in unique:
-            unique[key] = (name, parse_block, score, compact_scryfall_metadata(card))
+        metadata = compact_scryfall_metadata(card)
+        existing = unique.get(key)
+        if existing is None or (
+            existing[3].get("full_art") is True
+            and metadata.get("full_art") is not True
+        ):
+            unique[key] = (name, parse_block, score, metadata)
         register_root_print_aliases(card, name)
 
     if missing_scores:
@@ -1179,6 +1181,10 @@ def frontend_score(score: float) -> float | None:
     return max(0.0, min(1.0, float(score)))
 
 
+def is_full_art_print(card: dict) -> bool:
+    return bool(card.get("full_art"))
+
+
 def compact_image_uris(raw: object) -> dict:
     if not isinstance(raw, dict):
         return {}
@@ -1193,6 +1199,7 @@ def compact_image_uris(raw: object) -> dict:
 def compact_scryfall_metadata(card: dict, *, face: dict | None = None) -> dict:
     source = face if isinstance(face, dict) else card
     metadata = {
+        "full_art": is_full_art_print(card),
         "image_uris": compact_image_uris(
             source.get("image_uris") or card.get("image_uris")
         ),

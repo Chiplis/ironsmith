@@ -7,6 +7,10 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_room1",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -45,10 +49,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Goblin Token",
           "count": 0
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(LOST_MINE_OF_PHANDELVER, \"Cave Entrance\")"
         },
         {
           "op": "assertLife",
@@ -71,6 +71,10 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_room2",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -127,10 +131,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Goblin Token",
           "count": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(LOST_MINE_OF_PHANDELVER, \"Goblin Lair\")"
         },
         {
           "op": "assertLife",
@@ -153,6 +153,10 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_room3",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -227,10 +231,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Goblin Token",
           "count": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(LOST_MINE_OF_PHANDELVER, \"Dark Pool\")"
         },
         {
           "op": "assertLife",
@@ -253,6 +253,10 @@ registerPortedMageTests({
       "name": "test__LostMineOfPhandelver_room4",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -342,10 +346,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(null, null)"
-        },
-        {
           "op": "assertLife",
           "player": 0,
           "life": 21
@@ -365,6 +365,10 @@ registerPortedMageTests({
     {
       "name": "test__LostMineOfPhandelver_multipleTurns",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
         {
           "op": "activateAbility",
           "turn": 1,
@@ -423,10 +427,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(null, null)"
-        },
-        {
           "op": "assertLife",
           "player": 0,
           "life": 21
@@ -446,6 +446,10 @@ registerPortedMageTests({
     {
       "name": "test__LostMineOfPhandelver_rollback",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
         {
           "op": "activateAbility",
           "turn": 1,
@@ -508,10 +512,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(LOST_MINE_OF_PHANDELVER, \"Goblin Lair\")"
-        },
-        {
           "op": "assertLife",
           "player": 0,
           "life": 20
@@ -531,6 +531,10 @@ registerPortedMageTests({
     {
       "name": "test__LostMineOfPhandelver_rollbackDifferentChoice",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -639,10 +643,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(LOST_MINE_OF_PHANDELVER, \"Storeroom\")"
-        },
-        {
           "op": "assertLife",
           "player": 0,
           "life": 20
@@ -663,11 +663,19 @@ registerPortedMageTests({
       "name": "test__Dungeon_multiplePlayers",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
           "name": "Flamespeaker Adept",
           "count": 1
+        },
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerB, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
         },
         {
           "op": "addCard",
@@ -815,14 +823,6 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(playerA, LOST_MINE_OF_PHANDELVER, \"Dark Pool\")"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(playerB, DUNGEON_OF_THE_MAD_MAGE, \"Lost Level\")"
-        },
-        {
           "op": "assertLife",
           "player": 0,
           "life": 21
@@ -847,6 +847,10 @@ registerPortedMageTests({
     {
       "name": "test__CompletedDungeonCondition_true",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -929,10 +933,6 @@ registerPortedMageTests({
           "name": "Gloom Stalker",
           "ability": "DoubleStrike",
           "expected": true
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(null, null)"
         }
       ]
     },
@@ -960,16 +960,16 @@ registerPortedMageTests({
           "name": "Gloom Stalker",
           "ability": "DoubleStrike",
           "expected": false
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(null, null)"
         }
       ]
     },
     {
       "name": "test__CompletedDungeonCondition_falseThenTrue",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -991,10 +991,6 @@ registerPortedMageTests({
           "name": "Gloom Stalker",
           "ability": "DoubleStrike",
           "expected": false
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(null, null)"
         },
         {
           "op": "activateAbility",
@@ -1071,16 +1067,16 @@ registerPortedMageTests({
           "name": "Gloom Stalker",
           "ability": "DoubleStrike",
           "expected": true
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(null, null)"
         }
       ]
     },
     {
       "name": "test__CompletedDungeonTriggeredAbility",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
         {
           "op": "addCard",
           "zone": "GRAVEYARD",
@@ -1167,16 +1163,16 @@ registerPortedMageTests({
           "player": 0,
           "name": "Dungeon Crawler",
           "count": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(null, null)"
         }
       ]
     },
     {
       "name": "test__HamaPasharRuinSeeker_DoubleController",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -1261,10 +1257,6 @@ registerPortedMageTests({
           "count": 2
         },
         {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(LOST_MINE_OF_PHANDELVER, \"Dark Pool\")"
-        },
-        {
           "op": "assertLife",
           "player": 0,
           "life": 22
@@ -1284,6 +1276,10 @@ registerPortedMageTests({
     {
       "name": "test__HamaPasharRuinSeeker_DontDoubleOpponent",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new VentureIntoTheDungeonEffect(), new GenericManaCost(0)) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -1366,10 +1362,6 @@ registerPortedMageTests({
           "player": 0,
           "name": "Goblin Token",
           "count": 1
-        },
-        {
-          "op": "unsupported",
-          "source": "assertDungeonRoom(LOST_MINE_OF_PHANDELVER, \"Dark Pool\")"
         },
         {
           "op": "assertLife",

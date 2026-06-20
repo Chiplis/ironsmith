@@ -5,35 +5,283 @@ registerPortedMageTests({
   "tests": [
     {
       "name": "testSameTurnTrue",
-      "operations": []
+      "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": "true ? 2 : 1",
+          "toughness": "true ? 2 : 1"
+        }
+      ]
     },
     {
       "name": "testSameTurnFalse",
-      "operations": []
+      "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": "false ? 2 : 1",
+          "toughness": "false ? 2 : 1"
+        }
+      ]
     },
     {
       "name": "testNextTurnTrue",
-      "operations": []
+      "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": "true ? 2 : 1",
+          "toughness": "true ? 2 : 1"
+        }
+      ]
     },
     {
       "name": "testNextTurnFalse",
-      "operations": []
+      "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": "false ? 2 : 1",
+          "toughness": "false ? 2 : 1"
+        }
+      ]
     },
     {
       "name": "testTurnCycleTrue",
-      "operations": []
+      "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": "true ? 2 : 1",
+          "toughness": "true ? 2 : 1"
+        }
+      ]
     },
     {
       "name": "testTurnCycleFalse",
-      "operations": []
+      "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": "false ? 2 : 1",
+          "toughness": "false ? 2 : 1"
+        }
+      ]
     },
     {
       "name": "testOpponentTurnTrue",
-      "operations": []
+      "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": "true ? 2 : 1",
+          "toughness": "true ? 2 : 1"
+        }
+      ]
     },
     {
       "name": "testOpponentTurnFalse",
-      "operations": []
+      "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new SimpleActivatedAbility(new BoostSourceEffect( 1, 1, Duration.UntilYourNextEndStep ), new ManaCostsImpl<>(\"{0}\")), null, CardType.CREATURE, \"\", Zone.BATTLEFIELD )"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{0}"
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "tester",
+          "power": "false ? 2 : 1",
+          "toughness": "false ? 2 : 1"
+        }
+      ]
     }
   ]
 });

@@ -469,11 +469,14 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "addCard",
-          "zone": "add 10",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "new SimpleActivatedAbility(Zone.ALL,\n                new AddConditionalManaEffect(Mana.RedMana(10), new InstantOrSorcerySpellManaBuilder()),\n                new ManaCostsImpl<>(\"\"))",
+          "name": "add 10",
           "custom": true,
-          "oracleText": ""
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Add {R}{R}{R}{R}{R}{R}{R}{R}{R}{R}. Spend this mana only to cast instant or sorcery spells."
         },
         {
           "op": "addCard",
@@ -545,11 +548,14 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "addCard",
-          "zone": "add 10",
+          "zone": "BATTLEFIELD",
           "player": 0,
-          "name": "new SimpleActivatedAbility(Zone.ALL,\n                new AddConditionalManaEffect(Mana.RedMana(10), new InstantOrSorcerySpellManaBuilder()),\n                new ManaCostsImpl<>(\"\"))",
+          "name": "add 10",
           "custom": true,
-          "oracleText": ""
+          "typeLine": "Enchantment",
+          "power": null,
+          "toughness": null,
+          "oracleText": "{0}: Add {R}{R}{R}{R}{R}{R}{R}{R}{R}{R}. Spend this mana only to cast instant or sorcery spells."
         },
         {
           "op": "addCard",
@@ -650,12 +656,8 @@ registerPortedMageTests({
           "count": 4
         },
         {
-          "op": "addCard",
-          "zone": "damage X",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"damage X\", playerA, ability)"
         },
         {
           "op": "activateAbility",
@@ -734,20 +736,12 @@ registerPortedMageTests({
       "name": "test_ConditionalMana_OneXAbility",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "add 10",
-          "player": 0,
-          "name": "new SimpleActivatedAbility(Zone.ALL,\n                new AddConditionalManaEffect(Mana.RedMana(10), new SimpleActivatedAbilityManaBuilder()),\n                new ManaCostsImpl<>(\"\"))",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"add 10\", playerA, new SimpleActivatedAbility(Zone.ALL, new AddConditionalManaEffect(Mana.RedMana(10), new SimpleActivatedAbilityManaBuilder()), new ManaCostsImpl<>(\"\")))"
         },
         {
-          "op": "addCard",
-          "zone": "damage X",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"damage X\", playerA, ability)"
         },
         {
           "op": "activateAbility",
@@ -825,20 +819,12 @@ registerPortedMageTests({
           "count": 5
         },
         {
-          "op": "addCard",
-          "zone": "damage X",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"damage X\", playerA, ability)"
         },
         {
-          "op": "addCard",
-          "zone": "counter until pay X",
-          "player": 1,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"counter until pay X\", playerB, ability)"
         },
         {
           "op": "addCard",
@@ -966,28 +952,16 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addCard",
-          "zone": "add 10",
-          "player": 0,
-          "name": "new SimpleManaAbility(Zone.ALL,\n                new AddConditionalManaEffect(Mana.RedMana(10), new SimpleActivatedAbilityManaBuilder()),\n                new ManaCostsImpl<>(\"\"))",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"add 10\", playerA, new SimpleManaAbility(Zone.ALL, new AddConditionalManaEffect(Mana.RedMana(10), new SimpleActivatedAbilityManaBuilder()), new ManaCostsImpl<>(\"\")))"
         },
         {
-          "op": "addCard",
-          "zone": "damage X",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"damage X\", playerA, ability)"
         },
         {
-          "op": "addCard",
-          "zone": "counter until pay X",
-          "player": 1,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"counter until pay X\", playerB, ability)"
         },
         {
           "op": "addCard",

@@ -229,6 +229,117 @@ registerPortedMageTests({
           "player": 0,
           "name": "Underground Sea",
           "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Discovery // Dispersal",
+          "count": 2
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Discovery",
+          "expected": true
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Dispersal",
+          "expected": true
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Foretell",
+          "expected": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "Foretell"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "Foretell"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Discovery // Dispersal",
+          "count": 2
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Foretell {U/B}",
+          "expected": true
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Foretell {1}{U}{B}",
+          "expected": true
+        },
+        {
+          "op": "activateAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "Foretell {U/B}"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "Foretell {1}{U}{B}"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Discovery // Dispersal",
+          "count": 0
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
         }
       ]
     },

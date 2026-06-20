@@ -7,8 +7,47 @@ registerPortedMageTests({
       "name": "testActivatedAbility",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "this.setupTest()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rimescale Dragon",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Snow-Covered Mountain",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Ornithopter",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Swamp",
+          "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Terror",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{2}{S}: Tap target",
+          "target": "Ornithopter"
         },
         {
           "op": "setStopAt",
@@ -35,8 +74,47 @@ registerPortedMageTests({
       "name": "testStaticAbility",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "this.setupTest()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rimescale Dragon",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Snow-Covered Mountain",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Ornithopter",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Swamp",
+          "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Terror",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{2}{S}: Tap target",
+          "target": "Ornithopter"
         },
         {
           "op": "setStopAt",
@@ -63,8 +141,47 @@ registerPortedMageTests({
       "name": "testStaticAbilityEnded",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "this.setupTest()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Rimescale Dragon",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Snow-Covered Mountain",
+          "count": 3
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Ornithopter",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Swamp",
+          "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Terror",
+          "count": 1
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{2}{S}: Tap target",
+          "target": "Ornithopter"
         },
         {
           "op": "castSpell",

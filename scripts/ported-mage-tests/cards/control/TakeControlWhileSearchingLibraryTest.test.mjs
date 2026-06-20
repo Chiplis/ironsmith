@@ -163,12 +163,8 @@ registerPortedMageTests({
           "count": 3
         },
         {
-          "op": "addCard",
-          "zone": "control",
-          "player": 1,
-          "name": "new SimpleStaticAbility(\n                new YouControlYourOpponentsWhileSearchingReplacementEffect())",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"control\", playerB, new SimpleStaticAbility( new YouControlYourOpponentsWhileSearchingReplacementEffect()) )"
         },
         {
           "op": "addCard",

@@ -46,8 +46,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertBlitzed(decoy, true)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Riveteers Decoy",
+          "count": 1
         }
       ]
     },
@@ -315,8 +317,10 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "unsupported",
-          "source": "assertBlitzed(decoy, false)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Riveteers Decoy",
+          "count": 1
         }
       ]
     },
@@ -580,8 +584,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBlitzed(underdog, true)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Tenacious Underdog",
+          "count": 1
         },
         {
           "op": "assertLife",
@@ -641,8 +647,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBlitzed(underdog, false)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Tenacious Underdog",
+          "count": 1
         },
         {
           "op": "assertLife",

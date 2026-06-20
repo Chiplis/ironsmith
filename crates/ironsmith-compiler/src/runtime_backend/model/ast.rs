@@ -1372,6 +1372,7 @@ pub(crate) enum SubjectVerbActionAst {
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
+        condition: Option<crate::ConditionExpr>,
     },
     RemoveAbilitiesAll {
         filter: ObjectFilter,
@@ -2831,11 +2832,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 filter,
                 abilities,
                 duration,
+                condition,
             } => f
                 .debug_struct("GrantAbilitiesAll")
                 .field("filter", filter)
                 .field("abilities", abilities)
                 .field("duration", duration)
+                .field("condition", condition)
                 .finish(),
             Self::RemoveAbilitiesAll {
                 filter,
@@ -4868,6 +4871,25 @@ impl EffectAst {
                 filter,
                 abilities,
                 duration,
+                condition: None,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_grant_abilities_all_with_condition(
+        filter: ObjectFilter,
+        abilities: Vec<GrantedAbilityAst>,
+        duration: Until,
+        condition: crate::ConditionExpr,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantAbilitiesAll {
+                filter,
+                abilities,
+                duration,
+                condition: Some(condition),
             },
         )
     }

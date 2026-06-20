@@ -7,12 +7,8 @@ registerPortedMageTests({
       "name": "test_WithoutStack",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "test",
-          "player": 0,
-          "name": false,
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"test\", playerA, new CustomStateTriggeredAbility(false))"
         },
         {
           "op": "addCard",
@@ -100,12 +96,8 @@ registerPortedMageTests({
       "name": "test_WithStack",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "test",
-          "player": 0,
-          "name": true,
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"test\", playerA, new CustomStateTriggeredAbility(true))"
         },
         {
           "op": "addCard",
@@ -211,12 +203,8 @@ registerPortedMageTests({
       "name": "test_GraspOfFate_DelayedTriggerMustResolveImmediately",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "test",
-          "player": 0,
-          "name": false,
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"test\", playerA, new CustomStateTriggeredAbility(false))"
         },
         {
           "op": "addCard",

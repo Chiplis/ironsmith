@@ -462,12 +462,8 @@ registerPortedMageTests({
       "name": "test_CopyOfSparksCopy_ByAbility",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "copy",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"copy\", playerA, ability)"
         },
         {
           "op": "addCard",

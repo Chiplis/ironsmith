@@ -300,6 +300,103 @@ registerPortedMageTests({
           "player": 0,
           "name": "Unstable Amulet",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Unstable Amulet"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{T}, Pay {E}{E}"
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Fire",
+          "expected": false
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Ice",
+          "expected": false
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Fire",
+          "expected": true
+        },
+        {
+          "op": "assertPlayableAbility",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "label": "Cast Ice",
+          "expected": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ice",
+          "target": "Unstable Amulet"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 19
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 2
+        },
+        {
+          "op": "unsupported",
+          "source": "assertTapped(amulet, true)"
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Volcanic Island",
+          "tapped": true,
+          "count": 2
         }
       ]
     },

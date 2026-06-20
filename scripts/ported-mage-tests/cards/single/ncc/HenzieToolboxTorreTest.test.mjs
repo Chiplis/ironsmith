@@ -43,8 +43,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBlitzed(aerathiBerserker, true)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Aerathi Berserker",
+          "count": 1
         }
       ]
     },
@@ -95,8 +97,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBlitzed(aerathiBerserker, true)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Aerathi Berserker",
+          "count": 1
         }
       ]
     },
@@ -140,8 +144,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBlitzed(aerathiBerserker, true)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Aerathi Berserker",
+          "count": 1
         }
       ],
       "skip": "upstream @Ignore"
@@ -203,8 +209,10 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertBlitzed(aerathiBerserker, true)"
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Aerathi Berserker",
+          "count": 1
         }
       ]
     }

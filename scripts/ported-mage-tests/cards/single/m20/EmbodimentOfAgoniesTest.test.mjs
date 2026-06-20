@@ -95,6 +95,42 @@ registerPortedMageTests({
           "player": 0,
           "name": "Embodiment of Agonies",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 0,
+          "name": "Turn // Burn",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 0,
+          "name": "Prophetic Bolt",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Embodiment of Agonies"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Embodiment of Agonies",
+          "power": 1,
+          "toughness": 1
         }
       ]
     },
@@ -114,6 +150,49 @@ registerPortedMageTests({
           "player": 0,
           "name": "Embodiment of Agonies",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 0,
+          "name": "Turn // Burn",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 0,
+          "name": "Divination",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 0,
+          "name": "Magma Jet",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Embodiment of Agonies"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPowerToughness",
+          "player": 0,
+          "name": "Embodiment of Agonies",
+          "power": 3,
+          "toughness": 3
         }
       ]
     },

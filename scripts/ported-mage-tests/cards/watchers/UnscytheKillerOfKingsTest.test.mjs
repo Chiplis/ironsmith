@@ -137,7 +137,8 @@ registerPortedMageTests({
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
           "name": "Lightning Bolt",
-          "target": "Craw Wurm"
+          "target": "Craw Wurm",
+          "waitForStack": "WHILE_NOT_ON_STACK"
         },
         {
           "op": "setStopAt",

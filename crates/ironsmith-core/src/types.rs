@@ -219,6 +219,7 @@ pub enum Subtype {
     Faerie,
     Fish,
     Fox,
+    Fractal,
     Frog,
     Fungus,
     Gamer,
@@ -519,6 +520,7 @@ impl Subtype {
             Subtype::Faerie,
             Subtype::Fish,
             Subtype::Fox,
+            Subtype::Fractal,
             Subtype::Frog,
             Subtype::Fungus,
             Subtype::Gamer,
@@ -859,6 +861,7 @@ impl Subtype {
                 | Subtype::Faerie
                 | Subtype::Fish
                 | Subtype::Fox
+                | Subtype::Fractal
                 | Subtype::Frog
                 | Subtype::Fungus
                 | Subtype::Gamer
@@ -1143,6 +1146,7 @@ mod tests {
         assert!(Subtype::Goblin.is_creature_type());
         assert!(Subtype::Bat.is_creature_type());
         assert!(Subtype::Pest.is_creature_type());
+        assert!(Subtype::Fractal.is_creature_type());
         assert!(!Subtype::Plains.is_creature_type());
         assert!(!Subtype::Equipment.is_creature_type());
     }

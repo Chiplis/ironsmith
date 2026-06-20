@@ -10,6 +10,10 @@ registerPortedMageTests({
           "op": "skipInitShuffling"
         },
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"tester\", playerA, LockeTreasureHunter.makeTestAbility())"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -84,10 +88,6 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertOptions(goblinMountaineer, zodiacGoat)"
-        },
-        {
           "op": "assertPermanentCount",
           "player": 0,
           "name": "Dwarven Grunt",
@@ -100,6 +100,10 @@ registerPortedMageTests({
       "operations": [
         {
           "op": "skipInitShuffling"
+        },
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"tester\", playerA, LockeTreasureHunter.makeTestAbility())"
         },
         {
           "op": "addCard",
@@ -187,10 +191,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertOptions()"
         },
         {
           "op": "assertPermanentCount",

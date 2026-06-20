@@ -11,12 +11,8 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addCard",
-          "zone": "add counter",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"add counter\", playerA, ability)"
         },
         {
           "op": "addCard",
@@ -95,12 +91,8 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addCard",
-          "zone": "add counter",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"add counter\", playerA, ability)"
         },
         {
           "op": "addCard",

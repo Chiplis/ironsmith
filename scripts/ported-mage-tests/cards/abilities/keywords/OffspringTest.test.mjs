@@ -45,8 +45,14 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Iridescent Vinelasher",
+          "count": "false ? 2 : 1"
+        },
+        {
           "op": "unsupported",
-          "source": "checkOffspring(vinelasher, 1, 2, false)"
+          "source": "assertTokenCount(playerA, vinelasher, false ? 1 : 0)"
         }
       ]
     },
@@ -92,8 +98,14 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Iridescent Vinelasher",
+          "count": "true ? 2 : 1"
+        },
+        {
           "op": "unsupported",
-          "source": "checkOffspring(vinelasher, 1, 2, true)"
+          "source": "assertTokenCount(playerA, vinelasher, true ? 1 : 0)"
         }
       ]
     }

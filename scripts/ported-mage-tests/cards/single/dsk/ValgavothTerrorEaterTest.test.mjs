@@ -663,7 +663,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "HAND",
           "player": 1,
-          "name": "\"Fire \n    private static final String fire = \"Fire\"",
+          "name": "Fire // Ice",
           "count": 1
         },
         {
@@ -709,7 +709,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "END_TURN",
           "player": 0,
-          "label": "Cast fire",
+          "label": "Cast Fire",
           "expected": false
         },
         {
@@ -717,7 +717,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "END_TURN",
           "player": 1,
-          "label": "Cast fire",
+          "label": "Cast Fire",
           "expected": true
         },
         {
@@ -741,7 +741,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "PRECOMBAT_MAIN",
           "player": 1,
-          "name": "fire",
+          "name": "Fire",
           "target": 0
         },
         {
@@ -769,7 +769,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "END_TURN",
           "player": 0,
-          "label": "Cast fire",
+          "label": "Cast Fire",
           "expected": false
         },
         {
@@ -777,7 +777,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "END_TURN",
           "player": 1,
-          "label": "Cast fire",
+          "label": "Cast Fire",
           "expected": false
         },
         {
@@ -823,7 +823,7 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "END_TURN",
           "player": 0,
-          "label": "Cast fire",
+          "label": "Cast Fire",
           "expected": true
         },
         {
@@ -831,7 +831,7 @@ registerPortedMageTests({
           "turn": 2,
           "phase": "END_TURN",
           "player": 1,
-          "label": "Cast fire",
+          "label": "Cast Fire",
           "expected": false
         },
         {
@@ -863,7 +863,7 @@ registerPortedMageTests({
           "turn": 3,
           "phase": "END_TURN",
           "player": 0,
-          "name": "fire",
+          "name": "Fire",
           "target": 1
         },
         {
@@ -931,7 +931,7 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "\"Akoum Warrior \n    private static final String warrior = \"Akoum Warrior\"",
+          "name": "Akoum Warrior // Akoum Teeth",
           "count": 5
         },
         {
@@ -967,7 +967,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast warrior",
+          "label": "Cast Akoum Warrior",
           "expected": true
         },
         {
@@ -983,7 +983,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "warrior"
+          "name": "Akoum Warrior"
         },
         {
           "op": "waitStackResolved",
@@ -996,7 +996,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "warrior"
+          "name": "Akoum Warrior"
         },
         {
           "op": "waitStackResolved",
@@ -1009,7 +1009,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "warrior"
+          "name": "Akoum Warrior"
         },
         {
           "op": "waitStackResolved",
@@ -1022,7 +1022,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast warrior",
+          "label": "Cast Akoum Warrior",
           "expected": false
         },
         {
@@ -1045,7 +1045,7 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "label": "Cast warrior",
+          "label": "Cast Akoum Warrior",
           "expected": false
         },
         {
@@ -1086,7 +1086,7 @@ registerPortedMageTests({
         {
           "op": "assertPermanentCount",
           "player": 0,
-          "name": "warrior",
+          "name": "Akoum Warrior",
           "count": 3
         },
         {

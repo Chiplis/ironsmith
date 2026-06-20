@@ -73,12 +73,8 @@ registerPortedMageTests({
       "name": "test_CopyOnPayLife_VariableCost",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "test",
-          "player": 0,
-          "name": "new SimpleActivatedAbility(\n                new GainLifeEffect(10), new PayVariableLifeCost()\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"test\", playerA, new SimpleActivatedAbility( new GainLifeEffect(10), new PayVariableLifeCost() ))"
         },
         {
           "op": "addCard",

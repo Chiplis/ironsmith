@@ -17,12 +17,8 @@ registerPortedMageTests({
           "zone": "library"
         },
         {
-          "op": "addCard",
-          "zone": "play any library on any creature",
-          "player": 0,
-          "name": "new SimpleStaticAbility(\n                Zone.ALL,\n                new ConditionalAsThoughEffect(\n                        new PlayFromNotOwnHandZoneAllEffect(\n                                StaticFilters.FILTER_CARD,\n                                Zone.LIBRARY,\n                                false,\n                                TargetController.ANY,\n                                Duration.EndOfTurn\n                        ),\n                        new PermanentsOnTheBattlefieldCondition(\n                                StaticFilters.FILTER_PERMANENT_CREATURE,\n                                ComparisonType.MORE_THAN,\n                                0\n                        )\n                )\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"play any library on any creature\", playerA, new SimpleStaticAbility( Zone.ALL, new ConditionalAsThoughEffect( new PlayFromNotOwnHandZoneAllEffect( StaticFilters.FILTER_CARD, Zone.LIBRARY, false, TargetController.ANY, Duration.EndOfTurn ), new PermanentsOnTheBattlefieldCondition( StaticFilters.FILTER_PERMANENT_CREATURE, ComparisonType.MORE_THAN, 0 ) ) ))"
         },
         {
           "op": "addCard",
@@ -149,12 +145,8 @@ registerPortedMageTests({
       "name": "test_PlayFromNotOwnHandZoneTargetEffect",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "play any opponent hand",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"play any opponent hand\", playerA, ability)"
         },
         {
           "op": "addCard",

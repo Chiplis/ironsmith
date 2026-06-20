@@ -11,12 +11,8 @@ registerPortedMageTests({
           "value": true
         },
         {
-          "op": "addCard",
-          "zone": "tap all creatures",
-          "player": 0,
-          "name": "new SimpleActivatedAbility(\n                new TapAllEffect(new FilterCreaturePermanent(SubType.BEAR, \"bears\")),\n                new ManaCostsImpl<>(\"\")\n        )",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"tap all creatures\", playerA, new SimpleActivatedAbility( new TapAllEffect(new FilterCreaturePermanent(SubType.BEAR, \"bears\")), new ManaCostsImpl<>(\"\") ))"
         },
         {
           "op": "addCard",

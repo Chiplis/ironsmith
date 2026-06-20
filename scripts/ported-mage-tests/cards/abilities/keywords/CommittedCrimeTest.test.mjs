@@ -2,21 +2,14 @@ import { registerPortedMageTests } from "../../../../mage-port-runner.mjs";
 
 registerPortedMageTests({
   "sourcePath": "scripts/cards/abilities/keywords/CommittedCrimeTest.java",
-  "setupOperations": [
-    {
-      "op": "addCard",
-      "zone": "BATTLEFIELD",
-      "player": 0,
-      "name": "tester",
-      "custom": true,
-      "typeLine": "Enchantment",
-      "oracleText": "Whenever you commit a crime, you gain 1 life."
-    }
-  ],
   "tests": [
     {
       "name": "testSpikeOpponent",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -67,6 +60,10 @@ registerPortedMageTests({
       "name": "testSpikeSelf",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -115,6 +112,10 @@ registerPortedMageTests({
     {
       "name": "testCounterSpellOpponent",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -180,6 +181,10 @@ registerPortedMageTests({
     {
       "name": "testCounterAbilityOpponent",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -258,6 +263,10 @@ registerPortedMageTests({
       "name": "testCounterSpellSelf",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -322,6 +331,10 @@ registerPortedMageTests({
     {
       "name": "testCounterAbilitySelf",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -395,6 +408,10 @@ registerPortedMageTests({
       "name": "testMurderOpponent",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -463,6 +480,10 @@ registerPortedMageTests({
     {
       "name": "testMurderSelf",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -533,6 +554,10 @@ registerPortedMageTests({
       "name": "testGraveyardOpponent",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -595,6 +620,10 @@ registerPortedMageTests({
     {
       "name": "testGraveyardSelf",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -659,6 +688,10 @@ registerPortedMageTests({
       "name": "testTriggerOpponent",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
+        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -705,6 +738,10 @@ registerPortedMageTests({
       "name": "testTriggerSelf",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
+        {
           "op": "addCard",
           "zone": "HAND",
           "player": 0,
@@ -745,6 +782,10 @@ registerPortedMageTests({
     {
       "name": "testActivateOpponent",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -787,6 +828,10 @@ registerPortedMageTests({
     {
       "name": "testActivateSelf",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"tester\", playerA, new CommittedCrimeTriggeredAbility(new GainLifeEffect(1), false) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",

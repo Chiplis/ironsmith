@@ -145,6 +145,58 @@ const WITH_DIFFERENT_POWERS_TAIL_PHRASES: &[&[&str]] = &[
     &["with", "different", "powers"],
     &["with", "different", "power"],
 ];
+const TOUGHNESS_GREATER_THAN_POWER_TAIL_PHRASES: &[&[&str]] = &[
+    &[
+        "that",
+        "each",
+        "have",
+        "toughness",
+        "greater",
+        "than",
+        "their",
+        "power",
+    ],
+    &[
+        "that",
+        "each",
+        "has",
+        "toughness",
+        "greater",
+        "than",
+        "its",
+        "power",
+    ],
+    &["with", "toughness", "greater", "than", "their", "power"],
+    &["with", "toughness", "greater", "than", "its", "power"],
+    &["with", "power", "less", "than", "their", "toughness"],
+    &["with", "power", "less", "than", "its", "toughness"],
+];
+const POWER_GREATER_THAN_TOUGHNESS_TAIL_PHRASES: &[&[&str]] = &[
+    &[
+        "that",
+        "each",
+        "have",
+        "power",
+        "greater",
+        "than",
+        "their",
+        "toughness",
+    ],
+    &[
+        "that",
+        "each",
+        "has",
+        "power",
+        "greater",
+        "than",
+        "its",
+        "toughness",
+    ],
+    &["with", "power", "greater", "than", "their", "toughness"],
+    &["with", "power", "greater", "than", "its", "toughness"],
+    &["with", "toughness", "less", "than", "their", "power"],
+    &["with", "toughness", "less", "than", "its", "power"],
+];
 const NOT_TOKEN_PREFIX: &[&str] = &["not", "token"];
 const AND_WORD: &str = "and";
 const IT_WORD: &str = "it";
@@ -524,6 +576,9 @@ fn parse_source_identity_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
     if !is_source_reference_clause(source) {
+        return None;
+    }
+    if clause_matches_phrase(source, &["it"]) {
         return None;
     }
     let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
@@ -1856,6 +1911,55 @@ fn parse_you_control_conjoined_predicate(
     Some(result)
 }
 
+fn matching_tail_phrase_len(
+    clause: LexedClause<'_>,
+    filter_start: usize,
+    filter_end: usize,
+    phrases: &[&[&str]],
+) -> Option<usize> {
+    phrases.iter().find_map(|phrase| {
+        let len = phrase.len();
+        (filter_end >= filter_start + len)
+            .then(|| clause.between_word_range(filter_end - len, filter_end))
+            .flatten()
+            .is_some_and(|tail| clause_matches_phrase(tail, phrase))
+            .then_some(len)
+    })
+}
+
+fn comparative_power_toughness_tail(
+    clause: LexedClause<'_>,
+    filter_start: usize,
+    filter_end: usize,
+) -> Option<(crate::filter::PowerToughnessRelation, usize)> {
+    matching_tail_phrase_len(
+        clause,
+        filter_start,
+        filter_end,
+        TOUGHNESS_GREATER_THAN_POWER_TAIL_PHRASES,
+    )
+    .map(|len| {
+        (
+            crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower,
+            len,
+        )
+    })
+    .or_else(|| {
+        matching_tail_phrase_len(
+            clause,
+            filter_start,
+            filter_end,
+            POWER_GREATER_THAN_TOUGHNESS_TAIL_PHRASES,
+        )
+        .map(|len| {
+            (
+                crate::filter::PowerToughnessRelation::PowerGreaterThanToughness,
+                len,
+            )
+        })
+    })
+}
+
 fn parse_player_controls_predicate(
     tokens: &[OwnedLexToken],
     player: PlayerAst,
@@ -1891,6 +1995,13 @@ fn parse_player_controls_predicate(
     }
 
     let mut requires_different_powers = false;
+    let mut power_toughness_relation = None;
+    if let Some((relation, tail_len)) =
+        comparative_power_toughness_tail(clause, filter_start, filter_end)
+    {
+        power_toughness_relation = Some(relation);
+        filter_end = filter_end.saturating_sub(tail_len);
+    }
     if allow_different_powers
         && filter_end >= filter_start + 3
         && clause
@@ -1924,6 +2035,9 @@ fn parse_player_controls_predicate(
     };
     if let Some(controller) = controller {
         filter.controller = Some(controller);
+    }
+    if let Some(relation) = power_toughness_relation {
+        filter.power_toughness_relation = Some(relation);
     }
 
     if let Some(count) = exact_count {
@@ -2665,6 +2779,18 @@ fn demonstrative_descriptor_filter_tokens(
     }
     if clause_word_at_is_any(clause, descriptor_start, IS_OR_ARE_WORDS) {
         descriptor_start += 1;
+    } else if clause_word_range_matches_any_phrase(
+        clause,
+        descriptor_start,
+        &[&["isnt"], &["isn't"], &["arent"], &["aren't"]],
+    ) {
+        descriptor_start += 1;
+        negative = true;
+    }
+
+    if clause_word_at_is_any(clause, descriptor_start, &["not"]) {
+        descriptor_start += 1;
+        negative = true;
     }
 
     let mut nontoken_prefix = false;
@@ -6799,7 +6925,21 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         {
             if let Some(filter) = parse_single_card_type_card_descriptor_tokens(&descriptor_tokens)
             {
-                return Ok(PredicateAst::ItMatches(filter));
+                let predicate = if filter.card_types.len() == 1
+                    && filter.card_types[0] == CardType::Land
+                    && filter.subtypes.is_empty()
+                    && !filter.nontoken
+                    && filter.excluded_card_types.is_empty()
+                {
+                    PredicateAst::ItIsLandCard
+                } else {
+                    PredicateAst::ItMatches(filter)
+                };
+                return Ok(if negative {
+                    PredicateAst::Not(Box::new(predicate))
+                } else {
+                    predicate
+                });
             }
             if let Ok(filter) = parse_object_filter_lexed(&descriptor_tokens, false)
                 && filter != ObjectFilter::default()
@@ -6811,7 +6951,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                     && !filter.nontoken
                     && filter.excluded_card_types.is_empty()
                 {
-                    return Ok(PredicateAst::ItIsLandCard);
+                    let predicate = PredicateAst::ItIsLandCard;
+                    return Ok(if negative {
+                        PredicateAst::Not(Box::new(predicate))
+                    } else {
+                        predicate
+                    });
                 }
                 if tagged_that_enchantment {
                     return Ok(PredicateAst::TaggedMatches(
@@ -7237,6 +7382,22 @@ mod tests {
             parsed,
             PredicateAst::ItMatches(ObjectFilter::permanent_card())
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_demonstrative_negated_land_card_keeps_it_reference()
+    -> Result<(), CardTextError> {
+        for text in ["If it isn't a land card", "If it is not a land card"] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::Not(Box::new(PredicateAst::ItIsLandCard)),
+                "{text}"
+            );
+        }
         Ok(())
     }
 

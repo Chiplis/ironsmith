@@ -76,6 +76,7 @@ def candidate_priority(card: dict) -> tuple:
         1 if str(card.get("lang") or "").strip().lower() == "en" else 0,
         1 if "paper" in normalize_games(card) else 0,
         1 if not bool(card.get("digital")) else 0,
+        1 if not bool(card.get("full_art")) else 0,
         str(card.get("released_at") or ""),
         str(card.get("set") or ""),
         str(card.get("collector_number") or ""),

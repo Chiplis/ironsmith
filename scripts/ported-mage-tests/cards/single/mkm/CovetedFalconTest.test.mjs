@@ -531,8 +531,85 @@ registerPortedMageTests({
       "name": "test_GiveGuardianBeastAndArtifactsA",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupGiveGuardianBeastAndArtifactsTest(true)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Guardian Beast",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Darksteel Relic",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Coveted Falcon",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Coveted Falcon using Disguise"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{1}{U}: Turn this face-down permanent face up."
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "true ? \"Guardian Beast^Darksteel Relic\" : \"Darksteel Relic^Guardian Beast\""
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Guardian Beast",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Darksteel Relic",
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
         }
       ],
       "skip": "upstream @Ignore"
@@ -541,8 +618,85 @@ registerPortedMageTests({
       "name": "test_GiveGuardianBeastAndArtifactsB",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "setupGiveGuardianBeastAndArtifactsTest(false)"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Island",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Guardian Beast",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Darksteel Relic",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Coveted Falcon",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Coveted Falcon using Disguise"
+        },
+        {
+          "op": "activateAbility",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "ability": "{1}{U}: Turn this face-down permanent face up."
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "false ? \"Guardian Beast^Darksteel Relic\" : \"Darksteel Relic^Guardian Beast\""
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Guardian Beast",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 1,
+          "name": "Darksteel Relic",
+          "count": 0
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
         }
       ],
       "skip": "upstream @Ignore"

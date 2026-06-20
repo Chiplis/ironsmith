@@ -1773,15 +1773,16 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     if matches!(verb, Verb::Get) {
-        let subject_tokens = &tokens[..verb_idx];
+        let verb_token_idx = token_index_for_word_index(tokens, verb_idx).unwrap_or(verb_idx);
+        let subject_tokens = &tokens[..verb_token_idx];
         if !subject_tokens.is_empty() {
             let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
             let subject_words = subject_word_view.to_word_refs();
             let collapsed_modifier_tail =
-                collapse_leading_signed_pt_modifier_tokens(&tokens[verb_idx + 1..]);
+                collapse_leading_signed_pt_modifier_tokens(&tokens[verb_token_idx + 1..]);
             let modifier_tail = collapsed_modifier_tail
                 .as_deref()
-                .unwrap_or(&tokens[verb_idx + 1..]);
+                .unwrap_or(&tokens[verb_token_idx + 1..]);
             let modifier_words = ClauseDispatchCompatWords::new(modifier_tail).to_word_refs();
             if modifier_words.len() == 11
                 && starts_with_until_end_of_turn(&modifier_words[1..])
@@ -1789,7 +1790,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     &modifier_words[5..],
                     &["for", "each", "card", "discarded", "this", "way"],
                 )
-                && let Some(mod_token) = modifier_tail.first().and_then(OwnedLexToken::as_word)
+                && let Some(mod_token) = modifier_tail.first().map(OwnedLexToken::parser_text)
                 && let Ok((power_per, toughness_per)) = parse_pt_modifier(mod_token)
             {
                 let target = parse_target_phrase(subject_tokens)?;
@@ -1802,7 +1803,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     Until::EndOfTurn,
                 ));
             }
-            if let Some(mod_token) = modifier_tail.first().and_then(OwnedLexToken::as_word)
+            if let Some(mod_token) = modifier_tail.first().map(OwnedLexToken::parser_text)
                 && let Ok((power, toughness)) = parse_pt_modifier_values(mod_token)
             {
                 let count = parse_get_for_each_count_value(modifier_tail)?.or_else(|| {
@@ -1892,9 +1893,8 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                 let target_controller_phrase =
                     dispatch_find_any_phrase_start(&subject_words, TARGET_CONTROLLER_PATTERNS);
                 if let Some((_, target_word_idx)) = target_controller_phrase
-                    && let Some(target_token_idx) = find_token_index(subject_tokens, |token| {
-                        token.as_word() == Some(TARGET_WORD)
-                    })
+                    && let Some(target_token_idx) =
+                        find_token_index(subject_tokens, |token| token.is_word(TARGET_WORD))
                     && let Ok(mut filter) = parse_object_filter(
                         &trim_commas(&subject_tokens[..target_token_idx]),
                         false,
@@ -1917,7 +1917,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     ));
                 }
 
-                if subject_words.iter().any(|word| *word == TARGET_WORD) {
+                if subject_tokens
+                    .iter()
+                    .any(|token| token.is_word(TARGET_WORD))
+                {
                     let target_tokens = if subject_tokens.first().is_some_and(|token| {
                         token
                             .as_word()
@@ -2060,9 +2063,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             && trailing_tokens.is_empty()
             && let Some(actions) = parsed_actions
             && !actions.is_empty()
-            && subject_words
+            && subject_tokens
                 .first()
-                .is_some_and(|word| *word == TARGET_WORD)
+                .is_some_and(|token| token.is_word(TARGET_WORD))
         {
             let target = parse_target_phrase(subject_tokens)?;
             let abilities = actions.into_iter().map(GrantedAbilityAst::from).collect();
@@ -2121,7 +2124,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             && trailing_tokens.is_empty()
             && let Some(actions) = parsed_actions
             && !actions.is_empty()
-            && subject_words.first().copied() == Some(TARGET_WORD)
+            && subject_tokens
+                .first()
+                .is_some_and(|token| token.is_word(TARGET_WORD))
         {
             let target = parse_target_phrase(subject_tokens)?;
             let abilities = actions.into_iter().map(GrantedAbilityAst::from).collect();

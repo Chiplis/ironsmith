@@ -211,6 +211,65 @@ registerPortedMageTests({
           "player": 0,
           "name": "Scholar of the Lost Trove",
           "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Scholar of the Lost Trove"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Fire // Ice"
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Cast Ice"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Scholar of the Lost Trove"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Scholar of the Lost Trove",
+          "tapped": true,
+          "count": 1
         }
       ]
     }

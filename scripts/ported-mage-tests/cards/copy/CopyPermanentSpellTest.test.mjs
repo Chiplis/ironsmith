@@ -7,6 +7,10 @@ registerPortedMageTests({
       "name": "testSimpleToken",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -46,6 +50,10 @@ registerPortedMageTests({
     {
       "name": "testAuraToken",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -105,6 +113,10 @@ registerPortedMageTests({
     {
       "name": "testAuraTokenRedirect",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -196,6 +208,10 @@ registerPortedMageTests({
       "name": "testKickerTrigger",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -255,6 +271,10 @@ registerPortedMageTests({
       "name": "testKickerReplacement",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -306,6 +326,10 @@ registerPortedMageTests({
     {
       "name": "testSurgeTrigger",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -367,6 +391,10 @@ registerPortedMageTests({
     {
       "name": "testBestow",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -433,6 +461,10 @@ registerPortedMageTests({
     {
       "name": "testBestowRedirect",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -538,6 +570,10 @@ registerPortedMageTests({
       "name": "testBestowFallOff",
       "operations": [
         {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
+        {
           "op": "addCard",
           "zone": "BATTLEFIELD",
           "player": 0,
@@ -623,6 +659,10 @@ registerPortedMageTests({
     {
       "name": "testBestowRedirectFallOff",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",
@@ -728,6 +768,10 @@ registerPortedMageTests({
     {
       "name": "testBestowIllegalTarget",
       "operations": [
+        {
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility( \"Forker\", playerA, new SpellCastControllerTriggeredAbility( new CopyTargetStackObjectEffect(true), StaticFilters.FILTER_SPELL, false, SetTargetPointer.SPELL ) )"
+        },
         {
           "op": "addCard",
           "zone": "BATTLEFIELD",

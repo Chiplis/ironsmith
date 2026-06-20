@@ -133,6 +133,66 @@ registerPortedMageTests({
           "player": 1,
           "name": "Forest",
           "count": 4
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Bound // Determined",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "END_TURN",
+          "player": 1,
+          "name": "Bound"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": "Child of Alara"
+        },
+        {
+          "op": "addTarget",
+          "player": 1,
+          "target": "Child of Alara"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 2,
+          "phase": "PRECOMBAT_MAIN"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertExileCount",
+          "player": 1,
+          "name": "Bound // Determined",
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 1,
+          "name": "Child of Alara",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "name": "Silvercoat Lion",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Icy Manipulator",
+          "count": 1
         }
       ]
     }

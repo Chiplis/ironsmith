@@ -228,6 +228,87 @@ registerPortedMageTests({
           "player": 0,
           "name": "Swamp",
           "count": 4
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "LIBRARY",
+          "player": 1,
+          "name": "Island",
+          "count": 1
+        },
+        {
+          "op": "skipInitShuffling"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Court of Locthwain"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Without paying manacost: "
+        },
+        {
+          "op": "castSpell",
+          "turn": 3,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Ice",
+          "target": "Grizzly Bears"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 3,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Swamp",
+          "tapped": true,
+          "count": 0
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 1,
+          "name": "Fire // Ice",
+          "count": 1
+        },
+        {
+          "op": "assertTappedCount",
+          "name": "Grizzly Bears",
+          "tapped": true,
+          "count": 1
+        },
+        {
+          "op": "assertHandCount",
+          "player": 0,
+          "count": 3
         }
       ]
     },

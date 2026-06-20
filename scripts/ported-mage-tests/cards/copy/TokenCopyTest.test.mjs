@@ -50,8 +50,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Kessig Prowler",
+          "count": 2
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Sinuous Predator",
+          "count": 0
+        },
+        {
           "op": "unsupported",
-          "source": "checkProwlers(1 + 1, 0)"
+          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents()) { switch (permanent.getName()) { case prowler: Assert.assertEquals(\"Power of \" + prowler + \" should be 2\", 2, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + prowler + \" should be 1\", 1, permanent.getToughness().getValue()); Assert.assertEquals(prowler + \" should be green\", ObjectColor.GREEN, permanent.getColor(currentGame)); Assert.assertTrue(prowler + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertTrue(prowler + \" should be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertFalse(prowler + \" should not be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertEquals(prowler + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertFalse(prowler + \" should not be transformed\", permanent.isTransformed()); break; case predator: Assert.assertEquals(\"Power of \" + predator + \" should be 4\", 4, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + predator + \" should be 4\", 4, permanent.getToughness().getValue()); Assert.assertTrue(predator + \" should be colorless\", permanent.getColor(currentGame).isColorless()); Assert.assertTrue(predator + \" should be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertTrue(predator + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertFalse(predator + \" should not be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertEquals(predator + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertTrue(prowler + \" should be transformed\", permanent.isTransformed()); break; } }"
         }
       ]
     },
@@ -128,8 +140,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Kessig Prowler",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Sinuous Predator",
+          "count": 2
+        },
+        {
           "op": "unsupported",
-          "source": "checkProwlers(0, 1 + 1)"
+          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents()) { switch (permanent.getName()) { case prowler: Assert.assertEquals(\"Power of \" + prowler + \" should be 2\", 2, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + prowler + \" should be 1\", 1, permanent.getToughness().getValue()); Assert.assertEquals(prowler + \" should be green\", ObjectColor.GREEN, permanent.getColor(currentGame)); Assert.assertTrue(prowler + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertTrue(prowler + \" should be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertFalse(prowler + \" should not be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertEquals(prowler + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertFalse(prowler + \" should not be transformed\", permanent.isTransformed()); break; case predator: Assert.assertEquals(\"Power of \" + predator + \" should be 4\", 4, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + predator + \" should be 4\", 4, permanent.getToughness().getValue()); Assert.assertTrue(predator + \" should be colorless\", permanent.getColor(currentGame).isColorless()); Assert.assertTrue(predator + \" should be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertTrue(predator + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertFalse(predator + \" should not be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertEquals(predator + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertTrue(prowler + \" should be transformed\", permanent.isTransformed()); break; } }"
         }
       ]
     },
@@ -193,8 +217,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Kessig Prowler",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Sinuous Predator",
+          "count": 2
+        },
+        {
           "op": "unsupported",
-          "source": "checkProwlers(0, 1 + 1)"
+          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents()) { switch (permanent.getName()) { case prowler: Assert.assertEquals(\"Power of \" + prowler + \" should be 2\", 2, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + prowler + \" should be 1\", 1, permanent.getToughness().getValue()); Assert.assertEquals(prowler + \" should be green\", ObjectColor.GREEN, permanent.getColor(currentGame)); Assert.assertTrue(prowler + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertTrue(prowler + \" should be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertFalse(prowler + \" should not be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertEquals(prowler + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertFalse(prowler + \" should not be transformed\", permanent.isTransformed()); break; case predator: Assert.assertEquals(\"Power of \" + predator + \" should be 4\", 4, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + predator + \" should be 4\", 4, permanent.getToughness().getValue()); Assert.assertTrue(predator + \" should be colorless\", permanent.getColor(currentGame).isColorless()); Assert.assertTrue(predator + \" should be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertTrue(predator + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertFalse(predator + \" should not be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertEquals(predator + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertTrue(prowler + \" should be transformed\", permanent.isTransformed()); break; } }"
         }
       ]
     },
@@ -244,8 +280,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Kessig Prowler",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Sinuous Predator",
+          "count": 0
+        },
+        {
           "op": "unsupported",
-          "source": "checkProwlers(1, 0)"
+          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents()) { switch (permanent.getName()) { case prowler: Assert.assertEquals(\"Power of \" + prowler + \" should be 2\", 2, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + prowler + \" should be 1\", 1, permanent.getToughness().getValue()); Assert.assertEquals(prowler + \" should be green\", ObjectColor.GREEN, permanent.getColor(currentGame)); Assert.assertTrue(prowler + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertTrue(prowler + \" should be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertFalse(prowler + \" should not be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertEquals(prowler + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertFalse(prowler + \" should not be transformed\", permanent.isTransformed()); break; case predator: Assert.assertEquals(\"Power of \" + predator + \" should be 4\", 4, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + predator + \" should be 4\", 4, permanent.getToughness().getValue()); Assert.assertTrue(predator + \" should be colorless\", permanent.getColor(currentGame).isColorless()); Assert.assertTrue(predator + \" should be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertTrue(predator + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertFalse(predator + \" should not be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertEquals(predator + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertTrue(prowler + \" should be transformed\", permanent.isTransformed()); break; } }"
         }
       ]
     },
@@ -302,8 +350,20 @@ registerPortedMageTests({
           "count": 1
         },
         {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Kessig Prowler",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "player": 0,
+          "name": "Sinuous Predator",
+          "count": 1
+        },
+        {
           "op": "unsupported",
-          "source": "checkProwlers(0, 1)"
+          "source": "for (Permanent permanent : currentGame.getBattlefield().getAllActivePermanents()) { switch (permanent.getName()) { case prowler: Assert.assertEquals(\"Power of \" + prowler + \" should be 2\", 2, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + prowler + \" should be 1\", 1, permanent.getToughness().getValue()); Assert.assertEquals(prowler + \" should be green\", ObjectColor.GREEN, permanent.getColor(currentGame)); Assert.assertTrue(prowler + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertTrue(prowler + \" should be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertFalse(prowler + \" should not be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertEquals(prowler + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertFalse(prowler + \" should not be transformed\", permanent.isTransformed()); break; case predator: Assert.assertEquals(\"Power of \" + predator + \" should be 4\", 4, permanent.getPower().getValue()); Assert.assertEquals(\"Toughness of \" + predator + \" should be 4\", 4, permanent.getToughness().getValue()); Assert.assertTrue(predator + \" should be colorless\", permanent.getColor(currentGame).isColorless()); Assert.assertTrue(predator + \" should be an Eldrazi\", permanent.hasSubtype(SubType.ELDRAZI, currentGame)); Assert.assertTrue(predator + \" should be a Werewolf\", permanent.hasSubtype(SubType.WEREWOLF, currentGame)); Assert.assertFalse(predator + \" should not be a Horror\", permanent.hasSubtype(SubType.HORROR, currentGame)); Assert.assertEquals(predator + \" should have mana value 1\", 1, permanent.getManaValue()); Assert.assertTrue(prowler + \" should be transformed\", permanent.isTransformed()); break; } }"
         }
       ]
     }

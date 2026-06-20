@@ -2450,12 +2450,8 @@ registerPortedMageTests({
       "name": "testAbilityCantBeCopied",
       "operations": [
         {
-          "op": "addCard",
-          "zone": "activator",
-          "player": 0,
-          "name": 1,
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"activator\", playerA, new SimpleActivatedAbility(new GainLifeEffect(1), new TapSourceCost()).withCanBeCopied(false))"
         },
         {
           "op": "addCard",

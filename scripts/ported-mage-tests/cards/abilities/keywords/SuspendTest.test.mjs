@@ -762,6 +762,138 @@ registerPortedMageTests({
           "player": 0,
           "name": "Island",
           "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plains",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Bident of Thassa",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Bow of Nylea",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Wear",
+          "target": "Bident of Thassa"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Delay",
+          "target": "Wear"
+        },
+        {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": null
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Bident of Thassa",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Bow of Nylea",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Cast Wear"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Bident of Thassa"
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Bident of Thassa",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Bow of Nylea",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 7,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
         }
       ]
     },
@@ -781,6 +913,141 @@ registerPortedMageTests({
           "player": 0,
           "name": "Island",
           "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plains",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Bident of Thassa",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Bow of Nylea",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "fused Wear // Tear"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Bident of Thassa"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Bow of Nylea"
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Delay",
+          "target": "Cast fused Wear // Tear"
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Bident of Thassa",
+          "count": 1
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 1,
+          "name": "Bow of Nylea",
+          "count": 1
+        },
+        {
+          "op": "assertExileCount",
+          "turn": 1,
+          "phase": "POSTCOMBAT_MAIN",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": true
+        },
+        {
+          "op": "setChoice",
+          "player": 0,
+          "value": "Cast Wear"
+        },
+        {
+          "op": "addTarget",
+          "player": 0,
+          "target": "Bident of Thassa"
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Bident of Thassa",
+          "count": 0
+        },
+        {
+          "op": "assertPermanentCount",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 1,
+          "name": "Bow of Nylea",
+          "count": 1
+        },
+        {
+          "op": "assertGraveyardCount",
+          "turn": 7,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Wear // Tear",
+          "count": 1
+        },
+        {
+          "op": "setStrictChooseMode",
+          "value": true
+        },
+        {
+          "op": "setStopAt",
+          "turn": 7,
+          "phase": "END_TURN"
+        },
+        {
+          "op": "execute"
         }
       ]
     },

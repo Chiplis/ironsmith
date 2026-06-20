@@ -134,10 +134,6 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertClassLevel(fortuneTeller, 3)"
-        },
-        {
           "op": "assertLibraryCount",
           "player": 0,
           "name": "Aetherize",

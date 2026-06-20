@@ -284,7 +284,19 @@ fn is_less_or_fewer_word(word: &str) -> bool {
 
 fn word_refs_reference_prior_effect_objects(words: &[&str]) -> bool {
     value_helper_find_exact_phrase(words, THIS_WAY_PHRASE).is_some()
-        || value_helper_words_contain_any(words, PRIOR_EFFECT_OBJECT_MARKER_WORDS)
+        || words.iter().enumerate().any(|(idx, word)| {
+            if !PRIOR_EFFECT_OBJECT_MARKER_WORDS.contains(word) {
+                return false;
+            }
+            if *word == "chosen"
+                && words
+                    .get(idx + 1)
+                    .is_some_and(|next| matches!(*next, "type" | "color"))
+            {
+                return false;
+            }
+            true
+        })
 }
 
 fn effect_metric_source_for_prior_effect_words(words: &[&str]) -> EffectMetricSource {

@@ -64,6 +64,58 @@ const COMBAT_WITH_DIFFERENT_POWER_SUFFIXES: &[&[&str]] = &[
     &["with", "different", "powers"],
     &["with", "different", "power"],
 ];
+const COMBAT_TOUGHNESS_GREATER_THAN_POWER_SUFFIXES: &[&[&str]] = &[
+    &[
+        "that",
+        "each",
+        "have",
+        "toughness",
+        "greater",
+        "than",
+        "their",
+        "power",
+    ],
+    &[
+        "that",
+        "each",
+        "has",
+        "toughness",
+        "greater",
+        "than",
+        "its",
+        "power",
+    ],
+    &["with", "toughness", "greater", "than", "their", "power"],
+    &["with", "toughness", "greater", "than", "its", "power"],
+    &["with", "power", "less", "than", "their", "toughness"],
+    &["with", "power", "less", "than", "its", "toughness"],
+];
+const COMBAT_POWER_GREATER_THAN_TOUGHNESS_SUFFIXES: &[&[&str]] = &[
+    &[
+        "that",
+        "each",
+        "have",
+        "power",
+        "greater",
+        "than",
+        "their",
+        "toughness",
+    ],
+    &[
+        "that",
+        "each",
+        "has",
+        "power",
+        "greater",
+        "than",
+        "its",
+        "toughness",
+    ],
+    &["with", "power", "greater", "than", "their", "toughness"],
+    &["with", "power", "greater", "than", "its", "toughness"],
+    &["with", "toughness", "less", "than", "their", "power"],
+    &["with", "toughness", "less", "than", "its", "power"],
+];
 const COMBAT_AT_WORD: &str = "at";
 const COMBAT_OTHER_WORDS: &[&str] = &["another", "other"];
 
@@ -289,9 +341,39 @@ pub(crate) fn parse_attach_object_phrase(
 
     if let Some(shape) = parse_attach_tagged_object_shape(tokens) {
         if let Some(tagged_filter) = attach_tagged_filter(shape) {
-            return Ok(TargetAst::Object(tagged_filter, object_span, None));
+            return Ok(TargetAst::Object(tagged_filter, None, None));
         }
         return Ok(TargetAst::Tagged(TagKey::from(IT_TAG), object_span));
+    }
+
+    if let Some((count, used)) = parse_choice_count_token_prefix_consumed(tokens) {
+        let counted_tokens = trim_commas(&tokens[used..]);
+        if counted_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing counted attachment object (clause: '{}')",
+                object_words.join(" ")
+            )));
+        }
+
+        if counted_tokens
+            .first()
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|word| COMBAT_TARGET_OR_TARGETS_WORDS.contains(&word))
+        {
+            return Ok(TargetAst::WithCount(
+                Box::new(parse_target_phrase(&counted_tokens)?),
+                count,
+            ));
+        }
+
+        let mut filter = parse_object_filter(&counted_tokens, false)?;
+        if filter.zone.is_none() {
+            filter.zone = Some(Zone::Battlefield);
+        }
+        return Ok(TargetAst::WithCount(
+            Box::new(TargetAst::Object(filter, None, None)),
+            count,
+        ));
     }
 
     if crate::runtime_backend::lexer::token_slice_first_is(tokens, "target")
@@ -433,7 +515,7 @@ fn parse_attached_object_reference(tokens: &[OwnedLexToken]) -> Option<TargetAst
     }
     .match_tagged(TagKey::from(tag), TaggedOpbjectRelation::IsTaggedObject);
     filter.zone = Some(Zone::Battlefield);
-    Some(TargetAst::Object(filter, span_from_tokens(tokens), None))
+    Some(TargetAst::Object(filter, None, None))
 }
 
 pub(crate) fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -1154,6 +1236,35 @@ pub(crate) fn parse_deal_damage_with_amount(
     Ok(EffectAst::subject_verb_damage(amount, target))
 }
 
+fn words_end_with_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    words.len() >= phrase.len() && words[words.len() - phrase.len()..] == *phrase
+}
+
+fn combat_comparative_power_toughness_suffix(
+    words: &[&str],
+) -> Option<(crate::filter::PowerToughnessRelation, usize)> {
+    COMBAT_TOUGHNESS_GREATER_THAN_POWER_SUFFIXES
+        .iter()
+        .find(|phrase| words_end_with_phrase(words, phrase))
+        .map(|phrase| {
+            (
+                crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower,
+                phrase.len(),
+            )
+        })
+        .or_else(|| {
+            COMBAT_POWER_GREATER_THAN_TOUGHNESS_SUFFIXES
+                .iter()
+                .find(|phrase| words_end_with_phrase(words, phrase))
+                .map(|phrase| {
+                    (
+                        crate::filter::PowerToughnessRelation::PowerGreaterThanToughness,
+                        phrase.len(),
+                    )
+                })
+        })
+}
+
 pub(crate) fn parse_instead_if_control_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
@@ -1188,6 +1299,20 @@ pub(crate) fn parse_instead_if_control_predicate(
     }
     let mut filter_tokens = trim_commas(filter_tokens);
     let mut requires_different_powers = false;
+    let mut power_toughness_relation = None;
+    let comparative_tail = {
+        let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
+        combat_comparative_power_toughness_suffix(&filter_words).map(|(relation, suffix_words)| {
+            let cut_word_idx = filter_words.len().saturating_sub(suffix_words);
+            let cut_token_idx = token_index_for_word_index(&filter_tokens, cut_word_idx)
+                .unwrap_or(filter_tokens.len());
+            (relation, cut_token_idx)
+        })
+    };
+    if let Some((relation, cut_token_idx)) = comparative_tail {
+        power_toughness_relation = Some(relation);
+        filter_tokens = trim_commas(&filter_tokens[..cut_token_idx]);
+    }
     if word_slice_ends_with_any(
         &crate::runtime_backend::token_word_refs(&filter_tokens),
         COMBAT_WITH_DIFFERENT_POWER_SUFFIXES,
@@ -1207,7 +1332,10 @@ pub(crate) fn parse_instead_if_control_predicate(
         .first()
         .and_then(OwnedLexToken::as_word)
         .is_some_and(|word| COMBAT_OTHER_WORDS.contains(&word));
-    let filter = parse_object_filter(&filter_tokens, other)?;
+    let mut filter = parse_object_filter(&filter_tokens, other)?;
+    if let Some(relation) = power_toughness_relation {
+        filter.power_toughness_relation = Some(relation);
+    }
     if let Some(count) = min_count {
         if requires_different_powers {
             return Ok(Some(PredicateAst::PlayerHasAtLeastWithDifferentPowers {

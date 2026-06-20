@@ -28,12 +28,8 @@ registerPortedMageTests({
           "count": 1
         },
         {
-          "op": "addCard",
-          "zone": "all attacks",
-          "player": 0,
-          "name": "ability",
-          "custom": true,
-          "oracleText": ""
+          "op": "unsupported",
+          "source": "addCustomCardWithAbility(\"all attacks\", playerA, ability)"
         },
         {
           "op": "assertPermanentCount",

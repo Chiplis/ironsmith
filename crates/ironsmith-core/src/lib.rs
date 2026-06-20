@@ -149,8 +149,9 @@ pub use effect_model::{Comparison, EventValueSpec, ValueComparisonOperator};
 pub use event_model::KeywordActionKind;
 pub use filter_model::{
     AlternativeCastKind, Comparison as FilterComparison, CounterConstraint, ObjectFilter,
-    ObjectRef, ParityRequirement, PlayerFilter, PtReference, SourcePowerRelation, StackObjectKind,
-    TaggedObjectConstraint, TaggedOpbjectRelation, TargetabilityConstraint,
+    ObjectRef, ParityRequirement, PlayerFilter, PowerToughnessRelation, PtReference,
+    SourcePowerRelation, StackObjectKind, TaggedObjectConstraint, TaggedOpbjectRelation,
+    TargetabilityConstraint,
 };
 pub use grant_model::{
     DerivedAlternativeCast, GrantDuration, GrantSpec, GrantStaticAbility, GrantUsageLimit,

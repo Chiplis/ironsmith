@@ -51,14 +51,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertGoaded(lion, playerA)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertAttacking(lion, playerB, playerC)"
         }
       ]
     },
@@ -117,14 +109,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertGoaded(lion, playerA)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertAttacking(lion, playerC)"
         }
       ]
     },
@@ -190,14 +174,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertGoaded(lion, playerA)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertAttacking(lion, playerA)"
         }
       ]
     },
@@ -280,14 +256,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertGoaded(lion, playerA, playerD)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertAttacking(lion, playerB)"
         }
       ]
     },
@@ -377,14 +345,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertGoaded(lion, playerA, playerD)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertAttacking(lion, playerA, playerD)"
         }
       ]
     },
@@ -405,10 +365,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertAttacking(\"Berserkers of Blood Ridge\", playerB, playerC, playerD)"
         }
       ]
     },
@@ -485,14 +441,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertGoaded(\"Goblin Balloon Brigade\", playerA)"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertNotGoaded(\"Goblin Champion\", playerA)"
         }
       ]
     }

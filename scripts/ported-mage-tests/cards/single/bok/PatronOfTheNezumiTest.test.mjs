@@ -7,8 +7,39 @@ registerPortedMageTests({
       "name": "testEffectWithTokens",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "this.setupTest()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Patron of the Nezumi",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Swamp",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plains",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Sinkhole",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Elesh Norn, Grand Cenobite",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -67,8 +98,39 @@ registerPortedMageTests({
       "name": "testEffectWithRIP",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "this.setupTest()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Patron of the Nezumi",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Swamp",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plains",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Sinkhole",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Elesh Norn, Grand Cenobite",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -120,8 +182,39 @@ registerPortedMageTests({
       "name": "testEffectWithCreatures",
       "operations": [
         {
-          "op": "unsupported",
-          "source": "this.setupTest()"
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Patron of the Nezumi",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Swamp",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Plains",
+          "count": 5
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Sinkhole",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Elesh Norn, Grand Cenobite",
+          "count": 1
         },
         {
           "op": "addCard",

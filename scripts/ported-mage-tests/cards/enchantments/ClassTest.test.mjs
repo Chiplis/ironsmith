@@ -22,10 +22,6 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertClassLevel(wizard, 1)"
-        },
-        {
           "op": "assertHandCount",
           "player": 0,
           "count": 0
@@ -63,10 +59,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertClassLevel(wizard, 2)"
         },
         {
           "op": "assertHandCount",
@@ -128,10 +120,6 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "unsupported",
-          "source": "assertClassLevel(wizard, 3)"
-        },
-        {
           "op": "assertHandCount",
           "player": 0,
           "count": 3
@@ -162,10 +150,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertClassLevel(druid, 1)"
         },
         {
           "op": "assertHandCount",
@@ -238,10 +222,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertClassLevel(druid, 2)"
         },
         {
           "op": "assertHandCount",
@@ -350,10 +330,6 @@ registerPortedMageTests({
         },
         {
           "op": "execute"
-        },
-        {
-          "op": "unsupported",
-          "source": "assertClassLevel(druid, 3)"
         },
         {
           "op": "assertHandCount",

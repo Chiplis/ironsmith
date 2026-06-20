@@ -5,7 +5,7 @@ registerPortedMageTests({
   "tests": [
     {
       "name": "testClashYouWin",
-      "setupOperations": [
+      "operations": [
         {
           "op": "setStrictChooseMode",
           "value": true
@@ -57,9 +57,7 @@ registerPortedMageTests({
         },
         {
           "op": "skipInitShuffling"
-        }
-      ],
-      "operations": [
+        },
         {
           "op": "addCard",
           "zone": "LIBRARY",
@@ -108,7 +106,7 @@ registerPortedMageTests({
     },
     {
       "name": "testClashOppWin",
-      "setupOperations": [
+      "operations": [
         {
           "op": "setStrictChooseMode",
           "value": true
@@ -160,9 +158,7 @@ registerPortedMageTests({
         },
         {
           "op": "skipInitShuffling"
-        }
-      ],
-      "operations": [
+        },
         {
           "op": "addCard",
           "zone": "LIBRARY",
@@ -222,7 +218,7 @@ registerPortedMageTests({
     },
     {
       "name": "testClashNoWin",
-      "setupOperations": [
+      "operations": [
         {
           "op": "setStrictChooseMode",
           "value": true
@@ -274,9 +270,7 @@ registerPortedMageTests({
         },
         {
           "op": "skipInitShuffling"
-        }
-      ],
-      "operations": [
+        },
         {
           "op": "castSpell",
           "turn": 1,

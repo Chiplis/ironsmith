@@ -4143,6 +4143,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_target_phrase_recognizes_nonattacking_nonblocking_target_creature() {
+        let tokens = lex_line("target nonattacking, nonblocking creature", 0).unwrap();
+        let target = parse_target_phrase(&tokens)
+            .expect("nonattacking nonblocking target creature should parse");
+
+        let TargetAst::Object(filter, target_span, _) = target else {
+            panic!("expected target object, got {target:?}");
+        };
+        assert!(target_span.is_some(), "expected explicit target span");
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(
+            filter.nonattacking,
+            "expected nonattacking filter: {filter:?}"
+        );
+        assert!(
+            filter.nonblocking,
+            "expected nonblocking filter: {filter:?}"
+        );
+    }
+
+    #[test]
     fn parse_number_accepts_numeric_word_with_trailing_period() {
         let tokens = lex_line("2.", 0).unwrap();
         let (value, used) =

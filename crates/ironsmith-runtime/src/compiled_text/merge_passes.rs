@@ -1945,6 +1945,12 @@ fn render_same_true_keyword_grant_condition(
         if condition.eq_ignore_ascii_case(&graveyard_pattern) {
             return format!("a creature card in your graveyard has {keyword}");
         }
+
+        let graveyard_exists_pattern =
+            format!("there is a creature card with {keyword} in your graveyard");
+        if condition.eq_ignore_ascii_case(&graveyard_exists_pattern) {
+            return format!("a creature card in your graveyard has {keyword}");
+        }
     }
     condition.to_string()
 }
