@@ -1174,11 +1174,17 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let mut leading_effects = subject_prelude.leading_effects;
     let wrap_each_target_player =
         search_library_subject_wraps_each_target_player_lexed(subject_tokens);
+    let player_iteration_filter =
+        search_library_subject_player_iteration_filter_lexed(subject_tokens);
     let iterated_subject_filter =
         parse_search_library_iterated_object_subject_lexed(subject_tokens)?;
-    let chooser = match parse_subject(subject_tokens) {
-        SubjectAst::Player(player) => player,
-        _ => PlayerAst::Implicit,
+    let chooser = if player_iteration_filter.is_some() {
+        PlayerAst::That
+    } else {
+        match parse_subject(subject_tokens) {
+            SubjectAst::Player(player) => player,
+            _ => PlayerAst::Implicit,
+        }
     };
     crate::parse_trace::event(format!(
         "effect-route: subject-verb verb=Search subject={}",
@@ -1740,6 +1746,17 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 player: chooser,
                 effects,
             }
+        }];
+    }
+
+    if let Some(filter) = player_iteration_filter {
+        effects = vec![match filter {
+            PlayerFilter::Opponent => EffectAst::ForEachOpponent { effects },
+            PlayerFilter::Any => EffectAst::ForEachPlayer { effects },
+            other => EffectAst::ForEachPlayersFiltered {
+                filter: other,
+                effects,
+            },
         }];
     }
 

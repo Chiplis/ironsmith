@@ -28,6 +28,32 @@ use crate::types::{CardType, Subtype};
 #[allow(unused_imports)]
 use crate::zone::Zone;
 
+pub(crate) fn parse_artifact_enchantment_or_token_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<ObjectFilter> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !words
+        .iter()
+        .any(|word| *word == "token" || *word == "tokens")
+        || !words
+            .iter()
+            .any(|word| *word == "artifact" || *word == "artifacts")
+        || !words
+            .iter()
+            .any(|word| *word == "enchantment" || *word == "enchantments")
+    {
+        return None;
+    }
+
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![
+        ObjectFilter::artifact(),
+        ObjectFilter::enchantment(),
+        ObjectFilter::default().token(),
+    ];
+    Some(filter)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TokenCopyFollowup {
     HasHaste,

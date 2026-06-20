@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::effect_sentences::parse_artifact_enchantment_or_token_filter;
 use crate::runtime_backend::front_end::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
 };
@@ -860,7 +861,13 @@ pub(crate) fn parse_sacrifice_any_number_sentence_matched(
         )));
     }
 
-    let filter = sacrifice_choice_filter(parse_object_filter(filter_clause.tokens(), false)?);
+    let parsed_filter =
+        if let Some(filter) = parse_artifact_enchantment_or_token_filter(filter_clause.tokens()) {
+            filter
+        } else {
+            parse_object_filter(filter_clause.tokens(), false)?
+        };
+    let filter = sacrifice_choice_filter(parsed_filter);
     let tag = TagKey::from(IT_TAG);
 
     let mut effects = vec![
@@ -937,7 +944,13 @@ pub(crate) fn parse_sacrifice_one_or_more_sentence_matched(
             clause.text()
         )));
     }
-    let filter = sacrifice_choice_filter(parse_object_filter(filter_clause.tokens(), false)?);
+    let parsed_filter =
+        if let Some(filter) = parse_artifact_enchantment_or_token_filter(filter_clause.tokens()) {
+            filter
+        } else {
+            parse_object_filter(filter_clause.tokens(), false)?
+        };
+    let filter = sacrifice_choice_filter(parsed_filter);
     let tag = TagKey::from(IT_TAG);
     Ok(Some(vec![
         EffectAst::ChooseObjects {

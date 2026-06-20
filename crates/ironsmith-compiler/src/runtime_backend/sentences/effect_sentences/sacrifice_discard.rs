@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::effect_sentences::parse_artifact_enchantment_or_token_filter;
 use crate::runtime_backend::lexer::{
     word_slice_contains_any_phrase, word_slice_eq, word_slice_eq_any,
 };
@@ -477,6 +478,8 @@ pub(crate) fn parse_sacrifice(
             tagged_filter.token = true;
         }
         tagged_filter
+    } else if let Some(filter) = parse_artifact_enchantment_or_token_filter(filter_tokens) {
+        filter
     } else {
         parse_object_filter_lexed(filter_tokens, other)?
     };

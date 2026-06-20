@@ -1461,6 +1461,33 @@ pub(crate) fn split_if_clause_lexed(
     tokens: &[OwnedLexToken],
     mut parse_effects: impl FnMut(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<IfClauseSplitSpec, CardTextError> {
+    fn split_leaves_player_may_search_subject(tokens: &[OwnedLexToken], split_idx: usize) -> bool {
+        let effect_words =
+            TokenWordView::new(trim_lexed_commas(&tokens[split_idx..])).to_word_refs();
+        if !effect_words
+            .first()
+            .is_some_and(|word| matches!(*word, "search" | "searches"))
+        {
+            return false;
+        }
+
+        let predicate_words =
+            TokenWordView::new(trim_lexed_commas(&tokens[..split_idx])).to_word_refs();
+        word_slice_ends_with_any(
+            &predicate_words,
+            &[
+                &["its", "controller", "may"],
+                &["its", "controllers", "may"],
+                &["its", "owner", "may"],
+                &["its", "owners", "may"],
+                &["that", "player", "may"],
+                &["target", "player", "may"],
+                &["that", "opponent", "may"],
+                &["target", "opponent", "may"],
+            ],
+        )
+    }
+
     let parse_effects_with_leading_instead =
         |effect_tokens: &[OwnedLexToken],
          parse_effects: &mut dyn FnMut(
@@ -1520,6 +1547,9 @@ pub(crate) fn split_if_clause_lexed(
         .collect::<Vec<_>>();
     if comma_indices.is_empty() {
         for split_idx in (2..tokens.len()).rev() {
+            if split_leaves_player_may_search_subject(tokens, split_idx) {
+                continue;
+            }
             let predicate_tokens = &tokens[1..split_idx];
             let effect_tokens = trim_lexed_commas(&tokens[split_idx..]);
             if effect_tokens.is_empty() {

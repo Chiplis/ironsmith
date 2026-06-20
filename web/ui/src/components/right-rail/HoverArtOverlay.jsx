@@ -1002,7 +1002,7 @@ export default function HoverArtOverlay({
   const displayZoneLine = debugInspector ? null : zoneLine;
   const displayCountersLine = debugInspector ? null : countersLine;
   const displayManaCost = debugInspector ? null : manaCost;
-  const displayStatsText = debugInspector ? null : statsText;
+  const displayStatsText = debugInspector || transitionTitle ? null : statsText;
   const displayTopLeftDetailLines = useMemo(
     () => [displayTypeLine].filter(Boolean),
     [displayTypeLine]

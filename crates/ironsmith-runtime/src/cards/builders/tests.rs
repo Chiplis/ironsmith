@@ -19313,6 +19313,37 @@ fn parse_sacrifice_any_number_then_draw_that_many_uses_sacrifice_result_count() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_sacrifice_any_number_then_return_that_many_uses_sacrifice_result_count() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lich Variant")
+        .parse_text(
+            "Sacrifice any number of artifacts, enchantments, and/or tokens. Return that many creature cards from your graveyard to the battlefield.",
+        )
+        .expect("sacrifice-any-number then return-that-many should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("any_of")
+            && debug.contains("Artifact")
+            && debug.contains("Enchantment")
+            && debug.contains("token: true"),
+        "expected sacrifice choice to include artifacts, enchantments, or tokens, got {debug}"
+    );
+    assert!(
+        debug.contains("EffectValue") && debug.contains("ReturnFromGraveyardToBattlefieldEffect"),
+        "expected return count to reference sacrifice result count, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Sacrifice any number of artifacts, enchantments, and/or tokens. Return that many creature cards from your graveyard to the battlefield"
+        ),
+        "expected oracle-like sacrifice/return rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_remove_all_counters_cost_binds_that_much_to_cost_x() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Relic Variant")
         .card_types(vec![CardType::Artifact])
@@ -28562,6 +28593,104 @@ fn parse_each_player_may_shuffle_hand_and_graveyard_keeps_player_scope() {
         !rendered.contains("if you do, draw 7 cards")
             && !rendered.contains("if you do, draw seven cards"),
         "{rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_each_player_may_search_their_library_then_shuffle_keeps_player_scope() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Noble Variant")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "When this creature dies, each player may search their library for a card and put that card into their hand. Then each player who searched their library this way shuffles.",
+        )
+        .expect("each-player may-search clause should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    let compact_debug = debug.split_whitespace().collect::<String>();
+    assert!(
+        compact_debug.contains("ForPlayersEffect")
+            && compact_debug.contains("MayEffect")
+            && compact_debug.contains("decider:Some(IteratedPlayer")
+            && compact_debug.contains("owner:Some(IteratedPlayer")
+            && compact_debug.contains("chooser:IteratedPlayer")
+            && compact_debug.contains("ShuffleLibraryEffect")
+            && compact_debug.contains("player:IteratedPlayer"),
+        "expected iterated-player search and shuffle scope, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "each player may search their library for a card and put that card into their hand"
+        ) && rendered.contains("each player who searched their library this way shuffles"),
+        "expected oracle-like per-player search rendering, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("you may search your library"),
+        "search should not default to you, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_controller_may_search_their_library_does_not_default_to_you() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Path Variant")
+        .parse_text(
+            "Exile target creature. Its controller may search their library for a basic land card, put that card onto the battlefield tapped, then shuffle.",
+        )
+        .expect("controller may-search clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("owner: Some(ControllerOf"),
+        "expected searched library owner to be the target object's controller, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("controller may search their library")
+            && rendered.contains("battlefield tapped"),
+        "expected controller-owned search rendering, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("search your library"),
+        "controller search should not default to you, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_destroyed_land_controller_may_search_their_library_keeps_controller_scope() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Rampage Variant")
+        .parse_text(
+            "Destroy target artifact, enchantment, or land. If a land was destroyed this way, its controller may search their library for up to two basic land cards, put them onto the battlefield tapped, then shuffle. Otherwise, its controller may search their library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+        )
+        .expect("destroyed-land controller may-search clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    let compact_debug = debug.split_whitespace().collect::<String>();
+    assert!(
+        compact_debug.contains("owner:Some(ControllerOf(Tagged")
+            && compact_debug.contains("chooser:ControllerOf(Tagged"),
+        "expected destroyed land's controller to own and choose the search, got {debug}"
+    );
+    assert!(
+        !compact_debug.contains("owner:Some(You)") && !compact_debug.contains("chooser:You"),
+        "controller search should not lower as a you-owned search, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("controller may search their library")
+            && rendered.contains("up to two basic land cards"),
+        "expected controller-owned destroyed-land search rendering, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("may have you search your library")
+            && !rendered.contains("search your library"),
+        "destroyed-land controller search should not default to you, got {rendered}"
     );
 }
 

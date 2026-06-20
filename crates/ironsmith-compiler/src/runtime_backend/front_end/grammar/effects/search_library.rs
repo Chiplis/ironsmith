@@ -936,7 +936,15 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
             PlayerAst::Target => PlayerFilter::target_player(),
             PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
             PlayerAst::Opponent => PlayerFilter::Opponent,
-            PlayerAst::That => PlayerFilter::IteratedPlayer,
+            PlayerAst::NotYou => PlayerFilter::NotYou,
+            PlayerAst::That | PlayerAst::Any => PlayerFilter::IteratedPlayer,
+            PlayerAst::ThatPlayerOrTargetController => {
+                PlayerFilter::TargetPlayerOrControllerOfTarget
+            }
+            PlayerAst::ItsController => {
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+            }
+            PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
             _ => PlayerFilter::You,
         });
         search_zones_override = Some(vec![Zone::Library, Zone::Graveyard]);
@@ -944,7 +952,23 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         search_body_words,
         YOUR_OR_THEIR_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
-        // Keep player from parsed subject/default context.
+        if search_body_words.first() == Some(&"their") {
+            forced_library_owner = Some(match chooser {
+                PlayerAst::Target => PlayerFilter::target_player(),
+                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                PlayerAst::Opponent => PlayerFilter::Opponent,
+                PlayerAst::NotYou => PlayerFilter::NotYou,
+                PlayerAst::That | PlayerAst::Any => PlayerFilter::IteratedPlayer,
+                PlayerAst::ThatPlayerOrTargetController => {
+                    PlayerFilter::TargetPlayerOrControllerOfTarget
+                }
+                PlayerAst::ItsController => {
+                    PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+                }
+                PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
+                _ => PlayerFilter::You,
+            });
+        }
     } else if search_library_words_start_with_any(
         search_body_words,
         CONTROLLER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
@@ -1513,6 +1537,26 @@ pub(crate) fn search_library_subject_wraps_each_target_player_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> bool {
     token_word_refs(subject_tokens).as_slice() == EACH_OF_THEM_SUBJECT
+}
+
+pub(crate) fn search_library_subject_player_iteration_filter_lexed(
+    subject_tokens: &[OwnedLexToken],
+) -> Option<PlayerFilter> {
+    let words = token_word_refs(subject_tokens)
+        .into_iter()
+        .map(|word| word.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    match words
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["each", "player"] | ["each", "players"] => Some(PlayerFilter::Any),
+        ["each", "opponent"] | ["each", "opponents"] => Some(PlayerFilter::Opponent),
+        ["each", "other", "player"] | ["each", "other", "players"] => Some(PlayerFilter::NotYou),
+        _ => None,
+    }
 }
 
 pub(crate) fn parse_search_library_iterated_object_subject_lexed(

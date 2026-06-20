@@ -1267,6 +1267,43 @@ fn rewrite_structure_if_clause_splitter_routes_commaless_conditional_sentence() 
 }
 
 #[test]
+fn rewrite_structure_if_clause_splitter_keeps_player_may_search_subject() {
+    let tokens = lex_line(
+        "If a land was destroyed this way its controller may search their library for a basic land card.",
+        0,
+    )
+    .expect("rewrite lexer should classify commaless controller may-search if clause");
+    let spec = super::grammar::structure::split_if_clause_lexed(
+        &tokens,
+        super::effect_sentences::parse_effect_chain_lexed,
+    )
+    .expect("structure helper should split controller may-search if clause");
+
+    match spec.predicate {
+        super::grammar::structure::IfClausePredicateSpec::Conditional(
+            crate::cards::builders::PredicateAst::TaggedMatches(_, filter),
+        ) => {
+            assert!(
+                filter.card_types.contains(&CardType::Land),
+                "expected land-destroyed predicate filter, got {filter:?}"
+            );
+        }
+        other => panic!("expected destroyed-land conditional predicate, got {other:?}"),
+    }
+    assert!(
+        matches!(
+            spec.effects.as_slice(),
+            [crate::cards::builders::EffectAst::MayByPlayer {
+                player: crate::cards::builders::PlayerAst::ItsController,
+                ..
+            }]
+        ),
+        "expected full 'its controller may search' effect subject, got {:?}",
+        spec.effects
+    );
+}
+
+#[test]
 fn rewrite_structure_predicate_parse_entrypoint_matches_parser_root_output() {
     let text = "it's your turn";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify predicate text");
@@ -7231,6 +7268,42 @@ fn rewrite_search_library_subject_routing_tracks_zone_owner_prefixes() {
     assert!(routing.search_player_target.is_none());
     assert!(routing.search_zones_override.is_none());
 
+    let its_controller_possessive =
+        lex_line("Its controller may search their library for a card.", 0)
+            .expect("rewrite lexer should classify controller subject search text");
+    let head = super::grammar::effects::split_search_library_sentence_head_lexed(
+        &its_controller_possessive,
+    )
+    .expect("search head splitter should match controller subject search");
+    let routing = super::grammar::effects::derive_search_library_subject_routing_lexed(
+        head.search_tokens,
+        crate::cards::builders::PlayerAst::ItsController,
+    )
+    .expect("subject routing helper should parse controller subject possessive search");
+    assert_eq!(
+        routing.forced_library_owner,
+        Some(crate::target::PlayerFilter::ControllerOf(
+            crate::filter::ObjectRef::Target
+        ))
+    );
+
+    let its_owner_possessive = lex_line("Its owner may search their library for a card.", 0)
+        .expect("rewrite lexer should classify owner subject search text");
+    let head =
+        super::grammar::effects::split_search_library_sentence_head_lexed(&its_owner_possessive)
+            .expect("search head splitter should match owner subject search");
+    let routing = super::grammar::effects::derive_search_library_subject_routing_lexed(
+        head.search_tokens,
+        crate::cards::builders::PlayerAst::ItsOwner,
+    )
+    .expect("subject routing helper should parse owner subject possessive search");
+    assert_eq!(
+        routing.forced_library_owner,
+        Some(crate::target::PlayerFilter::OwnerOf(
+            crate::filter::ObjectRef::Target
+        ))
+    );
+
     let your_multi_zone = lex_line(
         "Search your graveyard, hand, and library for a creature card.",
         0,
@@ -7253,6 +7326,27 @@ fn rewrite_search_library_subject_routing_tracks_zone_owner_prefixes() {
             crate::zone::Zone::Hand,
             crate::zone::Zone::Library,
         ])
+    );
+
+    let each_player_search = lex_line("Each player may search their library for a card.", 0)
+        .expect("rewrite lexer should classify each-player search text");
+    let head =
+        super::grammar::effects::split_search_library_sentence_head_lexed(&each_player_search)
+            .expect("search head splitter should match each-player may-search text");
+    assert_eq!(
+        super::grammar::effects::search_library_subject_player_iteration_filter_lexed(
+            head.subject_tokens
+        ),
+        Some(crate::target::PlayerFilter::Any)
+    );
+    let routing = super::grammar::effects::derive_search_library_subject_routing_lexed(
+        head.search_tokens,
+        crate::cards::builders::PlayerAst::That,
+    )
+    .expect("subject routing helper should parse iterated-player library search");
+    assert_eq!(
+        routing.forced_library_owner,
+        Some(crate::target::PlayerFilter::IteratedPlayer)
     );
 }
 

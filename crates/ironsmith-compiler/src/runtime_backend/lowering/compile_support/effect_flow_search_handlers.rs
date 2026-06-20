@@ -72,6 +72,97 @@ fn compiled_effects_are_play_permissions(effects: &[Effect]) -> bool {
     saw_play_grant
 }
 
+fn effect_has_may_decider_scoped_search_followup(effect: &Effect, decider: &PlayerFilter) -> bool {
+    if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>() {
+        return for_each.effects.iter().any(|inner| {
+            inner
+                .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
+                .is_some_and(|put| put.controller == *decider)
+        });
+    }
+    effect
+        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+        .is_some_and(|shuffle| shuffle.player == *decider)
+}
+
+fn reconcile_may_decider_scoped_search_effect(
+    effect: &Effect,
+    decider: &PlayerFilter,
+    force_search_scope: bool,
+) -> Effect {
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let sequence_scopes_search = sequence
+            .effects
+            .iter()
+            .any(|child| effect_has_may_decider_scoped_search_followup(child, decider));
+        let effects = sequence
+            .effects
+            .iter()
+            .map(|child| {
+                reconcile_may_decider_scoped_search_effect(
+                    child,
+                    decider,
+                    force_search_scope || sequence_scopes_search,
+                )
+            })
+            .collect();
+        return Effect::new(crate::effects::SequenceEffect::new(effects));
+    }
+
+    if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>() {
+        let effects = for_each
+            .effects
+            .iter()
+            .map(|child| reconcile_may_decider_scoped_search_effect(child, decider, false))
+            .collect();
+        return Effect::for_each_tagged(for_each.tag.clone(), effects);
+    }
+
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return Effect::with_id(
+            with_id.id.0,
+            reconcile_may_decider_scoped_search_effect(
+                &with_id.effect,
+                decider,
+                force_search_scope,
+            ),
+        );
+    }
+
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return Effect::new(crate::effects::TaggedEffect::new(
+            tagged.tag.clone(),
+            reconcile_may_decider_scoped_search_effect(&tagged.effect, decider, force_search_scope),
+        ));
+    }
+
+    if force_search_scope
+        && !matches!(decider, PlayerFilter::You)
+        && let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && choose.is_search
+        && choose.zone == Some(Zone::Library)
+        && choose.chooser == PlayerFilter::You
+        && choose.filter.owner == Some(PlayerFilter::You)
+    {
+        let mut choose = choose.clone();
+        choose.chooser = decider.clone();
+        choose.filter.owner = Some(decider.clone());
+        return Effect::new(choose);
+    }
+
+    effect.clone()
+}
+
+fn reconcile_may_decider_scoped_search_effects(
+    effects: Vec<Effect>,
+    decider: &PlayerFilter,
+) -> Vec<Effect> {
+    effects
+        .iter()
+        .map(|effect| reconcile_may_decider_scoped_search_effect(effect, decider, false))
+        .collect()
+}
+
 fn try_compile_for_each_object_become_copy_of_prior_choice(
     filter: &ObjectFilter,
     effects: &[EffectAst],
@@ -187,6 +278,8 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     "empty compiled may-by-player effect branch is unsupported".to_string(),
                 ));
             }
+            let inner_effects =
+                reconcile_may_decider_scoped_search_effects(inner_effects, &player_filter);
             let mut choices = inner_choices;
             choices.extend(subject.into_choices());
             if compiled_effects_are_play_permissions(&inner_effects) {

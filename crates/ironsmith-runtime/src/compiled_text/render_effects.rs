@@ -178,6 +178,77 @@ fn describe_discard_hand_add_mana_draw_sequence(effects: &[&Effect]) -> Option<S
     ))
 }
 
+fn value_is_discarded_count_for_effect(value: &Value, id: crate::effect::EffectId) -> bool {
+    matches!(
+        value,
+        Value::EffectMetric {
+            effect_id,
+            source: crate::effect::EffectMetricSource::Outcome,
+            metric: crate::effect::EffectMetric::Count,
+        } if *effect_id == id
+    ) || value_is_affected_count_for_effect(value, id)
+}
+
+fn plural_discard_subject(filter: &PlayerFilter) -> Option<&'static str> {
+    match filter {
+        PlayerFilter::Any => Some("Each player"),
+        PlayerFilter::Opponent => Some("Each opponent"),
+        PlayerFilter::NotYou => Some("Each other player"),
+        PlayerFilter::You => Some("You"),
+        _ => None,
+    }
+}
+
+fn describe_discard_then_draw_for_discarded(effects: &[Effect]) -> Option<String> {
+    let [discard_effect, draw_effect] = effects else {
+        return None;
+    };
+    let with_id = discard_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.player != PlayerFilter::You
+        || !value_is_discarded_count_for_effect(&draw.count, with_id.id)
+    {
+        return None;
+    }
+
+    let (subject, discard) = if let Some(discard) = with_id
+        .effect
+        .downcast_ref::<crate::effects::DiscardEffect>()
+    {
+        (plural_discard_subject(&discard.player)?, discard)
+    } else {
+        let for_players = with_id
+            .effect
+            .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+        if for_players.starting_with_controller {
+            return None;
+        }
+        let [iterated_effect] = for_players.effects.as_slice() else {
+            return None;
+        };
+        let discard = iterated_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+        if discard.player != PlayerFilter::IteratedPlayer {
+            return None;
+        }
+        (describe_for_players_subject(&for_players.filter)?, discard)
+    };
+
+    if discard.any_number {
+        return None;
+    }
+
+    let random_suffix = if discard.random { " at random" } else { "" };
+    Some(format!(
+        "{subject} {} {}{random_suffix}. You draw a card for each card discarded this way",
+        if subject == "You" {
+            "discard"
+        } else {
+            "discards"
+        },
+        describe_discard_count(&discard.count, discard.card_filter.as_ref())
+    ))
+}
+
 fn describe_choose_phase_then_skip_chosen_this_turn(effects: &[&Effect]) -> Option<String> {
     let [choose_effect, conditional_effect] = effects else {
         return None;
@@ -301,6 +372,115 @@ fn describe_search_basic_land_battlefield_tapped_shuffle(effects: &[Effect]) -> 
         "search your library for a basic land card and put it onto the battlefield tapped. If you search your library this way, shuffle"
             .to_string(),
     )
+}
+
+fn describe_may_search_basic_land_then_shuffle(
+    search_effect: &Effect,
+    shuffle_effect: &Effect,
+) -> Option<String> {
+    let search_with_id = search_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = search_with_id
+        .effect
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    let actor = may.decider.as_ref()?;
+    let search_effects = if let [sequence_effect] = may.effects.as_slice()
+        && let Some(sequence) = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        sequence.effects.as_slice()
+    } else {
+        may.effects.as_slice()
+    };
+    let [choose_effect, put_effect] = search_effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let put_each = put_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let if_effect = shuffle_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    let [shuffle_then] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let shuffle_library = shuffle_then.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+    if if_effect.condition != search_with_id.id
+        || if_effect.predicate != EffectPredicate::Happened
+        || !if_effect.else_.is_empty()
+        || choose.chooser != *actor
+        || choose.filter.owner.as_ref() != Some(actor)
+        || shuffle_library.player != *actor
+        || !choose.is_search
+        || choose.zone != Some(Zone::Library)
+        || choose.filter.zone != Some(Zone::Library)
+        || choose.filter.card_types.as_slice() != [CardType::Land]
+        || !choose.filter.supertypes.contains(&Supertype::Basic)
+    {
+        return None;
+    }
+
+    let mut compact =
+        describe_search_choose_for_each(choose, put_each, Some(shuffle_library), false)?;
+    compact = compact
+        .replace("its controller's library", "their library")
+        .replace("that object's controller's library", "their library")
+        .replace("its owner's library", "their library")
+        .replace("that object's owner's library", "their library");
+    let rest = compact.strip_prefix("Search ")?;
+    Some(format!(
+        "{} may search {}",
+        capitalize_first(&describe_player_filter(actor)),
+        lowercase_first(rest)
+    ))
+}
+
+fn same_search_player_filter(left: &PlayerFilter, right: &PlayerFilter) -> bool {
+    left == right
+        || matches!(
+            (left, right),
+            (PlayerFilter::ControllerOf(_), PlayerFilter::ControllerOf(_))
+                | (PlayerFilter::OwnerOf(_), PlayerFilter::OwnerOf(_))
+        )
+}
+
+fn normalize_actor_owned_search_origin(actor: &PlayerFilter, text: String) -> String {
+    match actor {
+        PlayerFilter::ControllerOf(_) => text
+            .replace("its controller's library", "their library")
+            .replace("that object's controller's library", "their library"),
+        PlayerFilter::OwnerOf(_) => text
+            .replace("its owner's library", "their library")
+            .replace("that object's owner's library", "their library"),
+        _ => text,
+    }
+}
+
+fn describe_may_search_sequence_then_shuffle(may: &crate::effects::MayEffect) -> Option<String> {
+    let actor = may.decider.as_ref()?;
+    let [sequence_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [choose_effect, for_each_effect, shuffle_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    let search_owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
+
+    if !same_search_player_filter(&choose.chooser, actor)
+        || !same_search_player_filter(search_owner, actor)
+        || !same_search_player_filter(&shuffle.player, actor)
+    {
+        return None;
+    }
+
+    let compact = describe_search_choose_for_each(choose, for_each, Some(shuffle), false)?;
+    let compact = normalize_actor_owned_search_origin(actor, compact);
+    let rest = compact.strip_prefix("Search ")?;
+    Some(format!(
+        "{} may search {}",
+        capitalize_first(&describe_player_filter(actor)),
+        lowercase_first(rest)
+    ))
 }
 
 fn unwrap_tags_for_from_the_ashes_shape(effect: &Effect) -> &Effect {
@@ -2578,6 +2758,168 @@ fn describe_each_player_may_discard_hand_draw(
     ))
 }
 
+fn describe_iterated_player_search_effects(effects: &[Effect]) -> Option<String> {
+    let choose = effects
+        .first()?
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if !choose.is_search
+        || choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || choose_search_zones(choose).is_none_or(|zones| !zones.contains(&Zone::Library))
+    {
+        return None;
+    }
+
+    let mut render_choose = choose.clone();
+    let mut next = 1;
+    if let Some(reveal) = effects
+        .get(next)
+        .and_then(|effect| effect.downcast_ref::<crate::effects::RevealTaggedEffect>())
+    {
+        if reveal.tag != choose.tag {
+            return None;
+        }
+        render_choose.reveal = true;
+        next += 1;
+    }
+
+    let for_each = effects
+        .get(next)?
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    next += 1;
+
+    let shuffle = if let Some(effect) = effects.get(next) {
+        let shuffle = effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+        next += 1;
+        Some(shuffle)
+    } else {
+        None
+    };
+    if next != effects.len() {
+        return None;
+    }
+
+    let mut search_text =
+        describe_search_choose_for_each(&render_choose, for_each, shuffle, false)?;
+    search_text = search_text
+        .replace("that player's library", "their library")
+        .replace("that player's hand", "their hand")
+        .replace(", then that player shuffles", ", then shuffle")
+        .replace(". Then that player shuffles", ". Then shuffle");
+    Some(search_text)
+}
+
+fn describe_iterated_player_search_sequence(
+    sequence: &crate::effects::SequenceEffect,
+) -> Option<String> {
+    describe_iterated_player_search_effects(&sequence.effects)
+}
+
+fn describe_for_players_may_search_library_then_shuffle(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    if let [may_effect] = for_players.effects.as_slice() {
+        let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+        if may.decider != Some(PlayerFilter::IteratedPlayer) {
+            return None;
+        }
+        let search_text = if let [sequence_effect] = may.effects.as_slice() {
+            let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+            describe_iterated_player_search_sequence(sequence)?
+        } else {
+            describe_iterated_player_search_effects(&may.effects)?
+        };
+        let rest = search_text.strip_prefix("Search ")?;
+        return Some(format!("{subject} may search {}", lowercase_first(rest)));
+    }
+
+    let [search_effect, shuffle_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let with_id = search_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider != Some(PlayerFilter::IteratedPlayer) {
+        return None;
+    }
+    let [sequence_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let choose = sequence
+        .effects
+        .first()?
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if !choose.is_search
+        || choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || choose_search_zones(choose).is_none_or(|zones| !zones.contains(&Zone::Library))
+    {
+        return None;
+    }
+
+    let conditional = shuffle_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    let [shuffle] = conditional.then.as_slice() else {
+        return None;
+    };
+    let shuffle = shuffle.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if conditional.condition != with_id.id
+        || conditional.predicate != EffectPredicate::Happened
+        || !conditional.else_.is_empty()
+        || shuffle.player != PlayerFilter::IteratedPlayer
+    {
+        return None;
+    }
+
+    let mut search_text = describe_search_sequence(sequence)?;
+    search_text = search_text
+        .replacen("Search ", "search ", 1)
+        .replace("that player's library", "their library")
+        .replace("that player's hand", "their hand")
+        .replace(
+            ", put it into their hand",
+            " and put that card into their hand",
+        )
+        .replace(
+            ", put them into their hand",
+            " and put those cards into their hand",
+        );
+    Some(format!(
+        "{subject} may {search_text}. Then {} who searched their library this way shuffles",
+        lowercase_first(subject)
+    ))
+}
+
+fn describe_for_players_search_library_then_shuffle(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    let search_text = if let [sequence_effect] = for_players.effects.as_slice() {
+        let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+        describe_iterated_player_search_sequence(sequence)?
+    } else {
+        describe_iterated_player_search_effects(&for_players.effects)?
+    };
+
+    let rest = search_text.strip_prefix("Search ")?;
+    let mut rest = lowercase_first(rest);
+    if subject != "You" {
+        rest = rest
+            .replace(", reveal ", ", reveals ")
+            .replace(". Reveal ", ". Reveals ")
+            .replace(", put ", ", puts ")
+            .replace(". Put ", ". Puts ")
+            .replace(", then shuffle", ", then shuffles")
+            .replace(". Then shuffle", ". Then shuffles");
+    }
+    let verb = if subject == "You" {
+        "search"
+    } else {
+        "searches"
+    };
+    Some(format!("{subject} {verb} {rest}"))
+}
+
 fn describe_each_player_return_from_graveyard_to_hand(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -3073,6 +3415,45 @@ fn describe_choose_sacrifice_then_draw_for_sacrificed(effects: &[&Effect]) -> Op
         return None;
     }
 
+    let selection = describe_sacrifice_choice_selection(choose);
+
+    Some(format!(
+        "Sacrifice {selection}. Draw a card for each permanent sacrificed this way"
+    ))
+}
+
+fn normalized_without_zone_controller(filter: &ObjectFilter) -> ObjectFilter {
+    let mut normalized = filter.clone();
+    normalized.zone = None;
+    normalized.controller = None;
+    normalized
+}
+
+fn filter_matches_ignoring_zone_controller(filter: &ObjectFilter, expected: ObjectFilter) -> bool {
+    normalized_without_zone_controller(filter) == normalized_without_zone_controller(&expected)
+}
+
+fn filter_is_artifact_enchantment_or_token(filter: &ObjectFilter) -> bool {
+    let mut base = normalized_without_zone_controller(filter);
+    let branches = std::mem::take(&mut base.any_of);
+    base == ObjectFilter::default()
+        && branches.len() == 3
+        && branches
+            .iter()
+            .any(|branch| filter_matches_ignoring_zone_controller(branch, ObjectFilter::artifact()))
+        && branches.iter().any(|branch| {
+            filter_matches_ignoring_zone_controller(branch, ObjectFilter::enchantment())
+        })
+        && branches.iter().any(|branch| {
+            filter_matches_ignoring_zone_controller(branch, ObjectFilter::default().token())
+        })
+}
+
+fn describe_sacrifice_choice_selection(choose: &crate::effects::ChooseObjectsEffect) -> String {
+    if choose.count.is_any_number() && filter_is_artifact_enchantment_or_token(&choose.filter) {
+        return "any number of artifacts, enchantments, and/or tokens".to_string();
+    }
+
     let mut selection = describe_choose_selection(choose);
     if let Some(rest) = selection.strip_prefix("any number ") {
         selection = format!("any number of {rest}");
@@ -3083,9 +3464,79 @@ fn describe_choose_sacrifice_then_draw_for_sacrificed(effects: &[&Effect]) -> Op
     if choose.filter.card_types.len() > 1 {
         selection = selection.replace(", or ", ", and/or ");
     }
+    selection
+}
 
+fn is_creature_card_filter_from_your_graveyard(filter: &ObjectFilter) -> bool {
+    if filter.owner != Some(PlayerFilter::You) {
+        return false;
+    }
+    let mut normalized = filter.clone();
+    normalized.zone = None;
+    normalized.owner = None;
+    filter_matches_ignoring_zone_controller(&normalized, ObjectFilter::creature())
+}
+
+fn describe_choose_sacrifice_then_return_from_graveyard(effects: &[&Effect]) -> Option<String> {
+    let [
+        choose_effect,
+        sacrifice_effect,
+        return_choose_effect,
+        return_effect,
+    ] = effects
+    else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let with_id = sacrifice_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let sacrifice = sacrifice_view(&with_id.effect)?;
+    let return_choose =
+        return_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let return_to_battlefield = unwrap_basic_tag_wrappers(return_effect)
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>(
+    )?;
+
+    if choose.is_search
+        || choose.reveal
+        || choose.chooser != PlayerFilter::You
+        || !choose.count.is_any_number()
+        || choose.count_value.is_some()
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || sacrifice.player != &PlayerFilter::You
+        || !filter_is_exactly_tagged(sacrifice.filter, &choose.tag)
+    {
+        return None;
+    }
+
+    let Value::Count(count_filter) = sacrifice.count else {
+        return None;
+    };
+    if !filter_is_exactly_tagged(count_filter, &choose.tag) {
+        return None;
+    }
+
+    if return_choose.is_search
+        || return_choose.reveal
+        || return_choose.chooser != PlayerFilter::You
+        || !return_choose.count.is_dynamic_x()
+        || return_choose.count.is_up_to_dynamic_x()
+        || return_choose.count.is_random()
+        || choose_primary_zone(return_choose) != Some(Zone::Graveyard)
+        || !return_choose
+            .count_value
+            .as_ref()
+            .is_some_and(|value| is_effect_count_reference(value, Some(with_id.id)))
+        || !is_creature_card_filter_from_your_graveyard(&return_choose.filter)
+        || return_to_battlefield.tapped
+        || return_to_battlefield.as_aura.is_some()
+        || !choose_spec_is_tagged_object(&return_to_battlefield.target, &return_choose.tag)
+    {
+        return None;
+    }
+
+    let selection = describe_sacrifice_choice_selection(choose);
     Some(format!(
-        "Sacrifice {selection}. Draw a card for each permanent sacrificed this way"
+        "Sacrifice {selection}. Return that many creature cards from your graveyard to the battlefield"
     ))
 }
 
@@ -3141,16 +3592,7 @@ fn describe_choose_sacrifice_then_gain_life_for_sacrificed(effects: &[&Effect]) 
         return None;
     }
 
-    let mut selection = describe_choose_selection(choose);
-    if let Some(rest) = selection.strip_prefix("any number ") {
-        selection = format!("any number of {rest}");
-    }
-    if let Some(rest) = selection.strip_suffix(" you control") {
-        selection = rest.to_string();
-    }
-    if choose.filter.card_types.len() > 1 {
-        selection = selection.replace(", or ", ", and/or ");
-    }
+    let selection = describe_sacrifice_choice_selection(choose);
 
     Some(format!(
         "Sacrifice {selection}. You gain 2 life for each permanent sacrificed this way"
@@ -4182,6 +4624,7 @@ fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'static str> {
     match filter {
         PlayerFilter::Any => Some("Each player"),
         PlayerFilter::Opponent => Some("Each opponent"),
+        PlayerFilter::NotYou => Some("Each other player"),
         PlayerFilter::You => Some("You"),
         _ => None,
     }
@@ -5350,6 +5793,9 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     {
         return Some(compact);
     }
+    if let Some(compact) = describe_discard_then_draw_for_discarded(effects) {
+        return Some(compact);
+    }
     if let [choose_effect, look_effect, reveal_effect, distribute_effect] = effects
         && let Some(choose_name) =
             choose_effect.downcast_ref::<crate::effects::ChooseCardNameEffect>()
@@ -5625,6 +6071,11 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         if let Some(compact) = describe_named_vote_conditional_sequence(&refs) {
             return Some(compact);
         }
+    }
+    if effects.len() == 4
+        && let Some(compact) = describe_choose_sacrifice_then_return_from_graveyard(&refs)
+    {
+        return Some(compact);
     }
 
     if let Some(compact) = describe_counter_unless_then_controller_discards(effects) {
@@ -18565,6 +19016,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 3 < filtered.len()
+            && let Some(compact) =
+                describe_choose_sacrifice_then_return_from_graveyard(&filtered[idx..idx + 4])
+        {
+            parts.push(compact);
+            idx += 4;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -18936,6 +19395,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(scry) = filtered[idx].downcast_ref::<crate::effects::ScryEffect>()
             && let Some(draw) = filtered[idx + 1].downcast_ref::<crate::effects::DrawCardsEffect>()
             && let Some(compact) = describe_scry_then_draw(scry, draw)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_may_search_basic_land_then_shuffle(filtered[idx], filtered[idx + 1])
         {
             parts.push(compact);
             idx += 2;
@@ -21975,6 +22442,280 @@ mod tests {
             describe_effect_list(&effects),
             "Each player may discard their hand and draw cards equal to the greatest mana value of a commander they own on the battlefield or in the command zone"
         );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_direct_each_other_player_discard_draw_for_discarded() {
+        let discard = Effect::with_id(
+            7,
+            Effect::new(crate::effects::DiscardEffect::new_with_filter(
+                1,
+                PlayerFilter::NotYou,
+                false,
+                None,
+            )),
+        );
+        let draw = Effect::new(crate::effects::DrawCardsEffect::new(
+            Value::EffectMetric {
+                effect_id: crate::effect::EffectId(7),
+                source: crate::effect::EffectMetricSource::Outcome,
+                metric: crate::effect::EffectMetric::Count,
+            },
+            PlayerFilter::You,
+        ));
+        let effects = vec![discard, draw];
+        let expected =
+            "Each other player discards a card. You draw a card for each card discarded this way";
+
+        assert_eq!(describe_effect_list(&effects), expected);
+        assert_eq!(
+            describe_effect_clause_list(&effects).as_deref(),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_each_other_player_discard_draw_for_discarded() {
+        let discard = Effect::with_id(
+            7,
+            Effect::for_players(
+                PlayerFilter::NotYou,
+                vec![Effect::discard_player(
+                    1,
+                    PlayerFilter::IteratedPlayer,
+                    false,
+                )],
+            ),
+        );
+        let draw = Effect::new(crate::effects::DrawCardsEffect::new(
+            Value::EffectMetric {
+                effect_id: crate::effect::EffectId(7),
+                source: crate::effect::EffectMetricSource::AffectedObjects,
+                metric: crate::effect::EffectMetric::AffectedCount,
+            },
+            PlayerFilter::You,
+        ));
+        let effects = vec![discard, draw];
+        let expected =
+            "Each other player discards a card. You draw a card for each card discarded this way";
+
+        assert_eq!(describe_effect_list(&effects), expected);
+        assert_eq!(
+            describe_effect_clause_list(&effects).as_deref(),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_each_player_may_search_then_shuffle() {
+        let tag = TagKey::from("searched_0");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::default()
+                .in_zone(Zone::Library)
+                .owned_by(PlayerFilter::IteratedPlayer),
+            ChoiceCount::exactly(1),
+            PlayerFilter::IteratedPlayer,
+            tag.clone(),
+        )
+        .in_zone(Zone::Library)
+        .as_search();
+        let move_each = crate::effects::ForEachTaggedEffect::new(
+            tag,
+            vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Iterated,
+                Zone::Hand,
+                false,
+            ))],
+        );
+        let sequence = Effect::new(crate::effects::SequenceEffect::new(vec![
+            Effect::new(choose),
+            Effect::new(move_each),
+        ]));
+        let search = Effect::with_id(
+            9,
+            Effect::may_player(PlayerFilter::IteratedPlayer, vec![sequence]),
+        );
+        let shuffle = Effect::if_then(
+            crate::effect::EffectId(9),
+            EffectPredicate::Happened,
+            vec![Effect::new(crate::effects::ShuffleLibraryEffect::new(
+                PlayerFilter::IteratedPlayer,
+            ))],
+        );
+        let effects = vec![Effect::for_players(
+            PlayerFilter::Any,
+            vec![search, shuffle],
+        )];
+        let expected = "Each player may search their library for a card and put that card into their hand. Then each player who searched their library this way shuffles";
+
+        assert_eq!(describe_effect_list(&effects), expected);
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_inline_each_opponent_may_search_then_shuffle() {
+        let tag = TagKey::from("searched_0");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::default()
+                .in_zone(Zone::Library)
+                .owned_by(PlayerFilter::IteratedPlayer)
+                .with_type(CardType::Land)
+                .with_supertype(Supertype::Basic),
+            ChoiceCount::exactly(1),
+            PlayerFilter::IteratedPlayer,
+            tag.clone(),
+        )
+        .in_zone(Zone::Library)
+        .as_search();
+        let move_each = crate::effects::ForEachTaggedEffect::new(
+            tag,
+            vec![Effect::put_onto_battlefield(
+                ChooseSpec::Iterated,
+                true,
+                PlayerFilter::IteratedPlayer,
+            )],
+        );
+        let sequence = Effect::new(crate::effects::SequenceEffect::new(vec![
+            Effect::new(choose),
+            Effect::new(move_each),
+            Effect::shuffle_library_player(PlayerFilter::IteratedPlayer),
+        ]));
+        let effects = vec![Effect::for_players(
+            PlayerFilter::Opponent,
+            vec![Effect::may_player(
+                PlayerFilter::IteratedPlayer,
+                vec![sequence],
+            )],
+        )];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Each opponent may search their library for a basic land card, put it onto the battlefield tapped, then shuffle"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_inline_each_player_search_then_shuffle() {
+        let tag = TagKey::from("searched_0");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::default()
+                .in_zone(Zone::Library)
+                .owned_by(PlayerFilter::IteratedPlayer)
+                .with_type(CardType::Land)
+                .with_supertype(Supertype::Basic),
+            ChoiceCount::up_to(2),
+            PlayerFilter::IteratedPlayer,
+            tag.clone(),
+        )
+        .in_zone(Zone::Library)
+        .as_search();
+        let move_each = crate::effects::ForEachTaggedEffect::new(
+            tag,
+            vec![Effect::put_onto_battlefield(
+                ChooseSpec::Iterated,
+                false,
+                PlayerFilter::IteratedPlayer,
+            )],
+        );
+        let sequence = Effect::new(crate::effects::SequenceEffect::new(vec![
+            Effect::new(choose),
+            Effect::new(move_each),
+            Effect::shuffle_library_player(PlayerFilter::IteratedPlayer),
+        ]));
+        let effects = vec![Effect::for_players(PlayerFilter::Any, vec![sequence])];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Each player searches their library for up to 2 basic land cards, puts them onto the battlefield, then shuffles"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_sacrifice_that_many_graveyard_return() {
+        let sacrifice_tag = TagKey::from("sacrificed_0");
+        let mut sacrifice_filter = ObjectFilter::default().controlled_by(PlayerFilter::You);
+        sacrifice_filter.any_of = vec![
+            ObjectFilter::artifact().in_zone(Zone::Battlefield),
+            ObjectFilter::enchantment().in_zone(Zone::Battlefield),
+            ObjectFilter::default().token().in_zone(Zone::Battlefield),
+        ];
+        let choose_sacrificed = crate::effects::ChooseObjectsEffect::new(
+            sacrifice_filter.in_zone(Zone::Battlefield),
+            ChoiceCount::any_number(),
+            PlayerFilter::You,
+            sacrifice_tag.clone(),
+        );
+        let sacrifice = Effect::with_id(
+            11,
+            Effect::new(crate::effects::zones::SacrificePlayerEffect::new(
+                ObjectFilter::tagged(sacrifice_tag.clone()),
+                Value::Count(ObjectFilter::tagged(sacrifice_tag)),
+                PlayerFilter::You,
+            )),
+        );
+
+        let return_tag = TagKey::from("chosen_return_0");
+        let choose_returned = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature()
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You),
+            ChoiceCount::dynamic_x(),
+            PlayerFilter::You,
+            return_tag.clone(),
+        )
+        .with_count_value(Value::EffectValue(crate::effect::EffectId(11)));
+        let return_chosen =
+            Effect::return_from_graveyard_to_battlefield(ChooseSpec::Tagged(return_tag), false)
+                .tag("returned_0");
+        let effects = vec![
+            Effect::new(choose_sacrificed),
+            sacrifice,
+            Effect::new(choose_returned),
+            return_chosen,
+        ];
+        let expected = "Sacrifice any number of artifacts, enchantments, and/or tokens. Return that many creature cards from your graveyard to the battlefield";
+        let refs = effects.iter().collect::<Vec<_>>();
+        let choose = refs[0]
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .expect("choose sacrificed");
+        let with_id = refs[1]
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .expect("with-id sacrifice");
+        let sacrifice_view = sacrifice_view(&with_id.effect).expect("sacrifice view");
+        let return_choose = refs[2]
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .expect("choose returned");
+        let return_to_battlefield = unwrap_basic_tag_wrappers(refs[3])
+            .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+            .expect("return effect");
+
+        assert_eq!(choose_primary_zone(choose), Some(Zone::Battlefield));
+        assert!(filter_is_exactly_tagged(sacrifice_view.filter, &choose.tag));
+        assert!(
+            matches!(sacrifice_view.count, Value::Count(count_filter) if filter_is_exactly_tagged(count_filter, &choose.tag))
+        );
+        assert_eq!(choose_primary_zone(return_choose), Some(Zone::Graveyard));
+        assert!(return_choose.count.is_dynamic_x());
+        assert!(
+            return_choose
+                .count_value
+                .as_ref()
+                .is_some_and(|value| is_effect_count_reference(value, Some(with_id.id)))
+        );
+        assert!(
+            is_creature_card_filter_from_your_graveyard(&return_choose.filter),
+            "return filter: {:?}",
+            return_choose.filter
+        );
+        assert!(choose_spec_is_tagged_object(
+            &return_to_battlefield.target,
+            &return_choose.tag
+        ));
+
+        assert_eq!(
+            describe_choose_sacrifice_then_return_from_graveyard(&refs).as_deref(),
+            Some(expected)
+        );
+        assert_eq!(describe_effect_list(&effects), expected);
     }
 
     #[test]
@@ -33882,7 +34623,7 @@ pub(super) fn describe_search_choose_for_each(
         };
 
     if let Some(shuffle) = shuffle
-        && shuffle.player != *search_owner_filter
+        && !same_search_player_filter(&shuffle.player, search_owner_filter)
     {
         return None;
     }
@@ -33988,7 +34729,7 @@ pub(super) fn describe_search_choose_for_each(
     let mut text;
     match destination {
         SearchDestination::Battlefield { tapped, controller } => {
-            let control_suffix = if controller == *search_owner_filter {
+            let control_suffix = if same_search_player_filter(&controller, search_owner_filter) {
                 String::new()
             } else {
                 format!(
@@ -36198,6 +36939,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_each_player_may_discard_hand_draw(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_may_search_library_then_shuffle(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_search_library_then_shuffle(for_players) {
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_nonland_put_counter(for_players) {
@@ -39569,6 +40316,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_may_search_library_and_or_nonlibrary(may) {
+            return compact;
+        }
+        if let Some(compact) = describe_may_search_sequence_then_shuffle(may) {
             return compact;
         }
         if may.effects.len() == 1
