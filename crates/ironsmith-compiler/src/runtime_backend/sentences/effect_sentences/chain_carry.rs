@@ -2821,6 +2821,10 @@ fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
             alt((
                 alt((
                     (word_eq("you"), word_eq("may")).value(PlayerAst::You),
+                    (word_eq("any"), player_word(), word_eq("may")).value(PlayerAst::Any),
+                    (word_eq("any"), opponent_word(), word_eq("may")).value(PlayerAst::Opponent),
+                )),
+                alt((
                     (word_eq("target"), opponent_word(), word_eq("may"))
                         .value(PlayerAst::TargetOpponent),
                     (word_eq("target"), player_word(), word_eq("may")).value(PlayerAst::Target),

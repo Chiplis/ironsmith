@@ -1,4 +1,4 @@
-use crate::{CounterType, ManaSymbol, ObjectFilter, PlayerFilter, Value};
+use crate::{CounterType, ManaSymbol, ObjectFilter, PlayerFilter, SourceReferenceSurface, Value};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnthemCountExpression {
@@ -9,6 +9,11 @@ pub enum AnthemCountExpression {
     ColorsOfAffected,
     AffectedAttackedThisTurn,
     CountersOnSource(CounterType),
+    CountersOnSourceWithSurface {
+        counter_type: CounterType,
+        surface: SourceReferenceSurface,
+    },
+    CountersOnAffected(CounterType),
     CountersAmong(ObjectFilter, CounterType),
     DistinctCounterTypesAmong(ObjectFilter),
     BasicLandTypesAmong(ObjectFilter),
@@ -47,7 +52,8 @@ impl AnthemValue {
             Self::PerCount {
                 count: AnthemCountExpression::AttachedToAffected(_)
                     | AnthemCountExpression::ColorsOfAffected
-                    | AnthemCountExpression::AffectedAttackedThisTurn,
+                    | AnthemCountExpression::AffectedAttackedThisTurn
+                    | AnthemCountExpression::CountersOnAffected(_),
                 ..
             }
         )

@@ -6135,6 +6135,13 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
     if let [first, rest @ ..] = effects
         && first
+            .downcast_ref::<crate::effects::TagTriggeringBlockersEffect>()
+            .is_some()
+    {
+        return describe_structural_multisentence_effect_list(rest);
+    }
+    if let [first, rest @ ..] = effects
+        && first
             .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
             .is_some()
     {
@@ -22314,6 +22321,25 @@ fn describe_next_spell_delayed_trigger(
     ))
 }
 
+fn describe_unless_pays_lose_game_payment(effects: &[Effect]) -> Option<String> {
+    let [effect] = effects else {
+        return None;
+    };
+    let unless_pays = effect.downcast_ref::<crate::effects::UnlessPaysEffect>()?;
+    if unless_pays.player != PlayerFilter::You {
+        return None;
+    }
+    let [lose_effect] = unless_pays.effects.as_slice() else {
+        return None;
+    };
+    let lose_game = lose_effect.downcast_ref::<crate::effects::LoseTheGameEffect>()?;
+    if lose_game.player != PlayerFilter::You {
+        return None;
+    }
+    let display = describe_total_cost_payment(&unless_pays.cost);
+    Some(display.strip_prefix("Pay ").unwrap_or(&display).to_string())
+}
+
 fn normalize_modal_named_source_etb_surface(
     line: String,
     triggered: &crate::ability::TriggeredAbility,
@@ -34349,7 +34375,11 @@ pub(super) fn describe_may_choose_reveal_and_move_to_hand(
     let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
     let move_to_zone = downcast_move_to_zone(move_effect)?;
 
-    if choose_primary_zone(choose) != Some(Zone::Exile)
+    let zones = choose_search_zones(choose)?;
+    let choose_from_exile = zones.as_slice() == [Zone::Exile];
+    let choose_from_outside_or_exile =
+        zones.len() == 2 && zones.contains(&Zone::OutsideGame) && zones.contains(&Zone::Exile);
+    if !(choose_from_exile || choose_from_outside_or_exile)
         || choose.is_search
         || !choose.count.is_single()
         || reveal.tag != choose.tag
@@ -34364,8 +34394,36 @@ pub(super) fn describe_may_choose_reveal_and_move_to_hand(
     }
 
     let actor_text = describe_player_filter(actor);
-    let chosen = describe_choose_selection(choose);
+    let mut chosen = describe_choose_selection(choose);
+    if choose_from_outside_or_exile
+        && !chosen.to_ascii_lowercase().contains(" card")
+        && !choose.filter.subtypes.is_empty()
+    {
+        let subtype_text = choose
+            .filter
+            .subtypes
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !subtype_text.is_empty() {
+            chosen = chosen.replacen(&subtype_text, &format!("{subtype_text} card"), 1);
+        }
+    }
+    let chosen_mentions_owner = chosen.to_ascii_lowercase().contains(" own");
     let location = match choose.filter.owner.as_ref() {
+        Some(owner) if owner == actor && choose_from_outside_or_exile => {
+            if chosen_mentions_owner {
+                "from outside the game or in exile".to_string()
+            } else if actor_text == "you" {
+                "you own from outside the game or in exile".to_string()
+            } else {
+                format!(
+                    "{} owns from outside the game or in exile",
+                    describe_player_filter(owner)
+                )
+            }
+        }
         Some(owner) if owner == actor => {
             if actor_text == "you" {
                 "you own in exile".to_string()
@@ -34373,6 +34431,7 @@ pub(super) fn describe_may_choose_reveal_and_move_to_hand(
                 format!("{} owns in exile", describe_player_filter(owner))
             }
         }
+        _ if choose_from_outside_or_exile => "from outside the game or in exile".to_string(),
         _ => "in exile".to_string(),
     };
     let hand = if choose.filter.owner.as_ref() == Some(actor) {
@@ -40978,6 +41037,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             tag_triggering.tag.as_str()
         );
     }
+    if let Some(tag_blockers) = effect.downcast_ref::<crate::effects::TagTriggeringBlockersEffect>()
+    {
+        if is_implicit_reference_tag(tag_blockers.tag.as_str()) {
+            return String::new();
+        }
+        return format!(
+            "Tag the triggering blockers as '{}'",
+            tag_blockers.tag.as_str()
+        );
+    }
     if let Some(tag_damage_target) =
         effect.downcast_ref::<crate::effects::TagTriggeringDamageTargetEffect>()
     {
@@ -43553,6 +43622,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         trigger_text = cleanup_decompiled_text(&trigger_text);
         let trigger_lower = trigger_text.to_ascii_lowercase();
+        if schedule.one_shot
+            && schedule.start_next_turn
+            && trigger_lower.contains("your upkeep")
+            && let Some(payment) = describe_unless_pays_lose_game_payment(&schedule.effects)
+        {
+            return format!(
+                "At the beginning of your next upkeep, pay {payment}. If you don't, you lose the game"
+            );
+        }
         let mut delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
         if delayed_text.contains("if it matches card in exile, put it into its owner's graveyard") {
             delayed_text = delayed_text.replace(

@@ -373,6 +373,16 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
     let clause_display = crate::runtime_backend::lexer::render_token_slice(clause.tokens());
+    if DELAYED_THAT_DIES_THIS_TURN_PATTERN
+        .match_clause(clause)
+        .is_some()
+        || DELAYED_DIES_THIS_WAY_PATTERN
+            .match_clause(clause)
+            .is_some()
+    {
+        return parse_delayed_when_that_dies_this_turn_sentence(tokens);
+    }
+
     if let Some(matched) = COPY_NEXT_THIS_TURN_DELAYED_TRIGGER_PATTERN.match_clause(clause) {
         let Some(trigger_clause) = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)
         else {

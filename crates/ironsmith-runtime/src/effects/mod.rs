@@ -114,10 +114,10 @@ pub use composition::{
     ManifestTopCardOfLibraryEffect, MayEffect, OpenAttractionEffect, PopulateEffect,
     ReflexiveTriggerEffect, RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect,
     SecretChoiceEffect, SecretChoiceResult, SequenceEffect, SupportEffect, TagAllEffect,
-    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect,
-    TagTriggeringObjectEffect, TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect,
-    UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice,
-    VoteEffect, VoteOption, VoteResult, WithIdEffect,
+    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringBlockersEffect,
+    TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TagTriggeringSourceEffect,
+    TaggedEffect, TargetOnlyEffect, UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG,
+    VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{

@@ -994,6 +994,23 @@ fn lower_rewrite_triggered_to_chunk_impl(
         }
     }
 
+    let selected_effect_sentences = split_lexed_sentences(effect_parse_tokens);
+    let selected_effect_has_token_creation_followup_after_first =
+        sentences_have_token_creation_followup_after_first(&selected_effect_sentences);
+    let selected_effect_has_temporary_static_followup_after_first =
+        sentences_have_temporary_static_followup_after_first(&selected_effect_sentences);
+    let selected_split_has_trailing_static_after_first = selected_effect_sentences.len() > 1
+        && !selected_effect_has_token_creation_followup_after_first
+        && !selected_effect_has_temporary_static_followup_after_first
+        && selected_effect_sentences
+            .iter()
+            .enumerate()
+            .skip(1)
+            .any(|(_, sentence)| {
+                parse_self_enters_with_x_counters_static_chunk(sentence).is_some()
+                    || matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_)))
+            });
+
     let full_sentences = split_lexed_sentences(full_parse_tokens);
     let has_token_creation_followup_after_first =
         sentences_have_token_creation_followup_after_first(&full_sentences);
@@ -1002,6 +1019,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
     if full_sentences.len() > 1
         && !has_token_creation_followup_after_first
         && !has_temporary_static_followup_after_first
+        && !selected_split_has_trailing_static_after_first
         && let Ok(first_triggered) = parse_triggered_line_lexed(full_sentences[0])
     {
         let mut chunks = Vec::with_capacity(full_sentences.len());

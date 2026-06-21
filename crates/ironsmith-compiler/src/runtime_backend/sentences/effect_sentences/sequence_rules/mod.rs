@@ -157,9 +157,8 @@ fn first_head_when_that(sentences: &[SentenceInput], sentence_idx: usize) -> boo
     sentence_head_is(sentences, sentence_idx, ("when", Some("that")))
 }
 
-fn search_upkeep_window(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
-    sentence_head_word_is(sentences, sentence_idx, "search")
-        && sentence_head_word_is(sentences, sentence_idx + 1, "at")
+fn next_upkeep_unless_pays_window(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx + 1, "at")
         && sentence_head_word_is(sentences, sentence_idx + 2, "if")
 }
 
@@ -301,11 +300,11 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::triples::parse_search_face_down_exile_conditional_cast_else_hand,
     },
     SequenceRuleDef {
-        name: "search-then-next-upkeep-unless-pays-lose-game",
-        feature_tag: Some("search-delayed-upkeep"),
+        name: "effect-then-next-upkeep-unless-pays-lose-game",
+        feature_tag: Some("delayed-upkeep-payment"),
         priority: 338,
         consumed_sentences: 3,
-        predicate: search_upkeep_window,
+        predicate: next_upkeep_unless_pays_window,
         parser: generic_subject_verb_sequences::parse_search_delayed_upkeep_unless_pays_sequence,
     },
     SequenceRuleDef {

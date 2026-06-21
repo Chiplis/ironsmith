@@ -7975,6 +7975,39 @@ mod tests {
     }
 
     #[test]
+    fn parse_predicate_keeps_comma_type_list_disjunctive() -> Result<(), CardTextError> {
+        let tokens = lex_line(
+            "If it's an artifact, creature, enchantment, or land card",
+            0,
+        )?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        match parsed {
+            PredicateAst::Or(left, right) => {
+                assert!(
+                    matches!(left.as_ref(), PredicateAst::ItMatches(filter)
+                        if filter.card_types == vec![
+                            CardType::Artifact,
+                            CardType::Creature,
+                            CardType::Enchantment,
+                        ] && filter.all_card_types.is_empty()),
+                    "expected disjunctive permanent-type list on left, got {left:?}"
+                );
+                assert!(
+                    matches!(right.as_ref(), PredicateAst::ItMatches(filter)
+                        if filter.card_types == vec![CardType::Land]
+                            && filter.all_card_types.is_empty()),
+                    "expected land-card filter on right, got {right:?}"
+                );
+            }
+            other => panic!("expected inherited-reference type-list predicate, got {other:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
     fn parse_predicate_supports_if_you_dont_put_card_into_your_hand() -> Result<(), CardTextError> {
         let tokens = lex_line("If you don't put the card into your hand", 0)?;
         let predicate_tokens = predicate_tokens_after_if(&tokens);

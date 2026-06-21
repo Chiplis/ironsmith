@@ -7117,6 +7117,9 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             if tag.as_str() == "enchanted" {
                 return "enchanted creature".to_string();
             }
+            if tag.as_str() == "blocking" {
+                return "that creature".to_string();
+            }
             if tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG {
                 return "the revealed card".to_string();
             }
@@ -12479,6 +12482,18 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     return state_clause;
                 }
 
+                if !filter.all_card_types.is_empty()
+                    && filter.card_types.is_empty()
+                    && simple_type_identity_condition_filter(filter)
+                {
+                    let noun_phrase = if tagged_condition_is_known_card_reference(tag) {
+                        format!("{desc} card")
+                    } else {
+                        desc.clone()
+                    };
+                    return is_clause(&noun_phrase);
+                }
+
                 if card_context
                     && !filter.card_types.is_empty()
                     && filter.zone.is_none()
@@ -13315,6 +13330,21 @@ fn describe_implicit_tagged_object_state_condition(
     None
 }
 
+fn tagged_condition_is_known_card_reference(tag: &crate::TagKey) -> bool {
+    let tag = tag.as_str();
+    tag.starts_with("exiled_")
+        || tag.starts_with("revealed_")
+        || crate::cards::is_sentence_helper_tag(tag, "exiled")
+        || crate::cards::is_sentence_helper_tag(tag, "revealed")
+}
+
+fn simple_type_identity_condition_filter(filter: &ObjectFilter) -> bool {
+    let mut stripped = filter.clone();
+    stripped.card_types.clear();
+    stripped.all_card_types.clear();
+    stripped == ObjectFilter::default()
+}
+
 fn describe_you_or_attacked_player_initiative_condition(
     left: &Condition,
     right: &Condition,
@@ -13649,6 +13679,38 @@ mod tests {
         let condition = Condition::TaggedObjectMatches(TagKey::from("triggering"), filter);
 
         assert_eq!(describe_condition(&condition), "that object is a Spider");
+    }
+
+    #[test]
+    fn describe_tagged_object_matches_all_card_types_uses_is_clause() {
+        let mut filter = ObjectFilter::default();
+        filter.all_card_types = vec![CardType::Artifact, CardType::Creature];
+        let condition = Condition::TaggedObjectMatches(TagKey::from("pumped_0"), filter);
+
+        assert_eq!(describe_condition(&condition), "it's an artifact creature");
+    }
+
+    #[test]
+    fn describe_revealed_tagged_object_matches_all_card_types_uses_card_clause() {
+        let mut filter = ObjectFilter::default();
+        filter.all_card_types = vec![CardType::Artifact, CardType::Creature];
+        let condition = Condition::TaggedObjectMatches(
+            TagKey::from("__sentence_helper_revealed_l0_s0_e0"),
+            filter,
+        );
+
+        assert_eq!(
+            describe_condition(&condition),
+            "it's an artifact creature card"
+        );
+    }
+
+    #[test]
+    fn describe_blocking_tag_uses_that_creature() {
+        assert_eq!(
+            describe_choose_spec(&ChooseSpec::Tagged(TagKey::from("blocking"))),
+            "that creature"
+        );
     }
 
     #[test]

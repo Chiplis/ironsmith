@@ -356,7 +356,13 @@ pub(super) fn try_compile_timing_and_control_effect(
                 TriggerSpec::PutIntoGraveyard(filter)
                 | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-                    if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
+                    let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
+                        filter_references_tag(filter, IT_TAG)
+                            .then(|| ctx.last_object_tag.clone())
+                            .flatten()
+                            .map(TagKey::from)
+                    });
+                    if let Some(watched_tag) = watched_tag {
                         let lowered = compile_trigger_effects_with_imports(
                             Some(trigger),
                             effects,
@@ -396,7 +402,13 @@ pub(super) fn try_compile_timing_and_control_effect(
                 }
                 TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-                    if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
+                    let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
+                        filter_references_tag(filter, IT_TAG)
+                            .then(|| ctx.last_object_tag.clone())
+                            .flatten()
+                            .map(TagKey::from)
+                    });
+                    if let Some(watched_tag) = watched_tag {
                         let lowered = compile_trigger_effects_with_imports(
                             Some(trigger),
                             effects,
@@ -620,7 +632,8 @@ pub(super) fn try_compile_timing_and_control_effect(
                 true,
                 Vec::new(),
                 PlayerFilter::You,
-            );
+            )
+            .until_end_of_turn();
             if let Some(filter) = filter {
                 delayed = delayed
                     .with_target_filter(resolve_it_tag(filter, &current_reference_env(ctx))?);

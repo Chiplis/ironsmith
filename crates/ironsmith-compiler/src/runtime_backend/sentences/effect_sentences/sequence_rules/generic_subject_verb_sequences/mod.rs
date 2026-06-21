@@ -85,7 +85,6 @@ const FLASHBACK_COST_FOLLOWUPS: &[&[&str]] = &[
 ];
 
 const EXILE_TOP_CARD_OF_LIBRARY: &[&str] = &["exile", "top", "card", "of", "your", "library"];
-const SEARCH_YOUR_LIBRARY_PREFIX: &[&str] = &["search", "your", "library"];
 const ITERATIVE_LIBRARY_MAY_KEEP_UNLESS_DUPLICATE_NAME_CLAUSES: &[&[&str]] = &[
     &[
         "you", "may", "put", "that", "card", "into", "your", "hand", "unless", "it", "has", "same",
@@ -718,10 +717,7 @@ pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
     else {
         return Ok(None);
     };
-    let search_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    if first_effects.is_empty()
-        || !word_slice_starts_with(&search_clause.word_refs(), SEARCH_YOUR_LIBRARY_PREFIX)
-    {
+    if first_effects.is_empty() {
         return Ok(None);
     }
 

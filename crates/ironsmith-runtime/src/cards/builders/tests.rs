@@ -41150,6 +41150,35 @@ fn parse_delayed_destroy_at_end_of_combat_parses() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_gain_control_at_end_of_combat_schedules_delayed_control() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tolarian Entrancer Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature becomes blocked by a creature, gain control of that creature at end of combat.",
+        )
+        .expect("delayed gain-control trigger should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ScheduleDelayedTriggerEffect") && debug.contains("EndOfCombatTrigger"),
+        "expected delayed end-of-combat control payload, got {debug}"
+    );
+    assert!(
+        debug.contains("ChangeControllerToEffectController"),
+        "expected delayed payload to gain control of the blocker, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("gain control of that creature at end of combat"),
+        "expected rendered delayed gain-control text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_delayed_destroy_at_next_end_step_parses() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bearer Variant")
         .parse_text("Destroy all permanents at the beginning of the next end step.")
@@ -43319,6 +43348,94 @@ fn optional_source_damage_followups_render_player_conditions() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn any_player_may_sacrifice_choice_keeps_optional_player_subject() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Prowling Pangolin Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, any player may sacrifice two creatures of their choice. If a player does, sacrifice this creature.",
+        )
+        .expect("Prowling Pangolin-style optional sacrifice should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        (rendered.contains("any player may sacrifice two creatures")
+            || rendered.contains("a player may sacrifice two creatures"))
+            && rendered.contains("if a player does, sacrifice this creature"),
+        "expected any-player optional sacrifice and follow-up condition, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn filtered_anthem_counts_counters_on_each_affected_creature() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Clamavus Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Proclamator Hailer — Each creature you control gets +1/+1 for each +1/+1 counter on it.",
+        )
+        .expect("Clamavus-style counter anthem should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("CountersOnAffected"),
+        "expected the anthem count to refer to each affected creature, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("gets +1/+1 for each +1/+1 counter on it"),
+        "expected counter anthem to render 'on it', got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn filtered_anthem_preserves_explicit_source_counter_surface() {
+    let equipment_def = CardDefinitionBuilder::new(CardId::from_raw(1), "Blade Variant")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Equipped creature gets +1/+1 for each charge counter on this Equipment.\nEquip {2}",
+        )
+        .expect("source-counter equipment anthem should parse");
+
+    let debug = format!("{:#?}", equipment_def.abilities);
+    assert!(
+        debug.contains("CountersOnSourceWithSurface") && !debug.contains("CountersOnAffected"),
+        "expected explicit source surface to stay source-counted, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&equipment_def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("gets +1/+1 for each charge counter on this equipment"),
+        "expected source counter anthem to render the Equipment surface, got {rendered}"
+    );
+
+    let named_def = CardDefinitionBuilder::new(CardId::from_raw(2), "Excalibur II")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Equipped creature gets +1/+1 for each charge counter on Excalibur II.\nEquip {3}",
+        )
+        .expect("named source-counter equipment anthem should parse");
+
+    let named_rendered = unprocessed_compiled_lines(&named_def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        named_rendered.contains("gets +1/+1 for each charge counter on excalibur ii"),
+        "expected named source counter anthem to render the source name, got {named_rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_source_surface_for_hard_triggered_and_static_clauses() {
     let cases = [
         (
@@ -43859,6 +43976,31 @@ fn render_source_surface_for_hard_triggered_and_static_clauses() {
             );
         });
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn soulflayer_delve_exiled_keywords_grant_to_source() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soulflayer Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Delve\nIf a creature card with flying was exiled with this creature's delve ability, this creature has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, reach, trample, and vigilance.",
+        )
+        .expect("Soulflayer-style delve ability chain should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("this creature has flying")
+            && rendered.contains("exiled with this creature")
+            && rendered.contains("this creature has vigilance"),
+        "expected Soulflayer keywords to be granted to the source conditionally, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("all creature cards exiled with this creature"),
+        "Soulflayer should not grant keywords to the exiled cards, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -68427,6 +68569,79 @@ fn parse_oracle_garruk_emblem_search_stays_inside_quoted_text() {
 }
 
 #[test]
+fn parse_oracle_tezzeret_emblem_conditional_stays_inside_quoted_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tezzeret, Cruel Captain")
+        .card_types(vec![CardType::Planeswalker])
+        .parse_text(
+            "Whenever an artifact you control enters, put a loyalty counter on Tezzeret.\n\
+0: Untap target artifact or creature. If it's an artifact creature, put a +1/+1 counter on it.\n\
+−3: Search your library for an artifact card with mana value 1 or less, reveal it, put it into your hand, then shuffle.\n\
+−7: You get an emblem with \"At the beginning of combat on your turn, put three +1/+1 counters on target artifact you control. If it's not a creature, it becomes a 0/0 Robot artifact creature.\"",
+        )
+        .expect("Tezzeret should parse");
+    let rendered = debug_compiled_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let expected = "−7: you get an emblem with \"at the beginning of combat on your turn, put three +1/+1 counters on target artifact you control. if it's not a creature, it becomes a 0/0 robot artifact creature.\"";
+    assert!(
+        rendered_lower.contains(expected),
+        "expected Tezzeret emblem to keep the quoted conditional, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("If not, You get an emblem"),
+        "quoted conditional should not escape as a parent condition, got {rendered}"
+    );
+
+    let mut found_emblem = false;
+    for ability in &def.abilities {
+        let AbilityKind::Activated(activated) = &ability.kind else {
+            continue;
+        };
+        let default_effects = activated
+            .effects
+            .segments
+            .iter()
+            .flat_map(|segment| segment.default_effects.iter())
+            .collect::<Vec<_>>();
+        let emblem_effects = default_effects
+            .iter()
+            .filter_map(|effect| effect.downcast_ref::<crate::effects::CreateEmblemEffect>())
+            .collect::<Vec<_>>();
+        if emblem_effects.is_empty() {
+            continue;
+        }
+
+        found_emblem = true;
+        assert_eq!(
+            emblem_effects.len(),
+            1,
+            "expected one direct emblem effect, got {default_effects:#?}"
+        );
+        assert_eq!(
+            default_effects.len(),
+            1,
+            "quoted conditional should stay inside the emblem, not wrap it: {default_effects:#?}"
+        );
+        let emblem = emblem_effects[0];
+        assert!(
+            emblem.emblem.text.contains("if it's not a creature"),
+            "emblem text should retain the conditional sentence: {:#?}",
+            emblem.emblem
+        );
+        let emblem_abilities_debug = format!("{:?}", emblem.emblem.abilities);
+        assert!(
+            emblem_abilities_debug.contains("ApplyContinuousEffect")
+                && emblem_abilities_debug.contains("AddCardTypes")
+                && emblem_abilities_debug.contains("SetPowerToughness")
+                && emblem_abilities_debug.contains("Robot"),
+            "emblem rules text should compile the conditional animation effect: {:#?}",
+            emblem.emblem
+        );
+    }
+
+    assert!(found_emblem, "expected to find Tezzeret emblem effect");
+}
+
+#[test]
 fn parse_oracle_garruk_caller_reveal_top_matching_creatures_to_hand() {
     let def = parse_oracle_card_definition("Garruk, Caller of Beasts");
     let rendered = debug_compiled_lines(&def).join("\n");
@@ -71806,20 +72021,22 @@ fn coax_from_the_blind_eternities_lowers_to_face_up_exile_choice_bundle() {
     assert!(
         debug.contains("MayEffect")
             && debug.contains("ChooseObjectsEffect")
-            && debug.contains("zone: Some(Exile)")
+            && debug.contains("zone: Some(OutsideGame)")
+            && debug.contains("additional_zones: [Exile]")
             && debug.contains("face_down: Some(false)")
             && debug.contains("RevealTaggedEffect")
             && debug.contains("MoveToZoneEffect"),
-        "expected Coax to lower into a may/choose/reveal/move bundle, got {debug}"
+        "expected Coax to lower into a may/choose-across-zones/reveal/move bundle, got {debug}"
     );
 
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("you may choose a face-up eldrazi card you own in exile")
+        rendered.contains("outside the game")
+            && rendered.contains("in exile")
             && rendered.contains("put that card into your hand"),
-        "expected Coax to render the exile choice surface, got {rendered}"
+        "expected Coax to render both outside-game and exile choice surfaces, got {rendered}"
     );
 }
 

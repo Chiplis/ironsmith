@@ -190,6 +190,15 @@ fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&'static str
     if phase_step_trigger_has_no_object_reference(trigger) {
         return None;
     }
+    if match trigger {
+        TriggerSpec::ThisBecomesBlockedByObject(_) => true,
+        TriggerSpec::WithIntro { trigger, .. } => {
+            matches!(**trigger, TriggerSpec::ThisBecomesBlockedByObject(_))
+        }
+        _ => false,
+    } {
+        return Some("blocking");
+    }
     if matches!(
         trigger,
         TriggerSpec::KeywordActionTaggedObject { object_tag, .. }
@@ -206,6 +215,19 @@ fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&'static str
         Some("damaged")
     } else {
         Some("triggering")
+    }
+}
+
+fn default_trigger_last_object_prelude(
+    trigger: &TriggerSpec,
+    tag: &crate::cards::builders::TagKey,
+) -> Option<EffectPreludeTag> {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => default_trigger_last_object_prelude(trigger, tag),
+        TriggerSpec::ThisBecomesBlockedByObject(filter) => Some(
+            EffectPreludeTag::TriggeringBlockers(tag.clone(), filter.clone()),
+        ),
+        _ => None,
     }
 }
 
@@ -310,6 +332,7 @@ fn rewrite_prepare_effects_from_normalized(
     config: EffectReferenceResolutionConfig,
     inferred_last_player_filter: Option<PlayerFilter>,
     default_last_object_tag: Option<crate::cards::builders::TagKey>,
+    default_last_object_prelude: Option<EffectPreludeTag>,
     include_trigger_prelude: bool,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let mut prelude = Vec::new();
@@ -346,6 +369,9 @@ fn rewrite_prepare_effects_from_normalized(
                 .cloned()
                 .unwrap_or_else(|| crate::cards::builders::TagKey::from("triggering"));
             prelude.insert(0, EffectPreludeTag::TriggeringObject(tag));
+        }
+        if let Some(default_prelude) = default_last_object_prelude {
+            prelude.insert(0, default_prelude);
         }
         if effects_reference_tag(reference_effects, "triggering_source") {
             prelude.insert(
@@ -407,6 +433,7 @@ pub(crate) fn rewrite_prepare_effects_for_lowering(
         },
         None,
         None,
+        None,
         false,
     )
 }
@@ -426,6 +453,7 @@ pub(crate) fn rewrite_prepare_additional_cost_effects_for_lowering(
             force_export_last_memory_effect_id: true,
             ..Default::default()
         },
+        None,
         None,
         None,
         false,
@@ -478,6 +506,7 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
         },
         trigger.and_then(inferred_trigger_player_filter),
         default_last_object_tag,
+        None,
         trigger.is_some(),
     )
 }
@@ -636,7 +665,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         }
     }
 
-    let default_last_object_tag = if !has_local_target_prelude
+    let (default_last_object_tag, default_last_object_prelude) = if !has_local_target_prelude
         && (effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized))
     {
         let default_tag = if matches!(&trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1))
@@ -651,9 +680,13 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         } else {
             default_trigger_last_object_tag(&trigger)
         };
-        default_tag.map(crate::cards::builders::TagKey::from)
+        let default_tag = default_tag.map(crate::cards::builders::TagKey::from);
+        let default_prelude = default_tag
+            .as_ref()
+            .and_then(|tag| default_trigger_last_object_prelude(&trigger, tag));
+        (default_tag, default_prelude)
     } else {
-        None
+        (None, None)
     };
 
     let prepared = rewrite_prepare_effects_from_normalized(
@@ -666,6 +699,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         },
         inferred_trigger_player_filter(&trigger),
         default_last_object_tag,
+        default_last_object_prelude,
         true,
     )?;
 

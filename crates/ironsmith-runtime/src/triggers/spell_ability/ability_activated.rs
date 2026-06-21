@@ -100,8 +100,6 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         let verb = activate_verb(&subject);
         let ability = if self.loyalty_only {
             "a loyalty ability"
-        } else if self.non_mana_only {
-            "a non-mana ability"
         } else {
             "an ability"
         };
@@ -110,12 +108,20 @@ impl TriggerMatcher for AbilityActivatedTrigger {
                 "Whenever {subject} {verb} {ability} with an activation cost that contains {{X}}"
             )
         } else if self.filter == ObjectFilter::default() {
-            format!("Whenever {subject} {verb} {ability}")
+            let mut text = format!("Whenever {subject} {verb} {ability}");
+            if self.non_mana_only && !self.loyalty_only {
+                text.push_str(" that isn't a mana ability");
+            }
+            text
         } else {
-            format!(
+            let mut text = format!(
                 "Whenever {subject} {verb} {ability} of {}",
                 source_filter_phrase(&self.filter)
-            )
+            );
+            if self.non_mana_only && !self.loyalty_only {
+                text.push_str(" that isn't a mana ability");
+            }
+            text
         }
     }
 }

@@ -3529,6 +3529,55 @@ fn parse_life_total_static_condition(tokens: &[OwnedLexToken]) -> Option<crate::
         .condition_expr()
 }
 
+fn explicit_source_counter_surface(
+    source_words: &[&str],
+) -> Option<crate::target::SourceReferenceSurface> {
+    crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(source_words)
+        .or_else(|| {
+            (source_words.len() > 1)
+                .then(|| {
+                    crate::runtime_backend::front_end::shared::util::this_source_surface_for_words(
+                        source_words,
+                    )
+                })
+                .flatten()
+        })
+}
+
+fn source_counter_count_expression(
+    counter_type: crate::CounterType,
+    source_words: &[&str],
+) -> AnthemCountExpression {
+    if let Some(surface) = explicit_source_counter_surface(source_words) {
+        AnthemCountExpression::CountersOnSourceWithSurface {
+            counter_type,
+            surface,
+        }
+    } else {
+        AnthemCountExpression::CountersOnSource(counter_type)
+    }
+}
+
+fn source_counter_count_expression_from_value(value: Value) -> Option<AnthemCountExpression> {
+    match value {
+        Value::CountersOnSource(counter_type) => Some(AnthemCountExpression::CountersOnSource(
+            counter_type,
+        )),
+        Value::CountersOn(spec, Some(counter_type))
+            if matches!(spec.unhinted(), crate::target::ChooseSpec::Source) =>
+        {
+            spec.source_reference_surface()
+                .cloned()
+                .map(|surface| AnthemCountExpression::CountersOnSourceWithSurface {
+                    counter_type,
+                    surface,
+                })
+                .or(Some(AnthemCountExpression::CountersOnSource(counter_type)))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_anthem_for_each_expression(
     tokens: &[OwnedLexToken],
 ) -> Result<AnthemCountExpression, CardTextError> {
@@ -3607,8 +3656,12 @@ pub(crate) fn parse_anthem_for_each_expression(
         && let Some(counter_type) = parse_counter_type_word(rest_words[counter_word_idx - 1])
     {
         let tail_words = &rest_words[counter_word_idx + 1..];
-        if anthem_shape_matches_words(tail_words, ON_SOURCE_COUNTER_TAIL_PATTERN) {
-            return Ok(AnthemCountExpression::CountersOnSource(counter_type));
+        if tail_words.first() == Some(&"on")
+            && (anthem_shape_matches_words(tail_words, ON_SOURCE_COUNTER_TAIL_PATTERN)
+                || explicit_source_counter_surface(&tail_words[1..]).is_some())
+        {
+            let source_words = tail_words.strip_prefix(&["on"]).unwrap_or(tail_words);
+            return Ok(source_counter_count_expression(counter_type, source_words));
         }
     }
 
@@ -3845,8 +3898,9 @@ pub(crate) fn parse_anthem_clause(
                 Value::GreatestManaValue(filter) => {
                     AnthemCountExpression::GreatestManaValueAmong(filter)
                 }
-                Value::CountersOnSource(counter_type) => {
-                    AnthemCountExpression::CountersOnSource(counter_type)
+                value if source_counter_count_expression_from_value(value.clone()).is_some() => {
+                    source_counter_count_expression_from_value(value)
+                        .expect("checked source-counter expression")
                 }
                 Value::BasicLandTypesAmong(filter) => {
                     AnthemCountExpression::BasicLandTypesAmong(filter)
@@ -3943,13 +3997,15 @@ pub(crate) fn parse_anthem_clause(
     };
 
     // When the anthem affects multiple creatures (subject is a filter rather
-    // than "this creature"), any "attached to it" count expression refers to
-    // the affected creature, not the anthem source.  Promote
-    // AttachedToSource -> AttachedToAffected so the runtime evaluates the
-    // count per-creature.
+    // than "this creature"), any "... on/attached to it" count expression
+    // refers to the affected creature, not the anthem source. Promote those
+    // source-relative expressions so the runtime evaluates the count
+    // per-creature.
     if matches!(subject, AnthemSubjectAst::Filter(_)) {
         promote_attached_to_affected(&mut power);
         promote_attached_to_affected(&mut toughness);
+        promote_counters_on_affected(&mut power);
+        promote_counters_on_affected(&mut toughness);
     }
 
     parser_trace_stack("parse_static:anthem-clause:matched", tokens);
@@ -4022,6 +4078,22 @@ fn promote_attached_to_affected(value: &mut AnthemValue) {
             unreachable!()
         };
         *count = AnthemCountExpression::AttachedToAffected(filter);
+    }
+}
+
+fn promote_counters_on_affected(value: &mut AnthemValue) {
+    if let AnthemValue::PerCount {
+        count: count @ AnthemCountExpression::CountersOnSource(_),
+        ..
+    } = value
+    {
+        let AnthemCountExpression::CountersOnSource(counter_type) = std::mem::replace(
+            count,
+            AnthemCountExpression::CountersOnAffected(crate::CounterType::Charge),
+        ) else {
+            unreachable!()
+        };
+        *count = AnthemCountExpression::CountersOnAffected(counter_type);
     }
 }
 

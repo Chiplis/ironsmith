@@ -523,6 +523,9 @@ pub(crate) fn compile_effect_prelude_tags(prelude: &[EffectPreludeTag]) -> Vec<E
         .map(|tag| match tag {
             EffectPreludeTag::AttachedSource(tag) => Effect::tag_attached_to_source(tag.as_str()),
             EffectPreludeTag::TriggeringObject(tag) => Effect::tag_triggering_object(tag.as_str()),
+            EffectPreludeTag::TriggeringBlockers(tag, filter) => {
+                Effect::tag_triggering_blockers(tag.as_str(), Some(filter.clone()))
+            }
             EffectPreludeTag::TriggeringSource(tag) => Effect::tag_triggering_source(tag.as_str()),
             EffectPreludeTag::TriggeringDamageTarget(tag) => {
                 Effect::tag_triggering_damage_target(tag.as_str())

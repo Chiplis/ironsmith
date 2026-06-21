@@ -78,11 +78,12 @@ pub use ironsmith_core::{
     SkipDrawStepEffect, SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect,
     SkipTurnEffect, SneakCostEffect, SolveCaseEffect, SoulbondPairEffect, SupportEffect,
     SurveilEffect, SuspectEffect, TagAttachedToSourceEffect, TagMatchingObjectsEffect,
-    TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TagTriggeringSourceEffect,
-    TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect, TapEffect,
-    TargetOnlyEffect, TicketCountersEffect, TransformEffect, UnattachObjectsEffect, UnearthEffect,
-    UnlessActionEffect, UnlessPaysEffect, UntapEffect, VariableCasualtyPlaneswalkerCopyEffect,
-    VentureIntoDungeonEffect, WinTheGameEffect, WithIdEffect as CoreWithIdEffect,
+    TagTriggeringBlockersEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
+    TagTriggeringSourceEffect, TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource,
+    TakeInitiativeEffect, TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect,
+    UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect,
+    VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect, WinTheGameEffect,
+    WithIdEffect as CoreWithIdEffect,
 };
 
 pub type ChooseModeEffect = CoreChooseModeEffect<Effect>;

@@ -957,12 +957,13 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
             first_words.join(" ")
         ))
     })?;
-    let choose_filter = parse_object_filter_lexed(&choose_tokens[1..], false).map_err(|_| {
-        CardTextError::ParseError(format!(
-            "unsupported exile choice filter in reveal-or-choose bundle (clause: '{}')",
-            first_words.join(" ")
-        ))
-    })?;
+    let mut choose_filter =
+        parse_object_filter_lexed(&choose_tokens[1..], false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported exile choice filter in reveal-or-choose bundle (clause: '{}')",
+                first_words.join(" ")
+            ))
+        })?;
 
     if reveal_filter.card_types != choose_filter.card_types
         || reveal_filter.subtypes != choose_filter.subtypes
@@ -970,6 +971,8 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
     {
         return Ok(None);
     }
+
+    choose_filter.zone = None;
 
     let chosen_tag = TagKey::from("__coax_or_karn_selected__");
     let effects = vec![
@@ -979,7 +982,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
             count_value: None,
             player: PlayerAst::You,
             tag: chosen_tag.clone(),
-            zones: vec![Zone::Exile],
+            zones: vec![Zone::OutsideGame, Zone::Exile],
             search_mode: None,
         },
         EffectAst::subject_verb_reveal_tagged(chosen_tag.clone()),

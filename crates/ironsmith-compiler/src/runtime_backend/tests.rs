@@ -1,3 +1,4 @@
+use crate::ability::AbilityKind;
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ChoiceCount};
 use crate::color::ColorSet;
 use crate::effect::Value;
@@ -5,6 +6,7 @@ use crate::ids::CardId;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::static_abilities::StaticAbilityId;
+use crate::triggers::TriggerKind;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 use std::fs;
@@ -6653,6 +6655,35 @@ fn rewrite_search_library_head_splitter_ignores_quoted_emblem_search_text() {
 }
 
 #[test]
+fn rewrite_trailing_if_splitter_ignores_quoted_emblem_conditionals() {
+    let tokens = lex_line(
+        r#"You get an emblem with "At the beginning of combat on your turn, put three +1/+1 counters on target artifact you control. If it's not a creature, it becomes a 0/0 Robot artifact creature.""#,
+        0,
+    )
+    .expect("rewrite lexer should classify quoted emblem conditional text");
+
+    assert!(
+        super::grammar::structure::split_trailing_if_clause_lexed(&tokens).is_none(),
+        "trailing-if splitter should ignore conditional text inside emblem quotes"
+    );
+
+    let effects = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("quoted emblem conditional text should parse as an emblem effect");
+    match effects.as_slice() {
+        [crate::cards::builders::EffectAst::SubjectVerb(subject_verb)] => {
+            match &subject_verb.action {
+                crate::cards::builders::SubjectVerbActionAst::CreateEmblem { text } => assert!(
+                    text.contains("if it's not a creature"),
+                    "emblem text should retain the quoted conditional sentence, got {text}"
+                ),
+                other => panic!("expected a CreateEmblem action, got {other:#?}"),
+            }
+        }
+        other => panic!("expected a single CreateEmblem effect, got {other:#?}"),
+    }
+}
+
+#[test]
 fn rewrite_intuition_search_stays_card_based_in_compiled_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Intuition Variant")
         .card_types(vec![CardType::Instant])
@@ -11876,9 +11907,30 @@ fn rewrite_sequence_registry_matches_search_upkeep_lose_game_bundle() {
 
     assert_eq!(
         matched.name,
-        "search-then-next-upkeep-unless-pays-lose-game"
+        "effect-then-next-upkeep-unless-pays-lose-game"
     );
     assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("DelayedUntilNextUpkeep"), "{debug}");
+    assert!(debug.contains("LoseGame"), "{debug}");
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_counterspell_upkeep_lose_game_bundle() {
+    let sentences = registry_sentence_inputs(
+        "counter target spell. at the beginning of your next upkeep, pay {3}{u}{u}. if you don't, you lose the game.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match pact upkeep bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "effect-then-next-upkeep-unless-pays-lose-game"
+    );
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("Counter"), "{debug}");
     assert!(debug.contains("DelayedUntilNextUpkeep"), "{debug}");
     assert!(debug.contains("LoseGame"), "{debug}");
 }
@@ -12531,6 +12583,210 @@ fn rewrite_lowered_intervening_counter_gate_binds_destroy_to_gate_filter()
 }
 
 #[test]
+fn rewrite_lowered_spell_cast_trigger_keeps_comma_color_list() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Comma Color Spell")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(1, 1));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever you cast a spell that's white, blue, black, or red, put a +1/+1 counter on this creature."
+            .to_string(),
+        false,
+    )?;
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let TriggerKind::SpellCastQualified {
+        filter: Some(filter),
+        ..
+    } = &triggered.trigger.kind
+    else {
+        panic!(
+            "expected qualified spell-cast trigger: {:#?}",
+            triggered.trigger
+        );
+    };
+    let expected_colors = ColorSet::WHITE
+        .union(ColorSet::BLUE)
+        .union(ColorSet::BLACK)
+        .union(ColorSet::RED);
+
+    assert_eq!(filter.colors, Some(expected_colors));
+    assert!(
+        format!("{:#?}", triggered.effects).contains("PutCountersEffect"),
+        "{:#?}",
+        triggered.effects
+    );
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_activated_ability_trigger_keeps_comma_type_list() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Comma Type Ability")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(2, 2));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever an opponent activates an ability of an artifact, creature, or land on the battlefield, if it isn't a mana ability, this creature deals 2 damage to that player."
+            .to_string(),
+        false,
+    )?;
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let TriggerKind::AbilityActivatedQualified {
+        filter,
+        non_mana_only,
+        ..
+    } = &triggered.trigger.kind
+    else {
+        panic!(
+            "expected qualified ability-activated trigger: {:#?}",
+            triggered.trigger
+        );
+    };
+
+    assert!(
+        filter.card_types.contains(&CardType::Artifact),
+        "{filter:#?}"
+    );
+    assert!(
+        filter.card_types.contains(&CardType::Creature),
+        "{filter:#?}"
+    );
+    assert!(filter.card_types.contains(&CardType::Land), "{filter:#?}");
+    assert!(*non_mana_only, "{:#?}", triggered.trigger);
+    assert!(
+        format!("{:#?}", triggered.effects).contains("DealDamageEffect"),
+        "{:#?}",
+        triggered.effects
+    );
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_activated_ability_trigger_keeps_that_non_mana_type_list()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Activation Punisher")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(1, 3));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever an opponent activates an ability of an artifact, creature, or land that isn't a mana ability, this creature deals 1 damage to that player.".to_string(),
+        false,
+    )?;
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let TriggerKind::AbilityActivatedQualified {
+        filter,
+        non_mana_only,
+        ..
+    } = &triggered.trigger.kind
+    else {
+        panic!(
+            "expected qualified ability-activated trigger: {:#?}",
+            triggered.trigger
+        );
+    };
+
+    assert!(
+        filter.card_types.contains(&CardType::Artifact),
+        "{filter:#?}"
+    );
+    assert!(
+        filter.card_types.contains(&CardType::Creature),
+        "{filter:#?}"
+    );
+    assert!(filter.card_types.contains(&CardType::Land), "{filter:#?}");
+    assert!(*non_mana_only, "{:#?}", triggered.trigger);
+    assert!(
+        format!("{:#?}", triggered.effects).contains("DealDamageEffect"),
+        "{:#?}",
+        triggered.effects
+    );
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_becomes_blocked_by_binds_that_creature_to_blocker() -> Result<(), CardTextError>
+{
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Blocked By Artifact")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(3, 3));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever this creature becomes blocked by an artifact creature, destroy that creature."
+            .to_string(),
+        false,
+    )?;
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let TriggerKind::ThisBecomesBlockedByObject { filter } = &triggered.trigger.kind else {
+        panic!(
+            "expected by-object blocked trigger: {:#?}",
+            triggered.trigger
+        );
+    };
+
+    assert!(
+        filter.all_card_types.contains(&CardType::Artifact),
+        "{filter:#?}"
+    );
+    assert!(
+        filter.all_card_types.contains(&CardType::Creature),
+        "{filter:#?}"
+    );
+    let effects_debug = format!("{:#?}", triggered.effects);
+    assert!(
+        effects_debug.contains("TagTriggeringBlockersEffect")
+            && effects_debug.contains("\"blocking\"")
+            && effects_debug.contains("DestroyEffect"),
+        "{effects_debug}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_becomes_blocked_by_color_with_regeneration_followup_keeps_blocker_filter()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Blocked By Green")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(3, 3));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever this creature becomes blocked by a green creature, destroy that creature. It can't be regenerated.".to_string(),
+        false,
+    )?;
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let TriggerKind::ThisBecomesBlockedByObject { filter } = &triggered.trigger.kind else {
+        panic!(
+            "expected by-object blocked trigger: {:#?}",
+            triggered.trigger
+        );
+    };
+
+    assert_eq!(filter.card_types, vec![CardType::Creature], "{filter:#?}");
+    assert_eq!(filter.colors, Some(ColorSet::GREEN), "{filter:#?}");
+    let effects_debug = format!("{:#?}", triggered.effects);
+    assert!(
+        effects_debug.contains("TagTriggeringBlockersEffect")
+            && effects_debug.contains("\"blocking\"")
+            && effects_debug.contains("DestroyEffect"),
+        "{effects_debug}"
+    );
+    assert!(
+        format!("{:#?}", definition.abilities).contains("BeRegenerated"),
+        "{:#?}",
+        definition.abilities
+    );
+    Ok(())
+}
+
+#[test]
 fn rewrite_lowered_delayed_combat_damage_player_trigger_this_turn_compiles()
 -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Delayed Combat Trigger")
@@ -12546,6 +12802,33 @@ fn rewrite_lowered_delayed_combat_damage_player_trigger_this_turn_compiles()
     assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
     assert!(debug.contains("DealsCombatDamageToPlayer"), "{debug}");
     assert!(debug.contains("DrawCardsEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_triggered_effect_keeps_delayed_that_creature_dies_followup()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Delayed Dies Followup")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(3, 2));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever you attack, target attacking creature gets +1/+0 until end of turn. When that creature dies this turn, surveil 1.".to_string(),
+        false,
+    )?;
+    assert_eq!(definition.abilities.len(), 1, "{:#?}", definition.abilities);
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let effects_debug = format!("{:#?}", triggered.effects);
+    assert!(
+        effects_debug.contains("ScheduleDelayedTriggerEffect")
+            && effects_debug.contains("ThisDies")
+            && effects_debug.contains("target_tag: Some")
+            && effects_debug.contains("until_end_of_turn: true")
+            && effects_debug.contains("SurveilEffect"),
+        "{effects_debug}"
+    );
     Ok(())
 }
 
@@ -14677,7 +14960,108 @@ fn rewrite_lowered_nonattacking_nonblocking_target_pump_keeps_target() -> Result
     let effects = &activated.effects.segments[0].default_effects;
     let apply = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
+        .find_map(|effect| {
+            effect.as_apply_continuous().or_else(|| {
+                effect
+                    .as_tagged()
+                    .and_then(|tagged| tagged.effect.as_apply_continuous())
+            })
+        })
+        .filter(|apply| apply.target_spec.as_ref() == Some(&activated.choices[0]))
+        .expect("expected continuous pump effect");
+    assert_ne!(apply.target_spec, Some(crate::target::ChooseSpec::Source));
+    assert_eq!(apply.target_spec.as_ref(), Some(&activated.choices[0]));
+    Ok(())
+}
+
+#[test]
+fn rewrite_hyphenated_broad_pump_subjects_stay_filter_targets() -> Result<(), CardTextError> {
+    let lexed = lex_line("Non-Elf creatures get -2/-2 until end of turn.", 0)
+        .expect("non-Elf pump should lex");
+    let parsed_sentence =
+        parse_effect_sentence_lexed(&lexed).expect("non-Elf pump sentence should parse");
+    let [
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::PumpAll {
+                        filter,
+                        power,
+                        toughness,
+                        duration,
+                    },
+                ..
+            },
+        ),
+    ] = parsed_sentence.as_slice()
+    else {
+        panic!("expected non-Elf broad pump, got {parsed_sentence:#?}");
+    };
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert_eq!(filter.excluded_subtypes, vec![Subtype::Elf]);
+    assert_eq!(*power, Value::Fixed(-2));
+    assert_eq!(*toughness, Value::Fixed(-2));
+    assert_eq!(*duration, crate::effect::Until::EndOfTurn);
+
+    let lexed = lex_line("All non-Zombie creatures get -1/-1 until end of turn.", 0)
+        .expect("non-Zombie pump should lex");
+    let parsed_sentence =
+        parse_effect_sentence_lexed(&lexed).expect("non-Zombie pump sentence should parse");
+    let [
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::PumpAll {
+                        filter,
+                        power,
+                        toughness,
+                        duration,
+                    },
+                ..
+            },
+        ),
+    ] = parsed_sentence.as_slice()
+    else {
+        panic!("expected non-Zombie broad pump, got {parsed_sentence:#?}");
+    };
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert_eq!(filter.excluded_subtypes, vec![Subtype::Zombie]);
+    assert_eq!(*power, Value::Fixed(-1));
+    assert_eq!(*toughness, Value::Fixed(-1));
+    assert_eq!(*duration, crate::effect::Until::EndOfTurn);
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_target_pump_with_duration_prefix_keeps_target() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Stegron Test")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "{1}{R}, Discard this card: Until end of turn, target creature you control gets +3/+1 and becomes a Dinosaur in addition to its other types."
+            .to_string(),
+        false,
+    )?;
+    let ability = definition
+        .abilities
+        .first()
+        .expect("rewrite lowering should produce one ability");
+    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+        panic!("expected activated ability, got {ability:?}");
+    };
+
+    assert_eq!(activated.choices.len(), 1, "{activated:#?}");
+    let effects = &activated.effects.segments[0].default_effects;
+    let apply = effects
+        .iter()
+        .find_map(|effect| {
+            effect.as_apply_continuous().or_else(|| {
+                effect
+                    .as_tagged()
+                    .and_then(|tagged| tagged.effect.as_apply_continuous())
+            })
+        })
+        .filter(|apply| apply.target_spec.as_ref() == Some(&activated.choices[0]))
         .expect("expected continuous pump effect");
     assert_ne!(apply.target_spec, Some(crate::target::ChooseSpec::Source));
     assert_eq!(apply.target_spec.as_ref(), Some(&activated.choices[0]));
@@ -15586,6 +15970,30 @@ fn rewrite_preprocess_expands_same_is_true_static_exile_chain() {
 }
 
 #[test]
+fn rewrite_preprocess_expands_same_is_true_static_delve_exile_chain() {
+    for preposition in ["with", "by"] {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Soulflayer Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(&format!(
+                "Delve\nIf a creature card with flying was exiled {preposition} this creature's delve ability, this creature has flying. The same is true for first strike and vigilance.",
+            ))
+            .expect("same-is-true delve-linked exile chain should parse");
+
+        let rendered = format!("{def:#?}").to_ascii_lowercase();
+        assert!(
+            rendered.contains("__source_exiled__"),
+            "expected source-linked exile provenance in Soulflayer-style condition, got {rendered}"
+        );
+        assert!(
+            rendered.contains("flying")
+                && rendered.contains("first strike")
+                && rendered.contains("vigilance"),
+            "expected same-is-true delve branches to expand, got {rendered}"
+        );
+    }
+}
+
+#[test]
 fn parse_choose_then_do_same_for_filter_splits_one_of_mana_values() {
     let tokens = lex_line(
         "choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3.",
@@ -16000,6 +16408,34 @@ fn rewrite_lexed_static_grant_line_ignores_inner_has_in_quoted_trigger() {
             || debug.contains("Conditional { predicate: PlayerHasNoOpponentWithMoreLifeThan"),
         "{debug}"
     );
+}
+
+#[test]
+fn rewrite_lowered_background_quoted_grant_with_inner_target_pump_stays_static()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Hardy Outlander")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Background]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Commander creatures you own have \"Whenever this creature attacks a player, if no opponent has more life than that player, another target creature you control gets +X/+X until end of turn, where X is this creature's power.\""
+            .to_string(),
+        false,
+    )?;
+
+    assert!(
+        definition.spell_effect.is_none(),
+        "quoted static grant should not lower as a spell effect: {:#?}",
+        definition.spell_effect
+    );
+    let debug = format!("{:#?}", definition.abilities);
+    assert!(debug.contains("GrantObjectAbilityForFilter"), "{debug}");
+    assert!(
+        debug.contains("ThisAttacksTrigger") || debug.contains("this_attacks"),
+        "{debug}"
+    );
+    assert!(debug.contains("ModifyPowerToughness"), "{debug}");
+    Ok(())
 }
 
 #[test]

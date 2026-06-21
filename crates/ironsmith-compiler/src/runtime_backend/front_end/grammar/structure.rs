@@ -42,6 +42,15 @@ const ENCHANTED_CONTROLLER_TRIGGER_PREFIXES: &[&[&str]] = &[
     &["enchanted", "land", "controller"],
     &["enchanted", "lands", "controller"],
 ];
+const QUOTED_GRANT_EXPLICIT_HEAD_PREFIXES: &[&[&str]] = &[&["this"], &["it"], &["all"], &["each"]];
+const QUOTED_GRANT_OBJECT_FILTER_WORDS: &[&str] = &[
+    "commander",
+    "commanders",
+    "permanent",
+    "permanents",
+    "spell",
+    "spells",
+];
 const RESULT_VERB_WORDS: &[&str] = &[
     "remove",
     "removed",
@@ -636,6 +645,24 @@ fn is_statement_verb_word(word: &str) -> bool {
     )
 }
 
+fn quoted_grant_head_looks_like_object_filter(head: &[OwnedLexToken]) -> bool {
+    if primitives::words_match_any_prefix(head, QUOTED_GRANT_EXPLICIT_HEAD_PREFIXES).is_some() {
+        return true;
+    }
+    let words = TokenWordView::new(head).to_word_refs();
+    let Some(have_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "has" | "have"))
+    else {
+        return false;
+    };
+    words[..have_idx].iter().any(|word| {
+        QUOTED_GRANT_OBJECT_FILTER_WORDS.contains(word)
+            || parse_card_type(word).is_some()
+            || parse_subtype_flexible(word).is_some()
+    })
+}
+
 pub(crate) fn classify_static_line_family_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticLineFamily> {
@@ -685,8 +712,7 @@ pub(crate) fn classify_static_line_family_lexed(
         let head = trim_lexed_commas(&tokens[..quote_idx]);
         if !head.is_empty()
             && !contains_token_kind(head, TokenKind::Period)
-            && primitives::words_match_any_prefix(head, &[&["this"], &["it"], &["all"], &["each"]])
-                .is_some()
+            && quoted_grant_head_looks_like_object_filter(head)
         {
             let words = TokenWordView::new(head);
             if words.find_word("has").is_some() || words.find_word("have").is_some() {
@@ -1820,8 +1846,7 @@ fn split_trailing_predicate_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
     keyword: &'static str,
 ) -> Option<TrailingIfClauseSpec<'a>> {
-    let split_idx =
-        primitives::rfind_token_index(tokens, |token| token_matches_dynamic_word(token, keyword))?;
+    let split_idx = rfind_unquoted_dynamic_word(tokens, keyword)?;
     if split_idx == 0 || split_idx + 1 >= tokens.len() {
         return None;
     }
@@ -1841,6 +1866,23 @@ fn split_trailing_predicate_clause_lexed<'a>(
         leading_tokens,
         predicate,
     })
+}
+
+fn rfind_unquoted_dynamic_word(tokens: &[OwnedLexToken], word: &'static str) -> Option<usize> {
+    let mut inside_quotes = false;
+    let mut result = None;
+
+    for (idx, token) in tokens.iter().enumerate() {
+        if is_sentence_quote(token) {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if !inside_quotes && token_matches_dynamic_word(token, word) {
+            result = Some(idx);
+        }
+    }
+
+    result
 }
 
 pub(crate) fn parse_who_player_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {

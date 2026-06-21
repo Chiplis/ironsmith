@@ -2233,6 +2233,15 @@ impl Effect {
         Self::new(crate::effects::TagTriggeringSourceEffect::new(tag))
     }
 
+    pub fn tag_triggering_blockers(
+        tag: impl Into<crate::tag::TagKey>,
+        filter: Option<crate::target::ObjectFilter>,
+    ) -> Self {
+        Self::new(crate::effects::TagTriggeringBlockersEffect::new(
+            tag, filter,
+        ))
+    }
+
     pub fn tag_triggering_damage_target(tag: impl Into<crate::tag::TagKey>) -> Self {
         Self::new(crate::effects::TagTriggeringDamageTargetEffect::new(tag))
     }

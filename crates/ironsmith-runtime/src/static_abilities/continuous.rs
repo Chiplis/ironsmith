@@ -19,7 +19,7 @@ use crate::filter::{
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -659,6 +659,46 @@ fn strip_article(text: String) -> String {
     text
 }
 
+fn describe_source_reference_surface(surface: &SourceReferenceSurface) -> String {
+    match surface {
+        SourceReferenceSurface::FullName(text) | SourceReferenceSurface::ShortName(text) => {
+            text.clone()
+        }
+        SourceReferenceSurface::ThisPermanentType(text) => match text.to_ascii_lowercase().as_str()
+        {
+            "this equipment" => "this Equipment".to_string(),
+            "this aura" => "this Aura".to_string(),
+            _ => text.clone(),
+        },
+    }
+}
+
+fn counter_source_location(expr: &AnthemCountExpression) -> Option<(CounterType, String)> {
+    match expr {
+        AnthemCountExpression::CountersOnSource(counter_type) => {
+            Some((*counter_type, "this permanent".to_string()))
+        }
+        AnthemCountExpression::CountersOnSourceWithSurface {
+            counter_type,
+            surface,
+        } => Some((*counter_type, describe_source_reference_surface(surface))),
+        AnthemCountExpression::CountersOnAffected(counter_type) => {
+            Some((*counter_type, "it".to_string()))
+        }
+        _ => None,
+    }
+}
+
+fn matching_counter_source_location(
+    left: &AnthemCountExpression,
+    right: &AnthemCountExpression,
+) -> Option<(CounterType, String)> {
+    let (left_counter, left_location) = counter_source_location(left)?;
+    let (right_counter, right_location) = counter_source_location(right)?;
+    (left_counter == right_counter && left_location == right_location)
+        .then_some((left_counter, left_location))
+}
+
 fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
     match expr {
         AnthemCountExpression::MatchingFilter(filter) => {
@@ -696,6 +736,19 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         }
         AnthemCountExpression::CountersOnSource(counter_type) => {
             format!("{} counter on this permanent", counter_type.description())
+        }
+        AnthemCountExpression::CountersOnSourceWithSurface {
+            counter_type,
+            surface,
+        } => {
+            format!(
+                "{} counter on {}",
+                counter_type.description(),
+                describe_source_reference_surface(surface)
+            )
+        }
+        AnthemCountExpression::CountersOnAffected(counter_type) => {
+            format!("{} counter on it", counter_type.description())
         }
         AnthemCountExpression::CountersAmong(filter, counter_type) => format!(
             "{} counter among {}",
@@ -802,6 +855,17 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             Some("time it has attacked this turn".to_string())
         }
         AnthemCountExpression::CountersOnSource(counter_type) => {
+            Some(format!("{} counter on it", counter_type.description()))
+        }
+        AnthemCountExpression::CountersOnSourceWithSurface {
+            counter_type,
+            surface,
+        } => Some(format!(
+            "{} counter on {}",
+            counter_type.description(),
+            describe_source_reference_surface(surface)
+        )),
+        AnthemCountExpression::CountersOnAffected(counter_type) => {
             Some(format!("{} counter on it", counter_type.description()))
         }
         AnthemCountExpression::CountersAmong(filter, counter_type) => Some(format!(
@@ -1683,6 +1747,12 @@ pub(crate) fn resolve_anthem_count_expression(
         AnthemCountExpression::CountersOnSource(counter_type) => {
             game.counter_count(source, *counter_type) as i32
         }
+        AnthemCountExpression::CountersOnSourceWithSurface { counter_type, .. } => {
+            game.counter_count(source, *counter_type) as i32
+        }
+        AnthemCountExpression::CountersOnAffected(counter_type) => {
+            game.counter_count(source, *counter_type) as i32
+        }
         AnthemCountExpression::CountersAmong(filter, counter_type) => all_game_object_ids(game)
             .into_iter()
             .filter_map(|id| game.object(id))
@@ -2001,16 +2071,23 @@ impl StaticAbilityKind for Anthem {
             (
                 AnthemValue::PerCount {
                     multiplier: power,
-                    count: AnthemCountExpression::CountersOnSource(power_counter),
+                    count: power_count,
                 },
                 AnthemValue::PerCount {
                     multiplier: toughness,
-                    count: AnthemCountExpression::CountersOnSource(toughness_counter),
+                    count: toughness_count,
                 },
-            ) if power_counter == toughness_counter && *power == 1 && *toughness == 1 => {
+            ) if self.count_uses_where_x
+                && *power == 1
+                && *toughness == 1
+                && matching_counter_source_location(power_count, toughness_count).is_some() =>
+            {
+                let (counter_type, location) =
+                    matching_counter_source_location(power_count, toughness_count)
+                        .expect("checked counter source location");
                 format!(
-                    "{subject} {verb} +X/+X, where X is the number of {} counters on this permanent",
-                    power_counter.description(),
+                    "{subject} {verb} +X/+X, where X is the number of {} counters on {location}",
+                    counter_type.description(),
                 )
             }
             (

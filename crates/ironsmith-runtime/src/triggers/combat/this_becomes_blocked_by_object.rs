@@ -18,6 +18,36 @@ impl ThisBecomesBlockedByObjectTrigger {
     }
 }
 
+fn with_indefinite_article(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return "a permanent".to_string();
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("a ")
+        || lower.starts_with("an ")
+        || lower.starts_with("the ")
+        || lower.starts_with("another ")
+        || lower.starts_with("each ")
+        || lower.starts_with("all ")
+        || lower.starts_with("this ")
+        || lower.starts_with("that ")
+        || lower.starts_with("those ")
+        || lower.starts_with("target ")
+        || lower.starts_with("any ")
+        || lower.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+    {
+        return trimmed.to_string();
+    }
+    let first = trimmed.chars().next().unwrap_or('a').to_ascii_lowercase();
+    let article = if matches!(first, 'a' | 'e' | 'i' | 'o' | 'u') {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {trimmed}")
+}
+
 impl TriggerMatcher for ThisBecomesBlockedByObjectTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::CreatureBecameBlocked {
@@ -43,7 +73,7 @@ impl TriggerMatcher for ThisBecomesBlockedByObjectTrigger {
     fn display(&self) -> String {
         format!(
             "Whenever this creature becomes blocked by {}",
-            self.blocker_filter.description()
+            with_indefinite_article(&self.blocker_filter.description())
         )
     }
 }
@@ -121,5 +151,15 @@ mod tests {
         let trigger = ThisBecomesBlockedByObjectTrigger::new(blocker_filter);
         let ctx = TriggerContext::for_source(source, alice, &game);
         assert!(!trigger.matches(&event, &ctx));
+    }
+
+    #[test]
+    fn display_adds_article_for_blocker_filter() {
+        let trigger = ThisBecomesBlockedByObjectTrigger::new(ObjectFilter::creature());
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever this creature becomes blocked by a creature"
+        );
     }
 }

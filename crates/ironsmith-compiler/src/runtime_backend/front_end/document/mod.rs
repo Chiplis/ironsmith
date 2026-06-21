@@ -2694,6 +2694,28 @@ mod tests {
     }
 
     #[test]
+    fn trigger_sentence_chunk_splitter_keeps_delayed_dies_followup_with_trigger() {
+        let tokens = lex_line(
+            "Whenever you attack, target attacking creature gets +1/+0 until end of turn. When that creature dies this turn, surveil 1.",
+            0,
+        )
+        .expect("rewrite lexer should classify delayed dies followup line");
+
+        let chunks = split_trigger_sentence_chunks_rewrite_lexed(&tokens)
+            .into_iter()
+            .map(|chunk| render_token_slice(&chunk))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            chunks,
+            vec![
+                "Whenever you attack, target attacking creature gets +1/+0 until end of turn. When that creature dies this turn, surveil 1"
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn named_source_rewrite_covers_trigger_bodies_as_well_as_heads() {
         let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Kain, Traitorous Dragoon")
             .card_types(vec![CardType::Creature]);
@@ -3238,6 +3260,26 @@ fn is_fully_parenthetical_line(line: &PreprocessedLine) -> bool {
             .is_some_and(|token| token.kind == TokenKind::RParen)
 }
 
+fn is_delayed_when_that_dies_this_turn_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens)
+        .into_iter()
+        .map(|word| word.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    if words.first().map(String::as_str) != Some("when") {
+        return false;
+    }
+    let subject_is_prior_object =
+        matches!(words.get(1).map(String::as_str), Some("that") | Some("it"));
+    if !subject_is_prior_object {
+        return false;
+    }
+    words.windows(3).any(|window| {
+        window.first().map(String::as_str) == Some("dies")
+            && window.get(1).map(String::as_str) == Some("this")
+            && window.get(2).map(String::as_str) == Some("turn")
+    })
+}
+
 fn split_trigger_sentence_chunks_rewrite_lexed(
     tokens: &[OwnedLexToken],
 ) -> Vec<Vec<OwnedLexToken>> {
@@ -3258,12 +3300,16 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
 
     for sentence_tokens in sentence_tokens {
         let sentence_starts_with_trigger = line_starts_with_trigger_intro_tokens(sentence_tokens);
+        let sentence_is_delayed_followup =
+            is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens);
         if !current.is_empty() && current_starts_with_trigger && sentence_starts_with_trigger {
-            if let Some(chunk) = clone_sentence_chunk_tokens(tokens, &current) {
-                chunks.push(chunk);
+            if !sentence_is_delayed_followup {
+                if let Some(chunk) = clone_sentence_chunk_tokens(tokens, &current) {
+                    chunks.push(chunk);
+                }
+                current.clear();
+                current_starts_with_trigger = false;
             }
-            current.clear();
-            current_starts_with_trigger = false;
         }
         if current.is_empty() {
             current_starts_with_trigger = sentence_starts_with_trigger;

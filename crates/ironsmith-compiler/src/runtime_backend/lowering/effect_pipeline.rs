@@ -14,10 +14,11 @@ use super::semantic::{
     ParsedRestrictions,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EffectPreludeTag {
     AttachedSource(TagKey),
     TriggeringObject(TagKey),
+    TriggeringBlockers(TagKey, crate::target::ObjectFilter),
     TriggeringSource(TagKey),
     TriggeringDamageTarget(TagKey),
 }

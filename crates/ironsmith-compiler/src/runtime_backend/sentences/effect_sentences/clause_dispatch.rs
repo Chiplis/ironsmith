@@ -83,6 +83,43 @@ mod next_turn_cant;
 
 type ClauseDispatchCompatWords<'a> = TokenWordView<'a>;
 
+fn token_index_for_lex_word_index(tokens: &[OwnedLexToken], word_idx: usize) -> Option<usize> {
+    tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.as_word().is_some())
+        .nth(word_idx)
+        .map(|(idx, _)| idx)
+}
+
+fn strip_leading_pump_subject_duration(
+    tokens: &[OwnedLexToken],
+) -> (&[OwnedLexToken], Option<Until>) {
+    let words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
+    let duration = if starts_with_until_end_of_turn(&words) {
+        Some(Until::EndOfTurn)
+    } else if word_slice_starts_with(&words, &["until", "your", "next", "turn"]) {
+        Some(Until::YourNextTurn)
+    } else if word_slice_starts_with(&words, &["until", "end", "of", "combat"]) {
+        Some(Until::EndOfCombat)
+    } else {
+        None
+    };
+    let Some(duration) = duration else {
+        return (tokens, None);
+    };
+    let Some(mut start_token_idx) = token_index_for_word_index(tokens, 4) else {
+        return (tokens, None);
+    };
+    if tokens
+        .get(start_token_idx)
+        .is_some_and(OwnedLexToken::is_comma)
+    {
+        start_token_idx += 1;
+    }
+    (&tokens[start_token_idx..], Some(duration))
+}
+
 fn parse_mana_replacement_clause_words(words: &[&str]) -> Option<EffectAst> {
     let [
         "until",
@@ -1762,6 +1799,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         "effect-route: subject-verb verb={verb:?} subject={}",
         if verb_idx > 0 { "explicit" } else { "implicit" }
     ));
+    let verb_token_idx = token_index_for_lex_word_index(tokens, verb_idx).unwrap_or(verb_idx);
 
     if matches!(verb, Verb::Counter)
         && verb_idx > 0
@@ -1773,8 +1811,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     if matches!(verb, Verb::Get) {
-        let verb_token_idx = token_index_for_word_index(tokens, verb_idx).unwrap_or(verb_idx);
-        let subject_tokens = &tokens[..verb_token_idx];
+        let raw_subject_tokens = &tokens[..verb_token_idx];
+        let (subject_tokens, subject_duration) =
+            strip_leading_pump_subject_duration(raw_subject_tokens);
         if !subject_tokens.is_empty() {
             let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
             let subject_words = subject_word_view.to_word_refs();
@@ -1800,7 +1839,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     target,
                     Value::EventValue(EventValueSpec::Amount)
                         .with_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay),
-                    Until::EndOfTurn,
+                    subject_duration.unwrap_or(Until::EndOfTurn),
                 ));
             }
             if let Some(mod_token) = modifier_tail.first().map(OwnedLexToken::parser_text)
@@ -1831,6 +1870,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     } else {
                         Until::EndOfTurn
                     };
+                    let duration = subject_duration.clone().unwrap_or(duration);
                     let target = parse_target_phrase(subject_tokens)?;
                     let power_per = match power {
                         Value::Fixed(value) => value,
@@ -1861,6 +1901,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
                 let (power, toughness, duration, condition) =
                     parse_get_modifier_values_with_tail(modifier_tail, power, toughness)?;
+                let duration = subject_duration.clone().unwrap_or(duration);
 
                 let mut normalized_subject_words = word_refs_except(&subject_words, &["each"]);
                 if normalized_subject_words.first().copied() == Some(OF_WORD) {
@@ -1992,18 +2033,18 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
     }
 
-    let subject_tokens = &tokens[..verb_idx];
+    let subject_tokens = &tokens[..verb_token_idx];
     if matches!(verb, Verb::Sacrifice)
         && let Some((subject, target)) = parse_controller_or_owner_of_target_subject(subject_tokens)
     {
-        let rest = &tokens[verb_idx + 1..];
+        let rest = &tokens[verb_token_idx + 1..];
         return parse_sacrifice(rest, Some(subject), Some(target));
     }
     if matches!(verb, Verb::Put)
         && let Some((SubjectAst::Player(PlayerAst::ItsOwner), target)) =
             parse_controller_or_owner_of_target_subject(subject_tokens)
     {
-        let rest = &tokens[verb_idx + 1..];
+        let rest = &tokens[verb_token_idx + 1..];
         if is_pronoun_top_or_bottom_library_choice_put_tail(rest) {
             return Ok(EffectAst::subject_verb_move_to_library_top_or_bottom_choice(target));
         }
@@ -2017,7 +2058,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         )));
     }
     if matches!(verb, Verb::Gain) && !subject_tokens.is_empty() {
-        let rest_word_view = ClauseDispatchCompatWords::new(&tokens[verb_idx + 1..]);
+        let rest_word_view = ClauseDispatchCompatWords::new(&tokens[verb_token_idx + 1..]);
         let rest_words = rest_word_view.to_word_refs();
         if word_slice_contains_all_words(&rest_words, PROTECTION_CHOICE_WORDS)
             && word_slice_contains_any_word(&rest_words, PROTECTION_CHOICE_COLOR_WORDS)
@@ -2035,7 +2076,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
     if matches!(verb, Verb::Gain) {
-        let rest_word_view = ClauseDispatchCompatWords::new(&tokens[verb_idx + 1..]);
+        let rest_word_view = ClauseDispatchCompatWords::new(&tokens[verb_token_idx + 1..]);
         let rest_words = rest_word_view.to_word_refs();
         let duration_phrase = super::gain_ability::parse_simple_ability_duration(&rest_words);
         let duration = duration_phrase
@@ -2048,7 +2089,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             .unwrap_or(clause_words.len());
         let ability_end_token_idx =
             token_index_for_word_index(tokens, ability_end_word_idx).unwrap_or(tokens.len());
-        let ability_tokens = trim_commas(&tokens[verb_idx + 1..ability_end_token_idx]);
+        let ability_tokens = trim_commas(&tokens[verb_token_idx + 1..ability_end_token_idx]);
         let trailing_tokens = trim_commas(&tokens[ability_end_token_idx..]);
         let parsed_actions = parse_ability_line(&ability_tokens).or_else(|| {
             let ability_word_view = ClauseDispatchCompatWords::new(&ability_tokens);
@@ -2074,7 +2115,8 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             ));
         }
     }
-    if matches!(verb, Verb::Lose) && rest_starts_all_abilities_shared_gain(&tokens[verb_idx + 1..])
+    if matches!(verb, Verb::Lose)
+        && rest_starts_all_abilities_shared_gain(&tokens[verb_token_idx + 1..])
     {
         let target = if word_slice_eq(&subject_words, THIS_SOURCE_WORDS) {
             TargetAst::Source(span_from_tokens(subject_tokens))
@@ -2095,7 +2137,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
     if matches!(verb, Verb::Lose) {
-        let rest_word_view = ClauseDispatchCompatWords::new(&tokens[verb_idx + 1..]);
+        let rest_word_view = ClauseDispatchCompatWords::new(&tokens[verb_token_idx + 1..]);
         let rest_words = rest_word_view.to_word_refs();
         let duration_phrase = super::gain_ability::parse_simple_ability_duration(&rest_words);
         let duration = duration_phrase
@@ -2108,7 +2150,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             .unwrap_or(clause_words.len());
         let ability_end_token_idx =
             token_index_for_word_index(tokens, ability_end_word_idx).unwrap_or(tokens.len());
-        let ability_token_storage = trim_commas(&tokens[verb_idx + 1..ability_end_token_idx]);
+        let ability_token_storage = trim_commas(&tokens[verb_token_idx + 1..ability_end_token_idx]);
         let ability_tokens = trim_edge_punctuation(&ability_token_storage);
         let trailing_tokens = trim_edge_punctuation(&trim_commas(&tokens[ability_end_token_idx..]));
         let parsed_actions = parse_ability_line(&ability_tokens).or_else(|| {
@@ -2136,7 +2178,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
     }
     let for_each_subject_filter = parse_for_each_object_subject(subject_tokens)?;
-    let rest = &tokens[verb_idx + 1..];
+    let rest = &tokens[verb_token_idx + 1..];
     if matches!(verb, Verb::Put)
         && subject_words
             .first()

@@ -920,11 +920,74 @@ fn replace_whole_phrase_case_insensitive(text: &str, from: &str, to: &str) -> St
     out
 }
 
+fn normalize_exiled_with_source_ability_tail(tail: &str) -> String {
+    let lower = tail.to_ascii_lowercase();
+    for source_noun in [
+        "creature",
+        "permanent",
+        "artifact",
+        "enchantment",
+        "equipment",
+        "vehicle",
+        "card",
+        "spell",
+        "object",
+    ] {
+        for preposition in ["with", "by"] {
+            let possessive = format!("exiled {preposition} this {source_noun}'s ");
+            let normalized_possessive = format!("exiled {preposition} this {source_noun}s ");
+            if (lower.starts_with(&possessive) || lower.starts_with(&normalized_possessive))
+                && lower.ends_with(" ability")
+            {
+                return format!("exiled with this {source_noun}");
+            }
+        }
+    }
+    tail.to_string()
+}
+
+fn rewrite_exiled_with_borrowed_ability_condition(
+    tokens: &[OwnedLexToken],
+    ability: &str,
+) -> Option<String> {
+    let words = TokenWordView::new(tokens);
+    let ability_tokens = lex_line(ability, 0).ok()?;
+    let ability_words = parser_token_word_refs(&ability_tokens);
+
+    let with_idx = (1..words.len()).find(|idx| {
+        words.at_is(*idx, "with") && words.slice_eq(idx + 1, ability_words.as_slice())
+    })?;
+    let verb_idx = with_idx + 1 + ability_words.len();
+    if !words.at_is_any(verb_idx, &["was", "were"])
+        || !words.at_is(verb_idx + 1, "exiled")
+        || !words.at_is_any(verb_idx + 2, &["with", "by"])
+    {
+        return None;
+    }
+
+    let subject_range = words.token_range_for_word_range(0, with_idx)?;
+    let tail_range = words.token_range_for_word_range(verb_idx + 1, words.len())?;
+    let subject = render_token_slice(&tokens[subject_range])
+        .trim()
+        .to_string();
+    let tail =
+        normalize_exiled_with_source_ability_tail(render_token_slice(&tokens[tail_range]).trim());
+    if subject.is_empty() || tail.is_empty() {
+        return None;
+    }
+
+    Some(format!("there is {subject} {tail} with {ability}"))
+}
+
 fn rewrite_borrow_static_condition(condition: &str, ability: &str) -> Option<String> {
     let tokens = lex_line(condition.trim(), 0).ok()?;
     let words = TokenWordView::new(&tokens);
     let ability_tokens = lex_line(ability, 0).ok()?;
     let ability_words = parser_token_word_refs(&ability_tokens);
+
+    if let Some(rewritten) = rewrite_exiled_with_borrowed_ability_condition(&tokens, ability) {
+        return Some(rewritten);
+    }
 
     if words.len() > ability_words.len() + 1 {
         let ability_start = words.len() - ability_words.len();
@@ -971,6 +1034,23 @@ fn rewrite_borrow_static_sentence(sentence: &str) -> String {
         return sentence.to_string();
     };
     let words = TokenWordView::new(&tokens);
+
+    if words.starts_with(&["if"]) {
+        let Some(condition_start) = words.token_index_after_words(1) else {
+            return sentence.to_string();
+        };
+        if let Some(comma_idx) = tokens[condition_start..]
+            .iter()
+            .position(|token| token.kind == TokenKind::Comma)
+            .map(|idx| condition_start + idx)
+        {
+            let condition = render_token_slice(&tokens[condition_start..comma_idx]);
+            let consequence = render_token_slice(&tokens[comma_idx + 1..]);
+            if let Some(rewritten) = rewrite_borrow_static_condition(condition.as_str(), ability) {
+                return format!("as long as {}, {}", rewritten, consequence.trim());
+            }
+        }
+    }
 
     if word_slice_starts_with(&parser_token_word_refs(&tokens), AS_LONG_AS_PREFIX) {
         let Some(condition_start) = words.token_index_after_words(3) else {

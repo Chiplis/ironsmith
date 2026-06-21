@@ -1,5 +1,6 @@
 use super::super::grammar::structure;
 use super::super::lex_patterns::LexPattern;
+use super::super::util::{parse_card_type, parse_color, parse_subtype_flexible};
 use super::*;
 use crate::parse_trace;
 
@@ -51,6 +52,98 @@ fn line_starts_with_effect_statement_sentence(tokens: &[OwnedLexToken]) -> bool 
                 || token.is_word("tap")
                 || token.is_word("untap")
         })
+}
+
+fn token_word_is_effect_head(word: &str) -> bool {
+    matches!(
+        word,
+        "add"
+            | "choose"
+            | "counter"
+            | "create"
+            | "deal"
+            | "destroy"
+            | "discard"
+            | "draw"
+            | "exchange"
+            | "exile"
+            | "gain"
+            | "look"
+            | "mill"
+            | "put"
+            | "return"
+            | "reveal"
+            | "sacrifice"
+            | "search"
+            | "shuffle"
+            | "surveil"
+            | "tap"
+            | "untap"
+    )
+}
+
+fn token_word_is_filter_list_atom(word: &str) -> bool {
+    parse_color(word).is_some()
+        || parse_card_type(word).is_some()
+        || parse_subtype_flexible(word).is_some()
+}
+
+fn comma_split_tail_starts_with_filter_list_continuation(tokens: &[OwnedLexToken]) -> bool {
+    let mut saw_filter_atom = false;
+    let mut saw_list_separator = false;
+
+    for token in tokens {
+        if token.kind == TokenKind::Period {
+            break;
+        }
+        if token.kind == TokenKind::Comma {
+            if saw_filter_atom {
+                saw_list_separator = true;
+            }
+            continue;
+        }
+
+        if token.as_word().is_none() {
+            continue;
+        }
+        let word = token.parser_text();
+
+        if token_word_is_effect_head(word) || word == "if" {
+            break;
+        }
+
+        if matches!(word, "and" | "or") {
+            saw_list_separator = true;
+            continue;
+        }
+
+        if matches!(
+            word,
+            "a" | "an"
+                | "the"
+                | "of"
+                | "on"
+                | "in"
+                | "with"
+                | "that"
+                | "thats"
+                | "that's"
+                | "is"
+                | "are"
+                | "battlefield"
+        ) {
+            continue;
+        }
+
+        if token_word_is_filter_list_atom(word) {
+            saw_filter_atom = true;
+            continue;
+        }
+
+        break;
+    }
+
+    saw_filter_atom && saw_list_separator
 }
 
 fn strip_terminal_period_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -189,7 +282,9 @@ pub(super) fn parse_triggered_line_cst(
     if let Some((leading_tokens, effect_tokens)) =
         grammar::split_lexed_once_on_comma(tokens_without_cap)
     {
-        if leading_tokens.len() > 1 {
+        if leading_tokens.len() > 1
+            && !comma_split_tail_starts_with_filter_list_continuation(effect_tokens)
+        {
             let probe =
                 probe_triggered_split(&leading_tokens[1..], effect_tokens, None, trailing_cap);
             if let Some(parsed) = probe.supported_cst(line, tokens_without_cap) {
@@ -222,6 +317,11 @@ pub(super) fn parse_triggered_line_cst(
             .iter()
             .any(|token| token.kind == TokenKind::Period)
         {
+            continue;
+        }
+        if comma_split_tail_starts_with_filter_list_continuation(
+            &tokens_without_cap[separator_idx + 1..],
+        ) {
             continue;
         }
 

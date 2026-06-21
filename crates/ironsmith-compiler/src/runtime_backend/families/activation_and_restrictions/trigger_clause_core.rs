@@ -477,6 +477,13 @@ const THIS_BLOCKS_OR_BECOMES_BLOCKED_BY_TRIGGER_PREFIX: ClauseShape<'static> = c
             &["this", "blocks", "or", "becomes", "blocked", "by"],
         ]
 );
+const THIS_BECOMES_BLOCKED_BY_TRIGGER_PREFIX: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["this", "creature", "becomes", "blocked", "by"],
+            &["this", "becomes", "blocked", "by"],
+        ]
+);
 const EXPLORE_LAND_CARD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["a", "land", "card"], &["land", "card"]]);
 const EXPLORE_NONLAND_CARD_TAIL_PATTERN: ClauseShape<'static> =
@@ -4150,6 +4157,22 @@ pub(crate) fn parse_trigger_clause_lexed(
         ));
     }
 
+    if trigger_clause_shape_matches_words(&words, THIS_BECOMES_BLOCKED_BY_TRIGGER_PREFIX)
+        && let Some(by_idx) = find_token_shape(tokens, &BY_WORD_PATTERN)
+    {
+        let blocker_tokens = trim_commas(&tokens[by_idx + 1..]);
+        if !blocker_tokens.is_empty() {
+            let blocker_filter =
+                parse_object_filter_lexed(&blocker_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported blocking-object filter in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?;
+            return Ok(TriggerSpec::ThisBecomesBlockedByObject(blocker_filter));
+        }
+    }
+
     if trigger_clause_shape_matches_words(&words, THIS_BLOCKS_OR_BECOMES_BLOCKED_BY_TRIGGER_PREFIX)
         && let Some(by_idx) = find_token_shape(tokens, &BY_WORD_PATTERN)
     {
@@ -4655,6 +4678,7 @@ fn parse_ability_of_object_trigger_tail_lexed(
     tail_tokens: &[OwnedLexToken],
     tail_words: &[&str],
 ) -> Result<Option<(ObjectFilter, bool)>, CardTextError> {
+    let tail_word_view = ActivationRestrictionCompatWords::new(tail_tokens);
     let Some(ability_idx) = find_token_shape(tail_tokens, &ABILITY_OR_ABILITIES_PATTERN) else {
         return Ok(None);
     };
@@ -4666,16 +4690,20 @@ fn parse_ability_of_object_trigger_tail_lexed(
     else {
         return Ok(None);
     };
+    let Some(of_token_idx) = tail_word_view.token_index_for_word_index(of_idx) else {
+        return Ok(None);
+    };
     let mut filter_end = tail_tokens.len();
     if let Some(that_idx) = tail_words
         .iter()
         .enumerate()
         .skip(of_idx + 1)
         .find_map(|(idx, word)| (*word == "that").then_some(idx))
+        && let Some(that_token_idx) = tail_word_view.token_index_for_word_index(that_idx)
     {
-        filter_end = that_idx;
+        filter_end = that_token_idx;
     }
-    let filter_tokens = trim_commas(&tail_tokens[of_idx + 1..filter_end]);
+    let filter_tokens = trim_commas(&tail_tokens[of_token_idx + 1..filter_end]);
     if filter_tokens.is_empty() {
         return Ok(None);
     }

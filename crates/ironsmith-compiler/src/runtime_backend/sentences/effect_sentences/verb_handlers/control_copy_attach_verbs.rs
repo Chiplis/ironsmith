@@ -108,6 +108,8 @@ const CCA_SOURCE_REFERENCE_WORDS: &[&str] =
 const CCA_DURING_NEXT_TURN_WORDS: &[&str] = &["during", "next", "turn"];
 const CCA_UNTIL_END_NEXT_TURN_WORDS: &[&str] = &["until", "end", "next", "turn"];
 const CCA_UNTIL_END_TURN_WORDS: &[&str] = &["until", "end", "turn"];
+const CCA_AT_END_OF_COMBAT_PHRASES: &[&[&str]] =
+    &[&["at", "end", "of", "combat"], &["at", "the", "end", "of", "combat"]];
 const CCA_YOUR_WORD: &str = "your";
 const CCA_YOU_WORD: &str = "you";
 const CCA_THAT_PLAYER_PREFIXES: &[&[&str]] =
@@ -867,6 +869,9 @@ pub(crate) fn parse_gain_control(
         idx += 1;
     }
 
+    let delayed_end_of_combat_idx = find_end_of_combat_timing_start(&tokens[idx..])
+        .map(|offset| idx + offset);
+
     let duration_idx = find_index(&tokens[idx..], |token: &OwnedLexToken| {
         cca_token_is_any(token, CCA_DURATION_START_WORDS)
     })
@@ -878,11 +883,15 @@ pub(crate) fn parse_gain_control(
         .map(|offset| idx + offset)
     });
 
-    let target_tokens = if let Some(dur_idx) = duration_idx {
-        &tokens[idx..dur_idx]
-    } else {
-        &tokens[idx..]
-    };
+    let mut target_end_idx = tokens.len();
+    if let Some(dur_idx) = duration_idx {
+        target_end_idx = target_end_idx.min(dur_idx);
+    }
+    if let Some(delayed_idx) = delayed_end_of_combat_idx {
+        target_end_idx = target_end_idx.min(delayed_idx);
+    }
+
+    let target_tokens = &tokens[idx..target_end_idx];
     let invalid_conditional_error = || {
         CardTextError::ParseError(format!(
             "unsupported conditional gain-control clause (clause: '{}')",
@@ -944,8 +953,8 @@ pub(crate) fn parse_gain_control(
         }
     };
 
-    if let Some(predicate) = trailing_predicate {
-        return Ok(if is_unless {
+    let effect = if let Some(predicate) = trailing_predicate {
+        if is_unless {
             EffectAst::Conditional {
                 predicate,
                 if_true: Vec::new(),
@@ -957,10 +966,27 @@ pub(crate) fn parse_gain_control(
                 if_true: vec![base_effect],
                 if_false: Vec::new(),
             }
+        }
+    } else {
+        base_effect
+    };
+
+    if delayed_end_of_combat_idx.is_some() {
+        return Ok(EffectAst::DelayedUntilEndOfCombat {
+            effects: vec![effect],
         });
     }
 
-    Ok(base_effect)
+    Ok(effect)
+}
+
+fn find_end_of_combat_timing_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    CCA_AT_END_OF_COMBAT_PHRASES
+        .iter()
+        .filter_map(|phrase| word_slice_find_phrase_start(&words, phrase))
+        .min()
+        .and_then(|word_idx| crate::runtime_backend::token_index_for_word_index(tokens, word_idx))
 }
 
 pub(crate) fn parse_control_duration(

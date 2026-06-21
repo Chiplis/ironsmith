@@ -2940,6 +2940,29 @@ fn parse_number_of_counters_on_source_value(filter_words: &[&str]) -> Option<Val
         word_slice_strip_any_prefix(after_counter_word, &[&["counter"], &["counters"]])
             .map(|(_, rest)| rest)?;
     let source_words = word_slice_strip_first_word(after_counter, "on")?;
+    if let Some(surface) =
+        crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(
+            source_words,
+        )
+        .or_else(|| {
+            (source_words.len() > 1)
+                .then(|| {
+                    crate::runtime_backend::front_end::shared::util::this_source_surface_for_words(
+                        source_words,
+                    )
+                })
+                .flatten()
+        })
+    {
+        return Some(Value::CountersOn(
+            Box::new(
+                crate::runtime_backend::front_end::shared::util::source_choose_spec_for_surface(
+                    surface,
+                ),
+            ),
+            Some(counter_type),
+        ));
+    }
     if is_source_reference_words(source_words) {
         return Some(Value::CountersOnSource(counter_type));
     }

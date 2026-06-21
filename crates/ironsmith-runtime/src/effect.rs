@@ -1508,6 +1508,12 @@ impl Effect {
         Self::new(TagTriggeringSourceEffect::new(tag.into()))
     }
 
+    /// Tag blockers from the triggering block event for later reference.
+    pub fn tag_triggering_blockers(tag: impl Into<TagKey>, filter: Option<ObjectFilter>) -> Self {
+        use crate::effects::TagTriggeringBlockersEffect;
+        Self::new(TagTriggeringBlockersEffect::new(tag.into(), filter))
+    }
+
     /// Tag the damaged object from the triggering damage event.
     pub fn tag_triggering_damage_target(tag: impl Into<TagKey>) -> Self {
         use crate::effects::TagTriggeringDamageTargetEffect;

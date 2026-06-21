@@ -5052,6 +5052,21 @@ impl TagTriggeringSourceEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TagTriggeringBlockersEffect {
+    pub tag: TagKey,
+    pub filter: Option<ObjectFilter>,
+}
+
+impl TagTriggeringBlockersEffect {
+    pub fn new(tag: impl Into<TagKey>, filter: Option<ObjectFilter>) -> Self {
+        Self {
+            tag: tag.into(),
+            filter,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TagAttachedToSourceEffect {
     pub tag: TagKey,
 }

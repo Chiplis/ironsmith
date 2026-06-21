@@ -14,9 +14,10 @@ use super::grammar::primitives::{self as grammar_primitives, split_lexed_slices_
 use super::keyword_static::parse_pt_modifier;
 use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 use super::lexer::{
-    OwnedLexToken, TokenWordView, find_token_word, parser_token_word_refs, token_slice_at_is,
-    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_eq, word_slice_eq_any,
-    word_slice_find_phrase_start, word_slice_starts_with, word_slice_starts_with_any,
+    OwnedLexToken, TokenKind, TokenWordView, find_token_word, parser_token_word_refs,
+    token_slice_at_is, word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_eq,
+    word_slice_eq_any, word_slice_find_phrase_start, word_slice_starts_with,
+    word_slice_starts_with_any,
 };
 use super::util::{
     apply_filter_keyword_constraint, is_article, is_demonstrative_object_head, is_non_outlaw_word,
@@ -278,6 +279,38 @@ fn apply_excluded_object_filter_word_list(filter: &mut ObjectFilter, words: &[&s
         return None;
     }
     saw_exclusion.then_some(())
+}
+
+fn apply_split_non_object_filter_word(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+    idx: usize,
+) -> Option<usize> {
+    if words.get(idx).copied() != Some("non") {
+        return None;
+    }
+    let next = words.get(idx + 1).copied()?;
+    if let Some(card_type) = parse_card_type(next) {
+        push_unique(&mut filter.excluded_card_types, card_type);
+        return Some(2);
+    }
+    if let Some(subtype) = parse_subtype_flexible(next) {
+        push_unique(&mut filter.excluded_subtypes, subtype);
+        return Some(2);
+    }
+    if let Some(supertype) = parse_supertype_word(next) {
+        push_unique(&mut filter.excluded_supertypes, supertype);
+        return Some(2);
+    }
+    if let Some(color) = parse_color(next) {
+        filter.excluded_colors = filter.excluded_colors.union(color);
+        return Some(2);
+    }
+    if is_outlaw_word(next) {
+        push_outlaw_subtypes(&mut filter.excluded_subtypes);
+        return Some(2);
+    }
+    None
 }
 
 fn parse_other_than_object_filter_words(words: &[&str], other: bool) -> Option<ObjectFilter> {
@@ -735,6 +768,14 @@ pub(crate) fn parse_simple_object_filter_words(
     input_words: &[&str],
     other: bool,
 ) -> Option<ObjectFilter> {
+    parse_simple_object_filter_words_with_list_marker(input_words, other, false)
+}
+
+fn parse_simple_object_filter_words_with_list_marker(
+    input_words: &[&str],
+    other: bool,
+    saw_type_list_separator: bool,
+) -> Option<ObjectFilter> {
     let mut words = non_article_word_refs(input_words);
     words.retain(|word| !object_filter_word_is_instead(word));
     if words.is_empty() {
@@ -770,6 +811,7 @@ pub(crate) fn parse_simple_object_filter_words(
     let mut saw_spell = false;
     let mut saw_card = false;
     let mut saw_permanent = false;
+    let mut saw_type_list_conjunction = saw_type_list_separator;
 
     if let Some((suffix, _suffix_len)) = parsed_suffix {
         apply_simple_object_filter_suffix(&mut filter, suffix);
@@ -778,7 +820,8 @@ pub(crate) fn parse_simple_object_filter_words(
     let mut idx = 0usize;
     while idx < words.len() {
         let word = words[idx];
-        if word == "or" {
+        if object_filter_word_is_any(word, &["and", "or", "and/or"]) {
+            saw_type_list_conjunction = true;
             idx += 1;
             continue;
         }
@@ -876,6 +919,10 @@ pub(crate) fn parse_simple_object_filter_words(
             idx += consumed;
             continue;
         }
+        if let Some(consumed) = apply_split_non_object_filter_word(&mut filter, &words, idx) {
+            idx += consumed;
+            continue;
+        }
         if let Some(card_type) = parse_card_type(word) {
             push_unique(&mut filter.card_types, card_type);
             if is_permanent_type(card_type) {
@@ -936,7 +983,16 @@ pub(crate) fn parse_simple_object_filter_words(
         return None;
     }
 
-    if saw_spell && saw_permanent && filter.card_types.is_empty() {
+    if filter.card_types.len() > 1 && filter.all_card_types.is_empty() && !saw_type_list_conjunction
+    {
+        filter.all_card_types = std::mem::take(&mut filter.card_types);
+    }
+
+    if saw_spell
+        && saw_permanent
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+    {
         filter.card_types = ObjectFilter::permanent_card().card_types;
     }
     if filter.zone.is_none() {
@@ -961,7 +1017,12 @@ pub(crate) fn parse_simple_object_filter_words(
 
 fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Option<ObjectFilter> {
     let word_view = TokenWordView::new(tokens);
-    parse_simple_object_filter_words(&word_view.to_word_refs(), other)
+    let saw_type_list_separator = tokens.iter().any(|token| token.kind == TokenKind::Comma);
+    parse_simple_object_filter_words_with_list_marker(
+        &word_view.to_word_refs(),
+        other,
+        saw_type_list_separator,
+    )
 }
 
 fn finish_word_object_filter(
@@ -1302,6 +1363,52 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_treats_adjacent_card_types_as_conjunctive() {
+        let tokens = tokenize_line("artifact creature", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.all_card_types,
+            vec![CardType::Artifact, CardType::Creature]
+        );
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_keeps_explicit_type_lists_disjunctive() {
+        let tokens = tokenize_line("artifact, creature, or land", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(
+            filter.card_types,
+            vec![CardType::Artifact, CardType::Creature, CardType::Land]
+        );
+        assert!(filter.all_card_types.is_empty(), "{filter:#?}");
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_keeps_comma_only_type_lists_disjunctive() {
+        let tokens = tokenize_line("artifact, creature, enchantment", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(
+            filter.card_types,
+            vec![
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment
+            ]
+        );
+        assert!(filter.all_card_types.is_empty(), "{filter:#?}");
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
     fn parse_object_filter_words_parses_target_and_iterated_controller_suffixes() {
         let target_filter =
             parse_simple_object_filter_words(&["artifact", "target", "player", "controls"], false)
@@ -1360,6 +1467,23 @@ mod tests {
         assert_eq!(filter.face_down, Some(false));
         assert!(filter.excluded_chosen_creature_type);
         assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_parses_split_hyphenated_non_subtype_and_type() {
+        let tokens = tokenize_line("Non-Elf creatures", 0);
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.excluded_subtypes, vec![Subtype::Elf]);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+
+        let tokens = tokenize_line("non-artifact creatures", 0);
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.excluded_card_types, vec![CardType::Artifact]);
         assert_eq!(filter.zone, Some(Zone::Battlefield));
     }
 
