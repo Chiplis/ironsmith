@@ -131,6 +131,7 @@ pub enum ControllerFilter {
     Player(PlayerId),
     You,
     Opponent,
+    ContextController,
     Any,
 }
 

@@ -344,6 +344,9 @@ const SACRIFICE_AT_END_OF_COMBAT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
     LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
 ];
 const OPTIONAL_THE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
+const NEXT_END_STEP_OWNER_WORDS: &[&[&str]] = &[&["the"], &["your"]];
+const OPTIONAL_NEXT_END_STEP_OWNER_PATTERN_ATOMS: &[LexPatternAtom<'static>] =
+    &[LexPattern::any_phrase(NEXT_END_STEP_OWNER_WORDS)];
 const SACRIFICE_NEXT_END_STEP_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
     LexPattern::word("sacrifice"),
     LexPattern::role_capture(
@@ -352,7 +355,19 @@ const SACRIFICE_NEXT_END_STEP_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
         LexCaptureKind::UntilPhrase(&["at", "the", "beginning", "of"]),
     ),
     LexPattern::phrase(&["at", "the", "beginning", "of"]),
-    LexPattern::optional(OPTIONAL_THE_PATTERN_ATOMS),
+    LexPattern::optional(OPTIONAL_NEXT_END_STEP_OWNER_PATTERN_ATOMS),
+    LexPattern::phrase(&["next", "end", "step"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const EXILE_NEXT_END_STEP_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("exile"),
+    LexPattern::role_capture(
+        "object",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilPhrase(&["at", "the", "beginning", "of"]),
+    ),
+    LexPattern::phrase(&["at", "the", "beginning", "of"]),
+    LexPattern::optional(OPTIONAL_NEXT_END_STEP_OWNER_PATTERN_ATOMS),
     LexPattern::phrase(&["next", "end", "step"]),
     LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
 ];
@@ -695,6 +710,15 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_sentence_put_sticker_on_matched
     ),
     primitive_with_pattern_parser!(
+        "you-and-attacking-player-each-draw-and-lose",
+        85,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("you")],
+        YOU_AND_ATTACKING_PLAYER_DRAW_LOSE_PATTERN_ATOMS,
+        parse_sentence_you_and_attacking_player_each_draw_and_lose,
+        parse_sentence_you_and_attacking_player_each_draw_and_lose_matched
+    ),
+    primitive_with_pattern_parser!(
         "you-and-target-player-each-draw",
         90,
         PreDiagnostic,
@@ -747,15 +771,6 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_sentence_choose_player_to_effect_matched
     ),
     primitive_with_pattern_parser!(
-        "you-and-attacking-player-each-draw-and-lose",
-        110,
-        PreDiagnostic,
-        &[LexRuleHeadHint::Single("you")],
-        YOU_AND_ATTACKING_PLAYER_DRAW_LOSE_PATTERN_ATOMS,
-        parse_sentence_you_and_attacking_player_each_draw_and_lose,
-        parse_sentence_you_and_attacking_player_each_draw_and_lose_matched
-    ),
-    primitive_with_pattern_parser!(
         "sacrifice-then-put-onto-battlefield-with-additional-counters",
         120,
         PreDiagnostic,
@@ -772,6 +787,15 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         SACRIFICE_NEXT_END_STEP_PATTERN_ATOMS,
         parse_sentence_sacrifice_it_next_end_step,
         parse_sentence_sacrifice_it_next_end_step_matched
+    ),
+    primitive_with_pattern_parser!(
+        "exile-it-next-end-step",
+        135,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("exile")],
+        EXILE_NEXT_END_STEP_PATTERN_ATOMS,
+        parse_sentence_exile_it_next_end_step,
+        parse_sentence_exile_it_next_end_step_matched
     ),
     primitive_with_pattern_parser!(
         "sacrifice-at-end-of-combat",

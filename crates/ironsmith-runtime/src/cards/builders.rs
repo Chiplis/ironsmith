@@ -13745,8 +13745,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let lines = unprocessed_compiled_lines(&def);
         let activated = lines.join(" ");
         assert!(
-            activated.contains("must block") && activated.contains("if able"),
-            "expected must-block-if-able text in compiled line, got {activated}"
+            activated.contains("Target creature blocks this creature this turn if able"),
+            "expected targeted blocks-this-creature text in compiled line, got {activated}"
         );
     }
 

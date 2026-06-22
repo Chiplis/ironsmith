@@ -254,6 +254,11 @@ impl Trigger {
         self.matcher.uses_snapshot()
     }
 
+    /// Whether this trigger's source must be discovered from pre-event LKI.
+    pub fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        self.matcher.looks_back_for_source(event)
+    }
+
     pub fn trigger_count(&self, event: &TriggerEvent) -> u32 {
         self.matcher.trigger_count(event)
     }
@@ -353,6 +358,11 @@ impl Trigger {
     /// Create a "when this permanent leaves the battlefield" trigger.
     pub fn this_leaves_battlefield() -> Self {
         Self::new(ZoneChangeTrigger::this_leaves_battlefield())
+    }
+
+    /// Create a "when you lose control of this [source]" trigger.
+    pub fn source_controller_loses_control(source_description: impl Into<String>) -> Self {
+        Self::new(SourceControllerLosesControlTrigger::new(source_description))
     }
 
     /// Create a "when [filter] leaves the battlefield" trigger.
@@ -1224,6 +1234,10 @@ impl TriggerMatcher for Trigger {
 
     fn uses_snapshot(&self) -> bool {
         self.matcher.uses_snapshot()
+    }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        self.matcher.looks_back_for_source(event)
     }
 
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {

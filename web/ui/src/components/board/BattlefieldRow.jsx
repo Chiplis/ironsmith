@@ -191,8 +191,37 @@ function indexCardsByStableId(cards) {
   return index;
 }
 
-function groupBattlefieldTransitions(transitions) {
+function normalizedTransitionZone(zone) {
+  return String(zone || "").trim().toLowerCase();
+}
+
+function stableIdFromZoneTransition(transition) {
+  const stableId = Number(
+    transition?.stable_id ?? transition?.stableId ?? transition?.card?.stable_id
+  );
+  return Number.isFinite(stableId) ? String(stableId) : null;
+}
+
+function groupBattlefieldTransitions(transitions, zoneTransitions = []) {
   const grouped = new Map();
+  for (const transition of zoneTransitions || []) {
+    if (
+      normalizedTransitionZone(transition?.from_zone ?? transition?.fromZone) !== "battlefield"
+      || normalizedTransitionZone(transition?.to_zone ?? transition?.toZone) !== "graveyard"
+    ) {
+      continue;
+    }
+    const stableId = stableIdFromZoneTransition(transition);
+    if (!stableId) continue;
+    const entry = grouped.get(stableId) || {
+      stableId,
+      damaged: false,
+      leaveKind: null,
+    };
+    entry.leaveKind = entry.leaveKind || "destroyed";
+    grouped.set(stableId, entry);
+  }
+
   for (const transition of transitions || []) {
     const stableId = transition?.stable_id == null ? null : String(transition.stable_id);
     if (!stableId) continue;
@@ -248,8 +277,8 @@ function shouldHoldAnimatedLeaveKind(leaveKind) {
   return leaveKind === "exiled" || leaveKind === "destroyed" || leaveKind === "sacrificed";
 }
 
-function buildAnimatedLeaveLayoutHolds(transitions, previousCards, snapshotId) {
-  const transitionGroups = groupBattlefieldTransitions(transitions);
+function buildAnimatedLeaveLayoutHolds(transitions, zoneTransitions, previousCards, snapshotId) {
+  const transitionGroups = groupBattlefieldTransitions(transitions, zoneTransitions);
   if (transitionGroups.size === 0) return [];
 
   const previousCardsByStableId = indexCardsByStableId(previousCards);
@@ -817,12 +846,18 @@ export default function BattlefieldRow({
       currentSnapshotId != null && processedLayoutSnapshotId !== currentSnapshotId
         ? buildAnimatedLeaveLayoutHolds(
           state?.battlefield_transitions,
+          state?.zone_transitions,
           previousCardsRef.current,
           currentSnapshotId
         )
         : []
     ),
-    [currentSnapshotId, processedLayoutSnapshotId, state?.battlefield_transitions]
+    [
+      currentSnapshotId,
+      processedLayoutSnapshotId,
+      state?.battlefield_transitions,
+      state?.zone_transitions,
+    ]
   );
   const activeLayoutHolds = useMemo(
     () => [...layoutHolds, ...immediateLayoutHolds],
@@ -1491,7 +1526,10 @@ export default function BattlefieldRow({
     const previousCards = previousCardsRef.current || [];
     const previousCardsByStableId = indexCardsByStableId(previousCards);
     const currentCardsByStableId = indexCardsByStableId(displayCards);
-    const transitionGroups = groupBattlefieldTransitions(state?.battlefield_transitions);
+    const transitionGroups = groupBattlefieldTransitions(
+      state?.battlefield_transitions,
+      state?.zone_transitions
+    );
     const ghostsToAdd = [];
     const offsetsByCardId = new Map();
 
@@ -1535,6 +1573,7 @@ export default function BattlefieldRow({
     }
     addLayoutHolds(buildAnimatedLeaveLayoutHolds(
       state?.battlefield_transitions,
+      state?.zone_transitions,
       previousCards,
       snapshotId
     ));
@@ -1553,6 +1592,7 @@ export default function BattlefieldRow({
     paperLayout,
     shouldFreezePaperLayout,
     state?.battlefield_transitions,
+    state?.zone_transitions,
     state?.snapshot_id,
   ]);
 

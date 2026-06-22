@@ -2868,12 +2868,43 @@ impl EnterWithCountersForFilter {
     }
 }
 
+fn spell_cast_snow_mana_enters_with_counter_display(
+    ability: &EnterWithCountersForFilter,
+) -> Option<String> {
+    if !matches!(
+        ability.condition,
+        Some(Condition::SnowManaOfAnySpellColorSpentToCastThisSpell)
+    ) || ability.counter_type != CounterType::PlusOnePlusOne
+        || ability.count != Value::Fixed(1)
+        || !ability.added_subtypes.is_empty()
+    {
+        return None;
+    }
+
+    let mut expected_filter = ObjectFilter::default();
+    expected_filter.zone = Some(Zone::Battlefield);
+    expected_filter.controller = Some(PlayerFilter::You);
+    expected_filter.card_types = vec![CardType::Creature];
+    if ability.filter != expected_filter {
+        return None;
+    }
+
+    Some(
+        "Whenever you cast a creature spell, if {S} of any of that spell's colors was spent to cast it, that creature enters with an additional +1/+1 counter on it"
+            .to_string(),
+    )
+}
+
 impl StaticAbilityKind for EnterWithCountersForFilter {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::EnterWithCountersForFilter
     }
 
     fn display(&self) -> String {
+        if let Some(text) = spell_cast_snow_mana_enters_with_counter_display(self) {
+            return text;
+        }
+
         let mut subject = self.filter.description();
         if subject.starts_with("another ") {
             subject = subject.replacen("another ", "Each other ", 1);
@@ -2983,11 +3014,16 @@ struct ConditionalWouldEnterBattlefieldMatcher {
 }
 
 impl ConditionalWouldEnterBattlefieldMatcher {
-    fn condition_matches(&self, ctx: &crate::events::context::EventContext<'_>) -> bool {
+    fn condition_matches(
+        &self,
+        event: &dyn GameEventType,
+        ctx: &crate::events::context::EventContext<'_>,
+    ) -> bool {
         let Some(condition) = &self.condition else {
             return true;
         };
-        let Some(source) = ctx.source else {
+        let Some(source) = condition_source_for_enter_with_counter_filter(condition, event, ctx)
+        else {
             return false;
         };
         let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
@@ -3008,7 +3044,7 @@ impl ConditionalWouldEnterBattlefieldMatcher {
 
 impl ReplacementMatcher for ConditionalWouldEnterBattlefieldMatcher {
     fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
-        self.enter_matcher.matches_event(event, ctx) && self.condition_matches(ctx)
+        self.enter_matcher.matches_event(event, ctx) && self.condition_matches(event, ctx)
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -3017,6 +3053,48 @@ impl ReplacementMatcher for ConditionalWouldEnterBattlefieldMatcher {
 
     fn display(&self) -> String {
         self.enter_matcher.display()
+    }
+}
+
+fn enter_with_counter_filter_condition_uses_entering_object(condition: &Condition) -> bool {
+    match condition {
+        Condition::ManaSpentToCastThisSpellAtLeast { .. }
+        | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
+        | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
+        | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_) => true,
+        Condition::Not(inner) => enter_with_counter_filter_condition_uses_entering_object(inner),
+        Condition::And(left, right) | Condition::Or(left, right) => {
+            enter_with_counter_filter_condition_uses_entering_object(left)
+                || enter_with_counter_filter_condition_uses_entering_object(right)
+        }
+        _ => false,
+    }
+}
+
+fn entering_object_from_event(event: &dyn GameEventType) -> Option<ObjectId> {
+    match event.event_kind() {
+        EventKind::ZoneChange => {
+            let zone_change = downcast_event::<ZoneChangeEvent>(event)?;
+            (zone_change.to == crate::zone::Zone::Battlefield)
+                .then(|| zone_change.objects.first().copied())
+                .flatten()
+        }
+        EventKind::EnterBattlefield => {
+            downcast_event::<EnterBattlefieldEvent>(event).map(|enter_event| enter_event.object)
+        }
+        _ => None,
+    }
+}
+
+fn condition_source_for_enter_with_counter_filter(
+    condition: &Condition,
+    event: &dyn GameEventType,
+    ctx: &crate::events::context::EventContext<'_>,
+) -> Option<ObjectId> {
+    if enter_with_counter_filter_condition_uses_entering_object(condition) {
+        entering_object_from_event(event)
+    } else {
+        ctx.source
     }
 }
 

@@ -154,6 +154,12 @@ impl TriggerMatcher for CardsLeaveYourGraveyardTrigger {
     fn uses_snapshot(&self) -> bool {
         true
     }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        event
+            .downcast::<ZoneChangeEvent>()
+            .is_some_and(|zc| zc.from == Zone::Graveyard && zc.to != Zone::Graveyard)
+    }
 }
 
 #[cfg(test)]

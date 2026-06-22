@@ -673,11 +673,19 @@ pub enum Condition {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    PlayerControlsMoreThanEachOtherPlayer {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
     PlayerControlsMoreThanYou {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
     AnOpponentControlsMoreThanPlayer {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
+    AnOpponentHasFewerThanPlayer {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
@@ -760,6 +768,11 @@ pub enum Condition {
     YourFirstTurnsOfTheGameOrFewer(u32),
     CreatureDiedThisTurn,
     CreatureDiedThisTurnOrMore(u32),
+    CreatureDealtDamageBySourceDiedThisTurn {
+        victim: ObjectFilter,
+        damager: crate::DamagedBySource,
+        count: u32,
+    },
     CreatureCardPutIntoYourGraveyardThisTurn,
     CastSpellThisTurn,
     PlayerCastSpellsThisTurnOrMore {
@@ -844,6 +857,7 @@ pub enum Condition {
         amount: u32,
         symbol: Option<ManaSymbol>,
     },
+    SnowManaOfAnySpellColorSpentToCastThisSpell,
     SameColorManaSpentToCastThisSpellAtLeast(u32),
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
     YouControlCommander,

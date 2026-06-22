@@ -44,7 +44,7 @@ use crate::static_abilities::{CopyTriggeredAbilities, StaticAbility};
 #[allow(unused_imports)]
 use crate::target::ChooseSpec;
 #[allow(unused_imports)]
-use crate::triggers::Trigger;
+use crate::triggers::{DamagedBySource, Trigger};
 #[allow(unused_imports)]
 use crate::types::{CardType, Subtype};
 #[allow(unused_imports)]
@@ -161,8 +161,9 @@ pub(crate) use tag_support::{
     collect_tag_spans_from_effects_with_context, collect_tag_spans_from_target,
     effect_references_event_derived_amount, effect_references_it_tag,
     effect_references_its_controller, effect_references_tag, effects_reference_it_tag,
-    effects_reference_its_controller, effects_reference_tag, filter_references_tag,
-    is_exile_cost_collection_tag, is_revealed_collection_tag, is_searched_collection_tag,
+    effects_reference_its_controller, effects_reference_tag,
+    effects_reference_tag_in_object_position, filter_references_tag, is_exile_cost_collection_tag,
+    is_revealed_collection_tag, is_searched_collection_tag,
     is_sentence_helper_exiled_collection_tag, object_ref_references_tag,
     player_filter_references_tag, predicate_references_tag, restriction_references_tag,
     target_references_tag, value_references_event_derived_amount, value_references_tag,
@@ -358,6 +359,15 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 filter: resolved,
             }
         }
+        PredicateAst::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            let mut resolved = resolve_it_tag(filter, &refs)?;
+            resolved.zone = None;
+            Condition::PlayerControlsMoreThanEachOtherPlayer {
+                player,
+                filter: resolved,
+            }
+        }
         PredicateAst::PlayerControlsMoreThanYou { player, filter } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let mut resolved = resolve_it_tag(filter, &refs)?;
@@ -374,6 +384,13 @@ pub(crate) fn compile_condition_from_predicate_ast(
             Condition::AnOpponentControlsMoreThanPlayer {
                 player,
                 filter: resolved,
+            }
+        }
+        PredicateAst::AnOpponentHasFewerThanPlayer { player, filter } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::AnOpponentHasFewerThanPlayer {
+                player,
+                filter: resolve_it_tag(filter, &refs)?,
             }
         }
         PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
@@ -456,6 +473,19 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::CreatureDiedThisTurnOrMore(count) => {
             Condition::CreatureDiedThisTurnOrMore(*count)
         }
+        PredicateAst::CreatureDealtDamageBySourceDiedThisTurn {
+            victim,
+            damager,
+            count,
+        } => Condition::CreatureDealtDamageBySourceDiedThisTurn {
+            victim: victim.clone(),
+            damager: match damager {
+                DamageBySpec::ThisCreature => DamagedBySource::ThisCreature,
+                DamageBySpec::EquippedCreature => DamagedBySource::EquippedCreature,
+                DamageBySpec::EnchantedCreature => DamagedBySource::EnchantedCreature,
+            },
+            count: *count,
+        },
         PredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHadLandEnterBattlefieldThisTurn { player }
@@ -686,6 +716,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 amount: *amount,
                 symbol: *symbol,
             }
+        }
+        PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell => {
+            Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
         }
         PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
             Condition::SameColorManaSpentToCastThisSpellAtLeast(*amount)

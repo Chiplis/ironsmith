@@ -359,6 +359,14 @@ fn parse_draw_for_each_player_condition(
                     filter,
                 }
             }
+            PredicateAst::PlayerControlsMoreThanEachOtherPlayer { player, filter }
+                if player == PlayerAst::That =>
+            {
+                PredicateAst::PlayerControlsMoreThanEachOtherPlayer {
+                    player: PlayerAst::Implicit,
+                    filter,
+                }
+            }
             PredicateAst::PlayerControlsMoreThanYou { player, filter }
                 if player == PlayerAst::That =>
             {

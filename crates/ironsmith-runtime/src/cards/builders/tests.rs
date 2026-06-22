@@ -15726,6 +15726,34 @@ fn jhoira_of_the_ghitu_strict_parser_text_and_suspend_grant_regression() {
     );
 }
 
+#[test]
+fn taigam_flurry_exiles_copied_spell_with_suspend_setup() {
+    assert_oracle_card_parses_strict("Taigam, Master Opportunist");
+
+    let def = parse_oracle_card_definition("Taigam, Master Opportunist");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Flurry — Whenever you cast your second spell each turn, copy it, then exile the spell you cast with four time counters on it. If it doesn't have suspend, it gains suspend"
+        ),
+        "expected Taigam's Flurry text to render compactly, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def);
+    assert!(
+        debug.contains("CopySpellEffect")
+            && debug.contains("target: Tagged")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("zone: Exile")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("counter_type: Time")
+            && debug.contains("amount: Fixed(4)")
+            && debug.contains("keyword:suspend")
+            && debug.contains("AddAbilityGeneric"),
+        "expected Taigam to copy, exile, add time counters, and grant real suspend triggers, got {debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_the_face_of_boe_suspend_cost_activation() {
@@ -30955,6 +30983,28 @@ fn parse_target_creature_blocks_this_turn_if_able() {
     assert!(
         rendered.contains("target creature blocks this turn if able"),
         "expected must-block effect, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_target_creature_blocks_this_creature_this_turn_if_able() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Rampant Elephant Variant")
+        .parse_text("{G}: Target creature blocks this creature this turn if able.")
+        .expect("target creature blocks this creature should parse");
+
+    let debug = format!("{:#?}", def);
+    assert!(
+        debug.contains("TargetOnlyEffect") && debug.contains("MustBlockSpecificAttacker"),
+        "expected target selection plus attacker-specific must-block restriction, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("{g}: target creature blocks this creature this turn if able"),
+        "expected targeted blocks-this-creature effect, got {rendered}"
     );
 }
 
@@ -46487,6 +46537,29 @@ fn alms_beast_keeps_lifelink_grant_for_creatures_in_combat_with_source() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn named_source_blocking_or_blocked_by_filter_marks_in_combat_with_source() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sisters of Stone Death")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Exile target creature blocking or blocked by Sisters of Stone Death.")
+        .expect("named source in-combat target should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("target creature blocking or blocked by this creature"),
+        "expected named source target to render as in-combat-with-source, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("in_combat_with_source: true"),
+        "expected named source target to mark in_combat_with_source, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn metalcraft_keyword_grant_keeps_label_in_oracle_like_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Spiraling Duelist Variant")
         .card_types(vec![CardType::Creature])
@@ -46942,6 +47015,14 @@ fn parse_mabel_token_preserves_colorless_and_equipment_payload() {
             && rendered.contains("equipment")
             && rendered.contains("attachtoeffect"),
         "expected parsed Mabel token payload, got {rendered}"
+    );
+
+    let rendered_text = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered_text.contains(
+            "create Cragflame, a legendary colorless Equipment artifact token with \"Equipped creature gets +1/+1 and has vigilance, trample, and haste\" and equip {2}"
+        ),
+        "expected Mabel token payload to render as a compact Equipment token ability, got {rendered_text}"
     );
 }
 
@@ -69867,6 +69948,41 @@ fn parse_oath_of_druids_maps_to_upkeep_consult_effects() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oath_of_ghouls_maps_to_upkeep_return_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Oath of Ghouls")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of each player's upkeep, that player chooses target player whose graveyard has fewer creature cards in it than their graveyard does and is their opponent. The first player may return a creature card from their graveyard to their hand.",
+        )
+        .expect("Oath of Ghouls should parse into its upkeep return trigger");
+
+    let raw = format!("{:?}", def.abilities);
+    assert!(
+        raw.contains("BeginningOfUpkeepTrigger")
+            && raw.contains("player: Any")
+            && raw.contains("AnOpponentHasFewerThanPlayer")
+            && raw.contains("MayEffect")
+            && raw.contains("ReturnFromGraveyardToHandEffect")
+            && raw.contains("player: Active")
+            && raw.contains("owner: Some(Active)"),
+        "expected Oath of Ghouls to keep its upkeep graveyard-return structure, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("each player's upkeep")
+            && rendered
+                .contains("that player chooses target player whose graveyard has fewer creature cards in it than their graveyard does and is their opponent")
+            && rendered.contains("the first player may return a creature card from their graveyard to their hand")
+            && !rendered.contains("active player's graveyard"),
+        "expected Oath of Ghouls oracle-like text to stay close to the oracle, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_mind_funeral_tracks_passive_consult_count_and_graveyard_followup() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mind Funeral")
         .card_types(vec![CardType::Sorcery])
@@ -70002,6 +70118,132 @@ fn parse_thief_of_existence_keeps_if_you_do_exile_followup() {
         rendered.contains("if you do, this creature gains")
             && !rendered.contains("if a card is put into exile this way"),
         "expected Thief of Existence to keep its oracle-style if-you-do exile followup, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_demonic_consultation_renders_chosen_name_consult() {
+    let def = parse_oracle_card_definition("Demonic Consultation");
+    let effects_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        effects_debug.contains("ChooseCardNameEffect")
+            && effects_debug.contains("ExileTopOfLibraryEffect")
+            && effects_debug.contains("ConsultTopOfLibraryEffect")
+            && effects_debug.contains("MoveToZoneEffect")
+            && effects_debug.contains("zone: Exile"),
+        "expected Demonic Consultation to lower to chosen-name consult, hand move, and exile remainder, got {effects_debug}"
+    );
+
+    let spell_effect = def
+        .spell_effect
+        .as_ref()
+        .expect("Demonic Consultation should have a spell effect");
+    let direct_rendered =
+        crate::compiled_text::compile_effect_list(&spell_effect.segments[0].default_effects);
+    assert!(
+        direct_rendered
+            .to_ascii_lowercase()
+            .contains("until you reveal a card with the chosen name"),
+        "expected direct Demonic Consultation effect rendering to compact chosen-name consult, got {direct_rendered}"
+    );
+
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("choose a card name")
+            && rendered_lower.contains("exile the top six cards of your library")
+            && rendered_lower.contains("until you reveal a card with the chosen name")
+            && rendered_lower.contains("put that card into your hand")
+            && rendered_lower.contains("exile all other cards revealed this way"),
+        "expected Demonic Consultation to render compact chosen-name consult text, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("same name as that object")
+            && !rendered_lower.contains("unless it's a permanent"),
+        "expected Demonic Consultation rendering to avoid generic fallback text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_daring_waverider_renders_limited_free_graveyard_cast_replacement() {
+    let def = parse_oracle_card_definition("Daring Waverider");
+    let effects_debug = format!("{:?}", def.abilities);
+    assert!(
+        effects_debug.contains("LessThanOrEqual(4)")
+            && effects_debug.contains("without_paying_mana_cost: true")
+            && effects_debug.contains("RegisterFutureZoneReplacementEffect"),
+        "expected Daring Waverider to keep mana-value-limited free-cast replacement, got {effects_debug}"
+    );
+
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("When this creature enters, you may cast target instant or sorcery card with mana value 4 or less from your graveyard without paying its mana cost. If that spell would be put into your graveyard, exile it instead"),
+        "expected Daring Waverider to render compact free-cast replacement text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_tourachs_canticle_renders_reveal_choose_discard_sequence() {
+    let def = parse_oracle_card_definition("Tourach's Canticle");
+    let effects_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        effects_debug.contains("LookAtHandEffect")
+            && effects_debug.contains("ChooseObjectsEffect")
+            && effects_debug.contains("DiscardEffect")
+            && effects_debug.contains("random: true"),
+        "expected Tourach's Canticle to lower to reveal, choose, discard chosen, and random discard, got {effects_debug}"
+    );
+
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Target opponent reveals their hand")
+            && rendered.contains("You choose a card from it")
+            && rendered.contains("That player discards that card, then discards a card at random"),
+        "expected Tourach's Canticle to render compact reveal/choose/discard text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_duneblast_renders_choose_up_to_one_destroy_rest() {
+    let def = parse_oracle_card_definition("Duneblast");
+    let effects_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        effects_debug.contains("ChooseObjectsEffect")
+            && effects_debug.contains("DestroyEffect")
+            && effects_debug.contains("IsNotTaggedObject"),
+        "expected Duneblast to lower to choose one creature and destroy nonchosen creatures, got {effects_debug}"
+    );
+
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Choose up to one creature. Destroy the rest"),
+        "expected Duneblast to render choose/destroy-rest text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_phyrexian_war_beast_renders_sacrifice_land_damage() {
+    let def = parse_oracle_card_definition("Phyrexian War Beast");
+    let effects_debug = format!("{:?}", def.abilities);
+    assert!(
+        effects_debug.contains("ChooseObjectsEffect")
+            && effects_debug.contains("SacrificePlayerEffect")
+            && effects_debug.contains("DealDamageEffect")
+            && effects_debug.contains("SourceController"),
+        "expected Phyrexian War Beast to lower to choose/sacrifice land and source-controller damage, got {effects_debug}"
+    );
+
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("sacrifice a land")
+            && rendered_lower.contains("this creature deals 1 damage to you"),
+        "expected Phyrexian War Beast to render sacrifice-land damage text, got {rendered}"
     );
 }
 
@@ -76960,5 +77202,212 @@ fn gloomwidows_feast_compiled_text_preserves_blue_or_black_was_clause() {
     assert!(
         rendered.contains("create a 1/2 green Spider creature token with reach"),
         "Gloomwidow's Feast should render the conditional Spider token, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_of_talents_preserves_optional_same_name_search() {
+    let def = parse_oracle_card_definition("Test of Talents");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("for any number of cards with the same name")
+            && !rendered.contains("for all cards with the same name"),
+        "Test of Talents should preserve optional same-name search mode, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fulgent_distraction_taps_chosen_creatures_and_unattaches_all_equipment() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Fulgent Distraction Variant")
+        .parse_text("Choose two target creatures. Tap those creatures, then unattach all Equipment from them.")
+        .expect("tap those creatures then unattach all Equipment should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Choose two target creatures")
+            && rendered.contains("Tap those creatures, then unattach all Equipment from them"),
+        "expected Fulgent-style choice carry into tap and unattach-all-equipment, got {rendered}"
+    );
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("TapEffect") && debug.contains("UnattachObjectsEffect"),
+        "expected tap plus unattach effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn disarm_unattaches_all_equipment_from_target_creature() {
+    let def = parse_oracle_card_definition("Disarm");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Unattach all Equipment from target creature")
+            && !rendered.contains("Equipment creature"),
+        "expected Disarm to target the creature and unattach Equipment attached to it, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn boreal_outrider_snow_mana_cast_replacement_regression() {
+    let def = parse_oracle_card_definition("Boreal Outrider");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Whenever you cast a creature spell, if {S} of any of that spell's colors was spent to cast it, that creature enters with an additional +1/+1 counter on it.",
+        "expected Boreal Outrider to render as a cast-spell enter-with replacement"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("EnterWithCountersForFilter")
+            && debug.contains("SnowManaOfAnySpellColorSpentToCastThisSpell")
+            && !debug.contains("SpellCastTrigger")
+            && !debug.contains("PutCountersEffect"),
+        "expected Boreal Outrider to compile to an enter-with replacement, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn enchanted_creature_tap_does_not_render_as_those_creatures() {
+    let def = parse_oracle_card_definition("Burden of Guilt");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Tap enchanted creature")
+            || rendered.contains("Tap an enchanted creature"),
+        "expected Aura tap surface to refer to enchanted creature, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Tap those creatures"),
+        "enchanted-creature tap should not inherit Fulgent-style wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thundermaw_hellkite_taps_creatures_damaged_by_enter_trigger() {
+    let def = parse_oracle_card_definition("Thundermaw Hellkite");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Tap those creatures") && !rendered.contains("Tap that creature"),
+        "expected Thundermaw's damage-each follow-up to tap the damaged creature set, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    let tap_debug = debug
+        .split("TapEffect")
+        .nth(1)
+        .expect("expected Thundermaw ability to include TapEffect");
+    assert!(
+        tap_debug.contains("damaged_0") && !tap_debug.contains("\"triggering\""),
+        "expected Thundermaw tap to reference damaged creatures instead of the triggering source, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rupture_split_damage_keeps_sacrificed_creature_power_reference() {
+    let def = parse_oracle_card_definition("Rupture");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("that creature's power")
+            && rendered.contains("each creature without flying")
+            && rendered.contains("each player")
+            && !rendered.contains("that creature deals damage equal to its power to each player"),
+        "expected Rupture's split damage to keep the sacrificed creature as the amount source, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn corpse_explosion_split_damage_keeps_exiled_card_power_reference() {
+    let def = parse_oracle_card_definition("Corpse Explosion");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("the exiled card's power to each creature")
+            && rendered.contains("the exiled card's power to each planeswalker")
+            && !rendered
+                .contains("that creature deals damage equal to its power to each planeswalker"),
+        "expected Corpse Explosion's split damage to keep the exiled card as the amount source, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn retched_wretch_style_return_it_then_loses_all_abilities_preserves_return() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Retched Wretch Variant")
+        .parse_text("When this creature dies, if it had a -1/-1 counter on it, return it to the battlefield under its owner's control and it loses all abilities.")
+        .expect("conditional return-it-and-lose-abilities trigger should parse");
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "When this creature dies, if it had a -1/-1 counter on it, return it to the battlefield under its owner's control and it loses all abilities.",
+        "expected Retched-style trigger to preserve oracle-like counter condition and chained effect"
+    );
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("MoveToZoneEffect")
+            && debug.contains("zone: Battlefield")
+            && debug.contains("RemoveAllAbilities"),
+        "expected return and remove-abilities effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn soulflayer_source_exiled_keyword_lines_merge_same_is_true() {
+    let def = parse_oracle_card_definition("Soulflayer");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("If a creature card with flying was exiled with this creature's delve ability, this creature has flying")
+            && rendered.contains("The same is true for first strike")
+            && !rendered.contains("This creature has first strike as long as"),
+        "expected Soulflayer source-exiled keyword grants to compact with same-is-true wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn genesis_ultimatum_style_put_matching_battlefield_rest_hand_compacts() {
+    let def = parse_oracle_card_definition("Genesis Ultimatum");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Look at the top five cards of your library. Put any number of permanent cards from among them onto the battlefield and the rest into your hand"
+        ) && rendered.contains("Exile Genesis Ultimatum")
+            && !rendered.contains("Unless it's a permanent")
+            && !rendered.contains("Exile this"),
+        "expected Genesis-style looked-card split to compact chosen permanents and the true remainder, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kamahls_druidic_vow_style_battlefield_rest_graveyard_compacts() {
+    let def = parse_oracle_card_definition("Kamahl's Druidic Vow");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Look at the top X cards of your library. You may put any number of land and/or legendary permanent cards with mana value X or less from among them onto the battlefield. Put the rest into your graveyard"
+        ) && !rendered.contains("legendary lands")
+            && !rendered.contains("Unless it's a permanent"),
+        "expected Kamahl-style looked-card split to preserve union filter and true remainder, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn ring_goes_south_consult_land_count_where_x_compacts() {
+    let def = parse_oracle_card_definition("The Ring Goes South");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "The Ring tempts you. You reveal cards from the top of your library until you reveal X land cards, where X is the number of legendary creatures you control. Put those land cards onto the battlefield tapped and the rest on the bottom of your library in a random order"
+        ) && !rendered.contains("the number of legendary creatures you control land cards"),
+        "expected Ring-style consult split to preserve where-X count basis and tapped land move, got {rendered}"
     );
 }

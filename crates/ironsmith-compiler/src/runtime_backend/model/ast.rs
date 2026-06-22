@@ -291,6 +291,7 @@ pub(crate) enum TriggerSpec {
         from: Vec<Zone>,
         one_or_more: bool,
         during_turn: Option<PlayerFilter>,
+        cause_filter: Option<crate::events::cause::CauseFilter>,
     },
     CardsLeaveYourGraveyard {
         filter: ObjectFilter,
@@ -466,7 +467,15 @@ pub(crate) enum PredicateAst {
         player: PlayerAst,
         filter: ObjectFilter,
     },
+    PlayerControlsMoreThanEachOtherPlayer {
+        player: PlayerAst,
+        filter: ObjectFilter,
+    },
     AnOpponentControlsMoreThanPlayer {
+        player: PlayerAst,
+        filter: ObjectFilter,
+    },
+    AnOpponentHasFewerThanPlayer {
         player: PlayerAst,
         filter: ObjectFilter,
     },
@@ -628,6 +637,11 @@ pub(crate) enum PredicateAst {
     YouAttackedWithExactlyNOtherCreaturesThisCombat(u32),
     CreatureDiedThisTurn,
     CreatureDiedThisTurnOrMore(u32),
+    CreatureDealtDamageBySourceDiedThisTurn {
+        victim: ObjectFilter,
+        damager: DamageBySpec,
+        count: u32,
+    },
     CreatureCardPutIntoYourGraveyardThisTurn,
     PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
@@ -655,6 +669,7 @@ pub(crate) enum PredicateAst {
         amount: u32,
         symbol: Option<ManaSymbol>,
     },
+    SnowManaOfAnySpellColorSpentToCastThisSpell,
     SameColorManaSpentToCastThisSpellAtLeast(u32),
     ThisSpellWasCastFromZone(Zone),
     ThisSpellWasCastFromNonHand,
@@ -3822,6 +3837,24 @@ impl EffectAst {
         looked_tag: TagKey,
         chosen_tag: TagKey,
     ) -> Vec<Self> {
+        Self::compose_put_some_to_zone_rest_to_zone(
+            player,
+            count,
+            looked_tag,
+            chosen_tag,
+            Zone::Hand,
+            Zone::Graveyard,
+        )
+    }
+
+    pub(crate) fn compose_put_some_to_zone_rest_to_zone(
+        player: PlayerAst,
+        count: ChoiceCount,
+        looked_tag: TagKey,
+        chosen_tag: TagKey,
+        chosen_zone: Zone,
+        rest_zone: Zone,
+    ) -> Vec<Self> {
         let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
         choose_filter.zone = Some(Zone::Library);
 
@@ -3838,7 +3871,7 @@ impl EffectAst {
             },
             Self::MoveTaggedGroupToZone {
                 tag: chosen_tag.clone(),
-                zone: Zone::Hand,
+                zone: chosen_zone,
             },
             Self::subject_verb(
                 SubjectVerbRoleAst::Actor,
@@ -3846,7 +3879,7 @@ impl EffectAst {
                 SubjectVerbActionAst::PutTaggedRemainderInZone {
                     tag: looked_tag,
                     keep_tagged: chosen_tag,
-                    zone: Zone::Graveyard,
+                    zone: rest_zone,
                 },
             ),
         ]

@@ -1352,6 +1352,25 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
 
         if let Some(mut matched) = try_parse_subject_verb_sequence_rule(&sentences, sentence_idx)? {
+            let sequence_where_x = (0..matched.consumed_sentences).find_map(|offset| {
+                sentences
+                    .get(sentence_idx + offset)
+                    .and_then(|sentence| where_x_value_from_tokens(sentence.lowered()))
+            });
+            if let Some(where_value) = sequence_where_x.as_ref() {
+                let mut sequence_words = Vec::new();
+                for offset in 0..matched.consumed_sentences {
+                    if let Some(sentence) = sentences.get(sentence_idx + offset) {
+                        sequence_words
+                            .extend(crate::runtime_backend::token_word_refs(sentence.lowered()));
+                    }
+                }
+                replace_unbound_x_in_effects_anywhere(
+                    &mut matched.effects,
+                    where_value,
+                    &sequence_words.join(" "),
+                )?;
+            }
             let stage = if let Some(feature_tag) = matched.feature_tag {
                 format!(
                     "parse_effect_sentences:subject-verb-sequence:{}:{feature_tag}",
@@ -1373,6 +1392,9 @@ fn parse_effect_sentences_from_sentence_inputs(
                 "effect-route: {}",
                 subject_verb_sequence_route(matched.name)
             ));
+            if let Some(where_value) = sequence_where_x {
+                carried_where_x = Some(where_value);
+            }
             effects.append(&mut matched.effects);
             sentence_idx += matched.consumed_sentences;
             continue;
@@ -2788,6 +2810,14 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             SubjectVerbActionAst::PumpForEach { count, .. } => {
                 replace_value(count, replacement, clause)?;
             }
+            SubjectVerbActionAst::ConsultTopOfLibrary {
+                filter, stop_rule, ..
+            } => {
+                replace_in_filter(filter, replacement, clause)?;
+                if let LibraryConsultStopRuleAst::MatchCount(count) = stop_rule {
+                    replace_value(count, replacement, clause)?;
+                }
+            }
             SubjectVerbActionAst::DealDamageEqualToPower { .. }
             | SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
             | SubjectVerbActionAst::RevealHand
@@ -2983,7 +3013,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::GrantBySpec { .. }
             | SubjectVerbActionAst::RemoveAbilitiesFromTarget { .. }
             | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { .. }
-            | SubjectVerbActionAst::ConsultTopOfLibrary { .. }
             | SubjectVerbActionAst::AdditionalPhases { .. }
             | SubjectVerbActionAst::TurnFaceUp { .. }
             | SubjectVerbActionAst::ShuffleLibrary => {}

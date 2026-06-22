@@ -889,6 +889,24 @@ pub(super) struct ReferenceTagStageResult {
     pub(super) early_return: bool,
 }
 
+fn find_blocking_or_blocked_by_source_phrase(words: &[&str]) -> Option<usize> {
+    find_any_filter_phrase_start(
+        words,
+        &[
+            &["blocking", "or", "blocked", "by", "this", "creature"],
+            &["blocking", "or", "blocked", "by", "this", "permanent"],
+            &["blocking", "or", "blocked", "by", "this", "source"],
+        ],
+    )
+    .or_else(|| {
+        words.windows(4).enumerate().find_map(|(idx, window)| {
+            (window == ["blocking", "or", "blocked", "by"]
+                && is_source_reference_words(&words[idx + 4..]))
+            .then_some(idx)
+        })
+    })
+}
+
 pub(super) fn apply_reference_and_tag_stage(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
@@ -964,14 +982,7 @@ pub(super) fn apply_reference_and_tag_stage(
         }
     }
 
-    if let Some(relation_idx) = find_any_filter_phrase_start(
-        all_words,
-        &[
-            &["blocking", "or", "blocked", "by", "this", "creature"],
-            &["blocking", "or", "blocked", "by", "this", "permanent"],
-            &["blocking", "or", "blocked", "by", "this", "source"],
-        ],
-    ) {
+    if let Some(relation_idx) = find_blocking_or_blocked_by_source_phrase(all_words) {
         filter.in_combat_with_source = true;
         all_words.truncate(relation_idx);
     }

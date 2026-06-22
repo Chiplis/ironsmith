@@ -16494,6 +16494,7 @@ fn skeleton_crew_one_or_more_graveyard_leave_batches_once() {
         2,
         2,
     );
+    let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
     let snapshots = [first_id, second_id]
         .into_iter()
         .map(|id| {
@@ -16510,7 +16511,8 @@ fn skeleton_crew_one_or_more_graveyard_leave_batches_once() {
             snapshots,
         ),
         crate::provenance::ProvNodeId::default(),
-    );
+    )
+    .with_lookback_source_snapshots(lookback_source_snapshots);
 
     queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
     assert_eq!(
@@ -16653,6 +16655,11 @@ fn skeleton_crew_graveyard_activation_returns_it_tapped() {
     )
     .expect("Skeleton Crew activation should be put on the stack");
     resolve_stack_entry(&mut game).expect("Skeleton Crew activation should resolve");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Skeleton Crew should not trigger from seeing itself leave the graveyard"
+    );
 
     let returned_id = game
         .find_object_by_stable_id(crew_stable_id)

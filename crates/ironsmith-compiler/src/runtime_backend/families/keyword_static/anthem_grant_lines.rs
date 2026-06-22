@@ -1705,14 +1705,6 @@ pub(crate) fn parse_granted_keyword_static_line(
         )]));
     }
 
-    let Some(actions) = parse_ability_line(&keyword_tokens) else {
-        return Ok(None);
-    };
-    reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-    if actions.is_empty() {
-        return Ok(None);
-    }
-
     let attached_subject_filter =
         infer_attached_subject_filter_from_condition_expr(condition.as_ref());
     let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
@@ -1724,6 +1716,56 @@ pub(crate) fn parse_granted_keyword_static_line(
                 attached_subject_filter.as_ref(),
             )
         })?;
+
+    if let Some((actions, subtypes)) = parse_keyword_and_subtype_addition_tail(&keyword_tokens)? {
+        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+        let mut compiled = Vec::new();
+        for action in actions {
+            if !action.lowers_to_static_ability() {
+                return Ok(None);
+            }
+            match &subject {
+                AnthemSubjectAst::Source => match &condition {
+                    Some(condition) => compiled.push(StaticAbilityAst::ConditionalKeywordAction {
+                        action,
+                        condition: condition.clone(),
+                    }),
+                    None => compiled.push(StaticAbilityAst::KeywordAction(action)),
+                },
+                AnthemSubjectAst::Filter(filter) => {
+                    compiled.push(StaticAbilityAst::GrantKeywordAction {
+                        filter: filter.clone(),
+                        action,
+                        condition: condition.clone(),
+                    });
+                }
+            }
+        }
+
+        match &subject {
+            AnthemSubjectAst::Source => {
+                compiled.push(conditional_static_ability(
+                    StaticAbility::add_subtypes(ObjectFilter::source(), subtypes),
+                    condition,
+                ));
+            }
+            AnthemSubjectAst::Filter(filter) => {
+                compiled.push(conditional_static_ability(
+                    StaticAbility::add_subtypes(filter.clone(), subtypes),
+                    condition,
+                ));
+            }
+        }
+        return Ok(Some(compiled));
+    }
+
+    let Some(actions) = parse_ability_line(&keyword_tokens) else {
+        return Ok(None);
+    };
+    reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+    if actions.is_empty() {
+        return Ok(None);
+    }
 
     let grants_conspire = actions
         .iter()
@@ -2388,7 +2430,7 @@ fn granted_blitz_abilities_from_subject(
     subject_tokens: &[OwnedLexToken],
     condition: Option<crate::ConditionExpr>,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let subject = parse_anthem_subject(subject_tokens)?;
+    let subject = parse_anthem_subject(&subject_tokens)?;
     let AnthemSubjectAst::Filter(filter) = subject else {
         return Ok(None);
     };
@@ -2451,6 +2493,123 @@ fn granted_emerge_abilities_from_subject(
         abilities.push(ability);
     }
     Ok((!abilities.is_empty()).then_some(abilities))
+}
+
+fn parse_keyword_and_subtype_addition_tail(
+    keyword_tokens: &[OwnedLexToken],
+) -> Result<Option<(Vec<KeywordAction>, Vec<Subtype>)>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(keyword_tokens);
+    let Some(and_idx) = words.windows(2).position(|window| {
+        anthem_shape_matches_word(window[0], ANTHEM_AND_WORD_PATTERN)
+            && matches!(window[1], "is" | "are")
+    }) else {
+        return Ok(None);
+    };
+    if and_idx == 0 {
+        return Ok(None);
+    }
+    let Some(keyword_end) = token_index_for_word_index(keyword_tokens, and_idx) else {
+        return Ok(None);
+    };
+    let Some(addition_start) = token_index_for_word_index(keyword_tokens, and_idx + 1) else {
+        return Ok(None);
+    };
+    let keyword_part = trim_commas(&keyword_tokens[..keyword_end]);
+    let Some(actions) = parse_ability_line(&keyword_part) else {
+        return Ok(None);
+    };
+    if actions.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(additions) = parse_type_color_addition_clause(&keyword_tokens[addition_start..])?
+    else {
+        return Ok(None);
+    };
+    if !additions.added_colors.is_empty()
+        || !additions.set_colors.is_empty()
+        || !additions.card_types.is_empty()
+        || additions.subtypes.is_empty()
+    {
+        return Ok(None);
+    }
+
+    Ok(Some((actions, additions.subtypes)))
+}
+
+fn conditional_static_ability(
+    ability: StaticAbility,
+    condition: Option<crate::ConditionExpr>,
+) -> StaticAbilityAst {
+    let ast = StaticAbilityAst::Static(ability);
+    match condition {
+        Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(ast),
+            condition,
+        },
+        None => ast,
+    }
+}
+
+pub(crate) fn parse_source_counter_threshold_keyword_and_subtype_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if !token_slice_starts_with(tokens, &["as", "long", "as"]) {
+        return Ok(None);
+    }
+
+    let Some(have_token_idx) = anthem_last_token_offset(tokens, |token| {
+        anthem_token_matches_shape(token, HAS_OR_HAVE_WORD_PATTERN)
+    }) else {
+        return Ok(None);
+    };
+    let Ok((Some(condition), subject_start)) = parse_anthem_prefix_condition(tokens, have_token_idx)
+    else {
+        return Ok(None);
+    };
+
+    let subject_tokens = trim_commas(&tokens[subject_start..have_token_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let subject = parse_anthem_subject(&subject_tokens)?;
+
+    let tail_tokens = trim_edge_punctuation(&tokens[have_token_idx + 1..]);
+    let Some((actions, subtypes)) = parse_keyword_and_subtype_addition_tail(&tail_tokens)? else {
+        return Ok(None);
+    };
+
+    let clause_text = crate::runtime_backend::token_word_refs(tokens).join(" ");
+    reject_unimplemented_keyword_actions(&actions, &clause_text)?;
+
+    let mut compiled = Vec::new();
+    for action in actions {
+        if !action.lowers_to_static_ability() {
+            return Ok(None);
+        }
+        match &subject {
+            AnthemSubjectAst::Source => compiled.push(StaticAbilityAst::ConditionalKeywordAction {
+                action,
+                condition: condition.clone(),
+            }),
+            AnthemSubjectAst::Filter(filter) => compiled.push(StaticAbilityAst::GrantKeywordAction {
+                filter: filter.clone(),
+                action,
+                condition: Some(condition.clone()),
+            }),
+        }
+    }
+
+    let subtype_ability = match &subject {
+        AnthemSubjectAst::Source => StaticAbility::add_subtypes(ObjectFilter::source(), subtypes),
+        AnthemSubjectAst::Filter(filter) => StaticAbility::add_subtypes(filter.clone(), subtypes),
+    };
+    compiled.push(StaticAbilityAst::ConditionalStaticAbility {
+        ability: Box::new(StaticAbilityAst::Static(subtype_ability)),
+        condition,
+    });
+
+    Ok((!compiled.is_empty()).then_some(compiled))
 }
 
 pub(crate) fn find_source_reference_start(tokens: &[OwnedLexToken]) -> Option<usize> {
@@ -4124,7 +4283,7 @@ pub(crate) fn parse_type_color_addition_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TypeColorAdditionClause>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.len() < 7 || words.first() != Some(&"is") {
+    if words.len() < 7 || !words.first().is_some_and(|word| matches!(*word, "is" | "are")) {
         return Ok(None);
     }
 

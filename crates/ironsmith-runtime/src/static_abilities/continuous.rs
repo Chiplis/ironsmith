@@ -2562,7 +2562,8 @@ impl StaticAbilityKind for GrantAbility {
                 && self.ability.is_keyword()
                 && leading_source_keyword_condition(condition)
             {
-                let condition_text = describe_static_condition(condition);
+                let condition_text =
+                    normalize_source_counter_condition_text(&describe_static_condition(condition));
                 if let Some(rest) = condition_text.strip_prefix("as long as ") {
                     return format!("as long as {rest}, {subject} has {raw_ability_text}");
                 }
@@ -2650,9 +2651,20 @@ fn leading_source_keyword_condition(condition: &crate::ConditionExpr) -> bool {
         crate::ConditionExpr::CountComparison {
             display: Some(display),
             ..
-        } => display.starts_with("you own a card exiled with "),
+        } => {
+            display.starts_with("you own a card exiled with ")
+                || display.starts_with("this has ")
+                || display.starts_with("this creature has ")
+        }
         _ => false,
     }
+}
+
+fn normalize_source_counter_condition_text(condition_text: &str) -> String {
+    condition_text
+        .strip_prefix("as long as this has ")
+        .map(|rest| format!("as long as this creature has {rest}"))
+        .unwrap_or_else(|| condition_text.to_string())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3776,15 +3788,24 @@ impl StaticAbilityKind for AddSubtypesForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = pluralized_subject_text(&self.filter);
+        let subject = if self.filter == ObjectFilter::source() {
+            "this creature".to_string()
+        } else {
+            pluralized_subject_text(&self.filter)
+        };
         let (verb, possessive) = subject_verb_and_possessive(&subject);
         if is_exactly_basic_land_types(&self.subtypes) {
             let mut text = format!(
                 "{subject} {verb} every basic land type in addition to {possessive} other types"
             );
             if let Some(condition) = &self.condition {
+                let condition_text =
+                    normalize_source_counter_condition_text(&describe_static_condition(condition));
+                if condition_text.starts_with("as long as ") {
+                    return format!("{condition_text}, {text}");
+                }
                 text.push(' ');
-                text.push_str(&describe_static_condition(condition));
+                text.push_str(&condition_text);
             }
             return text;
         }
@@ -3818,8 +3839,13 @@ impl StaticAbilityKind for AddSubtypesForFilter {
         let mut text =
             format!("{subject} {verb} {subtype_phrase} in addition to {possessive} {other_types}",);
         if let Some(condition) = &self.condition {
+            let condition_text =
+                normalize_source_counter_condition_text(&describe_static_condition(condition));
+            if condition_text.starts_with("as long as ") {
+                return format!("{condition_text}, {text}");
+            }
             text.push(' ');
-            text.push_str(&describe_static_condition(condition));
+            text.push_str(&condition_text);
         }
         text
     }

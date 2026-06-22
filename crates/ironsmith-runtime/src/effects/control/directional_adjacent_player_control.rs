@@ -137,6 +137,7 @@ impl EffectExecutor for DirectionalAdjacentPlayerControlEffect {
         let mut outcomes = Vec::new();
         for (new_controller, object_id) in chosen {
             let previous_controller = game.current_controller(object_id);
+            let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
             let apply = ApplyContinuousEffect::new(
                 EffectTarget::Specific(object_id),
                 Modification::ChangeController(new_controller),
@@ -157,10 +158,13 @@ impl EffectExecutor for DirectionalAdjacentPlayerControlEffect {
                         None,
                     );
                 }
-                outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                    ControlChangedEvent::new(object_id, previous_controller, new_controller),
-                    ctx.provenance,
-                ));
+                outcome = outcome.with_event(
+                    TriggerEvent::new_with_provenance(
+                        ControlChangedEvent::new(object_id, previous_controller, new_controller),
+                        ctx.provenance,
+                    )
+                    .with_lookback_source_snapshots(lookback_source_snapshots),
+                );
             }
             outcomes.push(outcome);
         }

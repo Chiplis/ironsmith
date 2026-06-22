@@ -4322,6 +4322,13 @@ fn parse_object_death_this_turn_predicate(tokens: &[OwnedLexToken]) -> Option<Pr
     match condition.event {
         crate::runtime_backend::grammar::conditions::ObjectDeathThisTurnEventAst::Died => {
             let count = comparison_to_strict_at_least_threshold(&condition.comparison)?;
+            if let Some(damager) = condition.damaged_by {
+                return Some(PredicateAst::CreatureDealtDamageBySourceDiedThisTurn {
+                    victim: condition.filter,
+                    damager,
+                    count,
+                });
+            }
             if let Some(player) = condition.under_controller {
                 return Some(PredicateAst::ValueComparison {
                     left: Value::CreaturesDiedThisTurnControlledBy(player),
@@ -5109,7 +5116,8 @@ fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAs
 }
 
 fn parse_mana_spent_capture_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_mana_symbol_spent_to_cast_shape(tokens)
+    parse_snow_mana_of_any_spell_color_spent_to_cast_shape(tokens)
+        .or_else(|| parse_mana_symbol_spent_to_cast_shape(tokens))
         .or_else(|| {
             parse_same_color_mana_spent_to_cast_predicate(tokens)
                 .map(|amount| PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(amount))
@@ -5119,6 +5127,34 @@ fn parse_mana_spent_capture_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
                 PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol }
             })
         })
+}
+
+fn parse_snow_mana_of_any_spell_color_spent_to_cast_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let first = tokens.first()?;
+    let symbol = parse_mana_symbol(first.parser_text()).ok()?;
+    if symbol != crate::mana::ManaSymbol::Snow {
+        return None;
+    }
+
+    let words = LexedClause::new(&tokens[1..]).word_refs();
+    match words.as_slice() {
+        [
+            "of",
+            "any",
+            "of",
+            "that",
+            "spell" | "spells" | "spell's",
+            "colors",
+            "was",
+            "spent",
+            "to",
+            "cast",
+            "it",
+        ] => Some(PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell),
+        _ => None,
+    }
 }
 
 fn parse_mana_symbol_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -5602,6 +5638,42 @@ fn parse_player_controls_more_than_you_predicate(tokens: &[OwnedLexToken]) -> Op
     }
 
     Some(PredicateAst::PlayerControlsMoreThanYou { player, filter })
+}
+
+fn parse_player_controls_more_than_each_other_player_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let atoms = [
+        LexPattern::amount("comparison", LexCaptureKind::OneOf(&["more"])),
+        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["than"])),
+        LexPattern::word("than"),
+        LexPattern::modifier("comparison_player", LexCaptureKind::Rest),
+    ];
+    let relation = parse_control_relation_clauses(tokens, false)?;
+    let subject = relation.subject_clause;
+    let player = comparison_player_subject_clause(subject)?;
+    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
+    let tail = matched.capture_clause("comparison_player", relation.tail_clause)?;
+    if !clause_matches_any_phrase(
+        tail,
+        &[&["each", "other", "player"], &["each", "other", "players"]],
+    ) {
+        return None;
+    }
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, relation.tail_clause)?;
+    if object.tokens().is_empty() {
+        return None;
+    }
+    let other = object
+        .tokens()
+        .first()
+        .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
+    let filter = parse_object_filter(object.tokens(), other).ok()?;
+    if filter == ObjectFilter::default() {
+        return None;
+    }
+
+    Some(PredicateAst::PlayerControlsMoreThanEachOtherPlayer { player, filter })
 }
 
 fn parse_opponent_controls_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -6657,6 +6729,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_player_controls_more_than_each_other_player_predicate(tokens) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_player_controls_more_than_you_predicate(tokens) {
         return Ok(predicate);
     }
@@ -6789,6 +6865,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_player_cards_in_graveyard_predicate(tokens) {
         return Ok(predicate);
     }
+    if let Some(predicate) = parse_player_controls_more_than_each_other_player_predicate(tokens) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_player_controls_more_than_you_predicate(tokens) {
         return Ok(predicate);
     }

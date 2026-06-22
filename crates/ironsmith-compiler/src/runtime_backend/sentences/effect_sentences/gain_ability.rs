@@ -901,6 +901,13 @@ fn parse_simple_ability_modifier_clause_lexed(
     tokens: &[OwnedLexToken],
     losing: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if losing
+        && let Some(effects) =
+            super::chain_carry::parse_return_it_then_loses_all_abilities_lexed(tokens)?
+    {
+        return Ok(Some(EffectAst::Sequence { effects }));
+    }
+
     let clause_word_view = GainAbilityWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let verb_idx = if losing {

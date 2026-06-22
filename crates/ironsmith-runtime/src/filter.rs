@@ -360,6 +360,55 @@ fn snapshot_matches_subtype(snapshot: &ObjectSnapshot, subtype: Subtype, game: &
             ))
 }
 
+fn subject_creature_subtypes(
+    subject: &impl TaggedConstraintSubject,
+    game: &GameState,
+) -> Vec<Subtype> {
+    game.current_subtypes(subject.subject_object_id())
+        .unwrap_or_else(|| subject.subject_subtypes().to_vec())
+        .into_iter()
+        .filter(|subtype| subtype.is_creature_type())
+        .collect()
+}
+
+fn object_creature_subtypes(object: &Object, game: &GameState) -> Vec<Subtype> {
+    game.current_subtypes(object.id)
+        .unwrap_or_else(|| object.subtypes.clone())
+        .into_iter()
+        .filter(|subtype| subtype.is_creature_type())
+        .collect()
+}
+
+fn subject_shares_creature_type_with_filter(
+    subject: &impl TaggedConstraintSubject,
+    comparison_filter: &ObjectFilter,
+    ctx: &FilterContext,
+    game: &GameState,
+) -> bool {
+    let subject_subtypes = subject_creature_subtypes(subject, game);
+    if subject_subtypes.is_empty() {
+        return false;
+    }
+
+    for object in game.objects_in_deterministic_order() {
+        if object.id == subject.subject_object_id() {
+            continue;
+        }
+        if !comparison_filter.matches(object, ctx, game) {
+            continue;
+        }
+        let object_subtypes = object_creature_subtypes(object, game);
+        if subject_subtypes
+            .iter()
+            .any(|subtype| object_subtypes.contains(subtype))
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn intrinsic_attachment_tag_constraint_matches_subject(
     subject: &impl TaggedConstraintSubject,
     tag: &TagKey,
@@ -1521,6 +1570,16 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if self
+            .no_shared_creature_types_with
+            .iter()
+            .any(|comparison_filter| {
+                subject_shares_creature_type_with_filter(subject, comparison_filter, ctx, game)
+            })
+        {
+            return false;
+        }
+
         if self.has_tap_activated_ability && !subject.tail_has_tap_activated_ability() {
             return false;
         }
@@ -1770,6 +1829,38 @@ impl ObjectFilterExt for ObjectFilter {
 
         if self.was_dealt_damage_this_turn && !game.creature_was_damaged_this_turn(object.id) {
             return false;
+        }
+
+        if let Some(damager) = &self.dealt_damage_by_source_this_turn {
+            let Some(source) = ctx.source else {
+                return false;
+            };
+            let damage_source = match damager {
+                ironsmith_core::DamagedBySource::ThisCreature => Some(source),
+                ironsmith_core::DamagedBySource::EquippedCreature
+                | ironsmith_core::DamagedBySource::EnchantedCreature => game
+                    .object(source)
+                    .and_then(|obj| obj.attached_to.as_ref())
+                    .and_then(|target| match target {
+                        crate::object::AttachmentTarget::Object(id) => Some(*id),
+                        _ => None,
+                    }),
+            };
+            let Some(damage_source) = damage_source else {
+                return false;
+            };
+            if !game
+                .turn_store
+                .turn_history
+                .creature_was_damaged_by_source_identity_this_turn(
+                    object.id,
+                    Some(object.stable_id),
+                    damage_source,
+                    game.object(damage_source).map(|obj| obj.stable_id),
+                )
+            {
+                return false;
+            }
         }
 
         if let Some(player_filter) = &self.dealt_damage_to_player_this_turn {
@@ -3418,6 +3509,17 @@ impl ObjectFilterExt for ObjectFilter {
         if self.excluded_chosen_creature_type {
             post_noun_qualifiers.push("that aren't of the chosen type".to_string());
         }
+        if !self.no_shared_creature_types_with.is_empty() {
+            let comparison = self
+                .no_shared_creature_types_with
+                .iter()
+                .map(ObjectFilter::description)
+                .collect::<Vec<_>>()
+                .join(" or ");
+            post_noun_qualifiers.push(format!(
+                "that doesn't share a creature type with {comparison}"
+            ));
+        }
         for constraint in &self.tagged_constraints {
             match constraint.relation {
                 TaggedOpbjectRelation::IsTaggedObject => match constraint.tag.as_str() {
@@ -4118,6 +4220,14 @@ impl ObjectFilterExt for ObjectFilter {
 
         if self.was_dealt_damage_this_turn {
             parts.push("that was dealt damage this turn".to_string());
+        }
+        if let Some(damager) = &self.dealt_damage_by_source_this_turn {
+            let source = match damager {
+                ironsmith_core::DamagedBySource::ThisCreature => "this creature",
+                ironsmith_core::DamagedBySource::EquippedCreature => "equipped creature",
+                ironsmith_core::DamagedBySource::EnchantedCreature => "enchanted creature",
+            };
+            parts.push(format!("that was dealt damage by {source} this turn"));
         }
         if let Some(player) = &self.dealt_damage_to_player_this_turn {
             parts.push(format!(

@@ -429,6 +429,7 @@ pub struct ObjectFilter {
     pub entered_graveyard_from_battlefield_this_turn: bool,
     pub surveilled_this_turn: bool,
     pub was_dealt_damage_this_turn: bool,
+    pub dealt_damage_by_source_this_turn: Option<crate::DamagedBySource>,
     pub dealt_damage_to_player_this_turn: Option<PlayerFilter>,
     pub drawn_this_turn: bool,
     pub power: Option<Comparison>,
@@ -461,6 +462,7 @@ pub struct ObjectFilter {
     pub excluded_static_abilities: Vec<StaticAbilityId>,
     pub ability_markers: Vec<String>,
     pub excluded_ability_markers: Vec<String>,
+    pub no_shared_creature_types_with: Vec<ObjectFilter>,
     pub is_commander: bool,
     pub noncommander: bool,
     pub tagged_constraints: Vec<TaggedObjectConstraint>,
@@ -530,6 +532,7 @@ impl ObjectFilter {
             || !self.excluded_static_abilities.is_empty()
             || !self.ability_markers.is_empty()
             || !self.excluded_ability_markers.is_empty()
+            || !self.no_shared_creature_types_with.is_empty()
             || !self.tagged_constraints.is_empty()
             || self
                 .any_of
@@ -1084,6 +1087,11 @@ impl ObjectFilter {
         self
     }
 
+    pub fn sharing_no_creature_types_with(mut self, filter: ObjectFilter) -> Self {
+        self.no_shared_creature_types_with.push(filter);
+        self
+    }
+
     pub fn with_tap_activated_ability(mut self) -> Self {
         self.has_tap_activated_ability = true;
         self
@@ -1389,6 +1397,17 @@ impl ObjectFilter {
         }
         if self.excluded_chosen_creature_type {
             post_noun_qualifiers.push("that aren't of the chosen type".to_string());
+        }
+        if !self.no_shared_creature_types_with.is_empty() {
+            let comparison = self
+                .no_shared_creature_types_with
+                .iter()
+                .map(ObjectFilter::description)
+                .collect::<Vec<_>>()
+                .join(" or ");
+            post_noun_qualifiers.push(format!(
+                "that doesn't share a creature type with {comparison}"
+            ));
         }
         for constraint in &self.tagged_constraints {
             match constraint.relation {
@@ -2086,6 +2105,14 @@ impl ObjectFilter {
 
         if self.was_dealt_damage_this_turn {
             parts.push("that was dealt damage this turn".to_string());
+        }
+        if let Some(damager) = &self.dealt_damage_by_source_this_turn {
+            let source = match damager {
+                crate::DamagedBySource::ThisCreature => "this creature",
+                crate::DamagedBySource::EquippedCreature => "equipped creature",
+                crate::DamagedBySource::EnchantedCreature => "enchanted creature",
+            };
+            parts.push(format!("that was dealt damage by {source} this turn"));
         }
         if let Some(player) = &self.dealt_damage_to_player_this_turn {
             parts.push(format!(

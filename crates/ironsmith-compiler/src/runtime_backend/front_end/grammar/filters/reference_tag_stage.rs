@@ -179,6 +179,68 @@ const OTHER_THAN_BASIC_LAND_PREFIX: &[&str] = &["other", "than", "basic", "land"
 const CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
 const AGGREGATE_SCOPE_WORDS: &[&str] = &["greatest", "least", "total"];
 const AGGREGATE_SCOPE_MARKER_WORDS: &[&str] = &["among", "of"];
+const EXCLUDED_CHOSEN_TYPE_PHRASES: &[&[&str]] = &[
+    &["that", "arent", "of", "chosen", "type"],
+    &["that", "aren't", "of", "chosen", "type"],
+    &["that", "are", "not", "of", "chosen", "type"],
+    &["that", "isnt", "of", "chosen", "type"],
+    &["that", "isn't", "of", "chosen", "type"],
+    &["that", "is", "not", "of", "chosen", "type"],
+];
+const NO_SHARED_CREATURE_TYPE_WITH_YOUR_CREATURES_OR_GRAVEYARD_CLAUSES: &[&[&str]] = &[
+    &[
+        "that",
+        "doesn't",
+        "share",
+        "creature",
+        "type",
+        "with",
+        "creature",
+        "you",
+        "control",
+        "or",
+        "creature",
+        "card",
+        "in",
+        "your",
+        "graveyard",
+    ],
+    &[
+        "that",
+        "doesnt",
+        "share",
+        "creature",
+        "type",
+        "with",
+        "creature",
+        "you",
+        "control",
+        "or",
+        "creature",
+        "card",
+        "in",
+        "your",
+        "graveyard",
+    ],
+    &[
+        "that",
+        "does",
+        "not",
+        "share",
+        "creature",
+        "type",
+        "with",
+        "creature",
+        "you",
+        "control",
+        "or",
+        "creature",
+        "card",
+        "in",
+        "your",
+        "graveyard",
+    ],
+];
 
 fn find_phrase_start(words: &[&str], phrase: &[&str]) -> Option<usize> {
     words
@@ -644,6 +706,10 @@ pub(super) fn parse_object_filter_inner(
 
     try_apply_distinct_powers_clause(&mut filter, &mut all_words);
     try_apply_distinct_creature_types_clause(&mut filter, &mut all_words);
+    try_apply_no_shared_creature_type_with_your_creatures_or_graveyard_clause(
+        &mut filter,
+        &mut all_words,
+    );
 
     try_apply_could_be_targeted_by_that_spell_clause(&mut filter, &mut all_words);
 
@@ -1230,6 +1296,13 @@ pub(super) fn parse_object_filter_inner(
             negated_historic_indices.insert(idx + 1);
         }
     }
+    let excluded_chosen_type_indices: std::collections::HashSet<usize> =
+        EXCLUDED_CHOSEN_TYPE_PHRASES
+            .iter()
+            .filter_map(|phrase| {
+                find_phrase_start(&all_words, phrase).map(|start| start + phrase.len() - 2)
+            })
+            .collect();
 
     if non_article_token_words_contains_phrase(&segment_tokens, ATTACKED_THIS_TURN_PHRASE) {
         filter.attacked_this_turn = true;
@@ -1257,7 +1330,11 @@ pub(super) fn parse_object_filter_inner(
                     .get(idx + 1)
                     .is_some_and(|next| *next == TYPE_WORD) =>
             {
-                filter.chosen_creature_type = true;
+                if set_has(&excluded_chosen_type_indices, &idx) {
+                    filter.excluded_chosen_creature_type = true;
+                } else {
+                    filter.chosen_creature_type = true;
+                }
             }
             word if word == NONCHOSEN_WORD
                 && all_words
@@ -1879,6 +1956,7 @@ pub(super) fn parse_object_filter_inner(
         || !filter.excluded_static_abilities.is_empty()
         || !filter.ability_markers.is_empty()
         || !filter.excluded_ability_markers.is_empty()
+        || !filter.no_shared_creature_types_with.is_empty()
         || filter.chosen_color
         || filter.chosen_creature_type
         || filter.excluded_chosen_creature_type
@@ -2106,6 +2184,30 @@ fn try_apply_distinct_creature_types_clause(
             continue;
         };
         filter.distinct_creature_types = true;
+        all_words.drain(idx..idx + phrase.len());
+        return true;
+    }
+    false
+}
+
+fn try_apply_no_shared_creature_type_with_your_creatures_or_graveyard_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    for phrase in NO_SHARED_CREATURE_TYPE_WITH_YOUR_CREATURES_OR_GRAVEYARD_CLAUSES {
+        let Some(idx) = find_phrase_start(all_words, phrase) else {
+            continue;
+        };
+
+        filter
+            .no_shared_creature_types_with
+            .push(ObjectFilter::creature().you_control());
+        filter.no_shared_creature_types_with.push(
+            ObjectFilter::default()
+                .with_type(CardType::Creature)
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You),
+        );
         all_words.drain(idx..idx + phrase.len());
         return true;
     }

@@ -1,6 +1,6 @@
 use super::*;
-use crate::KeywordAction;
 use crate::ZoneReplacementDurationAst;
+use crate::runtime_backend::GrantedAbilityAst;
 use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
 use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::grammar::abilities::{
@@ -16,6 +16,7 @@ use crate::runtime_backend::lexer::{
     word_slice_starts_with, word_slice_starts_with_any,
 };
 use crate::runtime_backend::util::is_source_reference_words;
+use crate::{KeywordAction, Value};
 
 const DRAFT_RULE_LINE_WORDS: &[&str] = &["draft", "this", "card", "face", "up"];
 const THIS_CREATURE_SOURCE_WORDS: &[&str] = &["this", "creature"];
@@ -841,6 +842,151 @@ fn parse_adamant_counter_condition_tokens(
     ))
 }
 
+fn parse_snow_mana_of_any_spell_color_spent_condition_tokens(
+    predicate_tokens: &[OwnedLexToken],
+) -> Option<crate::ConditionExpr> {
+    let predicate_tokens = trim_lexed_commas(predicate_tokens);
+    let predicate_view = TokenWordView::new(predicate_tokens);
+    let body_start_word = if predicate_view.first_is("if") {
+        1
+    } else {
+        predicate_view.find_word("if")? + 1
+    };
+    let body_start_token = predicate_view.token_index_for_word_index(body_start_word)?;
+    let body_tokens = trim_lexed_commas(&predicate_tokens[body_start_token..]);
+    let first = body_tokens.first()?;
+    let symbol =
+        crate::runtime_backend::grammar::values::parse_mana_symbol(first.parser_text()).ok()?;
+    if symbol != crate::mana::ManaSymbol::Snow {
+        return None;
+    }
+
+    let words = token_word_refs(&body_tokens[1..]);
+    match words.as_slice() {
+        [
+            "of",
+            "any",
+            "of",
+            "that",
+            "spell" | "spells" | "spell's",
+            "colors",
+            "was",
+            "spent",
+            "to",
+            "cast",
+            "it",
+        ] => Some(crate::ConditionExpr::SnowManaOfAnySpellColorSpentToCastThisSpell),
+        _ => None,
+    }
+}
+
+fn spell_cast_trigger_filter(trigger: &TriggerSpec) -> Option<(ObjectFilter, PlayerFilter)> {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => spell_cast_trigger_filter(trigger),
+        TriggerSpec::SpellCast {
+            filter: Some(filter),
+            caster,
+            during_turn: None,
+            min_spells_this_turn: None,
+            exact_spells_this_turn: None,
+            from_not_hand: false,
+        } => Some((filter.clone(), caster.clone())),
+        _ => None,
+    }
+}
+
+fn parse_entry_counter_count(tokens: &[OwnedLexToken]) -> crate::effect::Value {
+    let Some(additional_idx) = tokens.iter().position(|token| token.is_word("additional")) else {
+        return crate::effect::Value::Fixed(1);
+    };
+
+    if additional_idx > 0
+        && let Some((parsed, _)) = crate::runtime_backend::front_end::shared::util::parse_number(
+            &tokens[additional_idx - 1..additional_idx],
+        )
+    {
+        return crate::effect::Value::Fixed(parsed as i32);
+    }
+    if let Some((parsed, _)) =
+        crate::runtime_backend::front_end::shared::util::parse_number(&tokens[additional_idx + 1..])
+    {
+        return crate::effect::Value::Fixed(parsed as i32);
+    }
+    crate::effect::Value::Fixed(1)
+}
+
+fn lower_spell_cast_snow_mana_enter_counter_static_chunk(
+    trigger_parse_tokens: &[OwnedLexToken],
+    effect_parse_tokens: &[OwnedLexToken],
+    intervening_if: Option<&PredicateAst>,
+) -> Result<Option<LineAst>, CardTextError> {
+    let (condition, entry_tokens) = if matches!(
+        intervening_if,
+        Some(PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell)
+    ) {
+        (
+            crate::ConditionExpr::SnowManaOfAnySpellColorSpentToCastThisSpell,
+            effect_parse_tokens,
+        )
+    } else {
+        let Some((condition_tokens, entry_tokens)) =
+            split_once_at_comma_tokens(effect_parse_tokens)
+        else {
+            return Ok(None);
+        };
+        let Some(condition) =
+            parse_snow_mana_of_any_spell_color_spent_condition_tokens(condition_tokens)
+        else {
+            return Ok(None);
+        };
+        (condition, entry_tokens)
+    };
+
+    let entry_words = token_word_refs(entry_tokens);
+    if !word_slice_starts_with(&entry_words, &["that", "creature", "enters"])
+        || !word_slice_contains_phrase(&entry_words, &["with", "an", "additional"])
+        || !word_slice_contains_word(&entry_words, "counter")
+        || !word_slice_ends_with(&entry_words, &["on", "it"])
+    {
+        return Ok(None);
+    }
+
+    let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
+    let Some((mut filter, caster)) = spell_cast_trigger_filter(&trigger) else {
+        return Ok(None);
+    };
+    if !matches!(filter.zone, Some(Zone::Stack))
+        || filter.card_types.as_slice() != [CardType::Creature]
+    {
+        return Ok(None);
+    }
+
+    filter.zone = Some(Zone::Battlefield);
+    filter.stack_kind = None;
+    filter.has_mana_cost = false;
+    filter.controller = Some(caster);
+
+    let Some(counter_type) =
+        crate::runtime_backend::front_end::shared::util::parse_counter_type_from_tokens(
+            entry_tokens,
+        )
+    else {
+        return Ok(None);
+    };
+    let count = parse_entry_counter_count(entry_tokens);
+    let ability = StaticAbility::enters_with_counters_and_subtypes_for_filter(
+        filter,
+        counter_type,
+        count,
+        Vec::new(),
+    )
+    .with_condition(condition);
+
+    Ok(Some(LineAst::StaticAbilities(vec![
+        crate::cards::builders::StaticAbilityAst::Static(ability),
+    ])))
+}
+
 fn parse_day_night_starts_day_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
     let rendered = render_token_slice(tokens);
     tokens_mention_day_night_starts_day(tokens).then(|| {
@@ -1336,6 +1482,67 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
         return Ok(Some(chunk));
     }
 
+    if let Some(chunk) = lower_spell_cast_snow_mana_enter_counter_static_chunk(
+        trigger_parse_tokens,
+        effect_parse_tokens,
+        line.intervening_if.as_ref(),
+    )? {
+        return Ok(Some(chunk));
+    }
+
+    if normalized
+        == "whenever you cast your second spell each turn, copy it, then exile the spell you cast with four time counters on it. if it doesn't have suspend, it gains suspend"
+    {
+        let trigger = parse_trigger_clause_from_text(
+            "whenever you cast your second spell each turn",
+            line.info.line_index,
+        )?;
+        let triggering_tag = TagKey::from("triggering");
+        let triggering_spell = TargetAst::Tagged(triggering_tag.clone(), None);
+        let mut suspend_filter = ObjectFilter::default();
+        suspend_filter.alternative_cast = Some(crate::filter::AlternativeCastKind::Suspend);
+        let effects = vec![
+            EffectAst::subject_verb_copy_spell(
+                triggering_spell.clone(),
+                Value::Fixed(1),
+                PlayerAst::Implicit,
+                false,
+                Vec::new(),
+            ),
+            EffectAst::subject_verb_exile(triggering_spell.clone(), false),
+            EffectAst::subject_verb_put_counters(
+                crate::object::CounterType::Time,
+                Value::Fixed(4),
+                triggering_spell.clone(),
+                None,
+                false,
+            ),
+            EffectAst::Conditional {
+                predicate: PredicateAst::Not(Box::new(PredicateAst::TaggedMatches(
+                    triggering_tag,
+                    suspend_filter,
+                ))),
+                if_true: vec![EffectAst::subject_verb_grant_abilities_to_target(
+                    triggering_spell,
+                    vec![GrantedAbilityAst::KeywordAction(KeywordAction::Marker(
+                        "suspend",
+                    ))],
+                    Until::Forever,
+                )],
+                if_false: Vec::new(),
+            },
+        ];
+        return Ok(Some(LineAst::Ability(rewrite_parsed_triggered_ability(
+            trigger.clone(),
+            effects,
+            infer_rewrite_triggered_functional_zones(&trigger, &line.info.raw_line),
+            Some(line.info.raw_line.clone()),
+            None,
+            line.presentation_label.as_deref(),
+            ReferenceImports::default(),
+        ))));
+    }
+
     if tokens_match_blocks_or_blocked_first_strike(full_parse_tokens) {
         let trigger = parse_trigger_clause_from_text(
             "this creature becomes blocked by a creature",
@@ -1479,6 +1686,44 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
                         }],
                     },
                 ],
+            }],
+            if_false: Vec::new(),
+        }];
+        return Ok(Some(LineAst::Ability(rewrite_parsed_triggered_ability(
+            trigger.clone(),
+            effects,
+            infer_rewrite_triggered_functional_zones(&trigger, &line.info.raw_line),
+            Some(line.info.raw_line.clone()),
+            None,
+            None,
+            ReferenceImports::default(),
+        ))));
+    }
+
+    if normalized
+        == "at the beginning of each player's upkeep, that player chooses target player whose graveyard has fewer creature cards in it than their graveyard does and is their opponent. the first player may return a creature card from their graveyard to their hand"
+    {
+        let trigger = parse_trigger_clause_from_text(
+            "at the beginning of each player's upkeep",
+            line.info.line_index,
+        )?;
+        let mut graveyard_creature_filter = ObjectFilter::creature();
+        graveyard_creature_filter.zone = Some(Zone::Graveyard);
+
+        let mut return_filter = graveyard_creature_filter.clone();
+        return_filter.owner = Some(PlayerFilter::IteratedPlayer);
+
+        let effects = vec![EffectAst::Conditional {
+            predicate: PredicateAst::AnOpponentHasFewerThanPlayer {
+                player: PlayerAst::That,
+                filter: graveyard_creature_filter,
+            },
+            if_true: vec![EffectAst::MayByPlayer {
+                player: PlayerAst::That,
+                effects: vec![EffectAst::subject_verb_return_to_hand(
+                    TargetAst::Object(return_filter, None, None),
+                    false,
+                )],
             }],
             if_false: Vec::new(),
         }];

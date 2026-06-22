@@ -1,4 +1,4 @@
-use crate::cards::builders::PlayerAst;
+use crate::cards::builders::{DamageBySpec, PlayerAst};
 use crate::color::ColorSet;
 use crate::effect::{Comparison, Value, ValueComparisonOperator};
 use crate::static_abilities::AnthemCountExpression;
@@ -316,6 +316,7 @@ pub(crate) struct ObjectDeathThisTurnConditionAst {
     pub(crate) filter: ObjectFilter,
     pub(crate) comparison: Comparison,
     pub(crate) under_controller: Option<PlayerFilter>,
+    pub(crate) damaged_by: Option<DamageBySpec>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2217,6 +2218,47 @@ fn parse_object_died_this_turn_shape(
     if let Some(matched) = LexPattern::new(&[
         LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
         LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
+        LexPattern::phrase(&["dealt", "damage", "by"]),
+        LexPattern::capture("damager", LexCaptureKind::UntilPhrase(&["this", "turn"])),
+        LexPattern::phrase(&["this", "turn"]),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["died"])),
+    ])
+    .match_clause(clause)
+    {
+        let amount_capture = matched.capture_by_role(LexCaptureRole::Amount)?;
+        let comparison = if amount_capture.word_range.is_empty() {
+            Comparison::GreaterThanOrEqual(1)
+        } else {
+            let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+            if clause_matches_phrase(amount_clause, &["a"]) {
+                Comparison::GreaterThanOrEqual(1)
+            } else {
+                parse_amount_capture_comparison(tokens, clause, &matched, "object-death condition")?
+            }
+        };
+        let damager_clause = matched.capture_clause("damager", clause)?;
+        let damaged_by = if clause_matches_phrase(damager_clause, &["this", "creature"]) {
+            DamageBySpec::ThisCreature
+        } else if clause_matches_phrase(damager_clause, &["equipped", "creature"]) {
+            DamageBySpec::EquippedCreature
+        } else if clause_matches_phrase(damager_clause, &["enchanted", "creature"]) {
+            DamageBySpec::EnchantedCreature
+        } else {
+            return None;
+        };
+
+        return Some(ObjectDeathThisTurnConditionAst {
+            event: ObjectDeathThisTurnEventAst::Died,
+            filter: ObjectFilter::creature(),
+            comparison,
+            under_controller: None,
+            damaged_by: Some(damaged_by),
+        });
+    }
+
+    if let Some(matched) = LexPattern::new(&[
+        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
+        LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
         LexPattern::action("action", LexCaptureKind::OneOf(&["died"])),
         LexPattern::phrase(&["under", "your", "control"]),
         LexPattern::phrase(&["this", "turn"]),
@@ -2240,6 +2282,7 @@ fn parse_object_died_this_turn_shape(
             filter: ObjectFilter::creature(),
             comparison,
             under_controller: Some(PlayerFilter::You),
+            damaged_by: None,
         });
     }
 
@@ -2267,6 +2310,7 @@ fn parse_object_died_this_turn_shape(
         filter: ObjectFilter::creature(),
         comparison,
         under_controller: None,
+        damaged_by: None,
     })
 }
 
@@ -2296,6 +2340,7 @@ fn parse_object_put_into_your_graveyard_from_anywhere_shape(
         filter: ObjectFilter::creature(),
         comparison: Comparison::GreaterThanOrEqual(1),
         under_controller: None,
+        damaged_by: None,
     })
 }
 

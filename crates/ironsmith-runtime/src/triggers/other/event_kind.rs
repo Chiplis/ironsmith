@@ -1,5 +1,6 @@
 //! Generic event-kind triggers.
 
+use crate::events::ControlChangedEvent;
 use crate::events::EventKind;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -28,6 +29,18 @@ impl TriggerMatcher for EventKindTrigger {
     fn display(&self) -> String {
         self.display_text.clone()
     }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        event.kind() == self.kind
+            && matches!(
+                self.kind,
+                EventKind::PermanentPhasedOut
+                    | EventKind::ObjectBecameUnattached
+                    | EventKind::ControlChanged
+                    | EventKind::SpellCountered
+                    | EventKind::PlayerLosesGame
+            )
+    }
 }
 
 /// Trigger that checks event kind and requires event object == source object.
@@ -53,6 +66,52 @@ impl TriggerMatcher for ThisEventObjectTrigger {
 
     fn display(&self) -> String {
         self.display_text.clone()
+    }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        event.kind() == self.kind
+            && matches!(
+                self.kind,
+                EventKind::PermanentPhasedOut
+                    | EventKind::ObjectBecameUnattached
+                    | EventKind::ControlChanged
+                    | EventKind::SpellCountered
+                    | EventKind::PlayerLosesGame
+            )
+    }
+}
+
+/// Trigger that fires when the controller of the ability source loses control of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceControllerLosesControlTrigger {
+    pub source_description: String,
+}
+
+impl SourceControllerLosesControlTrigger {
+    pub fn new(source_description: impl Into<String>) -> Self {
+        Self {
+            source_description: source_description.into(),
+        }
+    }
+}
+
+impl TriggerMatcher for SourceControllerLosesControlTrigger {
+    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        event
+            .downcast::<ControlChangedEvent>()
+            .is_some_and(|event| {
+                event.permanent == ctx.source_id
+                    && event.previous_controller == ctx.controller
+                    && event.new_controller != ctx.controller
+            })
+    }
+
+    fn display(&self) -> String {
+        format!("When you lose control of {}", self.source_description)
+    }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        event.kind() == EventKind::ControlChanged
     }
 }
 

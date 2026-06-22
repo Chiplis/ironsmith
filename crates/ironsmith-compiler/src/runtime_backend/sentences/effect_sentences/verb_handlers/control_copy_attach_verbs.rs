@@ -207,6 +207,7 @@ const CCA_PUT_TAGGED_ON_TOP_LIBRARY_SHAPE: LexPattern<'static> = LexPattern::new
 ]);
 const CCA_REST_LIBRARY_PREPOSITION_WORDS: &[&str] = &["on", "into", "to"];
 const CCA_REST_GRAVEYARD_PREPOSITION_WORDS: &[&str] = &["into", "to"];
+const CCA_REST_HAND_PREPOSITION_WORDS: &[&str] = &["in", "into", "to"];
 const CCA_LIBRARY_LOCATION_PHRASES: &[&[&str]] = &[&["library"], &["libraries"]];
 const CCA_GRAVEYARD_LOCATION_PHRASES: &[&[&str]] = &[&["graveyard"], &["graveyards"]];
 const CCA_REST_BOTTOM_LIBRARY_SHAPE: LexPattern<'static> = LexPattern::new(&[
@@ -244,6 +245,16 @@ const CCA_REST_GRAVEYARD_SHAPE: LexPattern<'static> = LexPattern::new(&[
         LexCaptureKind::OneOf(CCA_GRAVEYARD_OR_GRAVEYARDS_WORDS),
     ),
 ]);
+const CCA_REST_HAND_SHAPE: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::any_word(CCA_AND_OR_THEN_WORDS),
+    LexPattern::object("rest", LexCaptureKind::OneOfPhrase(CCA_REST_TARGET_PHRASES)),
+    LexPattern::modifier(
+        "preposition",
+        LexCaptureKind::OneOf(CCA_REST_HAND_PREPOSITION_WORDS),
+    ),
+    LexPattern::modifier("owner", LexCaptureKind::UntilAnyPhrase(CCA_HAND_LOCATION_PHRASES)),
+    LexPattern::object("zone", LexCaptureKind::OneOf(CCA_HAND_OR_HANDS_WORDS)),
+]);
 const CCA_POWER_NUMBER_WORDS: &[&str] = &["power", "number"];
 const CCA_ITS_SOURCE_STAT_PHRASES: &[&[&str]] = &[
     &["its", "power"],
@@ -256,6 +267,8 @@ const CCA_FROM_IT_PHRASE: &[&str] = &["from", "it"];
 const CCA_AMONG_THEM_WORDS: &[&str] = &["among", "them"];
 const CCA_BACK_ANY_ORDER_WORDS: &[&str] = &["back", "any", "order"];
 const CCA_REST_TOP_BOTTOM_LIBRARY_WORDS: &[&str] = &["rest", "bottom", "library"];
+const CCA_ONTO_BATTLEFIELD_PREFIX_PHRASES: &[&[&str]] =
+    &[&["onto", "the", "battlefield"], &["onto", "battlefield"]];
 
 fn cca_token_is(token: &OwnedLexToken, expected: &str) -> bool {
     token.as_word().is_some_and(|word| word == expected)
@@ -478,6 +491,7 @@ fn cca_destination_player_from_tokens(tokens: &[OwnedLexToken], fallback: Player
 enum CcaRestDestination {
     BottomOfLibrary,
     Graveyard,
+    Hand,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -498,6 +512,9 @@ fn cca_rest_destination_from_tokens(tokens: &[OwnedLexToken]) -> Option<CcaRestD
     }
     if CCA_REST_GRAVEYARD_SHAPE.find_in_word_refs(words).is_some() {
         return Some(CcaRestDestination::Graveyard);
+    }
+    if CCA_REST_HAND_SHAPE.find_in_word_refs(words).is_some() {
+        return Some(CcaRestDestination::Hand);
     }
     None
 }
@@ -544,10 +561,30 @@ fn parse_cca_put_tagged_into_hand_shape(
 
 fn compose_put_filtered_looked_cards_into_hand_rest_into_graveyard(
     player: PlayerAst,
+    filter: ObjectFilter,
+    count: ChoiceCount,
+    looked_tag: TagKey,
+    chosen_tag: TagKey,
+) -> Vec<EffectAst> {
+    compose_put_filtered_looked_cards_to_zone_rest_to_zone(
+        player,
+        filter,
+        count,
+        looked_tag,
+        chosen_tag,
+        Zone::Hand,
+        Zone::Graveyard,
+    )
+}
+
+fn compose_put_filtered_looked_cards_to_zone_rest_to_zone(
+    player: PlayerAst,
     mut filter: ObjectFilter,
     count: ChoiceCount,
     looked_tag: TagKey,
     chosen_tag: TagKey,
+    chosen_zone: Zone,
+    rest_zone: Zone,
 ) -> Vec<EffectAst> {
     filter.zone = Some(Zone::Library);
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -568,7 +605,7 @@ fn compose_put_filtered_looked_cards_into_hand_rest_into_graveyard(
         },
         EffectAst::MoveTaggedGroupToZone {
             tag: chosen_tag.clone(),
-            zone: Zone::Hand,
+            zone: chosen_zone,
         },
         EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -576,7 +613,7 @@ fn compose_put_filtered_looked_cards_into_hand_rest_into_graveyard(
             SubjectVerbActionAst::PutTaggedRemainderInZone {
                 tag: looked_tag,
                 keep_tagged: chosen_tag,
-                zone: Zone::Graveyard,
+                zone: rest_zone,
             },
         ),
     ]
@@ -1231,6 +1268,24 @@ pub(crate) fn parse_put_into_hand(
             && let Some((count, filter)) =
                 parse_put_from_among_hand_choice(tokens, from_among_word_idx, &clause_words)?
         {
+            let after_from_among_words = &from_among_words[from_among_word_idx + 3..];
+            if word_slice_starts_with_any(
+                after_from_among_words,
+                CCA_ONTO_BATTLEFIELD_PREFIX_PHRASES,
+            ) && cca_rest_destination_from_tokens(tokens) == Some(CcaRestDestination::Hand)
+            {
+                return Ok(EffectAst::Sequence {
+                    effects: compose_put_filtered_looked_cards_to_zone_rest_to_zone(
+                        player,
+                        filter,
+                        count,
+                        looked_tag,
+                        chosen_tag,
+                        Zone::Battlefield,
+                        Zone::Hand,
+                    ),
+                });
+            }
             return Ok(EffectAst::Sequence {
                 effects: compose_put_filtered_looked_cards_into_hand_rest_into_graveyard(
                     player, filter, count, looked_tag, chosen_tag,

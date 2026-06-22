@@ -144,6 +144,9 @@ pub enum DelayedTriggerSpec {
     BeginningOfDrawStep(PlayerFilter),
     BeginningOfEndStep(PlayerFilter),
     EndOfCombat,
+    SourceControllerLosesControl {
+        source_description: String,
+    },
     ThisDies,
     ThisLeavesBattlefield,
     ThisAttacksAndIsntBlocked,
@@ -182,6 +185,7 @@ pub struct ScheduleDelayedTriggerEffect<E> {
     pub one_shot: bool,
     pub start_next_turn: bool,
     pub until_end_of_turn: bool,
+    pub watch_ability_source: bool,
     pub target_choices: Vec<ChooseSpec>,
     pub target_tag: Option<crate::tag::TagKey>,
     pub target_filter: Option<ObjectFilter>,
@@ -202,6 +206,7 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
             one_shot,
             start_next_turn: false,
             until_end_of_turn: false,
+            watch_ability_source: false,
             target_choices,
             target_tag: None,
             target_filter: None,
@@ -235,6 +240,11 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
 
     pub fn until_end_of_turn(mut self) -> Self {
         self.until_end_of_turn = true;
+        self
+    }
+
+    pub fn watch_ability_source(mut self) -> Self {
+        self.watch_ability_source = true;
         self
     }
 }

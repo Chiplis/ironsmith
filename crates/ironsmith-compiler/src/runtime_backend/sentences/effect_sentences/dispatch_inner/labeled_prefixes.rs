@@ -864,6 +864,13 @@ pub(crate) fn parse_subject_verb_extension_sentence(
         "verb=Exile subject=explicit recognizer=exile-return-same-object",
         parse_exile_then_return_same_object_sentence(tokens)
     );
+    if let Some(effects) = super::chain_carry::parse_return_it_then_loses_all_abilities_lexed(tokens)?
+    {
+        crate::parse_trace::event(
+            "effect-route: subject-verb verb=Return subject=explicit recognizer=return-then-lose-abilities",
+        );
+        return Ok(Some(effects));
+    }
     if is_simple_source_gain_ability_candidate(tokens) {
         many!(
             "verb=Gain subject=implicit recognizer=source-ability-grant",

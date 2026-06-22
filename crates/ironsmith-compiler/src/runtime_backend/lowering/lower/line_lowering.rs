@@ -12,7 +12,7 @@ use crate::runtime_backend::lexer::{
     word_slice_contains_any_word, word_slice_contains_phrase, word_slice_starts_with,
     word_slice_starts_with_any,
 };
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 use super::super::effect_pipeline::{
@@ -97,6 +97,62 @@ fn unwrap_matching_conditional_replacement_effects(
         return effects;
     }
     conditional.if_true.clone()
+}
+
+fn damaged_death_condition_target_filter(condition: &crate::ConditionExpr) -> Option<ObjectFilter> {
+    match condition {
+        crate::ConditionExpr::CreatureDealtDamageBySourceDiedThisTurn {
+            victim,
+            damager,
+            count,
+        } if *count == 1 => {
+            let mut filter = victim.clone();
+            filter.zone = Some(Zone::Graveyard);
+            filter.entered_graveyard_from_battlefield_this_turn = true;
+            filter.dealt_damage_by_source_this_turn = Some(*damager);
+            Some(filter)
+        }
+        crate::ConditionExpr::And(left, right) => damaged_death_condition_target_filter(left)
+            .or_else(|| damaged_death_condition_target_filter(right)),
+        _ => None,
+    }
+}
+
+fn retarget_source_move_to_damaged_death_card(triggered: &mut crate::ability::TriggeredAbility) {
+    let Some(condition) = triggered.intervening_if.as_ref() else {
+        return;
+    };
+    let Some(filter) = damaged_death_condition_target_filter(condition) else {
+        return;
+    };
+    let Some(segment) = triggered.effects.segments.first_mut() else {
+        return;
+    };
+    let Some(effect) = segment.default_effects.first_mut() else {
+        return;
+    };
+    let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+        return;
+    };
+    let Some(move_to_zone) = tagged
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return;
+    };
+    if !matches!(move_to_zone.target.base(), ChooseSpec::Source)
+        || move_to_zone.zone != Zone::Battlefield
+    {
+        return;
+    }
+
+    let mut replacement = move_to_zone.clone();
+    replacement.target =
+        ChooseSpec::Object(filter).with_count(crate::effect::ChoiceCount::exactly(1));
+    *effect = crate::effect::Effect::new(crate::effects::TaggedEffect::new(
+        tagged.tag.clone(),
+        crate::effect::Effect::new(replacement),
+    ));
 }
 
 fn rewrite_prior_token_placeholder_effect(
@@ -1997,6 +2053,9 @@ fn lower_triggered_chunk(
     {
         triggered.intervening_if =
             Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(surface_count));
+    }
+    if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
+        retarget_source_move_to_damaged_death_card(triggered);
     }
     if contains_haunted_creature_dies && let AbilityKind::Triggered(triggered) = parsed.kind() {
         state.haunt_linkage = Some((triggered.effects.to_vec(), triggered.choices.clone()));

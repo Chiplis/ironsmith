@@ -23,6 +23,7 @@ pub struct ScheduleDelayedTriggerEffect {
     pub one_shot: bool,
     pub start_next_turn: bool,
     pub until_end_of_turn: bool,
+    pub watch_ability_source: bool,
     pub target_objects: Vec<crate::ids::ObjectId>,
     pub target_tag: Option<TagKey>,
     pub target_filter: Option<ObjectFilter>,
@@ -43,6 +44,7 @@ impl ScheduleDelayedTriggerEffect {
             one_shot,
             start_next_turn: false,
             until_end_of_turn: false,
+            watch_ability_source: false,
             target_objects,
             target_tag: None,
             target_filter: None,
@@ -63,6 +65,7 @@ impl ScheduleDelayedTriggerEffect {
             one_shot,
             start_next_turn: false,
             until_end_of_turn: false,
+            watch_ability_source: false,
             target_objects: Vec::new(),
             target_tag: Some(target_tag.into()),
             target_filter: None,
@@ -82,6 +85,11 @@ impl ScheduleDelayedTriggerEffect {
 
     pub fn until_end_of_turn(mut self) -> Self {
         self.until_end_of_turn = true;
+        self
+    }
+
+    pub fn watch_ability_source(mut self) -> Self {
+        self.watch_ability_source = true;
         self
     }
 }
@@ -158,7 +166,11 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 .with_tagged_objects(delayed_tagged_objects);
                 queue_delayed_from_template(
                     game,
-                    DelayedWatcherIdentity::combined(vec![snapshot.object_id]),
+                    DelayedWatcherIdentity::combined(if self.watch_ability_source {
+                        vec![ctx.source]
+                    } else {
+                        vec![snapshot.object_id]
+                    }),
                     delayed,
                 );
                 matched += 1;
@@ -187,7 +199,11 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         .with_tagged_objects(tagged_objects);
         queue_delayed_from_template(
             game,
-            DelayedWatcherIdentity::combined(self.target_objects.clone()),
+            DelayedWatcherIdentity::combined(if self.watch_ability_source {
+                vec![ctx.source]
+            } else {
+                self.target_objects.clone()
+            }),
             delayed,
         );
 

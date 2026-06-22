@@ -39,6 +39,10 @@ impl TriggerMatcher for PlayerLosesGameTrigger {
             ),
         }
     }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        event.kind() == EventKind::PlayerLosesGame
+    }
 }
 
 #[cfg(test)]

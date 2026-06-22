@@ -904,6 +904,7 @@ fn apply_single_sba_with_snapshots(
         }
 
         StateBasedAction::PlayerLoses { player, reason: _ } => {
+            let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
             let lost_now = if let Some(p) = game.player_mut(player) {
                 if p.has_lost {
                     false
@@ -917,7 +918,9 @@ fn apply_single_sba_with_snapshots(
             if lost_now {
                 game.queue_trigger_event(
                     crate::provenance::ProvNodeId::default(),
-                    crate::events::Event::player_loses_game(player).into_raw(),
+                    crate::events::Event::player_loses_game(player)
+                        .into_raw()
+                        .with_lookback_source_snapshots(lookback_source_snapshots),
                 );
             }
         }

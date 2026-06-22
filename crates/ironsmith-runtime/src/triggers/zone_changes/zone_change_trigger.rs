@@ -349,16 +349,60 @@ impl ZoneChangeTrigger {
             }
         }
 
-        fn source_zone_phrase(trigger: &ZoneChangeTrigger) -> Option<&'static str> {
+        fn spell_or_ability_you_control_exiles_display(
+            trigger: &ZoneChangeTrigger,
+        ) -> Option<String> {
+            if trigger.from != ZonePattern::Specific(Zone::Battlefield)
+                || trigger.to != ZonePattern::Specific(Zone::Exile)
+                || trigger.player != PlayerRelation::Any
+                || trigger.count_mode != CountMode::OneOrMore
+                || trigger.this_object
+                || trigger.during_turn.is_some()
+            {
+                return None;
+            }
+            let cause_filter = trigger.cause_filter.as_ref()?;
+            if !matches!(
+                cause_filter.cause_type,
+                Some(crate::events::cause::CauseTypeFilter::EffectLike)
+            ) || cause_filter.source_filter.is_some()
+                || !matches!(
+                    cause_filter.controller_filter,
+                    Some(
+                        crate::events::cause::ControllerFilter::ContextController
+                            | crate::events::cause::ControllerFilter::You
+                    )
+                )
+                || trigger.object_filter != ObjectFilter::permanent_card()
+            {
+                return None;
+            }
+            Some(
+                "Whenever a spell or ability you control exiles one or more permanents from the battlefield"
+                    .to_string(),
+            )
+        }
+
+        fn source_zone_phrase(trigger: &ZoneChangeTrigger) -> Option<String> {
             match &trigger.from {
-                ZonePattern::Specific(Zone::Graveyard) => Some("from a graveyard"),
-                ZonePattern::Specific(Zone::Battlefield) => Some("from the battlefield"),
+                ZonePattern::Specific(Zone::Graveyard) => Some("from a graveyard".to_string()),
+                ZonePattern::Specific(Zone::Battlefield) => {
+                    Some("from the battlefield".to_string())
+                }
+                ZonePattern::Specific(Zone::Hand) => Some(
+                    match trigger.object_filter.owner {
+                        Some(crate::target::PlayerFilter::You) => "from your hand",
+                        Some(crate::target::PlayerFilter::Opponent) => "from an opponent's hand",
+                        _ => "from a hand",
+                    }
+                    .to_string(),
+                ),
                 ZonePattern::OneOf(zones)
                     if zones.contains(&Zone::Graveyard)
                         && zones.contains(&Zone::Battlefield)
                         && zones.len() == 2 =>
                 {
-                    Some("from graveyards and/or the battlefield")
+                    Some("from graveyards and/or the battlefield".to_string())
                 }
                 _ => None,
             }
@@ -373,6 +417,13 @@ impl ZoneChangeTrigger {
             if matches!(&trigger.from, ZonePattern::Any) && card_subject_anywhere_filter {
                 return true;
             }
+            if matches!(&trigger.from, ZonePattern::Specific(Zone::Hand))
+                && trigger.object_filter.nontoken
+                && trigger.object_filter.card_types.is_empty()
+                && trigger.object_filter.all_card_types.is_empty()
+            {
+                return true;
+            }
             if matches!(&trigger.from, ZonePattern::OneOf(zones) if zones.is_empty())
                 && card_subject_anywhere_filter
             {
@@ -385,6 +436,10 @@ impl ZoneChangeTrigger {
                         && zones.contains(&Zone::Battlefield)
                         && zones.len() == 2
             ) && trigger.object_filter == ObjectFilter::default().nontoken()
+        }
+
+        if let Some(display) = spell_or_ability_you_control_exiles_display(self) {
+            return display;
         }
 
         if self.this_object {
@@ -622,6 +677,14 @@ fn matching_snapshots<'a>(
         .collect()
 }
 
+fn source_zone_is_explicitly_looked_back(from: &ZonePattern, zone: Zone) -> bool {
+    *from != ZonePattern::Any && from.matches(zone)
+}
+
+fn is_public_to_hand_or_library_zone_change(zc: &ZoneChangeEvent) -> bool {
+    zc.from.is_public() && matches!(zc.to, Zone::Hand | Zone::Library)
+}
+
 impl TriggerMatcher for ZoneChangeTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         // Must be a zone change event
@@ -742,7 +805,12 @@ impl TriggerMatcher for ZoneChangeTrigger {
                 })
                 .unwrap_or(ctx.controller);
 
-            if !cause_filter.matches(&zc.cause, ctx.game, affected) {
+            if !cause_filter.matches_with_context_controller(
+                &zc.cause,
+                ctx.game,
+                affected,
+                ctx.controller,
+            ) {
                 return false;
             }
         }
@@ -799,10 +867,54 @@ impl TriggerMatcher for ZoneChangeTrigger {
         }
     }
 
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        if !self.matches(event, ctx) {
+            return None;
+        }
+        let zc = event.downcast::<ZoneChangeEvent>()?;
+        if self.this_object {
+            return Some(1);
+        }
+        let use_snapshot = self.uses_snapshot() && !zc.snapshots().is_empty();
+        let count = if use_snapshot {
+            matching_snapshots(zc, &self.object_filter, ctx).len()
+        } else {
+            zc.destination_objects()
+                .iter()
+                .filter(|&&id| {
+                    ctx.game.object(id).is_some_and(|obj| {
+                        self.object_filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                    }) || self.object_filter == ObjectFilter::default()
+                })
+                .count()
+        };
+        (count > 0).then_some(count as i32)
+    }
+
     fn uses_snapshot(&self) -> bool {
         // Zone change triggers often need LKI for the object's characteristics
         // at the moment it left its origin zone
         self.from != ZonePattern::Any
+    }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        let Some(zc) = event.downcast::<ZoneChangeEvent>() else {
+            return false;
+        };
+        if !self.from.matches(zc.from) || !self.to.matches(zc.to) {
+            return false;
+        }
+
+        let leaves_battlefield = zc.from == Zone::Battlefield
+            && zc.to != Zone::Battlefield
+            && source_zone_is_explicitly_looked_back(&self.from, Zone::Battlefield);
+        let leaves_graveyard = zc.from == Zone::Graveyard
+            && zc.to != Zone::Graveyard
+            && source_zone_is_explicitly_looked_back(&self.from, Zone::Graveyard);
+        let public_to_hand_or_library = is_public_to_hand_or_library_zone_change(zc)
+            && matches!(zc.to, Zone::Hand | Zone::Library);
+
+        leaves_battlefield || leaves_graveyard || public_to_hand_or_library
     }
 
     fn display(&self) -> String {
@@ -840,6 +952,18 @@ mod tests {
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
         game.create_object_from_card(&card, owner, zone)
+    }
+
+    fn spell_or_ability_you_control_exile_trigger() -> ZoneChangeTrigger {
+        ZoneChangeTrigger::new()
+            .from(Zone::Battlefield)
+            .to(Zone::Exile)
+            .filter(ObjectFilter::permanent_card())
+            .count(CountMode::OneOrMore)
+            .cause_filter(Some(
+                crate::events::cause::CauseFilter::effect_like()
+                    .with_controller(crate::events::cause::ControllerFilter::ContextController),
+            ))
     }
 
     #[test]
@@ -892,6 +1016,66 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(!trigger.matches(&exile_event, &ctx));
+    }
+
+    #[test]
+    fn spell_or_ability_you_control_exile_trigger_uses_trigger_controller() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(1);
+        let exiled_id = ObjectId::from_raw(2);
+        let trigger = spell_or_ability_you_control_exile_trigger();
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        let event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                exiled_id,
+                Zone::Battlefield,
+                Zone::Exile,
+                EventCause::from_effect(source_id, alice),
+                Some(make_creature_snapshot(exiled_id, bob, "Opponent Bear")),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&event, &ctx));
+        assert_eq!(trigger.event_value_amount(&event, &ctx), Some(1));
+
+        let opponent_cause_event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                exiled_id,
+                Zone::Battlefield,
+                Zone::Exile,
+                EventCause::from_effect(exiled_id, bob),
+                Some(make_creature_snapshot(exiled_id, bob, "Opponent Bear")),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&opponent_cause_event, &ctx));
+    }
+
+    #[test]
+    fn spell_or_ability_you_control_exile_trigger_displays_active_voice() {
+        assert_eq!(
+            spell_or_ability_you_control_exile_trigger().display(),
+            "Whenever a spell or ability you control exiles one or more permanents from the battlefield"
+        );
+    }
+
+    #[test]
+    fn hand_to_exile_nontoken_owned_cards_display_as_cards() {
+        let mut filter = ObjectFilter::default().nontoken();
+        filter.owner = Some(PlayerFilter::You);
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Hand)
+            .to(Zone::Exile)
+            .filter(filter)
+            .count(CountMode::OneOrMore);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more cards are put into exile from your hand"
+        );
     }
 
     #[test]

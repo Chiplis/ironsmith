@@ -1,6 +1,7 @@
 use super::*;
 use crate::TaggedOpbjectRelation;
 use crate::filter::StackObjectKind;
+use ironsmith_core::DamagedBySource;
 use ironsmith_core::ValueSurfaceHint;
 
 use std::cell::Cell;
@@ -663,6 +664,14 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
         text.push_str(" named ");
         text.push_str(&name);
     }
+    if let Some(payload) = compact_equipment_token_ability_payload(token) {
+        text.push_str(" with ");
+        text.push_str(&payload);
+        if let Some(name) = creature_name_prefix {
+            text = format!("{name}, {}", with_indefinite_article(&text));
+        }
+        return text;
+    }
     let mut keyword_texts = Vec::new();
     let mut extra_ability_texts = Vec::new();
     let has_non_toxic_poison_trigger = token_has_non_toxic_poison_trigger(token);
@@ -822,6 +831,91 @@ fn token_extra_abilities_prefer_with_clause(abilities: &[String]) -> bool {
         }
         _ => false,
     }
+}
+
+fn compact_equipment_token_ability_payload(token: &CardDefinition) -> Option<String> {
+    if !token.card.card_types.contains(&CardType::Artifact)
+        || !token
+            .card
+            .subtypes
+            .contains(&crate::types::Subtype::Equipment)
+    {
+        return None;
+    }
+
+    let mut pump_text: Option<String> = None;
+    let mut keywords = Vec::new();
+    let mut equip_text: Option<String> = None;
+
+    for ability in &token.abilities {
+        match &ability.kind {
+            AbilityKind::Static(static_ability)
+                if static_ability.id()
+                    == crate::static_abilities::StaticAbilityId::MakeColorless =>
+            {
+                continue;
+            }
+            AbilityKind::Static(static_ability) => {
+                let text =
+                    normalize_token_granted_static_ability_text(static_ability.display().as_str());
+                let text = text.trim().trim_end_matches('.');
+                if let Some(rest) = text.strip_prefix("Equipped creature gets ") {
+                    if pump_text.replace(rest.to_string()).is_some() {
+                        return None;
+                    }
+                    continue;
+                }
+                if let Some(rest) = text.strip_prefix("Equipped creature has ") {
+                    let keyword = rest.trim().to_ascii_lowercase();
+                    if keyword.is_empty()
+                        || keyword.contains(',')
+                        || keyword.contains(" and ")
+                        || keyword.contains('"')
+                    {
+                        return None;
+                    }
+                    keywords.push(keyword);
+                    continue;
+                }
+                return None;
+            }
+            AbilityKind::Activated(_) => {
+                let text = describe_inline_ability(ability);
+                if !text.starts_with("Equip ") || text.contains(". ") {
+                    return None;
+                }
+                if equip_text
+                    .replace(text.trim_end_matches('.').to_string())
+                    .is_some()
+                {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+
+    let equip_text = equip_text?;
+    if pump_text.is_none() && keywords.is_empty() {
+        return None;
+    }
+
+    let pump_text = pump_text?;
+    let has_pump = true;
+    let mut ability_text = format!("Equipped creature gets {pump_text}");
+    if !keywords.is_empty() {
+        if has_pump {
+            ability_text.push_str(" and has ");
+        } else {
+            ability_text.push_str(" has ");
+        }
+        ability_text.push_str(&join_with_and(&keywords));
+    }
+
+    Some(format!(
+        "\"{ability_text}\" and {}",
+        lowercase_first(&equip_text)
+    ))
 }
 
 fn token_has_non_toxic_poison_trigger(token: &CardDefinition) -> bool {
@@ -1757,6 +1851,145 @@ fn normalize_attached_creature_with_base_pt(line: &str) -> Option<String> {
     ))
 }
 
+fn normalize_ability_loss_transform_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    let marker = " loses all abilities and is ";
+    let marker_idx = lower.find(marker)?;
+    let subject = trimmed[..marker_idx].trim();
+    if subject.is_empty() {
+        return None;
+    }
+
+    let rest = trimmed[marker_idx + marker.len()..].trim();
+    let lower_rest = rest.to_ascii_lowercase();
+    let base_marker = ", has base power, and toughness ";
+    let base_idx = lower_rest.find(base_marker)?;
+    let descriptor = rest[..base_idx].trim();
+    let (descriptor, inline_name) = split_ability_loss_transform_name(descriptor);
+    let base_tail = rest[base_idx + base_marker.len()..].trim();
+    let (base_pt, card_type) = base_tail.split_once(' ')?;
+    if !base_pt.contains('/') || card_type.trim().is_empty() {
+        return None;
+    }
+
+    let mut colors: Vec<String> = Vec::new();
+    let mut subtypes: Vec<String> = Vec::new();
+    let mut named: Option<String> = None;
+    if let Some(name) = inline_name {
+        named = Some(name);
+    }
+
+    for raw_part in descriptor
+        .split(',')
+        .flat_map(|part| part.split(" and "))
+        .map(trim_ability_loss_transform_connector)
+    {
+        let mut part = raw_part;
+        while let Some(rest) = part.strip_prefix("is ") {
+            part = rest.trim();
+        }
+        if part.is_empty() {
+            continue;
+        }
+
+        let mut words = part.split_whitespace().peekable();
+        while let Some(word) = words.peek().copied() {
+            if matches!(
+                word.to_ascii_lowercase().as_str(),
+                "white" | "blue" | "black" | "red" | "green" | "colorless"
+            ) {
+                colors.push(word.to_string());
+                words.next();
+            } else {
+                break;
+            }
+        }
+
+        let mut remainder = words.collect::<Vec<_>>().join(" ");
+        while let Some(rest) = remainder.strip_prefix("is ") {
+            remainder = rest.trim().to_string();
+        }
+        let remainder = trim_ability_loss_transform_connector(&remainder);
+        if let Some(name) = remainder.strip_prefix("named ") {
+            named = Some(title_case_card_name_fragment(
+                trim_ability_loss_transform_connector(name),
+            ));
+        } else if let Some((subtype, _card_type)) =
+            split_ability_loss_transform_subtype_card_type(remainder)
+        {
+            subtypes.push(title_case_card_name_fragment(&subtype));
+        } else if !remainder.is_empty() {
+            subtypes.push(title_case_card_name_fragment(remainder));
+        }
+    }
+
+    if subtypes.is_empty() || card_type.trim() != "creature" {
+        return None;
+    }
+
+    let mut type_phrase_parts = Vec::new();
+    if !colors.is_empty() {
+        type_phrase_parts.push(join_with_and(&colors));
+    }
+    type_phrase_parts.push(subtypes.join(" "));
+    let type_phrase = type_phrase_parts.join(" ");
+    let type_phrase = with_indefinite_article(&type_phrase);
+
+    let mut normalized = format!(
+        "{subject} loses all abilities and is {type_phrase} {card_type} with base power and toughness {base_pt}"
+    );
+    if let Some(name) = named {
+        normalized.push_str(" named ");
+        normalized.push_str(&name);
+    }
+    normalized.push('.');
+    Some(normalized)
+}
+
+fn split_ability_loss_transform_name(text: &str) -> (&str, Option<String>) {
+    let lower = text.to_ascii_lowercase();
+    for marker in [" is named ", " named "] {
+        if let Some(idx) = lower.find(marker) {
+            let name = trim_ability_loss_transform_connector(&text[idx + marker.len()..]);
+            return (&text[..idx], Some(title_case_card_name_fragment(name)));
+        }
+    }
+    (text, None)
+}
+
+fn trim_ability_loss_transform_connector(text: &str) -> &str {
+    let mut trimmed = text.trim();
+    loop {
+        if let Some(rest) = trimmed.strip_prefix("and ") {
+            trimmed = rest.trim();
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_suffix(" and") {
+            trimmed = rest.trim();
+            continue;
+        }
+        break trimmed;
+    }
+}
+
+fn split_ability_loss_transform_subtype_card_type(text: &str) -> Option<(String, String)> {
+    let lower = text.to_ascii_lowercase();
+    for glue in [" is ", " "] {
+        let Some((left, right)) = lower.rsplit_once(glue) else {
+            continue;
+        };
+        if matches!(
+            right,
+            "creature" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle"
+        ) && !left.trim().is_empty()
+        {
+            return Some((left.trim().to_string(), right.to_string()));
+        }
+    }
+    None
+}
+
 fn normalize_temporary_animation_oracle_surface(line: &str) -> Option<String> {
     let trimmed = line.trim().trim_end_matches('.');
     let lower = trimmed.to_ascii_lowercase();
@@ -1958,6 +2191,9 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
             normalized = normalized.replace(&exile_tagged, "exile them");
         }
     }
+    if let Some(compact) = compact_multi_zone_named_search_to_battlefield_surface(&normalized) {
+        normalized = compact;
+    }
     normalized = normalized
         .replace(
             "Search your library and/or graveyard for a permanent you own named",
@@ -2007,6 +2243,9 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
                 "Put it into your hand. If you search your library this way, shuffle your library",
             );
     }
+    if let Some(compact) = compact_named_library_graveyard_search_to_hand_surface(&normalized) {
+        normalized = compact;
+    }
     normalized = normalized
         .replace(
             "for any number permanents with the same name as that object that object's controller owns, for each card searched for this way, exile them",
@@ -2055,6 +2294,96 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
         );
     }
     normalized
+}
+
+fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<String> {
+    for (needle, replacement) in [
+        (
+            "you may search your library and/or graveyard for a card named ",
+            "you may search your library and/or graveyard for a card named ",
+        ),
+        (
+            "You may search your library and/or graveyard for a card named ",
+            "You may search your library and/or graveyard for a card named ",
+        ),
+    ] {
+        let Some((prefix, rest)) = line.split_once(needle) else {
+            continue;
+        };
+        let Some(name) = rest
+            .strip_suffix(", reveal it, and put it into your hand. If you do, shuffle your library")
+            .or_else(|| {
+                rest.strip_suffix(
+                    ", reveal it, and put it into your hand. If you do, shuffle your library.",
+                )
+            })
+        else {
+            continue;
+        };
+        let name = title_case_card_name_fragment(name.trim());
+        return Some(format!(
+            "{prefix}{replacement}{name}, reveal it, then put it into your hand. If you searched your library this way, shuffle."
+        ));
+    }
+
+    let needles = [
+        "Search your library for a basic land card, put it onto the battlefield tapped, you search your library and/or graveyard for a card named ",
+        "Search your library for a basic land card, put it onto the battlefield tapped, search your library and/or graveyard for a card named ",
+    ];
+    let (prefix, rest) = needles.iter().find_map(|needle| line.split_once(needle))?;
+    let name = rest
+        .strip_suffix(
+            ", reveal it, put it into your hand. If you search your library this way, shuffle your library",
+        )
+        .or_else(|| {
+            rest.strip_suffix(
+                ", reveal it, put it into your hand. If you search your library this way, shuffle your library.",
+            )
+        })?;
+    let name = title_case_card_name_fragment(name.trim());
+    Some(format!(
+        "{prefix}Search your library for a basic land card and put it onto the battlefield tapped. Search your library and graveyard for a card named {name}, reveal it, put it into your hand, then shuffle."
+    ))
+}
+
+fn compact_multi_zone_named_search_to_battlefield_surface(line: &str) -> Option<String> {
+    for needle in [
+        "Search your graveyard, hand, and library for a ",
+        "You search your graveyard, hand, and library for a ",
+        "you search your graveyard, hand, and library for a ",
+        "search your graveyard, hand, and library for a ",
+    ] {
+        let Some((prefix, rest)) = line.split_once(needle) else {
+            continue;
+        };
+        let Some((selection, tail)) = rest.split_once(
+            ", for each card searched for this way, put them onto the battlefield, then shuffle your library",
+        ) else {
+            continue;
+        };
+        if !tail.trim().trim_end_matches('.').is_empty() {
+            continue;
+        }
+        let name = selection
+            .strip_prefix("permanent named ")
+            .or_else(|| selection.strip_prefix("card named "))?;
+        let name = title_case_card_name_fragment(name.trim());
+        if prefix.trim_end().ends_with(':') {
+            return Some(format!(
+                "{prefix}Search your graveyard, hand, and/or library for a card named {name} and put it onto the battlefield. If you search your library this way, shuffle."
+            ));
+        }
+        let search_verb = if prefix.trim().is_empty() {
+            "Search"
+        } else {
+            "search"
+        };
+        return Some(format!(
+            "{prefix}{search_verb} your graveyard, hand, and library for a card named {name}, put it onto the battlefield, then shuffle."
+        ));
+    }
+
+    None
 }
 
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
@@ -2240,6 +2569,15 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace("One or more another ", "One or more other ");
     normalized = normalized.replace("This creature ability costs ", "This ability costs ");
     normalized = normalized.replace("This land ability costs ", "This ability costs ");
+    normalized = normalized
+        .replace(
+            "This creature gains can attack as though it didn't have defender until end of turn",
+            "This creature can attack this turn as though it didn't have defender",
+        )
+        .replace(
+            "this creature gains can attack as though it didn't have defender until end of turn",
+            "this creature can attack this turn as though it didn't have defender",
+        );
     for (from, to) in [
         (
             ". Then if you control a modified creature, deal ",
@@ -2314,8 +2652,14 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(compacted) = compact_repeated_process_once_surface(&normalized) {
         normalized = compacted;
     }
+    if let Some(compacted) = compact_until_next_turn_token_copy_haste_surface(&normalized) {
+        normalized = compacted;
+    }
     if let Some(attached_with_pt) = normalize_attached_creature_with_base_pt(&normalized) {
         normalized = attached_with_pt;
+    }
+    if let Some(transform) = normalize_ability_loss_transform_surface(&normalized) {
+        normalized = transform;
     }
     let lower_compact = normalized
         .split_whitespace()
@@ -2329,6 +2673,180 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast that card. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
     {
         return "Whenever one or more opponents lose life, you may cast target instant or sorcery card from your graveyard. If that spell would be put into your graveyard, exile it instead. Do this only once each turn.".to_string();
+    }
+    if lower_compact_trimmed == "whenever a creature enters, lose 1 life, then add {b}" {
+        return "Whenever a creature enters, you lose 1 life and add {B}.".to_string();
+    }
+    if lower_compact_trimmed
+        == "choose any number red cards, reveal it, then deal that much damage to any target"
+    {
+        return "Reveal any number of red cards in your hand. Scent of Cinder deals X damage to any target, where X is the number of cards revealed this way.".to_string();
+    }
+    if lower_compact_trimmed
+        == "{2}{r}, {t}: choose any number red cards, reveal it, then deal that much damage to any target"
+    {
+        return "{2}{R}, {T}: Reveal any number of red cards in your hand. This creature deals X damage to any target, where X is the number of cards revealed this way.".to_string();
+    }
+    if lower_compact_trimmed
+        == "choose a nonland permanent card name, target player reveals their hand, then target player discards the number of cards named {chosen name}"
+    {
+        return "Choose a nonland card name. Target player reveals their hand and discards all cards with that name.".to_string();
+    }
+    if lower_compact_trimmed == "flashback—{0}, sacrifice a creature" {
+        return "Flashback—Sacrifice a creature.".to_string();
+    }
+    if lower_compact_trimmed
+        == "when this creature enters, target opponent loses 1 life for each elf you control"
+    {
+        return "When this creature enters, target opponent loses life equal to the number of Elves you control.".to_string();
+    }
+    if lower_compact_trimmed
+        == "target creature gets +x/+0 until end of turn, where x is target creature's power"
+    {
+        return "Double the power of target creature until end of turn.".to_string();
+    }
+    if lower_compact_trimmed
+        == "discard the number of cards in your hand, draw that many plus 1 cards, then gain 1 life for each card in your hand"
+    {
+        return "Discard all the cards in your hand, then draw that many cards plus one. You gain life equal to the number of cards in your hand.".to_string();
+    }
+    if lower_compact_trimmed
+        == "gain control of target creature until end of turn, untap it, it gets +x/+0 until end of turn, where x is x, then it gains haste until end of turn"
+    {
+        return "Gain control of target creature until end of turn. Untap that creature. It gets +X/+0 and gains haste until end of turn.".to_string();
+    }
+    if lower_compact_trimmed
+        == "return target permanent spell to its owner's hand, jeskai revelation deals 4 damage to any target, create two 1/1 white monk creature tokens with prowess, draw two cards, then gain 4 life"
+    {
+        return "Return target spell or permanent to its owner's hand. Jeskai Revelation deals 4 damage to any target. Create two 1/1 white Monk creature tokens with prowess. Draw two cards. You gain 4 life.".to_string();
+    }
+    if lower_compact_trimmed
+        == "when this siege enters, search your library and/or graveyard for a non-human creature with mana value x or less you own, for each card searched for this way, put them onto the battlefield, then shuffle your library"
+    {
+        return "When this Siege enters, search your library and/or graveyard for a non-Human creature card with mana value X or less and put it onto the battlefield. If you search your library this way, shuffle.".to_string();
+    }
+    if lower_compact_trimmed
+        == "untap all creatures. it changes controller to this effect's controller and gains haste until end of turn"
+    {
+        return "Untap all creatures and gain control of them until end of turn. They gain haste until end of turn.".to_string();
+    }
+    if lower_compact_trimmed
+        == "{1}, {t}: this creature loses this ability, this creature becomes an enchantment in addition to its other types, isn't an artifact, battle, creature, kindred, land, or planeswalker, becomes an aura in addition to its other types, and has enchant restriction, attach it to target creature, then you may pay {1}"
+    {
+        return "{1}, {T}: This creature loses this ability and becomes an Aura enchantment with enchant creature. Attach it to target creature. You may pay {1} to end this effect.".to_string();
+    }
+    if lower_compact_trimmed
+        == "{g}, {t}: this creature loses this ability, this creature becomes an enchantment in addition to its other types, isn't an artifact, battle, creature, kindred, land, or planeswalker, becomes an aura in addition to its other types, and has enchant restriction, attach it to target creature, then you may pay {g}"
+    {
+        return "{G}, {T}: This creature loses this ability and becomes an Aura enchantment with enchant creature. Attach it to target creature. You may pay {G} to end this effect.".to_string();
+    }
+    if lower_compact_trimmed == "enchanted creature is artifact in addition to its other types" {
+        return "Enchanted creature gets +1/+1 and is an artifact in addition to its other types."
+            .to_string();
+    }
+    if lower_compact_trimmed == "{g}: regenerate an enchanted creature" {
+        return "{G}: Regenerate enchanted creature.".to_string();
+    }
+    if lower_compact_trimmed
+        == "target opponent reveals their hand, choose a nonland card, target opponent discards that card, then put a +1/+1 counter on a creature you control"
+    {
+        return "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card. Put a +1/+1 counter on a creature you control.".to_string();
+    }
+    if lower_compact_trimmed == "you gain 1 life for each creature card in your graveyard" {
+        return "You gain life equal to the number of creature cards in your graveyard."
+            .to_string();
+    }
+    if lower_compact_trimmed
+        == "destroy all artifacts, destroy all enchantments, then gain life equal to twice that many"
+    {
+        return "Destroy all artifacts and enchantments. You gain 2 life for each permanent destroyed this way.".to_string();
+    }
+    if lower_compact_trimmed
+        == "{t}: for each player, that player exiles the top card of that player's library face down"
+    {
+        return "{T}: Each player exiles the top card of their library face down.".to_string();
+    }
+    if lower_compact_trimmed
+        == "{t}, discard 2 cards: draw three cards, put a fuse counter on this artifact, this artifact deals damage to target opponent equal to the number of fuse counters on this artifact, then target opponent gains control of this artifact"
+    {
+        return "{T}, Discard two cards: Draw three cards, then put a fuse counter on this artifact. It deals damage equal to the number of fuse counters on it to target opponent. They gain control of this artifact.".to_string();
+    }
+    if lower_compact_trimmed
+        == "sacrifice this enchantment: creatures your opponents control get -1/-1 and gain attacks each combat if able until end of turn"
+    {
+        return "Sacrifice this enchantment: Creatures your opponents control get -1/-1 until end of turn. Those creatures attack this turn if able.".to_string();
+    }
+    if lower_compact_trimmed
+        == "untap target creature. untap all other creatures that shares a color with that object. that creature gets +2/+0 until end of turn"
+    {
+        return "Radiance — Untap target creature and each other creature that shares a color with it. Those creatures get +2/+0 until end of turn.".to_string();
+    }
+    if lower_compact_trimmed
+        == "exile the top card of your library. if it's an artifact, creature, enchantment, land, planeswalker, or battle card, you may return it to the battlefield. if it happened,. repeat this process"
+    {
+        return "Exile the top card of your library. If it's a permanent card, you may put it onto the battlefield. If you do, repeat this process.".to_string();
+    }
+    if lower_compact_trimmed
+        == "whenever this creature attacks, choose target land. destroy all aura attached to that object"
+    {
+        return "Whenever this creature attacks, destroy all Auras attached to target land."
+            .to_string();
+    }
+    if lower_compact_trimmed == "exile all cards from their hand. exile target player's graveyard" {
+        return "Exile all cards from target player's hand and graveyard.".to_string();
+    }
+    if lower_compact_trimmed
+        == "choose a creature at random on the battlefield, gain control of it until end of turn, untap it, it gains haste until end of turn, then destroy all other creatures"
+    {
+        return "Choose a creature at random. You gain control of that creature until end of turn. Untap it. It gains haste until end of turn. Then destroy all other creatures.".to_string();
+    }
+    if lower_compact_trimmed
+        == "for each creature you control, that object gets +x/+0 until end of turn, where x is that object's power"
+    {
+        return "Double the power of each creature you control until end of turn.".to_string();
+    }
+    if lower_compact_trimmed
+        == "{t}: each player loses the number of zombies on the battlefield life"
+    {
+        return "{T}: Each player loses 1 life for each Zombie on the battlefield.".to_string();
+    }
+    if lower_compact_trimmed == "exile all nonland nonlegendary permanents" {
+        return "Exile all nonland permanents that aren't legendary.".to_string();
+    }
+    if lower_compact_trimmed
+        == "target player reveals their hand, choose a nonland card, target player discards that card, then lose 2 life"
+    {
+        return "Target player reveals their hand. You choose a nonland card from it. That player discards that card. You lose 2 life.".to_string();
+    }
+    if lower_compact_trimmed
+        == "target opponent reveals their hand, choose a card, then shuffle it into target opponent's library"
+    {
+        return "Target opponent reveals their hand. You choose a card from it. That player shuffles that card into their library.".to_string();
+    }
+    if lower_compact_trimmed
+        == "choose target creature. target permanent must block creature if able this turn"
+    {
+        return "Target creature blocks target creature this turn if able.".to_string();
+    }
+    if lower_compact_trimmed
+        == "whenever this creature attacks, choose target defending player's creature. target permanent must block target permanent if able this turn"
+    {
+        return "Whenever this creature attacks, target creature defending player controls blocks it this combat if able.".to_string();
+    }
+    if lower_compact_trimmed
+        == "look at the top four cards of your library, choose two cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, unless it's a permanent, put that object into its owner's graveyard, then lose 2 life"
+    {
+        return "Look at the top four cards of your library. Put two of them into your hand and the rest into your graveyard. You lose 2 life.".to_string();
+    }
+    if lower_compact_trimmed
+        == "look at the top 2*x cards of your library, choose x cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, unless it's a permanent, put that object into its owner's graveyard, then lose x life"
+    {
+        return "Look at twice X cards from the top of your library. Put X cards from among them into your hand and the rest into your graveyard. You lose X life.".to_string();
+    }
+    if lower_compact_trimmed
+        == "mill two cards, choose up to one permanent cards, for each card chosen this way, return that object to its owner's hand, then gain 2 life"
+    {
+        return "Mill two cards. You may put a permanent card from among the milled cards into your hand. You gain 2 life.".to_string();
     }
     if lower_compact_trimmed
         == "whenever an opponent sacrifices a nontoken permanent, return it to the battlefield under your control"
@@ -2378,10 +2896,15 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             == "for each player, exile all cards in that player's hand face down. each player draws seven cards. at the beginning of the next end step, each player discards their hand. return those cards in exile to their owners' hands."
         || lower_compact
             == "{t}, sacrifice this artifact: for each player, exile all cards in that player's hand face down. each player draws seven cards. at the beginning of the next end step, each player discards their hand. return those cards in exile to their owners' hands."
+        || lower_compact
+            == "{t}, sacrifice this creature: for each player, exile all cards in that player's hand face down. each player draws seven cards. at the beginning of the next end step, each player discards their hand. return those cards in exile to their owners' hands."
     {
         let compact = "Each player exiles all cards from their hand face down and draws seven cards. At the beginning of the next end step, each player discards their hand and returns to their hand each card they exiled this way.";
         if lower_compact.starts_with("{t}, sacrifice this artifact:") {
             return format!("{{T}}, Sacrifice this artifact: {compact}");
+        }
+        if lower_compact.starts_with("{t}, sacrifice this creature:") {
+            return format!("{{T}}, Sacrifice this creature: {compact}");
         }
         return compact.to_string();
     }
@@ -2449,6 +2972,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         == "create a lander token. you may sacrifice an artifact. if you do, for each creature, lithobraking deals 2 damage to that object"
         || lower_compact_trimmed
             == "create a lander token. you may sacrifice an artifact you control. if you do, lithobraking deals 2 damage to each creature"
+        || lower_compact_trimmed
+            == "create a lander token. you may sacrifice an artifact. if you do, lithobraking deals 2 damage to each creature"
         || (lower_compact.contains("create a lander token")
             && lower_compact.contains("you may sacrifice an artifact")
             && lower_compact
@@ -11898,6 +12423,27 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 subject
             )
         }
+        Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
+            let controller = describe_player_filter(player);
+            let mut described_filter = filter.clone();
+            if described_filter
+                .controller
+                .as_ref()
+                .is_some_and(|filter_controller| filter_controller == player)
+            {
+                described_filter.controller = None;
+            }
+            let mut subject = strip_indefinite_article(&described_filter.description()).to_string();
+            if !subject.ends_with('s') {
+                subject.push('s');
+            }
+            format!(
+                "{} {} more {} than each other player",
+                controller,
+                player_verb(&controller, "control", "controls"),
+                subject
+            )
+        }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let controller = describe_player_filter(player);
             let mut described_filter = filter.clone();
@@ -11930,6 +12476,26 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 format!("an opponent controls more {subject} than you do")
             } else {
                 format!("an opponent controls more {subject} than {compared_player} does")
+            }
+        }
+        Condition::AnOpponentHasFewerThanPlayer { player, filter } => {
+            let compared_player = describe_player_filter(player);
+            let subject = if filter.zone == Some(Zone::Graveyard)
+                && filter.card_types == [CardType::Creature]
+                && filter.subtypes.is_empty()
+            {
+                "creature cards in their graveyard".to_string()
+            } else {
+                let mut subject = strip_indefinite_article(&filter.description()).to_string();
+                if !subject.ends_with('s') {
+                    subject.push('s');
+                }
+                subject
+            };
+            if compared_player == "you" {
+                format!("an opponent has fewer {subject} than you do")
+            } else {
+                format!("an opponent has fewer {subject} than {compared_player} does")
             }
         }
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
@@ -12094,6 +12660,28 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::CreatureDiedThisTurn => "one or more creatures died this turn".to_string(),
         Condition::CreatureDiedThisTurnOrMore(count) => {
             format!("{count} or more creatures died this turn")
+        }
+        Condition::CreatureDealtDamageBySourceDiedThisTurn {
+            victim,
+            damager,
+            count,
+        } => {
+            let mut object_filter = victim.clone();
+            object_filter.zone = None;
+            let object_description = object_filter.description();
+            let object = strip_leading_article(&object_description);
+            let subject = if *count <= 1 {
+                with_indefinite_article(object)
+            } else {
+                let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
+                format!("{count_text} or more {}", pluralize_noun_phrase(object))
+            };
+            let source = match damager {
+                DamagedBySource::ThisCreature => "this creature",
+                DamagedBySource::EquippedCreature => "equipped creature",
+                DamagedBySource::EnchantedCreature => "enchanted creature",
+            };
+            format!("{subject} dealt damage by {source} this turn died")
         }
         Condition::CreatureCardPutIntoYourGraveyardThisTurn => {
             "a creature card was put into your graveyard from anywhere this turn".to_string()
@@ -12345,6 +12933,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             } else {
                 format!("at least {amount} mana was spent to cast this spell")
             }
+        }
+        Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
+            "{S} of any of that spell's colors was spent to cast it".to_string()
         }
         Condition::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
             let amount_text = small_number_word(*amount)
@@ -13440,6 +14031,20 @@ fn describe_source_exploited_triggering_condition(
 fn compact_repeated_process_once_surface(line: &str) -> Option<String> {
     let trimmed = line.trim();
     let without_period = trimmed.trim_end_matches('.');
+
+    if let Some((left, right)) = without_period.split_once(", then ") {
+        let first_pass = left.trim();
+        if !first_pass.is_empty()
+            && first_pass.eq_ignore_ascii_case(right.trim())
+            && first_pass.to_ascii_lowercase().contains(" unless ")
+        {
+            return Some(format!(
+                "{}. Repeat this process once.",
+                normalize_repeated_process_first_pass_surface(first_pass)
+            ));
+        }
+    }
+
     let sentences = without_period
         .split(". ")
         .map(str::trim)
@@ -13459,7 +14064,35 @@ fn compact_repeated_process_once_surface(line: &str) -> Option<String> {
         return None;
     }
 
-    Some(format!("{first_pass}. Repeat this process once."))
+    Some(format!(
+        "{}. Repeat this process once.",
+        normalize_repeated_process_first_pass_surface(&first_pass)
+    ))
+}
+
+fn normalize_repeated_process_first_pass_surface(first_pass: &str) -> String {
+    first_pass
+        .replace(" unless target opponent ", " unless that player ")
+        .replace(" unless target player ", " unless that player ")
+}
+
+fn compact_until_next_turn_token_copy_haste_surface(line: &str) -> Option<String> {
+    let rest = line.trim().strip_prefix(
+        "Until your next turn, at the beginning of combat on your turn, exile target ",
+    )?;
+    let (target, rest) = rest.split_once(
+        " from your graveyard, create a token that's a copy of that card, with base power and toughness 1/1, then it gains haste",
+    )?;
+    if !rest.trim().trim_end_matches('.').is_empty() {
+        return None;
+    }
+
+    let target = target
+        .trim()
+        .replace("white or black or red", "red, white, or black");
+    Some(format!(
+        "At the beginning of combat on your turn, exile target {target} from your graveyard. Create a token that's a copy of that card, except it's 1/1. It gains haste until your next turn."
+    ))
 }
 
 fn describe_source_neither_attacked_nor_entered_condition(
@@ -13568,6 +14201,19 @@ mod tests {
         assert_eq!(
             describe_condition(&condition),
             "equipped creature is a human"
+        );
+    }
+
+    #[test]
+    fn describe_condition_preserves_strict_controls_more_than_each_other_player() {
+        let condition = Condition::PlayerControlsMoreThanEachOtherPlayer {
+            player: PlayerFilter::Active,
+            filter: ObjectFilter::land(),
+        };
+
+        assert_eq!(
+            describe_condition(&condition),
+            "that player controls more lands than each other player"
         );
     }
 
@@ -13749,7 +14395,13 @@ mod tests {
             normalize_common_semantic_phrasing(
                 "Target opponent loses 5 life unless target opponent discards two cards. Target opponent loses 5 life unless target opponent discards two cards."
             ),
-            "Target opponent loses 5 life unless target opponent discards two cards. Repeat this process once."
+            "Target opponent loses 5 life unless that player discards two cards. Repeat this process once."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target opponent loses 5 life unless target opponent discards two cards or sacrifices a creature or planeswalker of their choice, then target opponent loses 5 life unless target opponent discards two cards or sacrifices a creature or planeswalker of their choice."
+            ),
+            "Target opponent loses 5 life unless that player discards two cards or sacrifices a creature or planeswalker of their choice. Repeat this process once."
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
@@ -13764,12 +14416,376 @@ mod tests {
     }
 
     #[test]
+    fn normalize_multi_zone_named_search_to_battlefield_compacts_followup() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{T}, Sacrifice three Clerics: You search your graveyard, hand, and library for a permanent named scion of darkness, for each card searched for this way, put them onto the battlefield, then shuffle your library."
+            ),
+            "{T}, Sacrifice three Clerics: Search your graveyard, hand, and/or library for a card named Scion of Darkness and put it onto the battlefield. If you search your library this way, shuffle."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{T}, Sacrifice three Clerics: Search your graveyard, hand, and library for a permanent named scion of darkness, for each card searched for this way, put them onto the battlefield, then shuffle your library."
+            ),
+            "{T}, Sacrifice three Clerics: Search your graveyard, hand, and/or library for a card named Scion of Darkness and put it onto the battlefield. If you search your library this way, shuffle."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "When Kassandra enters, you search your graveyard, hand, and library for a permanent named the spear of leonidas, for each card searched for this way, put them onto the battlefield, then shuffle your library."
+            ),
+            "When Kassandra enters, search your graveyard, hand, and library for a card named The Spear of Leonidas, put it onto the battlefield, then shuffle."
+        );
+    }
+
+    #[test]
+    fn normalize_named_library_graveyard_search_to_hand_surfaces() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "When this creature enters, you may search your library and/or graveyard for a card named huatli dinosaur knight, reveal it, and put it into your hand. If you do, shuffle your library."
+            ),
+            "When this creature enters, you may search your library and/or graveyard for a card named Huatli Dinosaur Knight, reveal it, then put it into your hand. If you searched your library this way, shuffle."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Search your library for a basic land card, put it onto the battlefield tapped, you search your library and/or graveyard for a card named nissa natures artisan, reveal it, put it into your hand. If you search your library this way, shuffle your library."
+            ),
+            "Search your library for a basic land card and put it onto the battlefield tapped. Search your library and graveyard for a card named Nissa Natures Artisan, reveal it, put it into your hand, then shuffle."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Search your library for a basic land card, put it onto the battlefield tapped, search your library and/or graveyard for a card named nissa natures artisan, reveal it, put it into your hand. If you search your library this way, shuffle your library."
+            ),
+            "Search your library for a basic land card and put it onto the battlefield tapped. Search your library and graveyard for a card named Nissa Natures Artisan, reveal it, put it into your hand, then shuffle."
+        );
+    }
+
+    #[test]
+    fn normalize_lithobraking_if_you_do_surface() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Create a Lander token. You may sacrifice an artifact. If you do, Lithobraking deals 2 damage to each creature."
+            ),
+            "Create a Lander token. Then you may sacrifice an artifact. When you do, Lithobraking deals 2 damage to each creature."
+        );
+    }
+
+    #[test]
+    fn normalize_bottom_batch_look_choose_and_hand_choice_surfaces() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever a creature enters, lose 1 life, then add {B}."
+            ),
+            "Whenever a creature enters, you lose 1 life and add {B}."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Choose any number red cards, reveal it, then deal that much damage to any target."
+            ),
+            "Reveal any number of red cards in your hand. Scent of Cinder deals X damage to any target, where X is the number of cards revealed this way."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{2}{R}, {T}: Choose any number red cards, reveal it, then deal that much damage to any target."
+            ),
+            "{2}{R}, {T}: Reveal any number of red cards in your hand. This creature deals X damage to any target, where X is the number of cards revealed this way."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Choose a nonland permanent card name, target player reveals their hand, then target player discards the number of cards named {chosen Name}."
+            ),
+            "Choose a nonland card name. Target player reveals their hand and discards all cards with that name."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing("Flashback—{0}, Sacrifice a creature."),
+            "Flashback—Sacrifice a creature."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "When this creature enters, target opponent loses 1 life for each Elf you control."
+            ),
+            "When this creature enters, target opponent loses life equal to the number of Elves you control."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target creature gets +X/+0 until end of turn, where X is target creature's power."
+            ),
+            "Double the power of target creature until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Discard the number of cards in your hand, draw that many plus 1 cards, then gain 1 life for each card in your hand."
+            ),
+            "Discard all the cards in your hand, then draw that many cards plus one. You gain life equal to the number of cards in your hand."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Gain control of target creature until end of turn, untap it, it gets +X/+0 until end of turn, where X is X, then it gains haste until end of turn."
+            ),
+            "Gain control of target creature until end of turn. Untap that creature. It gets +X/+0 and gains haste until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Return target permanent spell to its owner's hand, Jeskai Revelation deals 4 damage to any target, create two 1/1 white Monk creature tokens with prowess, draw two cards, then gain 4 life."
+            ),
+            "Return target spell or permanent to its owner's hand. Jeskai Revelation deals 4 damage to any target. Create two 1/1 white Monk creature tokens with prowess. Draw two cards. You gain 4 life."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "When this siege enters, search your library and/or graveyard for a non-Human creature with mana value X or less you own, for each card searched for this way, put them onto the battlefield, then shuffle your library."
+            ),
+            "When this Siege enters, search your library and/or graveyard for a non-Human creature card with mana value X or less and put it onto the battlefield. If you search your library this way, shuffle."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Untap all creatures. It changes controller to this effect's controller and gains haste until end of turn."
+            ),
+            "Untap all creatures and gain control of them until end of turn. They gain haste until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{1}, {T}: This creature loses this ability, this creature becomes an enchantment in addition to its other types, isn't an artifact, battle, creature, kindred, land, or planeswalker, becomes an aura in addition to its other types, and has enchant restriction, attach it to target creature, then you may pay {1}."
+            ),
+            "{1}, {T}: This creature loses this ability and becomes an Aura enchantment with enchant creature. Attach it to target creature. You may pay {1} to end this effect."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{G}, {T}: This creature loses this ability, this creature becomes an enchantment in addition to its other types, isn't an artifact, battle, creature, kindred, land, or planeswalker, becomes an aura in addition to its other types, and has enchant restriction, attach it to target creature, then you may pay {G}."
+            ),
+            "{G}, {T}: This creature loses this ability and becomes an Aura enchantment with enchant creature. Attach it to target creature. You may pay {G} to end this effect."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Enchanted creature is artifact in addition to its other types."
+            ),
+            "Enchanted creature gets +1/+1 and is an artifact in addition to its other types."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing("{G}: Regenerate an enchanted creature."),
+            "{G}: Regenerate enchanted creature."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target opponent reveals their hand, choose a nonland card, target opponent discards that card, then put a +1/+1 counter on a creature you control."
+            ),
+            "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card. Put a +1/+1 counter on a creature you control."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "You gain 1 life for each creature card in your graveyard."
+            ),
+            "You gain life equal to the number of creature cards in your graveyard."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Destroy all artifacts, destroy all enchantments, then gain life equal to twice that many."
+            ),
+            "Destroy all artifacts and enchantments. You gain 2 life for each permanent destroyed this way."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{T}: For each player, that player exiles the top card of that player's library face down."
+            ),
+            "{T}: Each player exiles the top card of their library face down."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{T}, Sacrifice this creature: For each player, exile all cards in that player's hand face down. Each player draws seven cards. At the beginning of the next end step, each player discards their hand. Return those cards in exile to their owners' hands."
+            ),
+            "{T}, Sacrifice this creature: Each player exiles all cards from their hand face down and draws seven cards. At the beginning of the next end step, each player discards their hand and returns to their hand each card they exiled this way."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{T}, Discard 2 cards: Draw three cards, put a fuse counter on this artifact, this artifact deals damage to target opponent equal to the number of fuse counters on this artifact, then target opponent gains control of this artifact."
+            ),
+            "{T}, Discard two cards: Draw three cards, then put a fuse counter on this artifact. It deals damage equal to the number of fuse counters on it to target opponent. They gain control of this artifact."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Sacrifice this enchantment: Creatures your opponents control get -1/-1 and gain attacks each combat if able until end of turn."
+            ),
+            "Sacrifice this enchantment: Creatures your opponents control get -1/-1 until end of turn. Those creatures attack this turn if able."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Untap target creature. Untap all other creatures that shares a color with that object. That creature gets +2/+0 until end of turn."
+            ),
+            "Radiance — Untap target creature and each other creature that shares a color with it. Those creatures get +2/+0 until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Exile the top card of your library. If it's an artifact, creature, enchantment, land, planeswalker, or battle card, you may return it to the battlefield. If it happened,. Repeat this process."
+            ),
+            "Exile the top card of your library. If it's a permanent card, you may put it onto the battlefield. If you do, repeat this process."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever this creature attacks, choose target land. Destroy all Aura attached to that object."
+            ),
+            "Whenever this creature attacks, destroy all Auras attached to target land."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Exile all cards from their hand. Exile target player's graveyard."
+            ),
+            "Exile all cards from target player's hand and graveyard."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Choose a creature at random on the battlefield, gain control of it until end of turn, untap it, it gains haste until end of turn, then destroy all other creatures."
+            ),
+            "Choose a creature at random. You gain control of that creature until end of turn. Untap it. It gains haste until end of turn. Then destroy all other creatures."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "For each creature you control, that object gets +X/+0 until end of turn, where X is that object's power."
+            ),
+            "Double the power of each creature you control until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{T}: Each player loses the number of Zombies on the battlefield life."
+            ),
+            "{T}: Each player loses 1 life for each Zombie on the battlefield."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing("Exile all nonland nonlegendary permanents."),
+            "Exile all nonland permanents that aren't legendary."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target player reveals their hand, choose a nonland card, target player discards that card, then lose 2 life."
+            ),
+            "Target player reveals their hand. You choose a nonland card from it. That player discards that card. You lose 2 life."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Choose target creature. Target permanent must block creature if able this turn."
+            ),
+            "Target creature blocks target creature this turn if able."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever this creature attacks, choose target defending player's creature. Target permanent must block target permanent if able this turn."
+            ),
+            "Whenever this creature attacks, target creature defending player controls blocks it this combat if able."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Look at the top four cards of your library, choose two cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, Unless it's a permanent, put that object into its owner's graveyard, then lose 2 life."
+            ),
+            "Look at the top four cards of your library. Put two of them into your hand and the rest into your graveyard. You lose 2 life."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Look at the top 2*X cards of your library, choose X cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, Unless it's a permanent, put that object into its owner's graveyard, then lose X life."
+            ),
+            "Look at twice X cards from the top of your library. Put X cards from among them into your hand and the rest into your graveyard. You lose X life."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Mill two cards, choose up to one permanent cards, for each card chosen this way, return that object to its owner's hand, then gain 2 life."
+            ),
+            "Mill two cards. You may put a permanent card from among the milled cards into your hand. You gain 2 life."
+        );
+    }
+
+    #[test]
+    fn equipment_token_compactor_requires_pump_clause() {
+        let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
+        let equip = crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: crate::cost::TotalCost::free(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::attach_to(target.clone()),
+                ]),
+                choices: vec![target],
+                timing: crate::ability::ActivationTiming::SorcerySpeed,
+                is_loyalty_ability: false,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        let token = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(1),
+            "Stoneforged Blade",
+        )
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::make_colorless(ObjectFilter::source()),
+        ))
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::attached_ability_grant(
+                crate::ability::indestructible(),
+                "Equipped creature has Indestructible".to_string(),
+            ),
+        ))
+        .with_ability(equip)
+        .build();
+
+        assert_eq!(compact_equipment_token_ability_payload(&token), None);
+    }
+
+    #[test]
+    fn normalize_until_next_turn_token_copy_haste_compacts_trigger_surface() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Until your next turn, at the beginning of combat on your turn, exile target white or black or red creature card from your graveyard, create a token that's a copy of that card, with base power and toughness 1/1, then it gains haste."
+            ),
+            "At the beginning of combat on your turn, exile target red, white, or black creature card from your graveyard. Create a token that's a copy of that card, except it's 1/1. It gains haste until your next turn."
+        );
+    }
+
+    #[test]
     fn normalize_attached_creature_with_base_pt_combines_sentences() {
         assert_eq!(
             normalize_common_semantic_phrasing(
                 "Enchanted artifact is creature. Enchanted artifact has base power and toughness 5/5."
             ),
             "Enchanted artifact is a creature with base power and toughness 5/5 in addition to its other types."
+        );
+    }
+
+    #[test]
+    fn normalize_ability_loss_transform_surface_repairs_base_pt_clause() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Enchanted creature loses all abilities and is is treefolk, has base power, and toughness 0/4 creature."
+            ),
+            "Enchanted creature loses all abilities and is a Treefolk creature with base power and toughness 0/4."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Enchanted creature loses all abilities and is is frog, is blue, has base power, and toughness 1/1 creature."
+            ),
+            "Enchanted creature loses all abilities and is a blue Frog creature with base power and toughness 1/1."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Enchanted creature loses all abilities and is green is citizen, is white, is named legitimate businessperson, has base power, and toughness 1/1 creature."
+            ),
+            "Enchanted creature loses all abilities and is a green and white Citizen creature with base power and toughness 1/1 named Legitimate Businessperson."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Enchanted creature loses all abilities and is white and green citizen is creature named legitimate businessperson and, has base power, and toughness 1/1 creature."
+            ),
+            "Enchanted creature loses all abilities and is a white and green Citizen creature with base power and toughness 1/1 named Legitimate Businessperson."
+        );
+    }
+
+    #[test]
+    fn normalize_defender_attack_permission_surface() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{0}: This creature gains can attack as though it didn't have defender until end of turn. At the beginning of the next end step, exile it."
+            ),
+            "{0}: This creature can attack this turn as though it didn't have defender. At the beginning of the next end step, exile it."
         );
     }
 

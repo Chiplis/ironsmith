@@ -26,7 +26,7 @@ use crate::runtime_backend::lexer::{
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::token_primitives::{
     LeadingMayActor, parse_count_range_prefix, parse_leading_may_action_lexed, slice_contains,
-    slice_ends_with, slice_starts_with,
+    slice_ends_with, slice_starts_with, strip_leading_if_you_do_lexed,
 };
 use crate::runtime_backend::util::{
     helper_tag_for_tokens, non_article_word_refs, parse_choice_count_token_prefix_consumed,
@@ -450,6 +450,112 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
         if_not_chosen,
         choice_count,
     )
+}
+
+fn flatten_sequence_effects(effects: &[EffectAst]) -> Vec<EffectAst> {
+    let mut flattened = Vec::new();
+    for effect in effects {
+        match effect {
+            EffectAst::Sequence { effects } => flattened.extend(flatten_sequence_effects(effects)),
+            _ => flattened.push(effect.clone()),
+        }
+    }
+    flattened
+}
+
+fn is_payment_effect(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PayMana { .. }
+                | SubjectVerbActionAst::PayEnergy { .. }
+                | SubjectVerbActionAst::PayAnyEnergy { .. }
+                | SubjectVerbActionAst::PayAnyLife { .. }
+                | SubjectVerbActionAst::LoseLife { .. },
+            ..
+        })
+    )
+}
+
+fn parse_optional_payment_sentence(
+    tokens: &[OwnedLexToken],
+    default_player: PlayerAst,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let effects = effect_sentences::parse_effect_sentence_lexed(tokens)?;
+    let payment_effects = match effects.as_slice() {
+        [EffectAst::May { effects }] => flatten_sequence_effects(effects),
+        [EffectAst::MayByPlayer { player, effects }]
+            if *player == default_player || *player == PlayerAst::You =>
+        {
+            flatten_sequence_effects(effects)
+        }
+        _ => return Ok(None),
+    };
+    if payment_effects.is_empty() || !payment_effects.iter().all(is_payment_effect) {
+        return Ok(None);
+    }
+    Ok(Some(payment_effects))
+}
+
+pub(crate) fn parse_mill_then_optional_payment_if_you_do_put_from_among_into_hand(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = sentences[sentence_idx].lowered();
+    let second = sentences[sentence_idx + 1].lowered();
+    let third = sentences[sentence_idx + 2].lowered();
+    let Ok(first_effects) = effect_sentences::parse_effect_sentence_lexed(first) else {
+        return Ok(None);
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: SubjectVerbSubjectAst { player, .. },
+            action: SubjectVerbActionAst::Mill { .. },
+        }),
+    ] = first_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+
+    let Some(payment_effects) = parse_optional_payment_sentence(second, *player)? else {
+        return Ok(None);
+    };
+
+    let stripped_third = strip_leading_if_you_do_lexed(third);
+    if stripped_third.len() == third.len() {
+        return Ok(None);
+    }
+    let third = trim_commas(stripped_third);
+    let Some((chooser, filter)) = super::pairs::parse_may_put_filtered_card_from_among_into_hand(
+        &third,
+        *player,
+        Zone::Graveyard,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let chosen_tag = helper_tag_for_tokens(&third, "chosen");
+    let followup = compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
+        chooser,
+        filter,
+        TagKey::from(crate::cards::builders::IT_TAG),
+        chosen_tag,
+        Zone::Graveyard,
+        false,
+        Vec::new(),
+        ChoiceCount::exactly(1),
+    );
+
+    let mut effects = first_effects;
+    effects.push(EffectAst::May {
+        effects: payment_effects,
+    });
+    effects.push(EffectAst::IfResult {
+        predicate: IfResultPredicate::Did,
+        effects: followup,
+    });
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_each_player_mill_then_exile_milled_creatures_then_create_power_token(
@@ -1877,12 +1983,19 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         third_rest_words,
         &["rest", "bottom", "library"],
     );
-    if !puts_rest_bottom {
+    let puts_rest_graveyard =
+        triple_words_start_put_or_puts_and_contain_all(third_rest_words, &["rest", "graveyard"]);
+    if !puts_rest_bottom && !puts_rest_graveyard {
         return Ok(None);
     }
-    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
-    else {
-        return Ok(None);
+    let order = if puts_rest_bottom {
+        let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+        else {
+            return Ok(None);
+        };
+        Some(order)
+    } else {
+        None
     };
 
     let looked_tag = helper_tag_for_tokens(
@@ -1925,14 +2038,26 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
             None,
         )],
     });
-    effects.push(
-        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            looked_tag,
-            Some(chosen_tag),
-            order,
-            chooser,
-        ),
-    );
+    if let Some(order) = order {
+        effects.push(
+            EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                looked_tag,
+                Some(chosen_tag),
+                order,
+                chooser,
+            ),
+        );
+    } else {
+        effects.push(EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PutTaggedRemainderInZone {
+                tag: looked_tag,
+                keep_tagged: chosen_tag,
+                zone: Zone::Graveyard,
+            },
+        ));
+    }
 
     Ok(Some(effects))
 }

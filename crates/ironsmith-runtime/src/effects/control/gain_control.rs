@@ -71,6 +71,7 @@ impl EffectExecutor for GainControlEffect {
             .object(target_id)
             .ok_or(ExecutionError::ObjectNotFound(target_id))?;
         let previous_controller = game.current_controller(target_id);
+        let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
 
         let apply = ApplyContinuousEffect::new(
             EffectTarget::Specific(target_id),
@@ -93,10 +94,13 @@ impl EffectExecutor for GainControlEffect {
                     None,
                 );
             }
-            outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                ControlChangedEvent::new(target_id, previous_controller, ctx.controller),
-                ctx.provenance,
-            ));
+            outcome = outcome.with_event(
+                TriggerEvent::new_with_provenance(
+                    ControlChangedEvent::new(target_id, previous_controller, ctx.controller),
+                    ctx.provenance,
+                )
+                .with_lookback_source_snapshots(lookback_source_snapshots),
+            );
         }
         Ok(outcome)
     }

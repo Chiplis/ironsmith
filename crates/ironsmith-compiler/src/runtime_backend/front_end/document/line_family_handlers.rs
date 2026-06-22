@@ -1729,6 +1729,7 @@ pub(super) fn run_statement_probe_line_family(
         && !is_draw_replacement_static_line(&ctx.line.tokens)
         && !is_token_creation_replacement_static_line(&ctx.line.tokens)
         && !is_first_equip_cost_alternative_static_line(&ctx.line.tokens)
+        && !is_conditional_keyword_type_addition_static_line(&ctx.line.tokens)
         && !is_keyword_action_replacement_static_line(&ctx.line.tokens)
         && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
     {
@@ -1763,6 +1764,16 @@ fn is_first_equip_cost_alternative_static_line(tokens: &[OwnedLexToken]) -> bool
     line_family_words_start_with_phrase(&words, FIRST_EQUIP_COST_ALTERNATIVE_PREFIX)
         && line_family_words_contain_phrase(&words, FIRST_EQUIP_COST_ALTERNATIVE_PHRASE)
         && line_family_words_end_with_any(&words, FIRST_EQUIP_COST_ALTERNATIVE_SUFFIXES)
+}
+
+fn is_conditional_keyword_type_addition_static_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    line_family_words_start_with_phrase(&words, &["as", "long", "as"])
+        && words.iter().any(|word| matches!(*word, "has" | "have"))
+        && words
+            .windows(2)
+            .any(|window| matches!(window, ["and", "is"] | ["and", "are"]))
+        && line_family_words_contain_phrase(&words, &["in", "addition", "to"])
 }
 
 fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {

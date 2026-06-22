@@ -638,6 +638,8 @@ pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) ->
     (is_get(left_verb) && is_trait(right_verb))
         || (is_trait(left_verb) && is_get(right_verb))
         || (is_trait(left_verb) && is_trait(right_verb))
+        || (is_trait(left_verb) && is_state(right_verb))
+        || (is_state(left_verb) && is_trait(right_verb))
         || ((left_verb == "gets" && right_verb == "is")
             || (left_verb == "is" && right_verb == "gets"))
         || (is_state(left_verb) && is_state(right_verb))
@@ -673,6 +675,19 @@ fn format_conditioned_subject_predicate_merge(
             lowercase_first(&left.subject),
             have_verb_for_subject(&left.subject),
             left_predicate,
+            right_predicate
+        );
+    }
+    let is_state = |verb: &str| matches!(verb, "is" | "are");
+    if (is_trait(&left.verb) && is_state(right_verb))
+        || (is_state(&left.verb) && is_trait(right_verb))
+    {
+        return format!(
+            "As long as {condition}, {} {} {} and {} {}",
+            lowercase_first(&left.subject),
+            left.verb,
+            left_predicate,
+            right_verb,
             right_predicate
         );
     }
@@ -923,6 +938,13 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                     idx += 1;
                     continue;
                 }
+            }
+            if parse_conditional_subject_predicate(&lines[idx]).is_some()
+                || parse_conditional_subject_predicate(&lines[idx + 1]).is_some()
+            {
+                merged.push(lines[idx].clone());
+                idx += 1;
+                continue;
             }
             let left_raw = left_rest.trim_end_matches('.').trim();
             let right_raw = right_rest.trim_end_matches('.').trim();
@@ -1182,39 +1204,19 @@ pub(super) fn merge_lose_all_transform_lines(lines: Vec<String>) -> Vec<String> 
             };
             let rest = rest.trim();
             if let Some(name) = rest.strip_prefix("named ") {
-                named = Some(name.trim().to_string());
+                named = Some(title_case_transform_phrase(name.trim()));
                 consumed += 1;
                 continue;
             }
 
-            for part in rest
-                .split(" and ")
-                .map(str::trim)
-                .filter(|part| !part.is_empty())
-            {
-                let lower = part.to_ascii_lowercase();
-                if matches!(
-                    lower.as_str(),
-                    "white" | "blue" | "black" | "red" | "green" | "colorless"
-                ) {
-                    if !colors.contains(&lower) {
-                        colors.push(lower);
-                    }
-                    continue;
-                }
-                if matches!(
-                    lower.as_str(),
-                    "creature" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle"
-                ) {
-                    if !card_types.contains(&lower) {
-                        card_types.push(lower);
-                    }
-                    continue;
-                }
-                if !subtypes.contains(&lower) {
-                    subtypes.push(lower);
-                }
-            }
+            collect_transform_descriptor_parts(
+                rest,
+                &mut colors,
+                &mut card_types,
+                &mut subtypes,
+                &mut named,
+                &mut base_pt,
+            );
             consumed += 1;
         }
 
@@ -1233,16 +1235,24 @@ pub(super) fn merge_lose_all_transform_lines(lines: Vec<String>) -> Vec<String> 
             if !descriptor.is_empty() {
                 descriptor.push(' ');
             }
-            descriptor.push_str(&join_with_and(&subtypes));
+            descriptor.push_str(
+                &subtypes
+                    .iter()
+                    .map(|subtype| title_case_transform_phrase(subtype))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
         }
         if !card_types.is_empty() {
             if !descriptor.is_empty() {
                 descriptor.push(' ');
             }
-            descriptor.push_str(&join_with_and(&card_types));
+            descriptor.push_str(&card_types.join(" "));
         }
         if !descriptor.is_empty() {
             combined.push_str(" and is ");
+            combined.push_str(indefinite_article_for_phrase(&descriptor));
+            combined.push(' ');
             combined.push_str(&descriptor);
         }
         if let Some(pt) = base_pt {
@@ -1253,8 +1263,326 @@ pub(super) fn merge_lose_all_transform_lines(lines: Vec<String>) -> Vec<String> 
             combined.push_str(" named ");
             combined.push_str(&name);
         }
+        combined.push('.');
 
         merged.push(combined);
+        idx += consumed;
+    }
+
+    merged
+}
+
+fn collect_transform_descriptor_parts(
+    text: &str,
+    colors: &mut Vec<String>,
+    card_types: &mut Vec<String>,
+    subtypes: &mut Vec<String>,
+    named: &mut Option<String>,
+    base_pt: &mut Option<String>,
+) {
+    let (text, parsed_base) = split_inline_transform_base_pt(text);
+    if let Some((pt, card_type)) = parsed_base {
+        *base_pt = Some(pt);
+        if let Some(card_type) = card_type {
+            push_unique_lower(card_types, &card_type);
+        }
+    }
+
+    let (text, parsed_name) = split_inline_transform_name(text);
+    if let Some(name) = parsed_name {
+        *named = Some(name);
+    }
+
+    for raw_part in text
+        .split(" and ")
+        .flat_map(|part| part.split(','))
+        .map(trim_transform_connector)
+        .filter(|part| !part.is_empty())
+    {
+        let mut part = raw_part;
+        while let Some(rest) = part.strip_prefix("is ") {
+            part = rest.trim();
+        }
+
+        let words = part.split_whitespace().collect::<Vec<_>>();
+        let mut idx = 0usize;
+        while idx < words.len() {
+            let lower = words[idx].to_ascii_lowercase();
+            if matches!(
+                lower.as_str(),
+                "white" | "blue" | "black" | "red" | "green" | "colorless"
+            ) {
+                push_unique_lower(colors, &lower);
+                idx += 1;
+            } else {
+                break;
+            }
+        }
+
+        let mut remainder = words[idx..].join(" ");
+        while let Some(rest) = remainder.strip_prefix("is ") {
+            remainder = rest.trim().to_string();
+        }
+        let lower = trim_transform_connector(&remainder).to_ascii_lowercase();
+        if lower.is_empty() {
+            continue;
+        }
+        if let Some((subtype, card_type)) = split_transform_subtype_card_type(&lower) {
+            if !subtype.is_empty() {
+                push_unique_lower(subtypes, &subtype);
+            }
+            push_unique_lower(card_types, &card_type);
+            continue;
+        }
+        if matches!(
+            lower.as_str(),
+            "creature" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle"
+        ) {
+            push_unique_lower(card_types, &lower);
+        } else {
+            push_unique_lower(subtypes, &lower);
+        }
+    }
+}
+
+fn split_inline_transform_base_pt(text: &str) -> (&str, Option<(String, Option<String>)>) {
+    let lower = text.to_ascii_lowercase();
+    for marker in [
+        " has base power and toughness ",
+        " has base power, and toughness ",
+        " has base power toughness ",
+    ] {
+        if let Some(idx) = lower.find(marker) {
+            let tail = text[idx + marker.len()..].trim();
+            let mut words = tail.split_whitespace();
+            let Some(pt) = words.next() else {
+                return (&text[..idx], None);
+            };
+            if !pt.contains('/') {
+                return (&text[..idx], None);
+            }
+            let card_type = words.next().and_then(|word| {
+                let lower = word.trim_end_matches('.').to_ascii_lowercase();
+                matches!(
+                    lower.as_str(),
+                    "creature" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle"
+                )
+                .then_some(lower)
+            });
+            return (
+                &text[..idx],
+                Some((pt.trim_end_matches('.').to_string(), card_type)),
+            );
+        }
+    }
+    (text, None)
+}
+
+fn split_inline_transform_name(text: &str) -> (&str, Option<String>) {
+    let lower = text.to_ascii_lowercase();
+    if let Some(name) = lower
+        .strip_prefix("named ")
+        .map(|_| trim_transform_connector(&text["named ".len()..]))
+    {
+        return ("", Some(title_case_transform_phrase(name)));
+    }
+    for marker in [" is named ", " named "] {
+        if let Some(idx) = lower.find(marker) {
+            let name = trim_transform_connector(&text[idx + marker.len()..]);
+            return (&text[..idx], Some(title_case_transform_phrase(name)));
+        }
+    }
+    (text, None)
+}
+
+fn trim_transform_connector(text: &str) -> &str {
+    let mut trimmed = text.trim();
+    loop {
+        if let Some(rest) = trimmed.strip_prefix("and ") {
+            trimmed = rest.trim();
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_suffix(" and") {
+            trimmed = rest.trim();
+            continue;
+        }
+        break trimmed;
+    }
+}
+
+fn split_transform_subtype_card_type(text: &str) -> Option<(String, String)> {
+    for glue in [" is ", " "] {
+        let Some((left, right)) = text.rsplit_once(glue) else {
+            continue;
+        };
+        if matches!(
+            right,
+            "creature" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle"
+        ) && !left.trim().is_empty()
+        {
+            return Some((left.trim().to_string(), right.to_string()));
+        }
+    }
+    None
+}
+
+fn push_unique_lower(items: &mut Vec<String>, value: &str) {
+    if !items.iter().any(|item| item.eq_ignore_ascii_case(value)) {
+        items.push(value.to_string());
+    }
+}
+
+fn title_case_transform_phrase(text: &str) -> String {
+    text.split_whitespace()
+        .map(capitalize_first)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn collect_transform_keyword_or_subtype(
+    predicate: &str,
+    granted_keywords: &mut Vec<String>,
+    replacement_subtype: &mut Option<String>,
+) -> bool {
+    let mut matched = false;
+    for part in predicate
+        .split(" and ")
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+    {
+        if is_keyword_phrase(part) {
+            let keyword = normalize_keyword_predicate_case(part);
+            if !granted_keywords
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(&keyword))
+            {
+                granted_keywords.push(keyword);
+            }
+            matched = true;
+            continue;
+        }
+
+        let subtype = part.strip_prefix("is ").unwrap_or(part).trim();
+        let subtype = strip_leading_article(subtype).trim();
+        let lower = subtype.to_ascii_lowercase();
+        if lower.is_empty()
+            || matches!(
+                lower.as_str(),
+                "creature"
+                    | "artifact"
+                    | "enchantment"
+                    | "land"
+                    | "planeswalker"
+                    | "battle"
+                    | "white"
+                    | "blue"
+                    | "black"
+                    | "red"
+                    | "green"
+                    | "colorless"
+            )
+        {
+            return false;
+        }
+        if replacement_subtype
+            .as_ref()
+            .is_some_and(|existing| !existing.eq_ignore_ascii_case(&lower))
+        {
+            return false;
+        }
+        *replacement_subtype = Some(lower);
+        matched = true;
+    }
+    matched
+}
+
+pub(super) fn merge_base_pt_loss_transform_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        let first = lines[idx].trim().trim_end_matches('.');
+        let Some((subject, verb, predicate)) = split_subject_predicate_clause(first) else {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        };
+        if !matches!(verb, "has" | "have") || !predicate.starts_with("base power and toughness ") {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+        if subject_is_plural(subject) {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        let base_pt = predicate["base power and toughness ".len()..]
+            .trim()
+            .to_string();
+        if idx + 1 >= lines.len() {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+        let second = lines[idx + 1].trim().trim_end_matches('.');
+        let Some(loss_subject) = split_lose_all_abilities_clause(second) else {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        };
+        if !conditioned_subjects_equivalent(subject, &loss_subject) {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        let mut consumed = 2usize;
+        let mut replacement_subtype: Option<String> = None;
+        let mut granted_keywords: Vec<String> = Vec::new();
+        while idx + consumed < lines.len() && consumed < 5 {
+            let line = lines[idx + consumed].trim().trim_end_matches('.');
+            let Some((next_subject, next_verb, next_predicate)) =
+                split_subject_predicate_clause(line)
+            else {
+                break;
+            };
+            if !conditioned_subjects_equivalent(subject, next_subject) {
+                break;
+            }
+            if !matches!(next_verb, "has" | "have" | "gains" | "gain" | "is" | "are")
+                || !collect_transform_keyword_or_subtype(
+                    next_predicate,
+                    &mut granted_keywords,
+                    &mut replacement_subtype,
+                )
+            {
+                break;
+            }
+            consumed += 1;
+        }
+
+        let Some(replacement_subtype) = replacement_subtype else {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        };
+        if granted_keywords.is_empty() {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        merged.push(format!(
+            "{subject} is {} {} with base power and toughness {base_pt}.",
+            indefinite_article_for_phrase(&replacement_subtype),
+            capitalize_first(&replacement_subtype)
+        ));
+        merged.push(format!(
+            "It has {} and loses all other abilities.",
+            join_with_and(&granted_keywords)
+        ));
         idx += consumed;
     }
 
@@ -1440,6 +1768,13 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
                     "{left_condition}, {left_subject} {verb} {left_tail} and can't be blocked"
                 ));
                 idx += 2;
+                continue;
+            }
+            if parse_conditional_subject_predicate(left).is_some()
+                || parse_conditional_subject_predicate(right).is_some()
+            {
+                merged.push(lines[idx].clone());
+                idx += 1;
                 continue;
             }
             if let Some((left_subject, left_tail)) = split_have_clause(left)
@@ -1709,13 +2044,7 @@ fn merge_animation_with_granted_trigger_line(animation: &str, granted: &str) -> 
     if !condition.eq_ignore_ascii_case("During your turn") {
         return None;
     }
-    let (animated_subject, animated_payload) = animated_body.split_once(" is ")?;
-    if !animated_payload
-        .to_ascii_lowercase()
-        .contains("creature in addition to its other types")
-    {
-        return None;
-    }
+    let (animated_subject, animated_payload) = parse_animation_payload(animated_body)?;
 
     let (granted_body, granted_condition) = granted.rsplit_once(" As long as ")?;
     if !granted_condition.eq_ignore_ascii_case("it's your turn") {
@@ -1726,19 +2055,69 @@ fn merge_animation_with_granted_trigger_line(animation: &str, granted: &str) -> 
     if !granted_ability.starts_with('"') || !granted_ability.ends_with('"') {
         return None;
     }
-    if !animation_subjects_equivalent(animated_subject, granted_subject) {
+    if !animation_subjects_equivalent(&animated_subject, granted_subject) {
         return None;
     }
 
-    let mut payload = animated_payload.replace(" and have ", " and has ").replace(
-        " and has indestructible and has haste",
-        " and has indestructible, haste",
-    );
+    let mut payload = normalize_animation_payload(animated_payload);
     let ability = granted_ability.trim_matches('"');
     payload.push_str(", and \"");
     payload.push_str(&capitalize_first(ability));
     payload.push('"');
     Some(format!("{condition}, {animated_subject} is {payload}"))
+}
+
+fn parse_animation_payload(animated_body: &str) -> Option<(String, String)> {
+    if let Some((subject, payload)) = animated_body.split_once(" is ")
+        && payload
+            .to_ascii_lowercase()
+            .contains("creature in addition to its other types")
+    {
+        return Some((subject.trim().to_string(), payload.trim().to_string()));
+    }
+
+    let (subject, payload) = animated_body.split_once(" are ")?;
+    let canonical_subject = format!(
+        "each {}",
+        lowercase_first(&singularize_filter_subject(subject.trim()))
+    );
+    let canonical_payload = parse_plural_animation_payload(payload.trim())?;
+    Some((canonical_subject, canonical_payload))
+}
+
+fn parse_plural_animation_payload(payload: &str) -> Option<String> {
+    let rest = payload.strip_prefix(
+        "creatures in addition to their other types and have base power and toughness ",
+    )?;
+    let (pt, rest) = rest.split_once(" and are ")?;
+    let (subtypes, rest) = rest.split_once(" in addition to their other types")?;
+
+    let mut canonical = format!(
+        "a {} {} creature in addition to its other types",
+        pt.trim(),
+        singularize_terminal_subject_word(subtypes.trim())
+    );
+    let rest = rest.trim();
+    if let Some(rest) = rest.strip_prefix("and ") {
+        canonical.push_str(" and has ");
+        canonical.push_str(&normalize_animation_grants(rest));
+    }
+    Some(canonical)
+}
+
+fn normalize_animation_payload(payload: String) -> String {
+    payload.replace(" and have ", " and has ").replace(
+        " and has indestructible and has haste",
+        " and has indestructible, haste",
+    )
+}
+
+fn normalize_animation_grants(grants: &str) -> String {
+    grants
+        .trim()
+        .replace("have ", "")
+        .replace("has ", "")
+        .replace(" and ", ", ")
 }
 
 fn animation_subjects_equivalent(animated_subject: &str, granted_subject: &str) -> bool {
@@ -1836,6 +2215,12 @@ pub(super) fn merge_same_true_keyword_grant_lines(lines: Vec<String>) -> Vec<Str
     let mut idx = 0usize;
 
     while idx < lines.len() {
+        if let Some((line, consumed)) = merge_source_exiled_keyword_grant_lines(&lines, idx) {
+            merged.push(line);
+            idx += consumed;
+            continue;
+        }
+
         let Some(first) = parse_same_true_keyword_grant_line(&lines[idx]) else {
             merged.push(lines[idx].clone());
             idx += 1;
@@ -1893,6 +2278,63 @@ pub(super) fn merge_same_true_keyword_grant_lines(lines: Vec<String>) -> Vec<Str
     merged
 }
 
+fn merge_source_exiled_keyword_grant_lines(
+    lines: &[String],
+    idx: usize,
+) -> Option<(String, usize)> {
+    let first = parse_source_exiled_keyword_grant_line(&lines[idx])?;
+    let mut grants = vec![first];
+    let mut consumed = 1usize;
+    while idx + consumed < lines.len() {
+        let Some(next) = parse_source_exiled_keyword_grant_line(&lines[idx + consumed]) else {
+            break;
+        };
+        let start = &grants[0];
+        if !start.subject.eq_ignore_ascii_case(&next.subject)
+            || !start.verb.eq_ignore_ascii_case(&next.verb)
+            || !start
+                .condition_signature
+                .eq_ignore_ascii_case(&next.condition_signature)
+        {
+            break;
+        }
+        grants.push(next);
+        consumed += 1;
+    }
+    if grants.len() < 3 {
+        return None;
+    }
+
+    let first = &grants[0];
+    let source_surface = if lines[..idx]
+        .iter()
+        .rev()
+        .take(3)
+        .any(|line| line.trim().eq_ignore_ascii_case("Delve."))
+    {
+        "this creature's delve ability"
+    } else {
+        "this creature"
+    };
+    let remaining_keywords = grants[1..]
+        .iter()
+        .map(|grant| grant.keyword.clone())
+        .collect::<Vec<_>>();
+    let subject = lowercase_first(&first.subject);
+    Some((
+        format!(
+            "If a creature card with {} was exiled with {}, {} {} {}. The same is true for {}.",
+            first.keyword,
+            source_surface,
+            subject,
+            first.verb,
+            first.keyword,
+            join_with_and(&remaining_keywords)
+        ),
+        consumed,
+    ))
+}
+
 fn parse_same_true_keyword_grant_line(line: &str) -> Option<SameTrueKeywordGrant> {
     let trimmed = line.trim().trim_end_matches('.');
     let (event, rest) = trimmed.split_once(", if ")?;
@@ -1914,6 +2356,32 @@ fn parse_same_true_keyword_grant_line(line: &str) -> Option<SameTrueKeywordGrant
         .replace(&keyword, "{keyword}");
     Some(SameTrueKeywordGrant {
         event: event.trim().to_string(),
+        condition: condition.trim().to_string(),
+        condition_signature,
+        subject: subject.trim().to_string(),
+        verb: verb.trim().to_string(),
+        keyword,
+    })
+}
+
+fn parse_source_exiled_keyword_grant_line(line: &str) -> Option<SameTrueKeywordGrant> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (effect, condition) = trimmed.split_once(" as long as ")?;
+    let (subject, verb, predicate) = split_subject_predicate_clause(effect)?;
+    if !matches!(verb, "has" | "have") {
+        return None;
+    }
+    let keyword = predicate.trim().to_ascii_lowercase();
+    if !is_keyword_phrase(&keyword) || !condition_mentions_keyword(condition, &keyword) {
+        return None;
+    }
+    let condition_lower = condition.to_ascii_lowercase();
+    if !condition_lower.contains("exiled with this creature") {
+        return None;
+    }
+    let condition_signature = condition_lower.replace(&keyword, "{keyword}");
+    Some(SameTrueKeywordGrant {
+        event: String::new(),
         condition: condition.trim().to_string(),
         condition_signature,
         subject: subject.trim().to_string(),
@@ -2031,4 +2499,60 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
     ]
     .iter()
     .any(|prefix| lower.starts_with(prefix))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_lose_all_transform_lines_classifies_colors_subtypes_names_and_base_pt() {
+        let merged = merge_lose_all_transform_lines(vec![
+            "Enchanted creature loses all abilities.".to_string(),
+            "Enchanted creature is green is citizen.".to_string(),
+            "Enchanted creature is white.".to_string(),
+            "Enchanted creature is named legitimate businessperson.".to_string(),
+            "Enchanted creature is creature.".to_string(),
+            "Enchanted creature has base power and toughness 1/1.".to_string(),
+        ]);
+        assert_eq!(
+            merged,
+            vec![
+                "Enchanted creature loses all abilities and is a green and white Citizen creature with base power and toughness 1/1 named Legitimate Businessperson."
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn merge_lose_all_transform_lines_strips_repeated_is_before_subtype() {
+        let merged = merge_lose_all_transform_lines(vec![
+            "Enchanted creature loses all abilities.".to_string(),
+            "Enchanted creature is is treefolk.".to_string(),
+            "Enchanted creature is creature.".to_string(),
+            "Enchanted creature has base power and toughness 0/4.".to_string(),
+        ]);
+        assert_eq!(
+            merged,
+            vec![
+                "Enchanted creature loses all abilities and is a Treefolk creature with base power and toughness 0/4."
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn merge_lose_all_transform_lines_splits_inline_name_and_base_pt() {
+        let merged = merge_lose_all_transform_lines(vec![
+            "Enchanted creature loses all abilities.".to_string(),
+            "Enchanted creature is white and green citizen is creature named legitimate businessperson and has base power toughness 1/1.".to_string(),
+        ]);
+        assert_eq!(
+            merged,
+            vec![
+                "Enchanted creature loses all abilities and is a white and green Citizen creature with base power and toughness 1/1 named Legitimate Businessperson."
+                    .to_string()
+            ]
+        );
+    }
 }

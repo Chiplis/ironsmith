@@ -125,18 +125,22 @@ pub(crate) fn parse_consult_traversal_sentence(
             .as_word()
             .is_some_and(|word| word.eq_ignore_ascii_case("then"))
     }) {
-        prefix_tokens = trim_commas(&sentence_tokens[..then_idx]);
-        if prefix_tokens.is_empty() {
-            return Ok(None);
+        if then_idx == 0 {
+            trim_commas(&sentence_tokens[1..])
+        } else {
+            prefix_tokens = trim_commas(&sentence_tokens[..then_idx]);
+            if prefix_tokens.is_empty() {
+                return Ok(None);
+            }
+            prefix_effects = parse_exile_top_library_prefix(&prefix_tokens)
+                .or_else(|| parse_effect_sentence_lexed(&prefix_tokens).ok())
+                .or_else(|| parse_effect_chain(&prefix_tokens).ok())
+                .unwrap_or_default();
+            if prefix_effects.is_empty() {
+                return Ok(None);
+            }
+            trim_commas(&sentence_tokens[then_idx + 1..])
         }
-        prefix_effects = parse_exile_top_library_prefix(&prefix_tokens)
-            .or_else(|| parse_effect_sentence_lexed(&prefix_tokens).ok())
-            .or_else(|| parse_effect_chain(&prefix_tokens).ok())
-            .unwrap_or_default();
-        if prefix_effects.is_empty() {
-            return Ok(None);
-        }
-        trim_commas(&sentence_tokens[then_idx + 1..])
     } else {
         sentence_tokens
     };

@@ -109,8 +109,9 @@ pub use other::{
     BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent,
     ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
     KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
-    MutatedEvent, PermanentTappedEvent, PermanentUntappedEvent, PlayerLosesGameEvent, PlayerVote,
-    PlayersFinishedVotingEvent, SearchLibraryEvent, ShuffleLibraryEvent, StateTriggerEvent,
+    MutatedEvent, ObjectBecameUnattachedEvent, PermanentPhasedOutEvent, PermanentTappedEvent,
+    PermanentUntappedEvent, PlayerLosesGameEvent, PlayerVote, PlayersFinishedVotingEvent,
+    SearchLibraryEvent, ShuffleLibraryEvent, SpellCounteredEvent, StateTriggerEvent,
     TransformedEvent, TurnedFaceUpEvent, WouldKeywordActionMatcher,
 };
 pub use phase::{

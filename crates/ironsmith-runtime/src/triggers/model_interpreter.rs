@@ -533,6 +533,9 @@ impl super::Trigger {
                 Self::beginning_of_end_step(player)
             }
             ironsmith_core::DelayedTriggerSpec::EndOfCombat => Self::end_of_combat(),
+            ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {
+                source_description,
+            } => Self::source_controller_loses_control(source_description),
             ironsmith_core::DelayedTriggerSpec::ThisDies => Self::this_dies(),
             ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield => {
                 Self::this_leaves_battlefield()

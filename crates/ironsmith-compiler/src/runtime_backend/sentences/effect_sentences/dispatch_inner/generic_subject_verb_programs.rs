@@ -274,6 +274,8 @@ const ALL_REVEALED_INTO_GRAVEYARD_PATTERN: LexPattern<'static> =
 const MATCH_ONTO_BATTLEFIELD_PREFIX_PHRASES: &[&[&str]] = &[
     &["put", "it", "onto", "the", "battlefield"],
     &["put", "that", "card", "onto", "the", "battlefield"],
+    &["put", "those", "land", "cards", "onto", "the", "battlefield"],
+    &["put", "those", "lands", "onto", "the", "battlefield"],
 ];
 const MATCH_ONTO_BATTLEFIELD_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::object(
@@ -1565,6 +1567,9 @@ fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
     let Some(order) = consult_remainder_order_from_capture(remainder_clause.trimmed()) else {
         return Ok(None);
     };
+    let battlefield_tapped = followup_tokens
+        .iter()
+        .any(|token| token.as_word().is_some_and(|word| word == "tapped"));
 
     let mut effects = parts.effects;
     apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut effects);
@@ -1573,7 +1578,7 @@ fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
         Zone::Battlefield,
         false,
         crate::cards::builders::ReturnControllerAst::Preserve,
-        false,
+        battlefield_tapped,
         None,
     ));
     effects.push(
@@ -2605,6 +2610,28 @@ mod generic_subject_verb_program_tests {
         assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
         assert!(debug.contains("MoveToZone"), "{debug}");
         assert!(debug.contains("Battlefield"), "{debug}");
+        assert!(
+            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+            "{debug}"
+        );
+    }
+
+    #[test]
+    fn consult_reveal_until_battlefield_bottom_preserves_tapped_land_group() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Reveal cards from the top of your library until you reveal X land cards, put those land cards onto the battlefield tapped and the rest on the bottom of your library in a random order.",
+            0,
+        )
+        .expect("consult tapped land battlefield-bottom text should lex");
+        let effects = parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(&tokens)
+            .expect("consult tapped land battlefield-bottom parser should not error")
+            .expect("consult tapped land battlefield-bottom parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+        assert!(debug.contains("MatchCount"), "{debug}");
+        assert!(debug.contains("zone: Battlefield"), "{debug}");
+        assert!(debug.contains("battlefield_tapped: true"), "{debug}");
         assert!(
             debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
             "{debug}"

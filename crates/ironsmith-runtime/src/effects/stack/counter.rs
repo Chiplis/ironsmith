@@ -52,6 +52,12 @@ fn counter_one_stack_object(
                 game.current_controller(target_id).unwrap_or(obj.owner),
             )
         });
+        let countered_snapshot = game.object(target_id).map(|object| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, game,
+            )
+        });
+        let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
         let additional_effects = ctx.additional_replacement_effects_snapshot();
         let outcome = process_zone_change_with_additional_effects(
             game,
@@ -63,11 +69,13 @@ fn counter_one_stack_object(
             &additional_effects,
         );
 
+        let mut countered_spell = false;
         match outcome {
             EventOutcome::Prevented => return EffectOutcome::prevented(),
             EventOutcome::Proceed(final_zone) => {
                 if let Some(idx) = game.stack.iter().position(|e| e.object_id == target_id) {
                     let entry = game.stack.remove(idx);
+                    countered_spell = !entry.is_ability;
                     // Countered abilities simply disappear; countered spells leave the stack
                     // through zone-change processing so replacement effects can rewrite
                     // destinations like Force of Negation's exile clause.
@@ -88,7 +96,8 @@ fn counter_one_stack_object(
             }
             EventOutcome::Replaced => {
                 if let Some(idx) = game.stack.iter().position(|e| e.object_id == target_id) {
-                    game.stack.remove(idx);
+                    let entry = game.stack.remove(idx);
+                    countered_spell = !entry.is_ability;
                 }
             }
             EventOutcome::NotApplicable => return EffectOutcome::target_invalid(),
@@ -104,6 +113,18 @@ fn counter_one_stack_object(
                     None,
                     None,
                 );
+                if countered_spell {
+                    let event = crate::triggers::TriggerEvent::new_with_provenance(
+                        crate::events::SpellCounteredEvent::new(
+                            target_id,
+                            controller,
+                            countered_snapshot,
+                        ),
+                        ctx.provenance,
+                    )
+                    .with_lookback_source_snapshots(lookback_source_snapshots);
+                    return EffectOutcome::resolved().with_event(event);
+                }
             }
             EffectOutcome::resolved()
         } else {

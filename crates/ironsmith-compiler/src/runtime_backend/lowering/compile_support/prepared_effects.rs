@@ -163,7 +163,63 @@ pub(crate) fn materialize_prepared_triggered_effects(
         .as_ref()
         .map(compile_prepared_predicate_for_lowering)
         .transpose()?;
+    if let Some(condition) = intervening_if.as_ref() {
+        retarget_source_move_to_damaged_death_card(&mut lowered, condition);
+    }
     Ok((lowered, intervening_if))
+}
+
+fn damaged_death_condition_target_filter(condition: &Condition) -> Option<ObjectFilter> {
+    match condition {
+        Condition::CreatureDealtDamageBySourceDiedThisTurn {
+            victim,
+            damager,
+            count,
+        } if *count == 1 => {
+            let mut filter = victim.clone();
+            filter.zone = Some(crate::zone::Zone::Graveyard);
+            filter.entered_graveyard_from_battlefield_this_turn = true;
+            filter.dealt_damage_by_source_this_turn = Some(*damager);
+            Some(filter)
+        }
+        Condition::And(left, right) => damaged_death_condition_target_filter(left)
+            .or_else(|| damaged_death_condition_target_filter(right)),
+        _ => None,
+    }
+}
+
+fn retarget_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, condition: &Condition) {
+    let Some(filter) = damaged_death_condition_target_filter(condition) else {
+        return;
+    };
+    let Some(segment) = lowered.effects.segments.first_mut() else {
+        return;
+    };
+    let Some(effect) = segment.default_effects.first_mut() else {
+        return;
+    };
+    let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+        return;
+    };
+    let Some(move_to_zone) = tagged
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return;
+    };
+    if !matches!(move_to_zone.target.base(), ChooseSpec::Source)
+        || move_to_zone.zone != crate::zone::Zone::Battlefield
+    {
+        return;
+    }
+
+    let mut replacement = move_to_zone.clone();
+    replacement.target =
+        ChooseSpec::Object(filter).with_count(crate::effect::ChoiceCount::exactly(1));
+    *effect = Effect::new(crate::effects::TaggedEffect::new(
+        tagged.tag.clone(),
+        Effect::new(replacement),
+    ));
 }
 
 fn dedupe_adjacent_target_only_effects(lowered: &mut LoweredEffects) {

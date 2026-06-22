@@ -25,6 +25,7 @@ use super::super::permission_helpers::{
     parse_unsupported_play_cast_permission_clause_lexed,
 };
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex};
+use super::super::span_from_tokens;
 use super::super::token_primitives::{
     rfind_index as find_last_token_index, str_contains as string_contains,
     str_contains_char as string_contains_char,
@@ -61,7 +62,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
-use crate::types::Subtype;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 const EACH_OPPONENT_PREFIXES: &[&[&str]] = &[&["each", "opponent"], &["each", "opponents"]];
@@ -1044,6 +1045,9 @@ pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
             clause_words.join(" ")
         )));
     }
+    if let Some(effects) = parse_return_it_then_loses_all_abilities_lexed(tokens)? {
+        return Ok(effects);
+    }
 
     if let Some(effects) = run_subject_verb_primitives_lexed(
         tokens,
@@ -1089,6 +1093,12 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     }
 
     if let Some(effects) = parse_search_library_sentence_lexed(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_tap_those_then_unattach_equipment_lexed(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_return_it_then_loses_all_abilities_lexed(tokens)? {
         return Ok(effects);
     }
 
@@ -1370,6 +1380,78 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     collapse_token_copy_next_end_step_sacrifice_followup_lexed(&mut effects, tokens);
     collapse_token_copy_end_of_combat_exile_followup_lexed(&mut effects, tokens);
     Ok(effects)
+}
+
+fn parse_tap_those_then_unattach_equipment_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = token_word_refs(tokens);
+    if !word_slice_starts_with(&words, &["tap", "those"])
+        || !word_slice_contains_phrase(
+            &words,
+            &["then", "unattach", "all", "equipment", "from", "them"],
+        )
+    {
+        return Ok(None);
+    }
+
+    let mut tapped_filter = ObjectFilter::creature();
+    tapped_filter.zone = Some(Zone::Battlefield);
+    tapped_filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+    let mut equipment_filter = ObjectFilter::permanent();
+    equipment_filter.card_types.push(CardType::Artifact);
+    equipment_filter.subtypes.push(Subtype::Equipment);
+    equipment_filter.zone = Some(Zone::Battlefield);
+    equipment_filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::AttachedToTaggedObject,
+        });
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_tap(TargetAst::Object(tapped_filter, None, None)),
+        EffectAst::subject_verb_unattach(TargetAst::WithCount(
+            Box::new(TargetAst::Object(equipment_filter, None, None)),
+            ChoiceCount::any_number(),
+        )),
+    ]))
+}
+
+pub(crate) fn parse_return_it_then_loses_all_abilities_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = token_word_refs(tokens);
+    let Some(and_idx) =
+        word_slice_find_phrase_start(&words, &["and", "it", "loses", "all", "abilities"])
+    else {
+        return Ok(None);
+    };
+    if !word_slice_starts_with(&words, &["return", "it"])
+        || !word_slice_contains_word(&words[..and_idx], "battlefield")
+    {
+        return Ok(None);
+    }
+    let Some(token_idx) = TokenWordView::new(tokens).token_index_for_word_index(and_idx) else {
+        return Ok(None);
+    };
+    let return_tokens = trim_lexed_commas(&tokens[..token_idx]);
+    if return_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut effects = parse_effect_chain_inner_lexed(return_tokens)?;
+    effects.push(EffectAst::subject_verb_remove_abilities_from_target(
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        Vec::new(),
+        Until::Forever,
+    ));
+    Ok(Some(effects))
 }
 
 fn is_orphan_rounded_up_where_x_tail(

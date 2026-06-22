@@ -1957,6 +1957,80 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step_matched(
     }]))
 }
 
+pub(crate) fn parse_sentence_exile_it_next_end_step(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let optional_owner = [LexPattern::any_phrase(&[&["the"], &["your"]])];
+    let atoms = [
+        LexPattern::word("exile"),
+        LexPattern::role_capture(
+            "object",
+            LexCaptureRole::Object,
+            LexCaptureKind::UntilPhrase(&["at", "the", "beginning", "of"]),
+        ),
+        LexPattern::phrase(&["at", "the", "beginning", "of"]),
+        LexPattern::optional(&optional_owner),
+        LexPattern::phrase(&["next", "end", "step"]),
+        LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+    ];
+    let pattern = LexPattern::new(&atoms);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_exile_it_next_end_step_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_exile_it_next_end_step_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(object_clause) = clause
+        .pattern_capture_role(matched, LexCaptureRole::Object)
+        .map(SubjectVerbPrimitiveClause::trimmed)
+    else {
+        return Ok(None);
+    };
+    if object_clause.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing exile object in delayed next-end-step clause (clause: '{}')",
+            clause.text()
+        )));
+    }
+
+    let object_words = object_clause.word_refs();
+    let target = if matches!(
+        object_words.as_slice(),
+        ["it"]
+            | ["them"]
+            | ["the", "creature"]
+            | ["that", "creature"]
+            | ["the", "permanent"]
+            | ["that", "permanent"]
+            | ["the", "token"]
+            | ["that", "token"]
+    ) {
+        TargetAst::Tagged(TagKey::from(IT_TAG), object_clause.span())
+    } else {
+        TargetAst::Object(
+            parse_object_filter(object_clause.tokens(), false)?,
+            None,
+            object_clause.span(),
+        )
+    };
+
+    let player =
+        if word_slice_contains_phrase(&clause.word_refs(), &["your", "next", "end", "step"]) {
+            PlayerFilter::You
+        } else {
+            PlayerFilter::Any
+        };
+
+    Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
+        player,
+        effects: vec![EffectAst::subject_verb_exile(target, false)],
+    }]))
+}
+
 pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

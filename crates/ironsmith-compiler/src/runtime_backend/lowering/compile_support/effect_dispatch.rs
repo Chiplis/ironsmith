@@ -1244,8 +1244,14 @@ fn compile_subject_verb_effect(
             Ok((vec![Effect::attach_objects(objects, target)], choices))
         }
         SubjectVerbActionAst::Unattach { object } => {
-            let (objects, choices) =
+            let (mut objects, choices) =
                 resolve_target_spec_with_choices(object, &current_reference_env(ctx))?;
+            if let ChooseSpec::WithCount(inner, count) = objects.clone()
+                && count.is_any_number()
+                && let ChooseSpec::Object(filter) = inner.base()
+            {
+                objects = ChooseSpec::All(filter.clone());
+            }
             Ok((vec![Effect::unattach_objects(objects)], choices))
         }
         SubjectVerbActionAst::Enchant { filter } => {

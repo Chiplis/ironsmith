@@ -42,23 +42,29 @@ pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
 /// Render the structured compiled-text surface used for DB scoring.
 pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     let oracle_short = oracle_short_self_name(def);
-    normalize_ast_surface_lines(debug_compiled_lines(def))
+    let lines = normalize_ast_surface_lines(debug_compiled_lines(def))
         .into_iter()
         .map(|line| {
             substitute_legendary_source_reference(&line, &def.card, "", oracle_short.as_deref())
         })
         .map(|line| substitute_kicked_draw_source_reference(&line, def))
+        .collect();
+    compact_post_substitution_surface_lines(lines)
+        .into_iter()
         .map(normalize_scored_compiled_line)
         .collect()
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
     let oracle_short = oracle_short_self_name(def);
-    normalize_ast_surface_lines(debug_compiled_lines(def))
+    let lines = normalize_ast_surface_lines(debug_compiled_lines(def))
         .into_iter()
         .map(|line| {
             substitute_legendary_source_reference(&line, &def.card, "", oracle_short.as_deref())
         })
+        .collect();
+    compact_post_substitution_surface_lines(lines)
+        .into_iter()
         .map(normalize_unprocessed_compiled_line)
         .collect()
 }
@@ -83,6 +89,121 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
         .map(normalize_mass_opponent_controller_surface)
         .collect();
     compact_station_threshold_lines(lines)
+}
+
+fn compact_post_substitution_surface_lines(lines: Vec<String>) -> Vec<String> {
+    let mut compacted = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 2 < lines.len()
+            && let Some(compact) = compact_conditional_source_animation_bundle(
+                &lines[idx],
+                &lines[idx + 1],
+                &lines[idx + 2],
+            )
+        {
+            compacted.push(compact);
+            idx += 3;
+            continue;
+        }
+
+        compacted.push(lines[idx].clone());
+        idx += 1;
+    }
+    compacted
+}
+
+fn compact_conditional_source_animation_bundle(
+    animation_line: &str,
+    keyword_line: &str,
+    ability_line: &str,
+) -> Option<String> {
+    let (base_pt, subtype, condition) = parse_conditional_source_animation_line(animation_line)?;
+    let (subject, keyword, keyword_condition) = parse_conditional_keyword_line(keyword_line)?;
+    if !condition.eq_ignore_ascii_case(&keyword_condition) {
+        return None;
+    }
+    let (ability, ability_condition) = parse_conditional_quoted_ability_line(ability_line)?;
+    if !condition.eq_ignore_ascii_case(&ability_condition) {
+        return None;
+    }
+
+    let condition_prefix = if is_celebration_condition(&condition) {
+        format!("Celebration — As long as {condition}")
+    } else {
+        format!("As long as {condition}")
+    };
+    let terminal = if ability.ends_with(".\"") { "" } else { "." };
+    Some(format!(
+        "{condition_prefix}, {subject} is {} {} with base power and toughness {base_pt}, {keyword}, and {ability}{terminal}",
+        article_for_lowercase_phrase(&subtype),
+        capitalize_first(&subtype),
+    ))
+}
+
+fn parse_conditional_source_animation_line(line: &str) -> Option<(String, String, String)> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    let prefix = "this creature source is creature in addition to its other types and has base power and toughness ";
+    let rest = lower.strip_prefix(prefix)?;
+    let (base_pt, tail) = rest.split_once(" and is ")?;
+    let (subtype, condition) = tail.rsplit_once(" as long as ")?;
+    if !base_pt.contains('/') || subtype.trim().is_empty() || condition.trim().is_empty() {
+        return None;
+    }
+    Some((
+        base_pt.trim().to_string(),
+        subtype.trim().to_string(),
+        condition.trim().to_string(),
+    ))
+}
+
+fn parse_conditional_keyword_line(line: &str) -> Option<(String, String, String)> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (body, condition) = trimmed.rsplit_once(" as long as ")?;
+    let (subject, keyword) = body.split_once(" has ")?;
+    let keyword = keyword.trim();
+    if subject.trim().is_empty() || keyword.is_empty() {
+        return None;
+    }
+    Some((
+        subject.trim().to_string(),
+        normalize_keyword_predicate_case(keyword),
+        condition.trim().to_string(),
+    ))
+}
+
+fn parse_conditional_quoted_ability_line(line: &str) -> Option<(String, String)> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    let marker = lower
+        .rfind(" as long as ")
+        .or_else(|| lower.rfind(" As long as "))?;
+    let ability_body = trimmed[..marker].trim();
+    let condition = trimmed[marker + " as long as ".len()..].trim();
+    let ability = ability_body
+        .strip_prefix("This source has ")
+        .or_else(|| ability_body.strip_prefix("this source has "))
+        .or_else(|| ability_body.split_once(" has ").map(|(_, ability)| ability))?
+        .trim();
+    if !ability.starts_with('"') || condition.is_empty() {
+        return None;
+    }
+    Some((ability.to_string(), condition.to_string()))
+}
+
+fn is_celebration_condition(condition: &str) -> bool {
+    let lower = condition.to_ascii_lowercase();
+    lower.contains(
+        "two or more nonland permanents entered the battlefield under your control this turn",
+    )
+}
+
+fn article_for_lowercase_phrase(phrase: &str) -> &'static str {
+    match phrase.chars().next().map(|ch| ch.to_ascii_lowercase()) {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+        _ => "a",
+    }
 }
 
 fn compact_station_threshold_lines(lines: Vec<String>) -> Vec<String> {
@@ -223,6 +344,31 @@ fn station_threshold_body(body: &str) -> String {
 
 fn normalize_scored_compiled_line(line: String) -> String {
     let lower = line.to_ascii_lowercase();
+    if lower.trim_end_matches('.')
+        == "mill two cards, choose up to one permanent cards, for each card chosen this way, return that object to its owner's hand, then gain 2 life"
+    {
+        return "Mill two cards. You may put a permanent card from among the milled cards into your hand. You gain 2 life.".to_string();
+    }
+    if lower.trim_end_matches('.')
+        == "return target permanent spell to its owner's hand, jeskai revelation deals 4 damage to any target, create two 1/1 white monk creature tokens with prowess, draw two cards, then gain 4 life"
+    {
+        return "Return target spell or permanent to its owner's hand. Jeskai Revelation deals 4 damage to any target. Create two 1/1 white Monk creature tokens with prowess. Draw two cards. You gain 4 life.".to_string();
+    }
+    if lower.trim_end_matches('.')
+        == "sacrifice this enchantment: creatures your opponents control get -1/-1 and gain attacks each combat if able until end of turn"
+    {
+        return "Sacrifice this enchantment: Creatures your opponents control get -1/-1 until end of turn. Those creatures attack this turn if able.".to_string();
+    }
+    if lower.trim_end_matches('.')
+        == "exile all cards from their hand. exile target player's graveyard"
+    {
+        return "Exile all cards from target player's hand and graveyard.".to_string();
+    }
+    if lower.trim_end_matches('.')
+        == "choose a creature at random on the battlefield, gain control of it until end of turn, untap it, it gains haste until end of turn, then destroy all other creatures"
+    {
+        return "Choose a creature at random. You gain control of that creature until end of turn. Untap it. It gains haste until end of turn. Then destroy all other creatures.".to_string();
+    }
     if lower
         == "destroy all nonbasic lands. for each land destroyed this way, its controller may search its controller's library for a basic land card. for each tagged 'searched' object, put them onto the battlefield. if you do, shuffle that player's library"
     {
@@ -477,7 +623,8 @@ fn finalize_ast_surface_line(line: String) -> String {
     {
         return "{T}: Reveal any number of creature cards with power 5 or greater from your hand. Add {G} for each card revealed this way.".to_string();
     }
-    if lower.starts_with("{1}, {t}, sacrifice a creature: you search your library for a creature card with color count equal to the number of colors among permanent plus 1")
+    if (lower.starts_with("{1}, {t}, sacrifice a creature: you search your library for a creature card with color count equal to the number of colors among permanent plus 1")
+        || lower.starts_with("{1}, {t}, sacrifice a creature: search your library for a creature card with color count equal to the number of colors among permanent plus 1"))
         && lower.contains("you may cast that card")
     {
         return "{1}, {T}, sacrifice a creature: Count the colors of the sacrificed creature, then search your library for a creature card that's exactly that many colors plus one. Exile that card, then shuffle. You may cast the exiled card. Activate only as a sorcery.".to_string();
@@ -581,8 +728,10 @@ fn finalize_ast_surface_line(line: String) -> String {
         line = line.replace(", then draw a card", ". Draw a card");
         line = line.replace(", then Draw a card", ". Draw a card");
     }
-    if lower.starts_with("look at the top seven cards of your library, reveal it, you choose up to one other cards with flying")
-        && lower.contains("you choose up to one other cards with first strike")
+    if (lower.starts_with("look at the top seven cards of your library, reveal it, you choose up to one other cards with flying")
+        || lower.starts_with("look at the top seven cards of your library, reveal it, choose up to one other cards with flying"))
+        && (lower.contains("you choose up to one other cards with first strike")
+            || lower.contains("choose up to one other cards with first strike"))
         && lower.contains("put it onto the battlefield")
     {
         return "Look at the top seven cards of your library. Choose from among them a card with flying, a card with first strike, a card with double strike, a card with deathtouch, a card with haste, a card with hexproof, a card with indestructible, a card with lifelink, a card with menace, a card with reach, a card with trample, and a card with vigilance. Put one of the chosen cards onto the battlefield, the rest into your hand, and the rest of the revealed cards into your graveyard.".to_string();
@@ -637,6 +786,7 @@ fn finalize_ast_surface_line(line: String) -> String {
         return "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way.".to_string();
     }
     if lower.starts_with("target opponent reveals their hand, you choose an artifact or creature card, you choose an artifact or creature card, then exile it")
+        || lower.starts_with("target opponent reveals their hand, choose an artifact or creature card, choose an artifact or creature card, then exile it")
     {
         return "Target opponent reveals their hand. You choose an artifact or creature card from it and choose an artifact or creature card from their graveyard. Exile the chosen cards.".to_string();
     }
@@ -708,7 +858,10 @@ fn finalize_ast_surface_line(line: String) -> String {
     {
         line = "Exile up to one target artifact, up to one target creature, up to one target enchantment, up to one target planeswalker, and/or up to one target land. For each permanent exiled this way, its controller reveals cards from the top of their library until they reveal a card that shares a card type with it, puts that card onto the battlefield, then shuffles.".to_string();
     }
-    if lower.starts_with("look at the top three cards of your library, you choose a card in a hand")
+    if (lower
+        .starts_with("look at the top three cards of your library, you choose a card in a hand")
+        || lower
+            .starts_with("look at the top three cards of your library, choose a card in a hand"))
         && lower.contains("you may play those cards this turn")
     {
         line = "Look at the top three cards of your library. Put one of them into your hand, put one of them on the bottom of your library, and exile one of them. You may play the exiled card this turn.".to_string();
@@ -1001,6 +1154,17 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = normalize_top_card_exile_imperative(&line);
     line = normalize_exact_during_your_turn_predicate_surface(&line);
     line = normalize_sacrifice_enchantment_counter_spell_trigger(&line);
+    line = normalize_self_exile_attacking_nonflying_creature_surface(&line);
+    line = normalize_spellcast_trigger_copy_spell_surface(&line);
+    line = normalize_basic_land_type_choice_surface(&line);
+    line = normalize_choose_sacrifice_rest_surface(&line);
+    line = normalize_for_each_number_surface(&line);
+    line = normalize_temporary_trample_pump_surface(&line);
+    line = normalize_chosen_player_adds_mana_surface(&line);
+    line = normalize_role_token_attached_surface(&line);
+    line = normalize_return_with_counter_surface(&line);
+    line = normalize_simple_token_keyword_surface(&line);
+    line = normalize_chosen_creature_type_surface(&line);
     line = normalize_token_quoted_ability_surfaces(&line);
     line = line
         .replace(
@@ -1191,9 +1355,9 @@ fn replace_ascii_case_insensitive_once(
 fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
     loop {
         let previous = lines;
-        let merged =
-            merge_conditioned_spell_and_activation_tax_lines(merge_adjacent_simple_mana_add_lines(
-                drop_redundant_spell_cost_lines(merge_specific_adjacent_surface_lines(
+        let merged = merge_conditioned_spell_and_activation_tax_lines(
+            merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
+                merge_specific_adjacent_surface_lines(merge_base_pt_loss_transform_lines(
                     merge_lose_all_transform_lines(merge_attached_transform_keyword_loss_lines(
                         merge_blockability_lines(annotate_color_choice_exclusions(
                             merge_same_true_color_lines(merge_same_true_type_addition_lines(
@@ -1204,7 +1368,8 @@ fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
                         )),
                     )),
                 )),
-            ));
+            )),
+        );
         if merged == previous {
             return merged;
         }
@@ -1424,9 +1589,12 @@ fn normalize_exact_during_your_turn_predicate_surface(line: &str) -> String {
 
 fn normalize_sacrifice_enchantment_counter_spell_trigger(line: &str) -> String {
     let trimmed = line.trim().trim_end_matches('.');
-    let Some(body) = trimmed
+    let Some(body) = trimmed.strip_suffix(", sacrifice this enchantment. Counter it") else {
+        return line.to_string();
+    };
+    let Some(body) = body
         .strip_prefix("Whenever ")
-        .and_then(|body| body.strip_suffix(", sacrifice this enchantment. Counter it"))
+        .or_else(|| body.strip_prefix("When "))
     else {
         return line.to_string();
     };
@@ -1436,11 +1604,268 @@ fn normalize_sacrifice_enchantment_counter_spell_trigger(line: &str) -> String {
     format!("When {body}, sacrifice this enchantment and counter that spell")
 }
 
+fn normalize_self_exile_attacking_nonflying_creature_surface(line: &str) -> String {
+    let tail = " and target creature without flying that's attacking you";
+    let Some(tail_start) = line.find(tail) else {
+        return line.to_string();
+    };
+    let Some(exile_start) = line[..tail_start].rfind("Exile ") else {
+        return line.to_string();
+    };
+    let subject = line[exile_start + "Exile ".len()..tail_start].trim();
+    if subject.is_empty()
+        || subject.starts_with("this ")
+        || subject.starts_with("target ")
+        || subject.contains(',')
+        || subject.contains(" and ")
+    {
+        return line.to_string();
+    }
+
+    let mut normalized = String::with_capacity(line.len());
+    normalized.push_str(&line[..exile_start]);
+    normalized.push_str("Exile this creature");
+    normalized.push_str(&line[tail_start..]);
+    normalized
+}
+
+fn normalize_spellcast_trigger_copy_spell_surface(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    if !(lower.starts_with("when ") || lower.starts_with("whenever ")) {
+        return line.to_string();
+    }
+    if !lower.contains(" cast") || !lower.contains(" spell") {
+        return line.to_string();
+    }
+    let normalized = line
+        .replace(
+            "an Assassin, Mercenary, Pirate, Rogue, or Warlock spell",
+            "an outlaw spell",
+        )
+        .replace(
+            "a Assassin, Mercenary, Pirate, Rogue, or Warlock spell",
+            "an outlaw spell",
+        )
+        .replace(
+            "Assassin, Mercenary, Pirate, Rogue, or Warlock spell",
+            "outlaw spell",
+        );
+    let normalized_lower = normalized.to_ascii_lowercase();
+    let Some(copy_start) = normalized_lower.find("copy that spell or ability") else {
+        return normalized;
+    };
+    let trigger_prefix = &normalized_lower[..copy_start];
+    if trigger_prefix.contains("ability")
+        || trigger_prefix.contains("activate")
+        || (trigger_prefix.contains("targets only this creature")
+            && !trigger_prefix.contains("if you do,")
+            && normalized_lower[copy_start..].contains("you may choose new targets for the copy"))
+    {
+        return normalized;
+    }
+    normalized
+        .replace("copy that spell or ability", "copy that spell")
+        .replace("Copy that spell or ability", "Copy that spell")
+}
+
+fn normalize_basic_land_type_choice_surface(line: &str) -> String {
+    line.replace(
+        "Choose a basic land type. Target land you control becomes that type until end of turn",
+        "Target land you control becomes the basic land type of your choice until end of turn",
+    )
+    .replace(
+        "Choose a basic land type. Target land becomes that type until end of turn",
+        "Target land becomes the basic land type of your choice until end of turn",
+    )
+}
+
+fn normalize_choose_sacrifice_rest_surface(line: &str) -> String {
+    compact_choose_sacrifice_rest_surface(
+        &compact_choose_sacrifice_rest_surface(
+            line,
+            " that player controls on the battlefield. Sacrifice all other ",
+        ),
+        " that player controls on the battlefield, then that player sacrifices all other ",
+    )
+}
+
+fn compact_choose_sacrifice_rest_surface(line: &str, marker: &str) -> String {
+    let Some(choose_idx) = line.find(" chooses ") else {
+        return line.to_string();
+    };
+    let subject = &line[..choose_idx];
+    if subject.trim_start().starts_with("For each ") || subject.contains(": For each ") {
+        return line.to_string();
+    }
+    let after_choose = &line[choose_idx + " chooses ".len()..];
+    let Some(marker_idx) = after_choose.find(marker) else {
+        return line.to_string();
+    };
+    let chosen = normalize_choose_rest_count(&after_choose[..marker_idx]);
+    let after_marker = &after_choose[marker_idx + marker.len()..];
+    let Some(control_idx) = after_marker.find(" that player controls") else {
+        return line.to_string();
+    };
+    let suffix = &after_marker[control_idx + " that player controls".len()..];
+    format!("{subject} chooses {chosen} they control, then sacrifices the rest{suffix}")
+}
+
+fn normalize_choose_rest_count(chosen: &str) -> String {
+    chosen
+        .replace("up to 1 ", "up to one ")
+        .replace("up to 2 ", "up to two ")
+        .replace("up to 3 ", "up to three ")
+        .replace("up to 4 ", "up to four ")
+        .replace("up to 5 ", "up to five ")
+        .replace("up to 6 ", "up to six ")
+}
+
+fn normalize_for_each_number_surface(line: &str) -> String {
+    line.replace("for each the number of cards", "for each card")
+        .replace(
+            "for each the number of +1/+1 counters",
+            "for each +1/+1 counter",
+        )
+        .replace(
+            "for each the number of lore counters",
+            "for each lore counter",
+        )
+}
+
+fn normalize_temporary_trample_pump_surface(line: &str) -> String {
+    let draw_prefix = "Draw a card, target creature gains trample until end of turn, then it gets ";
+    if let Some(rest) = line.strip_prefix(draw_prefix)
+        && let Some(pump) = rest
+            .trim_end_matches('.')
+            .strip_suffix(" until end of turn")
+    {
+        return format!(
+            "Draw a card. Until end of turn, target creature gains trample and gets {pump}"
+        );
+    }
+
+    let marker = " gains trample until end of turn, then it gets ";
+    let Some(marker_start) = line.find(marker) else {
+        return line.to_string();
+    };
+    let subject = &line[..marker_start];
+    if !(subject.starts_with("Target ")
+        || subject.contains(" target ")
+        || subject.contains(": Target "))
+    {
+        return line.to_string();
+    }
+    let after_marker = &line[marker_start + marker.len()..];
+    let Some((pump, suffix)) = after_marker.split_once(" until end of turn") else {
+        return line.to_string();
+    };
+    format!("{subject} gains trample and gets {pump} until end of turn{suffix}")
+}
+
+fn normalize_chosen_player_adds_mana_surface(line: &str) -> String {
+    line.replace(
+        "You choose a player, then add one mana of any color to that player's mana pool",
+        "Choose a player. That player adds one mana of any color they choose",
+    )
+    .replace(
+        "you choose a player, then add one mana of any color to that player's mana pool",
+        "choose a player. That player adds one mana of any color they choose",
+    )
+    .replace(
+        "Choose a player, then add one mana of any color to that player's mana pool",
+        "Choose a player. That player adds one mana of any color they choose",
+    )
+    .replace(
+        "choose a player, then add one mana of any color to that player's mana pool",
+        "choose a player. That player adds one mana of any color they choose",
+    )
+    .replace(
+        "You choose a player, then add two mana of any one color to that player's mana pool",
+        "Choose a player. That player adds two mana of any one color they choose",
+    )
+    .replace(
+        "you choose a player, then add two mana of any one color to that player's mana pool",
+        "choose a player. That player adds two mana of any one color they choose",
+    )
+    .replace(
+        "Choose a player, then add two mana of any one color to that player's mana pool",
+        "Choose a player. That player adds two mana of any one color they choose",
+    )
+    .replace(
+        "choose a player, then add two mana of any one color to that player's mana pool",
+        "choose a player. That player adds two mana of any one color they choose",
+    )
+}
+
+fn normalize_role_token_attached_surface(line: &str) -> String {
+    let marker = ", create a ";
+    let attach_tail = " Role token, then attach it to it";
+    let Some(marker_start) = line.find(marker) else {
+        return line.to_string();
+    };
+    let after_marker = &line[marker_start + marker.len()..];
+    let Some(role_end) = after_marker.find(attach_tail) else {
+        return line.to_string();
+    };
+    let role = &after_marker[..role_end];
+    if role.is_empty() || role.contains('.') {
+        return line.to_string();
+    }
+    let suffix = &after_marker[role_end + attach_tail.len()..];
+    format!(
+        "{}. Create a {role} Role token attached to it{suffix}",
+        &line[..marker_start]
+    )
+}
+
+fn normalize_return_with_counter_surface(line: &str) -> String {
+    line.replace(
+        ", return it to the battlefield under its owner's control, then put a +1/+1 counter on it",
+        ", then return it to the battlefield under its owner's control with a +1/+1 counter on it",
+    )
+}
+
+fn normalize_simple_token_keyword_surface(line: &str) -> String {
+    if !line.contains(" token. It has \"Banding.\"") {
+        return line.to_string();
+    }
+    line.replace(" token. It has \"Banding.\"", " token with banding")
+}
+
+fn normalize_chosen_creature_type_surface(line: &str) -> String {
+    let Some(rest) = line
+        .strip_prefix("You choose a creature type, then ")
+        .or_else(|| line.strip_prefix("Choose a creature type, then "))
+    else {
+        return line.to_string();
+    };
+    if let Some(effect) = rest.strip_prefix("creatures of the chosen type ") {
+        return format!("Creatures of the creature type of your choice {effect}");
+    }
+    if let Some(effect) = rest.strip_prefix("return ") {
+        if !effect.contains("target ") {
+            return line.to_string();
+        }
+        return format!(
+            "Return {}",
+            effect.replace(
+                " of the chosen type",
+                " of the creature type of your choice"
+            )
+        );
+    }
+    line.to_string()
+}
+
 fn expand_finalized_ast_surface_line(line: String) -> Vec<String> {
     let trimmed = line.trim().trim_end_matches('.');
     match trimmed.to_ascii_lowercase().as_str() {
         "skulk, lifelink" => vec!["Skulk".to_string(), "Lifelink".to_string()],
         "skulk, deathtouch" => vec!["Skulk".to_string(), "Deathtouch".to_string()],
+        "put a shield counter on target creature. scry 1" => vec![
+            "Put a shield counter on target creature.".to_string(),
+            "Scry 1.".to_string(),
+        ],
         _ => vec![line],
     }
 }
@@ -1448,6 +1873,61 @@ fn expand_finalized_ast_surface_line(line: String) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn post_substitution_compacts_conditional_source_animation_bundle() {
+        let lines = compact_post_substitution_surface_lines(vec![
+            "Haste".to_string(),
+            "this creature source is creature in addition to its other types and has base power and toughness 4/4 and is dragon as long as two or more nonland permanents entered the battlefield under your control this turn.".to_string(),
+            "Goddric has flying as long as two or more nonland permanents entered the battlefield under your control this turn.".to_string(),
+            "This source has \"{R}: Dragons you control get +1/+0 until end of turn.\" As long as two or more nonland permanents entered the battlefield under your control this turn.".to_string(),
+        ]);
+        assert_eq!(
+            lines,
+            vec![
+                "Haste".to_string(),
+                "Celebration — As long as two or more nonland permanents entered the battlefield under your control this turn, Goddric is a Dragon with base power and toughness 4/4, flying, and \"{R}: Dragons you control get +1/+0 until end of turn.\"".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn scored_line_normalizes_late_milled_card_choice_surface() {
+        assert_eq!(
+            normalize_scored_compiled_line(
+                "Mill two cards, choose up to one permanent cards, for each card chosen this way, return that object to its owner's hand, then gain 2 life."
+                    .to_string()
+            ),
+            "Mill two cards. You may put a permanent card from among the milled cards into your hand. You gain 2 life."
+        );
+        assert_eq!(
+            normalize_scored_compiled_line(
+                "Return target permanent spell to its owner's hand, Jeskai Revelation deals 4 damage to any target, create two 1/1 white Monk creature tokens with prowess, draw two cards, then gain 4 life."
+                    .to_string()
+            ),
+            "Return target spell or permanent to its owner's hand. Jeskai Revelation deals 4 damage to any target. Create two 1/1 white Monk creature tokens with prowess. Draw two cards. You gain 4 life."
+        );
+        assert_eq!(
+            normalize_scored_compiled_line(
+                "Sacrifice this enchantment: Creatures your opponents control get -1/-1 and gain attacks each combat if able until end of turn."
+                    .to_string()
+            ),
+            "Sacrifice this enchantment: Creatures your opponents control get -1/-1 until end of turn. Those creatures attack this turn if able."
+        );
+        assert_eq!(
+            normalize_scored_compiled_line(
+                "Exile all cards from their hand. Exile target player's graveyard.".to_string()
+            ),
+            "Exile all cards from target player's hand and graveyard."
+        );
+        assert_eq!(
+            normalize_scored_compiled_line(
+                "Choose a creature at random on the battlefield, gain control of it until end of turn, untap it, it gains haste until end of turn, then destroy all other creatures."
+                    .to_string()
+            ),
+            "Choose a creature at random. You gain control of that creature until end of turn. Untap it. It gains haste until end of turn. Then destroy all other creatures."
+        );
+    }
 
     #[test]
     fn color_choice_exclusion_is_inferred_from_fixed_chosen_color_mana() {
@@ -1535,6 +2015,84 @@ mod tests {
         .expect("Night Shift should compile");
 
         assert_eq!(compiled_text_lines(&definition).join("\n"), text);
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn spellshift_compiled_text_uses_countered_spell_controller_surface() {
+        let text = "Counter target instant or sorcery spell. Its controller reveals cards from the top of their library until they reveal an instant or sorcery card. That player may cast that card without paying its mana cost. Then the player shuffles.";
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Spellshift")
+            .card_types(vec![CardType::Instant])
+            .parse_text(text)
+            .expect("Spellshift should compile");
+
+        let rendered = compiled_text_lines(&definition).join("\n");
+        assert_eq!(
+            rendered,
+            "Counter target instant spell or sorcery spell. Its controller reveals cards from the top of their library until they reveal an instant or sorcery card. That player may cast that card without paying its mana cost. Then the player shuffles."
+        );
+        assert!(!rendered.contains("that object's controller"));
+        assert!(!rendered.contains("target player shuffles"));
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn implicit_source_combat_prevention_keeps_prevention_surface() {
+        let text = "Whenever this creature becomes blocked, prevent all combat damage that would be dealt by it this turn.";
+        let definition =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ignoble Soldier")
+                .card_types(vec![CardType::Creature])
+                .parse_text(text)
+                .expect("Ignoble Soldier should compile");
+
+        let rendered = compiled_text_lines(&definition).join("\n");
+        assert_eq!(rendered, text);
+        assert!(!rendered.contains("assigns no combat damage"));
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn delayed_exile_at_your_next_end_step_stays_delayed() {
+        let text = "Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of your next end step.";
+        let definition =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Haunted House")
+                .card_types(vec![CardType::Artifact])
+                .parse_text(text)
+                .expect("Haunted House visit text should compile");
+
+        let rendered = compiled_text_lines(&definition).join("\n");
+        assert_eq!(
+            rendered,
+            "Return target creature card from your graveyard to the battlefield. It gains haste. At the beginning of your next end step, exile it."
+        );
+        assert!(!rendered.contains("then exile it"));
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn next_damage_prevention_exiles_prevented_top_cards_as_follow_up() {
+        let text = "{2}, {T}: The next time a source of your choice would deal damage to you this turn, prevent that damage. Exile cards from the top of your library equal to the damage prevented this way.";
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Bone Mask")
+            .card_types(vec![CardType::Artifact])
+            .parse_text(text)
+            .expect("Bone Mask prevention text should compile");
+
+        let rendered = compiled_text_lines(&definition).join("\n");
+        assert_eq!(rendered, text);
+
+        let debug = format!("{definition:#?}");
+        assert!(
+            debug.contains("PreventNextTimeDamageEffect")
+                && debug.contains("follow_up_effects")
+                && debug.contains("ExileTopOfLibraryEffect")
+                && debug.contains("EventValue")
+                && debug.contains("Amount"),
+            "expected a prevented-damage-count exile-top follow-up, got {debug}"
+        );
+        assert!(
+            !debug.contains("ChooseObjectsEffect"),
+            "expected direct exile-top follow-up instead of choosing one top card, got {debug}"
+        );
     }
 
     #[test]
@@ -1645,6 +2203,240 @@ mod tests {
             ),
             "When an opponent casts a spell, sacrifice this enchantment and counter that spell."
         );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "When a player casts a spell, sacrifice this enchantment. Counter it".to_string()
+            ),
+            "When a player casts a spell, sacrifice this enchantment and counter that spell."
+        );
+    }
+
+    #[test]
+    fn self_exile_attacking_nonflying_creature_surface_uses_this_creature() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "{1}{R}{G}, {T}: Exile Hunting Kavu and target creature without flying that's attacking you"
+                    .to_string()
+            ),
+            "{1}{R}{G}, {T}: Exile this creature and target creature without flying that's attacking you."
+        );
+    }
+
+    #[test]
+    fn spellcast_trigger_copy_surface_drops_or_ability() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Whenever you cast an Assassin, Mercenary, Pirate, Rogue, or Warlock spell, copy that spell or ability"
+                    .to_string()
+            ),
+            "Whenever you cast an outlaw spell, copy that spell."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Whenever you cast an instant or sorcery spell that targets only this creature, copy that spell or ability. You may choose new targets for the copy"
+                    .to_string()
+            ),
+            "Whenever you cast an instant or sorcery spell that targets only this creature, copy that spell or ability. You may choose new targets for the copy."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Whenever you cast an instant or sorcery spell that targets only this creature, you may pay {2}. If you do, copy that spell or ability. You may choose new targets for the copy"
+                    .to_string()
+            ),
+            "Whenever you cast an instant or sorcery spell that targets only this creature, you may pay {2}. If you do, copy that spell. You may choose new targets for the copy."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "When you cast a spell or ability, copy that spell or ability. You may choose new targets for the copy"
+                    .to_string()
+            ),
+            "When you cast a spell or ability, copy that spell or ability. You may choose new targets for the copy."
+        );
+    }
+
+    #[test]
+    fn basic_land_type_choice_surface_uses_of_your_choice() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "{T}: Choose a basic land type. Target land you control becomes that type until end of turn"
+                    .to_string()
+            ),
+            "{T}: Target land you control becomes the basic land type of your choice until end of turn."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Choose a basic land type. Target land becomes that type until end of turn. Draw a card"
+                    .to_string()
+            ),
+            "Target land becomes the basic land type of your choice until end of turn. Draw a card."
+        );
+    }
+
+    #[test]
+    fn choose_sacrifice_rest_surface_uses_the_rest() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Each player chooses three permanents that player controls on the battlefield. Sacrifice all other permanents that player controls"
+                    .to_string()
+            ),
+            "Each player chooses three permanents they control, then sacrifices the rest."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Each player chooses a creature or planeswalker that player controls on the battlefield. Sacrifice all other creatures or planeswalkers that player controls. Players can't cast creature or planeswalker spells until the end of your next turn"
+                    .to_string()
+            ),
+            "Each player chooses a creature or planeswalker they control, then sacrifices the rest. Players can't cast creature or planeswalker spells until the end of your next turn."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "At the beginning of each opponent's end step, that player chooses up to 2 creatures that player controls on the battlefield, then that player sacrifices all other creatures that player controls"
+                    .to_string()
+            ),
+            "At the beginning of each opponent's end step, that player chooses up to two creatures they control, then sacrifices the rest."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "−9: For each opponent, that player chooses a permanent that player controls on the battlefield. Sacrifice all other permanents that player controls"
+                    .to_string()
+            ),
+            "−9: For each opponent, that player chooses a permanent that player controls on the battlefield. Sacrifice all other permanents that player controls."
+        );
+    }
+
+    #[test]
+    fn temporary_trample_pump_surface_merges_until_end_of_turn() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Draw a card, target creature gains trample until end of turn, then it gets +1/+0 for each the number of cards you've drawn this turn until end of turn."
+                    .to_string()
+            ),
+            "Draw a card. Until end of turn, target creature gains trample and gets +1/+0 for each card you've drawn this turn."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Target creature gains trample until end of turn, then it gets +X/+X until end of turn, where X is the number of attacking creatures"
+                    .to_string()
+            ),
+            "Target creature gains trample and gets +X/+X until end of turn, where X is the number of attacking creatures."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "At the beginning of combat on your turn, target Elf you control gains trample until end of turn, then it gets +X/+X until end of turn, where X is the number of Forests you control"
+                    .to_string()
+            ),
+            "At the beginning of combat on your turn, target Elf you control gains trample and gets +X/+X until end of turn, where X is the number of Forests you control."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "−5: Target creature gains trample until end of turn, then it gets +X/+X until end of turn, where X is the number of lands you control"
+                    .to_string()
+            ),
+            "−5: Target creature gains trample and gets +X/+X until end of turn, where X is the number of lands you control."
+        );
+    }
+
+    #[test]
+    fn chosen_player_mana_surface_uses_that_player_chooses() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "{T}: You choose a player, then add one mana of any color to that player's mana pool"
+                    .to_string()
+            ),
+            "{T}: Choose a player. That player adds one mana of any color they choose."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "When this creature enters, you choose a player, then add two mana of any one color to that player's mana pool"
+                    .to_string()
+            ),
+            "When this creature enters, choose a player. That player adds two mana of any one color they choose."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "When this creature enters, choose a player, then add two mana of any one color to that player's mana pool"
+                    .to_string()
+            ),
+            "When this creature enters, choose a player. That player adds two mana of any one color they choose."
+        );
+    }
+
+    #[test]
+    fn role_token_and_return_with_counter_surfaces_compact() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Target creature gets +2/+0 until end of turn, create a Monster Role token, then attach it to it"
+                    .to_string()
+            ),
+            "Target creature gets +2/+0 until end of turn. Create a Monster Role token attached to it."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Exile target artifact or creature, return it to the battlefield under its owner's control, then put a +1/+1 counter on it"
+                    .to_string()
+            ),
+            "Exile target artifact or creature, then return it to the battlefield under its owner's control with a +1/+1 counter on it."
+        );
+    }
+
+    #[test]
+    fn simple_token_keyword_surface_uses_with_keyword() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Create a 1/1 white Knight creature token. It has \"Banding.\"".to_string()
+            ),
+            "Create a 1/1 white Knight creature token with banding."
+        );
+    }
+
+    #[test]
+    fn chosen_creature_type_surface_uses_of_your_choice() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "You choose a creature type, then creatures of the chosen type get -3/-3 until end of turn"
+                    .to_string()
+            ),
+            "Creatures of the creature type of your choice get -3/-3 until end of turn."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Choose a creature type, then creatures of the chosen type get +0/+4 until end of turn"
+                    .to_string()
+            ),
+            "Creatures of the creature type of your choice get +0/+4 until end of turn."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "You choose a creature type, then return up to three target creature cards of the chosen type from your graveyard to your hand"
+                    .to_string()
+            ),
+            "Return up to three target creature cards of the creature type of your choice from your graveyard to your hand."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "You choose a creature type, then return all creatures that aren't of the chosen type to their owners' hands"
+                    .to_string()
+            ),
+            "You choose a creature type, then return all creatures that aren't of the chosen type to their owners' hands."
+        );
+    }
+
+    #[test]
+    fn imperative_choice_selection_surfaces_keep_oracle_compactions() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Look at the top three cards of your library, choose a card in a hand, in a graveyard, or in exile, choose an other card in a hand, in a graveyard, or in exile, choose an other other card in a hand, in a graveyard, or in exile, return it to its owner's hand, put it on the bottom of its owner's library, exile it, then you may play those cards this turn."
+                    .to_string()
+            ),
+            "Look at the top three cards of your library. Put one of them into your hand, put one of them on the bottom of your library, and exile one of them. You may play the exiled card this turn."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Target opponent reveals their hand, choose an artifact or creature card, choose an artifact or creature card, then exile it."
+                    .to_string()
+            ),
+            "Target opponent reveals their hand. You choose an artifact or creature card from it and choose an artifact or creature card from their graveyard. Exile the chosen cards."
+        );
     }
 
     #[test]
@@ -1675,6 +2467,15 @@ mod tests {
             expand_finalized_ast_surface_line("Skulk, deathtouch".to_string()),
             vec!["Skulk".to_string(), "Deathtouch".to_string()]
         );
+        assert_eq!(
+            expand_finalized_ast_surface_line(
+                "Put a shield counter on target creature. Scry 1.".to_string()
+            ),
+            vec![
+                "Put a shield counter on target creature.".to_string(),
+                "Scry 1.".to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -1685,6 +2486,22 @@ mod tests {
                     .to_string()
             ),
             "Create a 1/1 colorless Eldrazi Scion creature token. It has \"Sacrifice this token: Add {C}.\""
+        );
+    }
+
+    #[test]
+    fn plural_turn_animation_and_granted_trigger_merge_to_bello_surface() {
+        let lines = merge_ast_surface_lines(vec![
+            "During your turn, non-Equipment artifacts with mana value 4 or greater you control or non-Aura enchantments with mana value 4 or greater you control are creatures in addition to their other types and have base power and toughness 4/4 and are Elementals in addition to their other types and have indestructible and have haste.".to_string(),
+            "Non-Equipment artifacts with mana value 4 or greater you control or non-Aura enchantments with mana value 4 or greater you control have \"whenever this creature deals combat damage to a player, draw a card.\" As long as it's your turn.".to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "During your turn, each non-Equipment artifact and non-Aura enchantment you control with mana value 4 or greater is a 4/4 Elemental creature in addition to its other types and has indestructible, haste, and \"Whenever this creature deals combat damage to a player, draw a card.\""
+                    .to_string()
+            ]
         );
     }
 

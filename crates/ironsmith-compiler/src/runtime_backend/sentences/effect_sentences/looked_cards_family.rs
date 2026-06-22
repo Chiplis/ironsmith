@@ -21,7 +21,7 @@ use crate::cards::builders::{
 };
 use crate::effect::Value;
 use crate::target::TaggedOpbjectRelation;
-use crate::types::CardType;
+use crate::types::{CardType, Supertype};
 use crate::zone::Zone;
 use ironsmith_core::{EffectMetric, EffectMetricSource, ValueSurfaceHint};
 
@@ -595,6 +595,46 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
     ) {
         let mut filter = ObjectFilter::permanent_card();
         filter.excluded_card_types.push(CardType::Land);
+        if same_name_suffix {
+            filter = filter.match_tagged(
+                TagKey::from(CHOSEN_NAME_TAG),
+                TaggedOpbjectRelation::SameNameAsTagged,
+            );
+        }
+        return Some(filter);
+    }
+
+    let land_legendary_permanent_prefix_len = match non_article_words.as_slice() {
+        ["land", "and/or", "legendary", "permanent", card, ..]
+            if LOOKED_CARD_WORDS.contains(card) =>
+        {
+            Some(5)
+        }
+        ["land", "and", "or", "legendary", "permanent", card, ..]
+            if LOOKED_CARD_WORDS.contains(card) =>
+        {
+            Some(6)
+        }
+        _ => None,
+    };
+    if let Some(prefix_len) = land_legendary_permanent_prefix_len
+        && non_article_words
+            .get(prefix_len)
+            .is_none_or(|word| *word == "with")
+        && let Ok(base) = parse_object_filter_lexed(&filter_tokens, false)
+    {
+        let mut land = base.clone();
+        land.card_types = vec![CardType::Land];
+        land.supertypes.clear();
+        land.any_of.clear();
+
+        let mut legendary_permanent = base;
+        legendary_permanent.card_types = ObjectFilter::permanent_card().card_types;
+        legendary_permanent.supertypes = vec![Supertype::Legendary];
+        legendary_permanent.any_of.clear();
+
+        let mut filter = ObjectFilter::default();
+        filter.any_of = vec![land, legendary_permanent];
         if same_name_suffix {
             filter = filter.match_tagged(
                 TagKey::from(CHOSEN_NAME_TAG),

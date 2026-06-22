@@ -90,6 +90,19 @@ fn first_word_target_exile_look_or_reveal(
     )
 }
 
+fn first_word_then_target_exile_look_or_reveal(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> bool {
+    sentence_head_word_in(
+        sentences,
+        sentence_idx,
+        &[
+            "then", "target", "you", "that", "they", "exile", "look", "reveal",
+        ],
+    )
+}
+
 fn first_word_if_target_exile_or_reveal(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_in(
         sentences,
@@ -258,6 +271,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 3,
         predicate: first_word_search,
         parser: generic_subject_verb_sequences::triples::parse_search_two_then_put_one_hand_other_graveyard_then_shuffle,
+    },
+    SequenceRuleDef {
+        name: "mill-then-payment-if-you-do-put-from-among-into-hand",
+        feature_tag: Some("mill-payment-followup-choice"),
+        priority: 341,
+        consumed_sentences: 3,
+        predicate: first_word_mill,
+        parser: generic_subject_verb_sequences::triples::parse_mill_then_optional_payment_if_you_do_put_from_among_into_hand,
     },
     SequenceRuleDef {
         name: "mill-then-put-from-among-into-hand-then-if-you-dont",
@@ -561,6 +582,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::parse_next_damage_prevention_gain_life_sequence,
     },
     SequenceRuleDef {
+        name: "next-damage-prevention-then-exile-prevented-top-cards",
+        feature_tag: Some("damage-prevention-followup"),
+        priority: 240,
+        consumed_sentences: 2,
+        predicate: first_word_the,
+        parser: generic_subject_verb_sequences::parse_next_damage_prevention_exile_top_sequence,
+    },
+    SequenceRuleDef {
         name: "tap-all-then-they-dont-untap-while-source-tapped",
         feature_tag: Some("tap-lock-followup"),
         priority: 239,
@@ -693,7 +722,7 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         feature_tag: Some("consult-bottom-remainder"),
         priority: 229,
         consumed_sentences: 2,
-        predicate: first_word_target_exile_look_or_reveal,
+        predicate: first_word_then_target_exile_look_or_reveal,
         parser: generic_subject_verb_sequences::pairs::parse_consult_match_move_and_bottom_remainder,
     },
     SequenceRuleDef {

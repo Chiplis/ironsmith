@@ -1471,6 +1471,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_parses_negated_chosen_type_suffix() {
+        let tokens = tokenize_line("creatures that aren't of the chosen type", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(!filter.chosen_creature_type);
+        assert!(filter.excluded_chosen_creature_type);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
     fn parse_object_filter_lexed_parses_split_hyphenated_non_subtype_and_type() {
         let tokens = tokenize_line("Non-Elf creatures", 0);
         let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");

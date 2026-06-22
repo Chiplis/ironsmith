@@ -3390,6 +3390,7 @@ impl GameState {
 
     /// Marks a player as having lost the game and emits the trigger-visible event once.
     pub fn mark_player_lost(&mut self, player: PlayerId) -> bool {
+        let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
         let should_emit = if let Some(p) = self.player_mut(player) {
             if !p.is_in_game() {
                 false
@@ -3404,7 +3405,9 @@ impl GameState {
         if should_emit {
             self.queue_trigger_event(
                 crate::provenance::ProvNodeId::default(),
-                crate::events::Event::player_loses_game(player).into_raw(),
+                crate::events::Event::player_loses_game(player)
+                    .into_raw()
+                    .with_lookback_source_snapshots(lookback_source_snapshots),
             );
         }
 
@@ -4209,6 +4212,7 @@ impl GameState {
                 )
             })
         });
+        let pre_event_lookback_source_snapshots = self.trigger_source_lookback_snapshots();
         if let Some(snapshot) = pre_move_snapshot.as_ref() {
             for entry in &mut self.stack {
                 if entry.is_ability
@@ -4337,7 +4341,8 @@ impl GameState {
                 .alloc_root_event(crate::events::EventKind::ZoneChange);
             self.queue_trigger_event(
                 event_provenance,
-                TriggerEvent::new_with_provenance(event, event_provenance),
+                TriggerEvent::new_with_provenance(event, event_provenance)
+                    .with_lookback_source_snapshots(pre_event_lookback_source_snapshots),
             );
             self.record_zone_change_results(old_id, result_object_ids.clone());
             if old_zone != new_zone {
@@ -4512,7 +4517,8 @@ impl GameState {
                 .alloc_root_event(crate::events::EventKind::ZoneChange);
             self.queue_trigger_event(
                 event_provenance,
-                TriggerEvent::new_with_provenance(event, event_provenance),
+                TriggerEvent::new_with_provenance(event, event_provenance)
+                    .with_lookback_source_snapshots(pre_event_lookback_source_snapshots),
             );
         }
         self.record_zone_change_results(old_id, vec![new_id]);
@@ -5477,6 +5483,10 @@ impl GameState {
     }
 
     pub fn detach_object_from_current_target(&mut self, attachment_id: ObjectId) -> bool {
+        let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
+        let attachment_snapshot = self.object(attachment_id).map(|object| {
+            ObjectSnapshot::from_object_with_calculated_characteristics(object, self)
+        });
         self.mark_continuous_state_dirty();
         let Some(current_target) = self
             .object(attachment_id)
@@ -5504,6 +5514,23 @@ impl GameState {
 
         if let Some(object) = self.object_mut(attachment_id) {
             object.attached_to = None;
+        }
+
+        if let Some(snapshot) = attachment_snapshot {
+            let provenance = self
+                .provenance_graph_mut()
+                .alloc_root_event(crate::events::EventKind::ObjectBecameUnattached);
+            let event = crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::ObjectBecameUnattachedEvent::new(
+                    attachment_id,
+                    current_target,
+                    snapshot.controller,
+                    Some(snapshot),
+                ),
+                provenance,
+            )
+            .with_lookback_source_snapshots(lookback_source_snapshots);
+            self.queue_trigger_event(provenance, event);
         }
 
         true
@@ -7817,6 +7844,26 @@ impl GameState {
             .collect()
     }
 
+    pub(crate) fn trigger_source_lookback_snapshots(&self) -> Vec<ObjectSnapshot> {
+        let all_effects = self.all_continuous_effects();
+        self.objects_in_deterministic_order()
+            .into_iter()
+            .map(|object| {
+                ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+                    object,
+                    self,
+                    &all_effects,
+                )
+            })
+            .filter(|snapshot| {
+                snapshot.abilities.iter().any(|ability| {
+                    matches!(ability.kind, AbilityKind::Triggered(_))
+                        && ability.functions_in(&snapshot.zone)
+                })
+            })
+            .collect()
+    }
+
     /// Returns all permanents controlled by a player.
     pub fn permanents_controlled_by(&self, controller: PlayerId) -> Vec<ObjectId> {
         self.battlefield
@@ -9386,11 +9433,35 @@ impl GameState {
 
     /// Phase out a permanent.
     pub fn phase_out(&mut self, id: ObjectId) {
+        let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
+        let permanent_snapshot = self.object(id).map(|object| {
+            ObjectSnapshot::from_object_with_calculated_characteristics(object, self)
+        });
         self.mark_continuous_state_dirty();
-        if self.phased_out.insert(id)
-            && let Some(stable_id) = self.object(id).map(|o| o.stable_id)
-        {
-            self.record_ui_effect_event("phase_out", None, None, vec![stable_id], None, None);
+        if self.phased_out.insert(id) {
+            if let Some(snapshot) = permanent_snapshot {
+                self.record_ui_effect_event(
+                    "phase_out",
+                    None,
+                    None,
+                    vec![snapshot.stable_id],
+                    None,
+                    None,
+                );
+                let provenance = self
+                    .provenance_graph_mut()
+                    .alloc_root_event(crate::events::EventKind::PermanentPhasedOut);
+                let event = crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::PermanentPhasedOutEvent::new(
+                        id,
+                        snapshot.controller,
+                        Some(snapshot),
+                    ),
+                    provenance,
+                )
+                .with_lookback_source_snapshots(lookback_source_snapshots);
+                self.queue_trigger_event(provenance, event);
+            }
         }
     }
 
@@ -10214,29 +10285,30 @@ impl GameState {
     ) {
         use crate::events::zones::ZoneChangeEvent;
 
-        let Some((index, mut zone_change, provenance, source_snapshot)) = self
-            .effect_store
-            .pending_trigger_events
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(index, event)| {
-                let zone_change = event.downcast::<ZoneChangeEvent>()?;
-                let matches_object = zone_change.objects.contains(&event_object)
-                    || zone_change.result_objects.contains(&event_object)
-                    || zone_change.snapshot.as_ref().is_some_and(|event_snapshot| {
-                        event_snapshot.object_id == event_object
-                            || event_snapshot.stable_id == snapshot.stable_id
-                    });
-                matches_object.then(|| {
-                    (
-                        index,
-                        zone_change.clone(),
-                        event.provenance(),
-                        event.source_snapshot().cloned(),
-                    )
+        let Some((index, mut zone_change, provenance, source_snapshot, lookback_source_snapshots)) =
+            self.effect_store
+                .pending_trigger_events
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(index, event)| {
+                    let zone_change = event.downcast::<ZoneChangeEvent>()?;
+                    let matches_object = zone_change.objects.contains(&event_object)
+                        || zone_change.result_objects.contains(&event_object)
+                        || zone_change.snapshot.as_ref().is_some_and(|event_snapshot| {
+                            event_snapshot.object_id == event_object
+                                || event_snapshot.stable_id == snapshot.stable_id
+                        });
+                    matches_object.then(|| {
+                        (
+                            index,
+                            zone_change.clone(),
+                            event.provenance(),
+                            event.source_snapshot().cloned(),
+                            event.lookback_source_snapshots().to_vec(),
+                        )
+                    })
                 })
-            })
         else {
             return;
         };
@@ -10247,6 +10319,7 @@ impl GameState {
         if let Some(source_snapshot) = source_snapshot {
             replacement = replacement.with_source_snapshot(source_snapshot);
         }
+        replacement = replacement.with_lookback_source_snapshots(lookback_source_snapshots);
         self.effect_store.pending_trigger_events[index] = replacement;
     }
 

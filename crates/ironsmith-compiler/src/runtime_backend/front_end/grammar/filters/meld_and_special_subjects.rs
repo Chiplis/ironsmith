@@ -775,6 +775,30 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_handles_no_shared_creature_type_clause() {
+        let tokens = lex_line(
+            "creature spell that doesn't share a creature type with a creature you control or a creature card in your graveyard",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.zone, Some(Zone::Stack));
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.no_shared_creature_types_with.len(), 2);
+
+        let battlefield_filter = &filter.no_shared_creature_types_with[0];
+        assert_eq!(battlefield_filter.zone, Some(Zone::Battlefield));
+        assert_eq!(battlefield_filter.controller, Some(PlayerFilter::You));
+        assert_eq!(battlefield_filter.card_types, vec![CardType::Creature]);
+
+        let graveyard_filter = &filter.no_shared_creature_types_with[1];
+        assert_eq!(graveyard_filter.zone, Some(Zone::Graveyard));
+        assert_eq!(graveyard_filter.owner, Some(PlayerFilter::You));
+        assert_eq!(graveyard_filter.card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
     fn parse_object_filter_lexed_handles_convoked_it_reference() {
         let tokens = lex_line("creature that convoked it", 0).unwrap();
 

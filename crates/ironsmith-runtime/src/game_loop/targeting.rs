@@ -436,10 +436,21 @@ fn simultaneous_sba_ltb_batch_events(pending_events: &[TriggerEvent]) -> Vec<Tri
         }
 
         let provenance = batch_events[index].provenance();
+        let mut lookback_source_snapshots =
+            batch_events[index].lookback_source_snapshots().to_vec();
+        for snapshot in event.lookback_source_snapshots() {
+            if !lookback_source_snapshots
+                .iter()
+                .any(|existing| existing.stable_id == snapshot.stable_id)
+            {
+                lookback_source_snapshots.push(snapshot.clone());
+            }
+        }
         let mut merged_event = TriggerEvent::new_with_provenance(merged_zone_change, provenance);
         if let Some(source_snapshot) = batch_events[index].source_snapshot().cloned() {
             merged_event = merged_event.with_source_snapshot(source_snapshot);
         }
+        merged_event = merged_event.with_lookback_source_snapshots(lookback_source_snapshots);
         batch_events[index] = merged_event;
     }
 

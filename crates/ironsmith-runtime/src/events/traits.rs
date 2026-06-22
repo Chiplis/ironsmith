@@ -121,6 +121,12 @@ pub enum EventKind {
     TurnedFaceUp,
     /// A permanent came under a different player's control
     ControlChanged,
+    /// A permanent phased out
+    PermanentPhasedOut,
+    /// An object became unattached
+    ObjectBecameUnattached,
+    /// A spell was countered
+    SpellCountered,
     /// A card was revealed
     CardRevealed,
     /// A state-triggered ability's condition became true

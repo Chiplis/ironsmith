@@ -12,6 +12,7 @@ pub struct RawEvent {
     inner: Arc<dyn GameEventType>,
     provenance: ProvNodeId,
     source_snapshot: Option<ObjectSnapshot>,
+    lookback_source_snapshots: Vec<ObjectSnapshot>,
 }
 
 impl RawEvent {
@@ -20,6 +21,7 @@ impl RawEvent {
             inner: Arc::new(event),
             provenance,
             source_snapshot: None,
+            lookback_source_snapshots: Vec::new(),
         }
     }
 
@@ -28,6 +30,7 @@ impl RawEvent {
             inner: Arc::from(event),
             provenance,
             source_snapshot: None,
+            lookback_source_snapshots: Vec::new(),
         }
     }
 
@@ -98,6 +101,12 @@ impl RawEvent {
         self.source_snapshot.as_ref()
     }
 
+    /// Get pre-event snapshots of objects that could have been trigger sources
+    /// for CR 603.10 look-back source discovery.
+    pub fn lookback_source_snapshots(&self) -> &[ObjectSnapshot] {
+        &self.lookback_source_snapshots
+    }
+
     /// Human-readable event description.
     pub fn display(&self) -> String {
         self.inner().display()
@@ -125,6 +134,12 @@ impl RawEvent {
         self
     }
 
+    #[must_use]
+    pub fn with_lookback_source_snapshots(mut self, snapshots: Vec<ObjectSnapshot>) -> Self {
+        self.lookback_source_snapshots = snapshots;
+        self
+    }
+
     pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
     }
@@ -136,6 +151,7 @@ impl std::fmt::Debug for RawEvent {
             .field("kind", &self.kind())
             .field("provenance", &self.provenance)
             .field("source_snapshot", &self.source_snapshot)
+            .field("lookback_source_snapshots", &self.lookback_source_snapshots)
             .field("display", &self.inner().display())
             .finish()
     }

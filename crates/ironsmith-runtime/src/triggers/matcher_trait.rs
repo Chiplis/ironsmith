@@ -142,6 +142,16 @@ pub trait TriggerMatcher:
         false
     }
 
+    /// Whether the source of this triggered ability must be discovered from
+    /// immediately before the event instead of from the post-event game state.
+    ///
+    /// This is separate from `uses_snapshot()`: snapshot matching answers what
+    /// the event object looked like, while source look-back answers whether the
+    /// ability itself existed immediately before the event (CR 603.10).
+    fn looks_back_for_source(&self, _event: &TriggerEvent) -> bool {
+        false
+    }
+
     /// How many times this trigger should fire for the given event.
     ///
     /// Most triggers fire once per event, but some (like "whenever you draw a card")

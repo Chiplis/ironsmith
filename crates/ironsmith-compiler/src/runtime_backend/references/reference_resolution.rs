@@ -18,7 +18,8 @@ use crate::types::Subtype;
 
 use super::compile_support::{
     effect_references_event_derived_amount, effects_reference_it_tag,
-    effects_reference_its_controller, effects_reference_tag, value_references_event_derived_amount,
+    effects_reference_its_controller, effects_reference_tag,
+    effects_reference_tag_in_object_position, value_references_event_derived_amount,
 };
 #[cfg(test)]
 use super::effect_ast_traversal::for_each_nested_effects_mut;
@@ -455,6 +456,12 @@ fn advance_reference_frame_for_effect(
                         }
                         frame.last_player_filter = Some(PlayerFilter::DamagedPlayer);
                     }
+                }
+                SubjectVerbActionAst::DealDamageEach { filter, .. } => {
+                    if frame.auto_tag_object_targets {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "damaged"));
+                    }
+                    track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::Tap { target } => {
                     maybe_tag_target(target, frame, id_gen, "tapped")?;
@@ -1305,6 +1312,16 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
     }
 }
 
+fn effect_exports_damage_each_object_set(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DealDamageEach { .. },
+            ..
+        })
+    )
+}
+
 fn annotate_effect_sequence_with_env_internal(
     effects: &[EffectAst],
     mut current_env: ReferenceEnv,
@@ -1334,6 +1351,15 @@ fn annotate_effect_sequence_with_env_internal(
                 || effects_reference_its_controller(remaining)
                 || effects_reference_tag(remaining, "damaged_0")
         };
+        let auto_tag_object_targets_for_env = if effect_exports_damage_each_object_set(&effect) {
+            !suppress_for_power_self_damage
+                && (effects_reference_tag_in_object_position(remaining, IT_TAG)
+                    || effects_reference_tag_in_object_position(remaining, "damaged_0"))
+        } else {
+            auto_tag_object_targets
+        };
+        let suppress_force_auto_tag_object_targets = suppress_for_power_self_damage
+            || (effect_exports_damage_each_object_set(&effect) && !auto_tag_object_targets_for_env);
         let assigned_effect_id = maybe_assign_effect_result_id(effects, idx, id_gen, config);
 
         let mut out_env = advance_reference_env_for_effect(
@@ -1341,8 +1367,8 @@ fn annotate_effect_sequence_with_env_internal(
             &in_env,
             config,
             id_gen,
-            auto_tag_object_targets,
-            suppress_for_power_self_damage,
+            auto_tag_object_targets_for_env,
+            suppress_force_auto_tag_object_targets,
         )?;
         if let Some(id) = assigned_effect_id
             && !matches!(
@@ -1367,7 +1393,7 @@ fn annotate_effect_sequence_with_env_internal(
             in_env,
             out_env,
             assigned_effect_id,
-            auto_tag_object_targets,
+            auto_tag_object_targets: auto_tag_object_targets_for_env,
         });
     }
 
@@ -3540,7 +3566,9 @@ fn bind_unresolved_it_in_predicate(predicate: &mut PredicateAst, seed_tag: &TagK
         | PredicateAst::PlayerControlsExactly { filter, .. }
         | PredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. }
         | PredicateAst::PlayerControlsNo { filter, .. }
-        | PredicateAst::PlayerControlsMost { filter, .. } => {
+        | PredicateAst::PlayerControlsMost { filter, .. }
+        | PredicateAst::PlayerControlsMoreThanEachOtherPlayer { filter, .. }
+        | PredicateAst::AnOpponentHasFewerThanPlayer { filter, .. } => {
             bind_unresolved_it_in_filter(filter, seed_tag)
         }
         PredicateAst::PlayerControlsOrHasCardInGraveyard {
@@ -3863,6 +3891,78 @@ mod tests {
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
             ModelRefState::Known(TagKey::from("countered_0"))
+        );
+    }
+
+    #[test]
+    fn annotate_effect_sequence_sets_followup_in_env_from_damage_each_tag() {
+        let mut tapped_filter = ObjectFilter::creature();
+        tapped_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let effects = vec![
+            EffectAst::subject_verb_damage_each(Value::Fixed(1), ObjectFilter::creature()),
+            EffectAst::subject_verb_tap(TargetAst::Object(
+                tapped_filter,
+                Some(TextSpan::synthetic()),
+                None,
+            )),
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports {
+                last_object_tag: Some(TagKey::from("triggering")),
+                source_object_antecedent: true,
+                ..Default::default()
+            },
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate damage-each follow-up");
+
+        assert_eq!(
+            annotated.effects[1].in_env.last_object_tag,
+            ModelRefState::Known(TagKey::from("damaged_0"))
+        );
+        assert_eq!(
+            annotated.final_env.last_object_tag,
+            ModelRefState::Known(TagKey::from("damaged_0"))
+        );
+    }
+
+    #[test]
+    fn annotate_effect_sequence_preserves_amount_source_after_damage_each() {
+        let effects = vec![
+            EffectAst::subject_verb_damage_each(Value::Fixed(1), ObjectFilter::creature()),
+            EffectAst::subject_verb_damage_each(
+                Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                ObjectFilter::planeswalker(),
+            ),
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::with_last_object_tag("sacrificed_0"),
+            EffectReferenceResolutionConfig {
+                force_auto_tag_object_targets: true,
+                ..Default::default()
+            },
+            IdGenContext::default(),
+        )
+        .expect("annotate amount-only damage-each follow-up");
+
+        assert!(!annotated.effects[0].auto_tag_object_targets);
+        assert_eq!(
+            annotated.effects[0].out_env.last_object_tag,
+            ModelRefState::Known(TagKey::from("sacrificed_0"))
+        );
+        assert_eq!(
+            annotated.effects[1].in_env.last_object_tag,
+            ModelRefState::Known(TagKey::from("sacrificed_0"))
         );
     }
 

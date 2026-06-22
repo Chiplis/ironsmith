@@ -1129,6 +1129,9 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
     if word_slice_contains_word(&first_words, ARTIFACT_WORD) {
         filter.card_types.push(CardType::Artifact);
     }
+    if let Some(limit) = fixed_mana_value_or_less_limit(&first_words) {
+        filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(limit));
+    }
 
     let replacement_filter = ObjectFilter {
         zone: Some(Zone::Stack),
@@ -1166,6 +1169,41 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
             ZoneReplacementDurationAst::OneShot,
         ),
     ]))
+}
+
+fn fixed_mana_value_or_less_limit(words: &[&str]) -> Option<i32> {
+    let idx = word_slice_find_phrase_start(words, &["mana", "value"])?;
+    let value_word = *words.get(idx + 2)?;
+    let limit = parse_fixed_number_word(value_word)?;
+    if words.get(idx + 3..idx + 5) == Some(&["or", "less"][..])
+        || words.get(idx + 3..idx + 8) == Some(&["or", "less", "than", "or", "equal"][..])
+        || words.get(idx + 3..idx + 9) == Some(&["or", "less", "than", "or", "equal", "to"][..])
+        || words.get(idx + 3..idx + 7) == Some(&["less", "than", "or", "equal"][..])
+        || words.get(idx + 3..idx + 8) == Some(&["less", "than", "or", "equal", "to"][..])
+    {
+        Some(limit)
+    } else {
+        None
+    }
+}
+
+fn parse_fixed_number_word(word: &str) -> Option<i32> {
+    word.parse::<i32>().ok().or_else(|| {
+        Some(match word {
+            "zero" => 0,
+            "one" => 1,
+            "two" => 2,
+            "three" => 3,
+            "four" => 4,
+            "five" => 5,
+            "six" => 6,
+            "seven" => 7,
+            "eight" => 8,
+            "nine" => 9,
+            "ten" => 10,
+            _ => return None,
+        })
+    })
 }
 
 fn previous_sentence_chose_stack_object(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
@@ -2251,6 +2289,33 @@ pub(crate) fn parse_consult_match_move_and_bottom_remainder(
                 &["put", "it", "onto", "battlefield", "tapped"],
             )
             .is_some()
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
+                &second_tokens,
+                &[
+                    "put",
+                    "those",
+                    "land",
+                    "cards",
+                    "onto",
+                    "the",
+                    "battlefield",
+                    "tapped",
+                ],
+            )
+            .is_some()
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
+                &second_tokens,
+                &[
+                    "put",
+                    "those",
+                    "lands",
+                    "onto",
+                    "the",
+                    "battlefield",
+                    "tapped",
+                ],
+            )
+            .is_some()
         {
             (Zone::Battlefield, true)
         } else if crate::runtime_backend::grammar::primitives::words_match_prefix(
@@ -2271,6 +2336,24 @@ pub(crate) fn parse_consult_match_move_and_bottom_remainder(
             || crate::runtime_backend::grammar::primitives::words_match_prefix(
                 &second_tokens,
                 &["put", "it", "onto", "battlefield"],
+            )
+            .is_some()
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
+                &second_tokens,
+                &[
+                    "put",
+                    "those",
+                    "land",
+                    "cards",
+                    "onto",
+                    "the",
+                    "battlefield",
+                ],
+            )
+            .is_some()
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
+                &second_tokens,
+                &["put", "those", "lands", "onto", "the", "battlefield"],
             )
             .is_some()
         {
@@ -2336,6 +2419,22 @@ pub(crate) fn parse_conditional_consult_match_move_and_bottom_remainder(
     let effect_tokens = trim_commas(&conditional_tokens[comma_idx + 1..]);
     if predicate_tokens.is_empty() || effect_tokens.is_empty() {
         return Ok(None);
+    }
+
+    let predicate_words = LexedClause::new(&predicate_tokens).word_refs();
+    if word_slice_eq(&predicate_words, &["you", "do"]) {
+        let synthetic = [
+            SentenceInput::from_lexed(&effect_tokens),
+            SentenceInput::from_lexed(sentences[sentence_idx + 1].lowered()),
+        ];
+        let Some(effects) = parse_consult_match_move_and_bottom_remainder(&synthetic, 0)? else {
+            return Ok(None);
+        };
+
+        return Ok(Some(vec![EffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects,
+        }]));
     }
 
     let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens) else {

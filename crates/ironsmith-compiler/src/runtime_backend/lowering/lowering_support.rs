@@ -56,11 +56,143 @@ fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
     }
 }
 
+fn damaged_death_condition_target_filter(condition: &Condition) -> Option<ObjectFilter> {
+    match condition {
+        Condition::CreatureDealtDamageBySourceDiedThisTurn {
+            victim,
+            damager,
+            count,
+        } if *count == 1 => {
+            let mut filter = victim.clone();
+            filter.zone = Some(Zone::Graveyard);
+            filter.entered_graveyard_from_battlefield_this_turn = true;
+            filter.dealt_damage_by_source_this_turn = Some(*damager);
+            Some(filter)
+        }
+        Condition::And(left, right) => damaged_death_condition_target_filter(left)
+            .or_else(|| damaged_death_condition_target_filter(right)),
+        _ => None,
+    }
+}
+
+fn retarget_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, condition: &Condition) {
+    let Some(filter) = damaged_death_condition_target_filter(condition) else {
+        return;
+    };
+    let Some(segment) = lowered.effects.segments.first_mut() else {
+        return;
+    };
+    let Some(effect) = segment.default_effects.first_mut() else {
+        return;
+    };
+    let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+        return;
+    };
+    let Some(move_to_zone) = tagged
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return;
+    };
+    if !matches!(move_to_zone.target.base(), ChooseSpec::Source)
+        || move_to_zone.zone != Zone::Battlefield
+    {
+        return;
+    }
+
+    let mut replacement = move_to_zone.clone();
+    replacement.target =
+        ChooseSpec::Object(filter).with_count(crate::effect::ChoiceCount::exactly(1));
+    *effect = Effect::new(crate::effects::TaggedEffect::new(
+        tagged.tag.clone(),
+        Effect::new(replacement),
+    ));
+}
+
 fn object_filter_is_it_reference(filter: &ObjectFilter) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
         constraint.tag.as_str() == IT_TAG
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     })
+}
+
+fn object_filter_has_single_tag_reference(filter: &ObjectFilter, tag: &crate::tag::TagKey) -> bool {
+    filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *tag && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        })
+}
+
+fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) {
+    let Some(segment) = lowered.effects.segments.first_mut() else {
+        return;
+    };
+    if segment.default_effects.len() < 3 {
+        return;
+    }
+
+    let Some(tagged_move) =
+        segment.default_effects[0].downcast_ref::<crate::effects::TaggedEffect>()
+    else {
+        return;
+    };
+    let Some(move_to_zone) = tagged_move
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return;
+    };
+    if move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::You
+    {
+        return;
+    }
+    let moved_tag = tagged_move.tag.clone();
+
+    let Some(choose) =
+        segment.default_effects[1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+    else {
+        return;
+    };
+    if choose.zone.or(choose.filter.zone) != Some(Zone::Battlefield)
+        || !choose.count.is_single()
+        || !object_filter_has_single_tag_reference(&choose.filter, &moved_tag)
+    {
+        return;
+    }
+    let sacrificed_tag = choose.tag.clone();
+
+    let Some(sacrifice) =
+        segment.default_effects[2].downcast_ref::<crate::effects::SacrificePlayerEffect>()
+    else {
+        return;
+    };
+    if sacrifice.player != PlayerFilter::You
+        || !matches!(sacrifice.count, Value::Fixed(1))
+        || !object_filter_has_single_tag_reference(&sacrifice.filter, &sacrificed_tag)
+    {
+        return;
+    }
+
+    let delayed_sacrifice = Effect::sacrifice_player(
+        ObjectFilter::tagged(moved_tag.clone()),
+        Value::Fixed(1),
+        PlayerFilter::You,
+    );
+    let schedule = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+        moved_tag,
+        ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {
+            source_description: "this creature".to_string(),
+        },
+        vec![delayed_sacrifice],
+        true,
+        Vec::new(),
+        PlayerFilter::You,
+    )
+    .watch_ability_source();
+    segment
+        .default_effects
+        .splice(1..3, [Effect::new(schedule)]);
 }
 
 fn replace_it_target_with_filter(target: &mut TargetAst, filter: &ObjectFilter) -> bool {
@@ -819,7 +951,7 @@ fn rewrite_lower_parsed_ability_internal(
             let Some(NormalizedPreparedAbility::Triggered { trigger, prepared }) = prepared else {
                 return Ok(parsed);
             };
-            let (lowered, parsed_intervening_if) =
+            let (mut lowered, parsed_intervening_if) =
                 materialize_prepared_triggered_effects(&prepared)?;
             rewrite_validate_iterated_player_bindings_in_lowered_effects(
                 &lowered,
@@ -830,6 +962,10 @@ fn rewrite_lower_parsed_ability_internal(
                 triggered.intervening_if.take(),
                 parsed_intervening_if,
             );
+            if let Some(condition) = intervening_if.as_ref() {
+                retarget_source_move_to_damaged_death_card(&mut lowered, condition);
+            }
+            rewrite_source_control_loss_sacrifice_followup(&mut lowered);
             triggered.trigger = compile_trigger_spec(trigger);
             triggered.effects = lowered.effects;
             triggered.choices = lowered.choices;

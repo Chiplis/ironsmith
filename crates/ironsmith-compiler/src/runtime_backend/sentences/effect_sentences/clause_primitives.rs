@@ -842,6 +842,22 @@ pub(crate) fn parse_must_block_if_able_clause(
         }
 
         let attacker_target = parse_target_phrase(attacker_clause.tokens())?;
+        if starts_with_target_indicator(attacker_clause.tokens()) {
+            return Ok(Some(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::subject_verb_target_only(attacker_target),
+                    EffectAst::subject_verb_cant(
+                        crate::effect::Restriction::must_block_specific_attacker(
+                            ObjectFilter::creature(),
+                            ObjectFilter::tagged(IT_TAG),
+                        ),
+                        duration,
+                        None,
+                    ),
+                ],
+            }));
+        }
+
         let attacker_filter = target_ast_to_object_filter(attacker_target).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported attacker target in must-block clause (clause: '{}')",
@@ -902,6 +918,23 @@ pub(crate) fn parse_must_block_if_able_clause(
             clause_text
         ))
     })?;
+
+    if starts_with_target_indicator(subject_clause.tokens()) {
+        let blocker_target = parse_target_phrase(subject_clause.tokens())?;
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(blocker_target),
+                EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::must_block_specific_attacker(
+                        ObjectFilter::tagged(IT_TAG),
+                        attacker_filter,
+                    ),
+                    duration,
+                    None,
+                ),
+            ],
+        }));
+    }
 
     Ok(Some(EffectAst::subject_verb_cant(
         crate::effect::Restriction::must_block_specific_attacker(blockers_filter, attacker_filter),

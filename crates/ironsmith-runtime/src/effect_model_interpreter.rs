@@ -377,6 +377,9 @@ where
         if let Some(filter) = &payload.target_filter {
             converted = converted.with_target_filter(filter.clone());
         }
+        if payload.watch_ability_source {
+            converted = converted.watch_ability_source();
+        }
         if payload.start_next_turn {
             converted = converted.starting_next_turn();
         }

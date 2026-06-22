@@ -80,6 +80,7 @@ const FOR_EACH_TEMPORAL_TURN_MARKERS: &[&[&str]] = &[&["this", "turn"], &["next"
 const FOR_EACH_WHERE_X_IS_PREFIX: &[&str] = &["where", "x", "is"];
 const FOR_EACH_OTHER_THAN_DEFENDING_PLAYER_PREFIX: &[&str] =
     &["other", "than", "defending", "player"];
+const FOR_EACH_ON_YOUR_TEAM_PREFIX: &[&str] = &["on", "your", "team"];
 const FOR_EACH_TAPPED_A_LAND_FOR_MANA_THIS_TURN_WORDS: &[&str] =
     &["tapped", "a", "land", "for", "mana", "this", "turn"];
 const FOR_EACH_TAPPED_LAND_FOR_MANA_THIS_TURN_WORDS: &[&str] =
@@ -1309,7 +1310,24 @@ pub(crate) fn parse_for_each_player_clause(
         return Ok(None);
     };
 
-    let inner_clause = inner_clause.trimmed();
+    let mut inner_clause = inner_clause.trimmed();
+    let mut iteration_filter = PlayerFilter::Any;
+    if let Some(after_team) =
+        for_each_strip_prefix_clause(inner_clause, FOR_EACH_ON_YOUR_TEAM_PREFIX)
+    {
+        inner_clause = after_team.trimmed();
+        iteration_filter = PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::Opponent);
+    }
+    let wrap_for_each = |effects: Vec<EffectAst>| {
+        if iteration_filter == PlayerFilter::Any {
+            EffectAst::ForEachPlayer { effects }
+        } else {
+            EffectAst::ForEachPlayersFiltered {
+                filter: iteration_filter.clone(),
+                effects,
+            }
+        }
+    };
     let inner_tokens = inner_clause.tokens();
     if inner_tokens.len() > 3
         && let Some(filter_start) = parse_for_each_relative_control_filter_start(inner_clause)
@@ -1382,7 +1400,7 @@ pub(crate) fn parse_for_each_player_clause(
             if_true: branch_effects,
             if_false: Vec::new(),
         }];
-        return Ok(Some(EffectAst::ForEachPlayer { effects }));
+        return Ok(Some(wrap_for_each(effects)));
     }
 
     let inner_words = token_word_refs(&inner_tokens);
@@ -1406,15 +1424,13 @@ pub(crate) fn parse_for_each_player_clause(
             } else {
                 parse_effect_chain_inner(&effect_tokens)?
             };
-            return Ok(Some(EffectAst::ForEachPlayer {
-                effects: vec![EffectAst::Conditional {
-                    predicate: PredicateAst::PlayerTappedLandForManaThisTurn {
-                        player: PlayerAst::That,
-                    },
-                    if_true: branch_effects,
-                    if_false: Vec::new(),
-                }],
-            }));
+            return Ok(Some(wrap_for_each(vec![EffectAst::Conditional {
+                predicate: PredicateAst::PlayerTappedLandForManaThisTurn {
+                    player: PlayerAst::That,
+                },
+                if_true: branch_effects,
+                if_false: Vec::new(),
+            }])));
         }
     }
     if for_each_words_start_with_who(&inner_words)
@@ -1503,7 +1519,7 @@ pub(crate) fn parse_for_each_player_clause(
     } else {
         parse_effect_chain(&normalized_inner_tokens)?
     };
-    Ok(Some(EffectAst::ForEachPlayer { effects }))
+    Ok(Some(wrap_for_each(effects)))
 }
 
 fn parse_for_each_relative_control_filter_start(clause: LexedClause<'_>) -> Option<usize> {

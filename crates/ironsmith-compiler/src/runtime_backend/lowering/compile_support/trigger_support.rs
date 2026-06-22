@@ -274,10 +274,12 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             from,
             one_or_more,
             during_turn,
+            cause_filter,
         } => {
             let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
                 .to(crate::zone::Zone::Exile)
-                .filter(filter);
+                .filter(filter)
+                .cause_filter(cause_filter);
             if !from.is_empty() {
                 trigger = trigger.from_any_of(from);
             }
@@ -721,6 +723,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::CounterPutOn { .. }
             | TriggerSpec::TokensCreated { .. }
             | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,
+            TriggerSpec::PutIntoExileFromZones { one_or_more, .. } => *one_or_more,
             TriggerSpec::PlayerDiscardsCard { one_or_more, .. } => *one_or_more,
             TriggerSpec::StateBased { .. } => false,
             TriggerSpec::Either(left, right) => {

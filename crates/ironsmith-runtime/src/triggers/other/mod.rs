@@ -25,7 +25,9 @@ pub use becomes_tapped::BecomesTappedTrigger;
 pub use becomes_untapped::BecomesUntappedTrigger;
 pub use chapter_ability_resolved::FinalChapterAbilityResolvedTrigger;
 pub use each_players_turn::EachPlayersTurnTrigger;
-pub use event_kind::{EventKindTrigger, ThisEventObjectTrigger};
+pub use event_kind::{
+    EventKindTrigger, SourceControllerLosesControlTrigger, ThisEventObjectTrigger,
+};
 pub use expend::ExpendTrigger;
 pub use keyword_action::KeywordActionTrigger;
 pub use mana_added::ManaAddedTrigger;

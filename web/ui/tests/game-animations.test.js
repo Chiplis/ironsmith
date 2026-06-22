@@ -200,6 +200,24 @@ test("destroy animation builds a collapse plus an inspector-bound stream", () =>
   assert.equal(result.visualEffects[1].targetScope, "inspector");
 });
 
+test("death animation follows battlefield-to-graveyard moves without a destroyed event", () => {
+  const result = resolveGameAnimations({
+    previews: [destroyPreview()],
+    state: { snapshot_id: 5, battlefield_transitions: [] },
+    previousCardRects: new Map([["stable:43", rect]]),
+  });
+
+  assert.equal(result.previews[0].animationKind, "death-collapse");
+  assert.match(result.previews[0].animationEventId, /^death-collapse:preview:/);
+  assert.deepEqual(
+    result.visualEffects.map((effect) => [effect.id, effect.kind, effect.travelsToInspector]),
+    [
+      ["death-collapse:p0:stable:43", "death-collapse", false],
+      ["death-collapse-stream:p0:stable:43", "marquee-stream", true],
+    ],
+  );
+});
+
 test("sacrifice gets the violet collapse variant and its own stream profile", () => {
   const result = resolveGameAnimations({
     previews: [destroyPreview()],
@@ -209,6 +227,7 @@ test("sacrifice gets the violet collapse variant and its own stream profile", ()
 
   assert.equal(result.previews[0].animationKind, "sacrifice-collapse");
   assert.equal(result.previews[0].inspectorShaderReveal, true);
+  assert.equal(result.visualEffects.length, 2);
   assert.deepEqual(
     result.visualEffects.map((effect) => [effect.kind, effect.collapseVariant ?? effect.streamProfile]),
     [
@@ -355,16 +374,8 @@ test("destroy animation does not reuse stagger start times for adjacent visual s
   );
 });
 
-test("destroy animation requires both a destroyed runtime event and battlefield-to-graveyard state", () => {
+test("death animation requires battlefield-to-graveyard state", () => {
   const previousCardRects = new Map([["stable:43", rect]]);
-  const withoutEvent = resolveGameAnimations({
-    previews: [destroyPreview()],
-    state: { snapshot_id: 5, battlefield_transitions: [] },
-    previousCardRects,
-  });
-  assert.equal(withoutEvent.visualEffects.length, 0);
-  assert.equal(withoutEvent.previews[0].animationKind, undefined);
-
   const withWrongState = resolveGameAnimations({
     previews: [destroyPreview({ toZone: "exile", title: "Battlefield -> Exile" })],
     state: { snapshot_id: 6, battlefield_transitions: [{ stable_id: 43, kind: "destroyed" }] },

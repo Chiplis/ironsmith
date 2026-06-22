@@ -3128,6 +3128,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_foretelling_cards_cost_modifier_line),
         single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
+        multi_static_ability_ast_rule!(parse_source_counter_threshold_keyword_and_subtype_line),
         multi_static_ability_ast_rule!(
             parse_subject_are_card_types_in_addition_to_their_other_types_line
         ),

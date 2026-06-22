@@ -29,7 +29,9 @@ pub(crate) fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Op
         | PredicateAst::PlayerControlsExactly { filter, .. }
         | PredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. }
         | PredicateAst::PlayerControlsNo { filter, .. }
-        | PredicateAst::PlayerControlsMost { filter, .. } => Some(filter.clone()),
+        | PredicateAst::PlayerControlsMost { filter, .. }
+        | PredicateAst::PlayerControlsMoreThanEachOtherPlayer { filter, .. }
+        | PredicateAst::AnOpponentHasFewerThanPlayer { filter, .. } => Some(filter.clone()),
         PredicateAst::ValueComparison {
             left: crate::effect::Value::Count(filter),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,

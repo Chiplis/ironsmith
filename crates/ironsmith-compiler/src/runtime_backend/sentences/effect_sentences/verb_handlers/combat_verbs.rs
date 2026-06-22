@@ -532,6 +532,32 @@ pub(crate) fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, Card
         ));
     }
 
+    if let Some(target_tokens) =
+        grammar::words_match_prefix(&object_tokens, &["all", "equipment", "from"])
+    {
+        let target = parse_target_phrase(target_tokens)?;
+        let mut equipment_filter = ObjectFilter::permanent();
+        equipment_filter.card_types.push(CardType::Artifact);
+        equipment_filter.subtypes.push(Subtype::Equipment);
+        equipment_filter.zone = Some(Zone::Battlefield);
+        equipment_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: TaggedOpbjectRelation::AttachedToTaggedObject,
+            });
+
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(target),
+                EffectAst::subject_verb_unattach(TargetAst::WithCount(
+                    Box::new(TargetAst::Object(equipment_filter, None, None)),
+                    ChoiceCount::any_number(),
+                )),
+            ],
+        });
+    }
+
     let object = parse_attached_object_reference(&object_tokens)
         .map(Ok)
         .unwrap_or_else(|| parse_target_phrase(&object_tokens))?;

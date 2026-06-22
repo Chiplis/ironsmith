@@ -247,6 +247,7 @@ impl TriggerMatcher for AttacksTrigger {
         } else if let Some(stripped) = subject.strip_prefix("an ") {
             subject = stripped.to_string();
         }
+        let base_subject = subject.clone();
         let subject = if self.one_or_more {
             pluralize_one_or_more_attack_subject(&subject)
         } else {
@@ -284,6 +285,18 @@ impl TriggerMatcher for AttacksTrigger {
             }
             if subject == "creature you control" && target_tail.is_empty() {
                 return "Whenever you attack".to_string();
+            }
+            if base_subject == "creature you control"
+                && matches!(attacked_player.as_ref(), Some(PlayerFilter::Any))
+                && attacked_target_must_be_player
+            {
+                return "Whenever you attack a player".to_string();
+            }
+            if base_subject == "creature an opponent controls"
+                && matches!(attacked_player.as_ref(), Some(PlayerFilter::Opponent))
+                && attacked_target_must_be_player
+            {
+                return "Whenever an opponent attacks another one of your opponents".to_string();
             }
             return format!("Whenever one or more {subject} attack{target_tail}");
         }
@@ -449,6 +462,30 @@ mod tests {
     fn test_display() {
         let trigger = AttacksTrigger::any_creature();
         assert!(trigger.display().contains("attacks"));
+    }
+
+    #[test]
+    fn one_or_more_you_control_attack_player_displays_you_attack_player() {
+        let mut filter = ObjectFilter::creature().you_control();
+        filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::Any);
+        filter.targets_only_player = Some(PlayerFilter::Any);
+        let trigger = AttacksTrigger::one_or_more(filter);
+
+        assert_eq!(trigger.display(), "Whenever you attack a player");
+    }
+
+    #[test]
+    fn one_or_more_opponent_controls_attack_opponent_displays_opponent_attacks_another() {
+        let mut filter = ObjectFilter::creature();
+        filter.controller = Some(PlayerFilter::Opponent);
+        filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::Opponent);
+        filter.targets_only_player = Some(PlayerFilter::Opponent);
+        let trigger = AttacksTrigger::one_or_more(filter);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever an opponent attacks another one of your opponents"
+        );
     }
 
     #[test]

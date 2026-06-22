@@ -68,6 +68,87 @@ fn energy_symbol_token(token: &OwnedLexToken) -> bool {
     token_is_word(token, ENERGY_WORD) || mana_group_token_matches_symbol(token, ENERGY_WORD)
 }
 
+fn exact_mana_pip_groups(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<ManaSymbol>>> {
+    let tokens = trim_commas(tokens);
+    if tokens.is_empty() {
+        return None;
+    }
+
+    let mut pips = Vec::new();
+    for token in tokens {
+        match token.kind {
+            TokenKind::ManaGroup => {
+                let slice = token.slice.as_str();
+                pips.push(parse_mana_symbol_group(slice).ok()?);
+            }
+            TokenKind::Word | TokenKind::Number => {
+                let word = token.as_word()?;
+                pips.push(parse_mana_symbol_group(word).ok()?);
+            }
+            _ => return None,
+        }
+    }
+
+    (!pips.is_empty()).then_some(pips)
+}
+
+fn exact_pay_component(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<EffectAst> {
+    let tokens = trim_commas(tokens);
+    if tokens.is_empty() {
+        return None;
+    }
+
+    if let Some((amount, used)) = parse_value(&tokens)
+        && token_slice_at_is(&tokens, used, "life")
+        && trim_commas(&tokens[used + 1..]).is_empty()
+    {
+        return Some(subject_verb_player_effect(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::LoseLife { amount },
+        ));
+    }
+
+    if let Some((amount, used)) = parse_value(&tokens)
+        && tokens
+            .get(used)
+            .is_some_and(|token| token.as_word().is_some_and(|word| word == ENERGY_TEXT_WORD))
+        && trim_commas(&tokens[used + 1..]).is_empty()
+    {
+        return Some(EffectAst::subject_verb_pay_energy(player, amount));
+    }
+
+    let pips = exact_mana_pip_groups(&tokens)?;
+    Some(EffectAst::subject_verb_pay_mana(
+        player,
+        ManaCost::from_pips(pips),
+    ))
+}
+
+fn parse_compound_pay(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<EffectAst> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.as_word().is_some_and(|word| word == "and") {
+            parts.push(trim_commas(&tokens[start..idx]));
+            start = idx + 1;
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    parts.push(trim_commas(&tokens[start..]));
+    if parts.iter().any(|part| part.is_empty()) {
+        return None;
+    }
+
+    let mut effects = Vec::new();
+    for part in parts {
+        effects.push(exact_pay_component(&part, player)?);
+    }
+    (effects.len() > 1).then_some(EffectAst::Sequence { effects })
+}
+
 fn ticket_symbol_token(token: &OwnedLexToken) -> bool {
     token_is_word(token, TICKET_WORD) || mana_group_token_matches_symbol(token, TICKET_WORD)
 }
@@ -1012,6 +1093,9 @@ pub(crate) fn parse_pay(
         && grammar::contains_word(tokens, "life")
     {
         return Ok(EffectAst::subject_verb_pay_any_life(player, 1));
+    }
+    if let Some(compound) = parse_compound_pay(tokens, player) {
+        return Ok(compound);
     }
     let has_for_each = word_slice_contains_phrase(&clause_words, FOR_EACH_PHRASE);
     let references_tagged_choice = clause_words

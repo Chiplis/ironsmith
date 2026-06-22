@@ -649,6 +649,58 @@ pub(crate) fn parse_next_damage_prevention_gain_life_sequence(
     Ok(Some(first_effects))
 }
 
+pub(crate) fn parse_next_damage_prevention_exile_top_sequence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Ok(mut first_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let [first_effect] = first_effects.as_mut_slice() else {
+        return Ok(None);
+    };
+
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::PreventNextTimeDamage {
+                follow_up_effects, ..
+            },
+        ..
+    }) = first_effect
+    else {
+        return Ok(None);
+    };
+    if !follow_up_effects.is_empty() {
+        return Ok(None);
+    }
+
+    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    let second_words = second_clause.word_refs();
+    let starts_with_exile_cards_from_top =
+        word_slice_starts_with(
+            &second_words,
+            &["exile", "cards", "from", "the", "top", "of"],
+        ) || word_slice_starts_with(&second_words, &["exile", "cards", "from", "top", "of"]);
+    if !starts_with_exile_cards_from_top
+        || !word_slice_contains_phrase(
+            &second_words,
+            &["equal", "to", "the", "damage", "prevented", "this", "way"],
+        )
+    {
+        return Ok(None);
+    }
+
+    follow_up_effects.push(EffectAst::subject_verb_exile_top_of_library(
+        PlayerAst::You,
+        Value::EventValue(EventValueSpec::Amount),
+        Vec::new(),
+        Vec::new(),
+    ));
+    Ok(Some(first_effects))
+}
+
 const THEY_DONT_UNTAP_DURING_PREFIXES: &[&[&str]] = &[
     &["they", "dont", "untap", "during"],
     &["they", "don't", "untap", "during"],

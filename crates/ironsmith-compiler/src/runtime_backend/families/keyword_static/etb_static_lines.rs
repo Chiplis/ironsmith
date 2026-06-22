@@ -4231,6 +4231,10 @@ pub(crate) fn parse_conditional_enters_tapped_unless_line(
 pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some(ability) = parse_spell_cast_enters_with_additional_counter_for_filter_line(tokens)? {
+        return Ok(Some(ability));
+    }
+
     let clause = LexedClause::new(tokens);
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let clause_word_len = clause.word_len();
@@ -4255,6 +4259,10 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
         return Ok(Some(ability.with_condition(condition)));
     }
 
+    if !ETB_WITH_ADDITIONAL_COUNTERS_PATTERN.matches(clause) {
+        return Ok(None);
+    }
+
     let Some(entry_clause) = parse_entry_filter_clause(tokens) else {
         return Ok(None);
     };
@@ -4273,10 +4281,6 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
         return Ok(None);
     }
     if ETB_TRIGGER_INTRO_AFTER_LABEL_PATTERN.matches(LexedClause::new(&subject_tokens)) {
-        return Ok(None);
-    }
-
-    if !ETB_WITH_ADDITIONAL_COUNTERS_PATTERN.matches(clause) {
         return Ok(None);
     }
 
@@ -4359,6 +4363,130 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
             added_subtypes,
         ),
     ))
+}
+
+fn parse_spell_cast_enters_with_additional_counter_for_filter_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !matches!(words.as_slice(), ["whenever", "you", "cast", ..]) {
+        return Ok(None);
+    }
+
+    let comma_indices = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, token)| token.is_comma().then_some(idx))
+        .take(2)
+        .collect::<Vec<_>>();
+    let [spell_filter_end, condition_end] = comma_indices.as_slice() else {
+        return Ok(None);
+    };
+
+    let Some(cast_idx) = tokens.iter().position(|token| token.is_word("cast")) else {
+        return Ok(None);
+    };
+    let spell_filter_tokens = trim_edge_punctuation(&tokens[cast_idx + 1..*spell_filter_end]);
+    let condition_tokens = trim_edge_punctuation(&tokens[*spell_filter_end + 1..*condition_end]);
+    let entry_tokens = trim_edge_punctuation(&tokens[*condition_end + 1..]);
+
+    let Some(condition) =
+        parse_snow_mana_of_any_spell_color_spent_to_cast_it_condition(&condition_tokens)
+    else {
+        return Ok(None);
+    };
+
+    let entry_clause = LexedClause::new(&entry_tokens);
+    if !ETB_WITH_ADDITIONAL_COUNTERS_PATTERN.matches(entry_clause) {
+        return Ok(None);
+    }
+
+    let Some(mut filter) = parse_enters_with_counter_object_filter_tokens(&spell_filter_tokens)
+    else {
+        return Ok(None);
+    };
+    if !matches!(filter.zone, Some(Zone::Stack)) {
+        return Ok(None);
+    }
+    filter.zone = Some(Zone::Battlefield);
+    filter.stack_kind = None;
+    filter.has_mana_cost = false;
+    filter.controller = Some(PlayerFilter::You);
+
+    let counter_type = parse_counter_type_from_tokens(&entry_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported counter type for spell-cast ETB replacement (clause: '{}')",
+            words.join(" ")
+        ))
+    })?;
+    let count = parse_additional_counter_count_from_tokens(&entry_tokens);
+
+    Ok(Some(
+        StaticAbility::enters_with_counters_and_subtypes_for_filter(
+            filter,
+            counter_type,
+            count,
+            Vec::new(),
+        )
+        .with_condition(condition),
+    ))
+}
+
+fn parse_snow_mana_of_any_spell_color_spent_to_cast_it_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::ConditionExpr> {
+    let mut tokens = trim_edge_punctuation(tokens);
+    if tokens
+        .first()
+        .is_some_and(|token| token.as_word().is_some_and(|word| word == ETB_IF_WORD))
+    {
+        tokens = trim_edge_punctuation(&tokens[1..]);
+    }
+
+    let first = tokens.first()?;
+    let symbol =
+        crate::runtime_backend::grammar::values::parse_mana_symbol(first.parser_text()).ok()?;
+    if symbol != crate::mana::ManaSymbol::Snow {
+        return None;
+    }
+
+    let words = crate::runtime_backend::token_word_refs(&tokens[1..]);
+    match words.as_slice() {
+        [
+            "of",
+            "any",
+            "of",
+            "that",
+            "spell" | "spells" | "spell's",
+            "colors",
+            "was",
+            "spent",
+            "to",
+            "cast",
+            "it",
+        ] => Some(crate::ConditionExpr::SnowManaOfAnySpellColorSpentToCastThisSpell),
+        _ => None,
+    }
+}
+
+fn parse_additional_counter_count_from_tokens(tokens: &[OwnedLexToken]) -> Value {
+    let additional_idx =
+        crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
+            etb_token_word_is(token, ETB_ADDITIONAL_WORD)
+        });
+    let Some(additional_idx) = additional_idx else {
+        return Value::Fixed(1);
+    };
+
+    if additional_idx > 0
+        && let Some((parsed, _)) = parse_number(&tokens[additional_idx - 1..additional_idx])
+    {
+        return Value::Fixed(parsed as i32);
+    }
+    if let Some((parsed, _)) = parse_number(&tokens[additional_idx + 1..]) {
+        return Value::Fixed(parsed as i32);
+    }
+    Value::Fixed(1)
 }
 
 #[derive(Debug, Clone, Copy)]

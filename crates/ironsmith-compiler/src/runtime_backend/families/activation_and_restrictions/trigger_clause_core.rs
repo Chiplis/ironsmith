@@ -343,6 +343,32 @@ const OR_IS_PUT_INTO_EXILE_FROM_BATTLEFIELD_TAIL_PATTERN: ClauseShape<'static> =
             "battlefield"
         ]
 );
+const OR_IS_PUT_INTO_GRAVEYARD_FROM_BATTLEFIELD_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "or",
+                "is",
+                "put",
+                "into",
+                "a",
+                "graveyard",
+                "from",
+                "the",
+                "battlefield",
+            ],
+            &[
+                "or",
+                "is",
+                "put",
+                "into",
+                "graveyard",
+                "from",
+                "the",
+                "battlefield",
+            ],
+        ]
+);
 const OR_TRANSFORMS_INTO_TAIL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["or", "transforms", "into"], &["or", "transform", "into"]]);
 const ONE_OR_MORE_QUANTIFIER_PATTERN: ClauseShape<'static> =
@@ -435,6 +461,7 @@ const ATTACKS_OPPONENT_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
             &["an", "opponent"],
             &["opponent"],
             &["one", "of", "your", "opponents"],
+            &["another", "one", "of", "your", "opponents"],
         ]
 );
 const ATTACKS_DEFENDING_PLAYER_TAIL_PATTERN: ClauseShape<'static> =
@@ -507,6 +534,45 @@ const SPELL_OR_ABILITY_TARGET_TAIL_PATTERN: ClauseShape<'static> = clause_shape!
         & [
             &["a", "spell", "or", "ability"],
             &["spell", "or", "ability"]
+        ]
+);
+const SPELL_OR_ABILITY_YOU_CONTROL_EXILES_PERMANENTS_FROM_BATTLEFIELD_PATTERN: ClauseShape<
+    'static,
+> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "a",
+                "spell",
+                "or",
+                "ability",
+                "you",
+                "control",
+                "exiles",
+                "one",
+                "or",
+                "more",
+                "permanents",
+                "from",
+                "the",
+                "battlefield",
+            ],
+            &[
+                "a",
+                "spell",
+                "or",
+                "ability",
+                "you",
+                "control",
+                "exile",
+                "one",
+                "or",
+                "more",
+                "permanents",
+                "from",
+                "the",
+                "battlefield",
+            ],
         ]
 );
 const BECOMES_TARGET_OF_PREFIX_PATTERN: ClauseShape<'static> =
@@ -2402,6 +2468,25 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject_tokens = &tokens[..enters_token_idx];
         if trigger_clause_shape_matches_words(
             &words[enters_word_idx + 1..],
+            OR_IS_PUT_INTO_GRAVEYARD_FROM_BATTLEFIELD_TAIL_PATTERN,
+        ) {
+            let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_word_view.to_word_refs();
+            if is_source_reference_words(&subject_words) {
+                return Ok(TriggerSpec::Either(
+                    Box::new(this_enters_battlefield_trigger_spec(
+                        source_reference_surface_for_trigger_subject(subject_tokens),
+                    )),
+                    Box::new(TriggerSpec::PutIntoGraveyardFromZone {
+                        filter: ObjectFilter::source(),
+                        from: Zone::Battlefield,
+                        one_or_more: false,
+                    }),
+                ));
+            }
+        }
+        if trigger_clause_shape_matches_words(
+            &words[enters_word_idx + 1..],
             OR_TRANSFORMS_INTO_TAIL_PREFIX_PATTERN,
         ) {
             let destination_name =
@@ -2619,6 +2704,22 @@ pub(crate) fn parse_trigger_clause_lexed(
             (words.as_slice(), None)
         };
 
+    if trigger_clause_shape_matches_words(
+        zone_change_words,
+        SPELL_OR_ABILITY_YOU_CONTROL_EXILES_PERMANENTS_FROM_BATTLEFIELD_PATTERN,
+    ) {
+        return Ok(TriggerSpec::PutIntoExileFromZones {
+            filter: ObjectFilter::permanent_card(),
+            from: vec![Zone::Battlefield],
+            one_or_more: true,
+            during_turn,
+            cause_filter: Some(
+                crate::events::cause::CauseFilter::effect_like()
+                    .with_controller(crate::events::cause::ControllerFilter::ContextController),
+            ),
+        });
+    }
+
     for tail in [
         ["leave", "your", "graveyard"].as_slice(),
         ["leaves", "your", "graveyard"].as_slice(),
@@ -2780,8 +2881,17 @@ pub(crate) fn parse_trigger_clause_lexed(
             .as_slice(),
             vec![Zone::Graveyard, Zone::Battlefield],
         ),
+        (
+            ["is", "put", "into", "exile", "from", "your", "hand"].as_slice(),
+            vec![Zone::Hand],
+        ),
+        (
+            ["are", "put", "into", "exile", "from", "your", "hand"].as_slice(),
+            vec![Zone::Hand],
+        ),
     ] {
         if trigger_clause_shape_matches_words(zone_change_words, ClauseShape::new().suffix(tail)) {
+            let from_your_hand = tail.ends_with(&["from", "your", "hand"]);
             let subject_word_len = zone_change_words.len().saturating_sub(tail.len());
             let subject_tokens = ActivationRestrictionCompatWords::new(tokens)
                 .token_index_for_word_index(subject_word_len)
@@ -2805,7 +2915,11 @@ pub(crate) fn parse_trigger_clause_lexed(
             };
             filter.zone = None;
             filter.controller = None;
-            filter.owner = None;
+            filter.owner = if from_your_hand {
+                Some(PlayerFilter::You)
+            } else {
+                None
+            };
             if subject_mentions_card(&subject_words) {
                 filter.card_types.clear();
                 filter.nontoken = true;
@@ -2815,6 +2929,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 from: from_zones,
                 one_or_more,
                 during_turn,
+                cause_filter: None,
             });
         }
     }

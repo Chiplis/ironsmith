@@ -122,6 +122,17 @@ function sacrificeAnimationMatches({ event, transition }) {
   );
 }
 
+function deathCollapsePreviewMatches({ transition, events }) {
+  if (transition?.fromZone !== "battlefield" || transition?.toZone !== "graveyard") {
+    return false;
+  }
+  return !events.some((event) => (
+    event?.type === RUNTIME_EVENT_BATTLEFIELD_TRANSITION
+    && (event.kind === "sacrificed" || event.kind === "exiled")
+    && transitionMatchesStableId(transition, event.stableId)
+  ));
+}
+
 function counterShatterMatches({ event, transition }) {
   return (
     event?.type === RUNTIME_EVENT_EFFECT
@@ -198,10 +209,21 @@ function compareTransitionsBySourceRect(left, right, previousCardRects) {
 // Shared annotation for the marquee collapse animations (death + sacrifice).
 // Cards are staggered by board position; the first matched preview carries
 // the inspector reveal so the WebGL stream has a destination to converge on.
+function syntheticPreviewEventId(animation, transition, previewIndex) {
+  return [
+    animation.id,
+    "preview",
+    transition?.runtimeTransitionId ?? transition?.token ?? previewIndex,
+  ].join(":");
+}
+
 function annotateMarqueeCollapsePreviews(previews, events, { previousCardRects } = {}, animation) {
   const matchedTransitions = [];
   previews.forEach((transition, previewIndex) => {
-    const event = events.find((candidate) => animation.matches({ event: candidate, transition }));
+    const event = events.find((candidate) => animation.matches({ event: candidate, transition }))
+      || (animation.matchesPreview?.({ transition, events })
+        ? { id: syntheticPreviewEventId(animation, transition, previewIndex) }
+        : null);
     if (event) matchedTransitions.push({ transition, event, previewIndex });
   });
   const staggerIndexByTransition = new Map(
@@ -464,6 +486,7 @@ export const deathCollapseAnimation = {
   streamProfile: "death",
   emitsWipeWave: true,
   matches: destroyAnimationMatches,
+  matchesPreview: deathCollapsePreviewMatches,
   annotatePreviews: (previews, events, context) => (
     annotateMarqueeCollapsePreviews(previews, events, context, deathCollapseAnimation)
   ),

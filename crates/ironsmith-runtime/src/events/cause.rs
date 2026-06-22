@@ -9,10 +9,27 @@ pub use ironsmith_core::{CauseFilter, CauseType, CauseTypeFilter, ControllerFilt
 
 pub trait CauseFilterRuntimeExt {
     fn matches(&self, cause: &EventCause, game: &GameState, affected_player: PlayerId) -> bool;
+    fn matches_with_context_controller(
+        &self,
+        cause: &EventCause,
+        game: &GameState,
+        affected_player: PlayerId,
+        context_controller: PlayerId,
+    ) -> bool;
 }
 
 impl CauseFilterRuntimeExt for CauseFilter {
     fn matches(&self, cause: &EventCause, game: &GameState, affected_player: PlayerId) -> bool {
+        self.matches_with_context_controller(cause, game, affected_player, affected_player)
+    }
+
+    fn matches_with_context_controller(
+        &self,
+        cause: &EventCause,
+        game: &GameState,
+        affected_player: PlayerId,
+        context_controller: PlayerId,
+    ) -> bool {
         if let Some(ref type_filter) = self.cause_type
             && !type_filter.matches(cause.cause_type)
         {
@@ -39,6 +56,9 @@ impl CauseFilterRuntimeExt for CauseFilter {
                 ControllerFilter::Opponent => cause
                     .source_controller
                     .is_some_and(|controller| controller != affected_player),
+                ControllerFilter::ContextController => {
+                    cause.source_controller == Some(context_controller)
+                }
                 ControllerFilter::Any => true,
             };
             if !matches_controller {

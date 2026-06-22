@@ -10,6 +10,7 @@ use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
 use crate::triggers::{TriggerEvent, TriggerIdentity};
+use ironsmith_core::DamagedBySource;
 
 const CREWERS_TAG: &str = "crewed_it_this_turn";
 const FIRST_CREWED_THIS_TURN_TAG: &str = "__first_crewed_this_turn";
@@ -173,6 +174,14 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Hand);
     }
 
+    fn add_battlefield_land(game: &mut GameState, id_raw: u32, name: &str, owner_index: usize) {
+        let card = CardBuilder::new(CardId::from_raw(id_raw), name)
+            .card_types(vec![CardType::Land])
+            .build();
+        let owner = game.players[owner_index].id;
+        game.create_object_from_card(&card, owner, Zone::Battlefield);
+    }
+
     #[test]
     fn evaluate_player_has_more_cards_in_hand_than_each_other_player_requires_unique_leader() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -222,6 +231,41 @@ mod tests {
             !evaluate_condition(&game, &condition, &ctx)
                 .expect("tied life totals should evaluate cleanly"),
             "expected tie for most life to fail the condition"
+        );
+    }
+
+    #[test]
+    fn evaluate_player_controls_more_than_each_other_player_requires_unique_leader() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let condition = Condition::PlayerControlsMoreThanEachOtherPlayer {
+            player: PlayerFilter::You,
+            filter: crate::target::ObjectFilter::land(),
+        };
+
+        add_battlefield_land(&mut game, 5, "Plains", 0);
+        add_battlefield_land(&mut game, 6, "Island", 1);
+        add_battlefield_land(&mut game, 7, "Swamp", 1);
+
+        let ctx = ExecutionContext::new_default(source, alice);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx).expect("lower land count should evaluate"),
+            "expected lower land count to fail the unique-leader condition"
+        );
+
+        add_battlefield_land(&mut game, 8, "Mountain", 0);
+        add_battlefield_land(&mut game, 9, "Forest", 0);
+        assert!(
+            evaluate_condition(&game, &condition, &ctx)
+                .expect("unique land leader should evaluate"),
+            "expected strict land-count leader to satisfy the condition"
+        );
+
+        add_battlefield_land(&mut game, 10, "Wastes", 1);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx).expect("ties should evaluate cleanly"),
+            "expected tie for most lands to fail the condition"
         );
     }
 
@@ -662,6 +706,41 @@ fn any_opponent_controls_more_than_player(
         })
 }
 
+fn any_opponent_has_fewer_than_player(
+    game: &GameState,
+    source: ObjectId,
+    player_filter: &PlayerFilter,
+    player_id: PlayerId,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    let player_count = condition_count_for_player(game, source, player_filter, player_id, filter);
+    game.players
+        .iter()
+        .filter(|p| p.id != player_id && p.is_in_game())
+        .any(|opponent| {
+            condition_count_for_player(game, source, player_filter, opponent.id, filter)
+                < player_count
+        })
+}
+
+fn player_controls_more_than_each_other_player(
+    game: &GameState,
+    source: ObjectId,
+    player_filter: &PlayerFilter,
+    player_id: PlayerId,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    let player_count = condition_count_for_player(game, source, player_filter, player_id, filter);
+    game.players
+        .iter()
+        .filter(|candidate| candidate.is_in_game())
+        .all(|candidate| {
+            candidate.id == player_id
+                || player_count
+                    > condition_count_for_player(game, source, player_filter, candidate.id, filter)
+        })
+}
+
 fn player_has_more_life_than_each_other_player(game: &GameState, player_id: PlayerId) -> bool {
     let Some(life) = game.player(player_id).map(|p| p.life) else {
         return false;
@@ -718,6 +797,89 @@ fn object_matching_was_put_into_graveyard_from_battlefield_this_turn(
                     .as_ref()
                     .is_some_and(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
         })
+}
+
+fn damage_source_for_condition(
+    game: &GameState,
+    ctx: SharedConditionContext<'_>,
+    damager: &DamagedBySource,
+) -> Option<ObjectId> {
+    match damager {
+        DamagedBySource::ThisCreature => Some(ctx.source),
+        DamagedBySource::EquippedCreature | DamagedBySource::EnchantedCreature => game
+            .object(ctx.source)
+            .and_then(|obj| obj.attached_to.as_ref())
+            .and_then(|target| match target {
+                crate::object::AttachmentTarget::Object(id) => Some(*id),
+                _ => None,
+            }),
+    }
+}
+
+fn creatures_dealt_damage_by_source_died_this_turn(
+    game: &GameState,
+    ctx: SharedConditionContext<'_>,
+    victim_filter: &crate::target::ObjectFilter,
+    damager: &DamagedBySource,
+) -> u32 {
+    let Some(source_id) = damage_source_for_condition(game, ctx, damager) else {
+        return 0;
+    };
+    let source_stable_id = game.object(source_id).map(|obj| obj.stable_id);
+    let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+    let mut count = 0;
+    for record in game
+        .turn_store
+        .turn_history
+        .event_records
+        .iter()
+        .chain(game.turn_store.turn_history.staged_event_records.iter())
+    {
+        let Some(event) = record
+            .event
+            .downcast::<crate::events::zones::ZoneChangeEvent>()
+        else {
+            continue;
+        };
+        if !event.is_dies() {
+            continue;
+        }
+        for victim_id in &event.objects {
+            let snapshot = event
+                .snapshot
+                .as_ref()
+                .filter(|snapshot| snapshot.object_id == *victim_id)
+                .or_else(|| {
+                    record
+                        .object_snapshot
+                        .as_ref()
+                        .filter(|snapshot| snapshot.object_id == *victim_id)
+                });
+            let victim_matches = if let Some(snapshot) = snapshot {
+                victim_filter.matches_snapshot(snapshot, &filter_ctx, game)
+            } else {
+                game.object(*victim_id)
+                    .is_some_and(|obj| victim_filter.matches(obj, &filter_ctx, game))
+            };
+            if !victim_matches {
+                continue;
+            }
+            let victim_stable_id = snapshot.map(|snapshot| snapshot.stable_id);
+            if game
+                .turn_store
+                .turn_history
+                .creature_was_damaged_by_source_identity_this_turn(
+                    *victim_id,
+                    victim_stable_id,
+                    source_id,
+                    source_stable_id,
+                )
+            {
+                count += 1;
+            }
+        }
+    }
+    count
 }
 
 fn creature_card_was_put_into_your_graveyard_this_turn(game: &GameState, player: PlayerId) -> bool {
@@ -996,6 +1158,13 @@ fn evaluate_condition_shared_core(
                 .total_creatures_died_this_turn()
                 >= *count,
         ),
+        Condition::CreatureDealtDamageBySourceDiedThisTurn {
+            victim,
+            damager,
+            count,
+        } => Some(
+            creatures_dealt_damage_by_source_died_this_turn(game, ctx, victim, damager) >= *count,
+        ),
         Condition::CreatureCardPutIntoYourGraveyardThisTurn => Some(
             creature_card_was_put_into_your_graveyard_this_turn(game, ctx.controller),
         ),
@@ -1073,6 +1242,12 @@ fn evaluate_condition_shared_core(
                 source_obj.mana_spent_to_cast.total()
             };
             Some(spent >= *amount)
+        }
+        Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
+            let Some(source_obj) = game.object(ctx.source) else {
+                return Some(false);
+            };
+            Some(source_obj.mana_spent_to_cast.total() > 0)
         }
         Condition::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
             let Some(source_obj) = game.object(ctx.source) else {
@@ -1214,8 +1389,10 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerControlsExactly { .. } => {}
         Condition::PlayerHasAtLeastWithDifferentPowers { .. } => {}
         Condition::PlayerControlsMost { .. } => {}
+        Condition::PlayerControlsMoreThanEachOtherPlayer { .. } => {}
         Condition::PlayerControlsMoreThanYou { .. } => {}
         Condition::AnOpponentControlsMoreThanPlayer { .. } => {}
+        Condition::AnOpponentHasFewerThanPlayer { .. } => {}
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { .. } => {}
         Condition::PlayerLifeLessThanHalfStartingLifeTotal { .. } => {}
         Condition::LifeTotalOrLess(..) => {}
@@ -1226,6 +1403,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::YourFirstTurnsOfTheGameOrFewer(..) => {}
         Condition::CreatureDiedThisTurn => {}
         Condition::CreatureDiedThisTurnOrMore(..) => {}
+        Condition::CreatureDealtDamageBySourceDiedThisTurn { .. } => {}
         Condition::CreatureCardPutIntoYourGraveyardThisTurn => {}
         Condition::CastSpellThisTurn => {}
         Condition::AttackedThisTurn => {}
@@ -1273,6 +1451,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceAttackedOrBlockedThisTurn => {}
         Condition::SourceIsInZone(..) => {}
         Condition::ManaSpentToCastThisSpellAtLeast { .. } => {}
+        Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {}
         Condition::SameColorManaSpentToCastThisSpellAtLeast(..) => {}
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(..) => {}
         Condition::YouControlCommander => {}
@@ -1526,6 +1705,24 @@ pub fn evaluate_condition_external(
                 .turn_history
                 .total_creatures_died_this_turn()
                 >= *count
+        }
+        Condition::CreatureDealtDamageBySourceDiedThisTurn {
+            victim,
+            damager,
+            count,
+        } => {
+            creatures_dealt_damage_by_source_died_this_turn(
+                game,
+                SharedConditionContext {
+                    controller: ctx.controller,
+                    source: ctx.source,
+                    filter_source: ctx.filter_source,
+                    triggering_event: ctx.triggering_event,
+                    trigger_identity: ctx.trigger_identity,
+                },
+                victim,
+                damager,
+            ) >= *count
         }
         Condition::CreatureCardPutIntoYourGraveyardThisTurn => {
             creature_card_was_put_into_your_graveyard_this_turn(game, ctx.controller)
@@ -1882,6 +2079,12 @@ pub fn evaluate_condition_external(
                 your_count >= other_count
             })
         }
+        Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            player_controls_more_than_each_other_player(game, ctx.source, player, player_id, filter)
+        }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {
                 let filter_ctx = condition_filter_context(
@@ -1911,6 +2114,13 @@ pub fn evaluate_condition_external(
                     any_opponent_controls_more_than_player(
                         game, ctx.source, player, player_id, filter,
                     )
+                })
+        }
+        Condition::AnOpponentHasFewerThanPlayer { player, filter } => {
+            matching_condition_players_external(game, ctx, player)
+                .into_iter()
+                .any(|player_id| {
+                    any_opponent_has_fewer_than_player(game, ctx.source, player, player_id, filter)
                 })
         }
         Condition::PlayerOwnsCardNamedInZones {
@@ -2198,6 +2408,7 @@ pub fn evaluate_condition_external(
         | Condition::SourceHasCounterAtLeast { .. }
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
+        | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
@@ -2627,6 +2838,12 @@ fn evaluate_condition_simple(
                 .unwrap_or(0);
             current == max_count
         }
+        Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            player_controls_more_than_each_other_player(game, source, player, player_id, filter)
+        }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {
                 let opponents: Vec<PlayerId> = game
@@ -2660,6 +2877,13 @@ fn evaluate_condition_simple(
                 .into_iter()
                 .any(|player_id| {
                     any_opponent_controls_more_than_player(game, source, player, player_id, filter)
+                })
+        }
+        Condition::AnOpponentHasFewerThanPlayer { player, filter } => {
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| {
+                    any_opponent_has_fewer_than_player(game, source, player, player_id, filter)
                 })
         }
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
@@ -2844,6 +3068,24 @@ fn evaluate_condition_simple(
                 .total_creatures_died_this_turn()
                 >= *count
         }
+        Condition::CreatureDealtDamageBySourceDiedThisTurn {
+            victim,
+            damager,
+            count,
+        } => {
+            creatures_dealt_damage_by_source_died_this_turn(
+                game,
+                SharedConditionContext {
+                    controller,
+                    source,
+                    filter_source: Some(source),
+                    triggering_event: None,
+                    trigger_identity: None,
+                },
+                victim,
+                damager,
+            ) >= *count
+        }
         Condition::CreatureCardPutIntoYourGraveyardThisTurn => {
             creature_card_was_put_into_your_graveyard_this_turn(game, controller)
         }
@@ -2953,6 +3195,7 @@ fn evaluate_condition_simple(
         | Condition::SourceHasCountersAtLeast(_)
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
+        | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
@@ -3356,6 +3599,12 @@ fn evaluate_condition(
                 .unwrap_or(0);
             Ok(current == max_count)
         }
+        Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(player_controls_more_than_each_other_player(
+                game, ctx.source, player, player_id, filter,
+            ))
+        }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {
                 let mut filter_ctx = ctx.filter_context(game);
@@ -3380,6 +3629,13 @@ fn evaluate_condition(
                     any_opponent_controls_more_than_player(
                         game, ctx.source, player, player_id, filter,
                     )
+                }))
+        }
+        Condition::AnOpponentHasFewerThanPlayer { player, filter } => {
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| {
+                    any_opponent_has_fewer_than_player(game, ctx.source, player, player_id, filter)
                 }))
         }
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
@@ -3540,6 +3796,22 @@ fn evaluate_condition(
             .turn_history
             .total_creatures_died_this_turn()
             >= *count),
+        Condition::CreatureDealtDamageBySourceDiedThisTurn {
+            victim,
+            damager,
+            count,
+        } => Ok(creatures_dealt_damage_by_source_died_this_turn(
+            game,
+            SharedConditionContext {
+                controller: ctx.controller,
+                source: ctx.source,
+                filter_source: Some(ctx.source),
+                triggering_event: None,
+                trigger_identity: None,
+            },
+            victim,
+            damager,
+        ) >= *count),
         Condition::CreatureCardPutIntoYourGraveyardThisTurn => Ok(
             creature_card_was_put_into_your_graveyard_this_turn(game, ctx.controller),
         ),
@@ -4104,6 +4376,7 @@ fn evaluate_condition(
         | Condition::SourceHasCounterAtLeast { .. }
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
+        | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }

@@ -354,6 +354,12 @@ impl TriggerMatcher for OrTrigger {
         // Use snapshot if any inner trigger uses snapshot
         self.triggers.iter().any(|t| t.uses_snapshot())
     }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        self.triggers
+            .iter()
+            .any(|trigger| trigger.looks_back_for_source(event))
+    }
 }
 
 #[cfg(test)]

@@ -502,6 +502,24 @@ pub(super) fn describe_resolution_program(
                 rendered_segments.push(rendered);
                 continue;
             }
+            if let Some(rendered) =
+                describe_chosen_name_consult_after_top_exile_effects(&segment.default_effects)
+            {
+                rendered_segments.push(rendered);
+                continue;
+            }
+            if let Some(rendered) =
+                describe_reveal_hand_choose_discard_then_random_effects(&segment.default_effects)
+            {
+                rendered_segments.push(rendered);
+                continue;
+            }
+            if let Some(rendered) =
+                describe_choose_sacrifice_then_source_damage_effects(&segment.default_effects)
+            {
+                rendered_segments.push(rendered);
+                continue;
+            }
             rendered_segments.push(
                 describe_effect_clause_list(&segment.default_effects)
                     .map(|text| capitalize_first(&text))
@@ -1365,7 +1383,10 @@ pub(super) fn substitute_legendary_source_reference(
     let lower = line.to_ascii_lowercase();
     let conditional_static_self_surface = ((lower.starts_with("as long as ")
         || lower.contains(": as long as "))
-        && (lower.contains(", this creature has ") || lower.contains(" this creature has ")))
+        && (lower.contains(", this creature has ")
+            || lower.contains(" this creature has ")
+            || lower.contains(", this creature is ")
+            || lower.contains(" this creature is ")))
         || (lower.starts_with("this creature has ") && lower.contains(" as long as "));
     let uses_named_source_surface = lower.starts_with("this creature gets ")
         || lower.starts_with("this creature's power and toughness ")
@@ -1382,6 +1403,9 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.starts_with("this creature can't be the target ")
         || lower.contains(" this creature deals ")
         || lower.contains(", this creature deals ")
+        || lower.contains(": target creature blocks this creature")
+        || lower.contains(": exile target creature blocking or blocked by this creature")
+        || (lower.contains(": put ") && lower.contains(" exiled with this creature"))
         || lower.contains(": this creature gets ")
         || lower.contains(": this creature gains ")
         || lower.contains(": this creature deals ")

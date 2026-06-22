@@ -76,6 +76,12 @@ pub(crate) fn effects_reference_tag(effects: &[EffectAst], tag: &str) -> bool {
         .any(|effect| effect_references_tag(effect, tag))
 }
 
+pub(crate) fn effects_reference_tag_in_object_position(effects: &[EffectAst], tag: &str) -> bool {
+    effects
+        .iter()
+        .any(|effect| effect_references_tag_in_object_position(effect, tag))
+}
+
 fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetAst)) {
     assert_effect_ast_variant_coverage(effect);
     match effect {
@@ -236,6 +242,58 @@ fn direct_effect_targets_reference_tag(effect: &EffectAst, tag: &str) -> bool {
         }
     });
     references
+}
+
+fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bool {
+    assert_effect_ast_variant_coverage(effect);
+    if direct_effect_targets_reference_tag(effect, tag) {
+        return true;
+    }
+    if let Some(filter) = effect_tagged_filter(effect)
+        && filter_references_tag(filter, tag)
+    {
+        return true;
+    }
+
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+            ..
+        }) => filter_references_tag(filter, tag),
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        }
+        | EffectAst::SelfReplacement {
+            predicate,
+            if_true,
+            if_false,
+        } => {
+            predicate_references_tag(predicate, tag)
+                || effects_reference_tag_in_object_position(if_true, tag)
+                || effects_reference_tag_in_object_position(if_false, tag)
+        }
+        EffectAst::ForEachObject { filter, effects } => {
+            filter_references_tag(filter, tag)
+                || effects_reference_tag_in_object_position(effects, tag)
+        }
+        EffectAst::ForEachTagged {
+            tag: found,
+            effects,
+        } => found.as_str() == tag || effects_reference_tag_in_object_position(effects, tag),
+        _ => {
+            let mut references = false;
+            for_each_nested_effects(effect, true, |nested| {
+                if !references {
+                    references = nested.iter().any(|nested_effect| {
+                        effect_references_tag_in_object_position(nested_effect, tag)
+                    });
+                }
+            });
+            references
+        }
+    }
 }
 
 pub(crate) fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
@@ -452,7 +510,9 @@ pub(crate) fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> b
         | PredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. }
         | PredicateAst::PlayerControlsNo { filter, .. }
         | PredicateAst::PlayerControlsMost { filter, .. }
+        | PredicateAst::PlayerControlsMoreThanEachOtherPlayer { filter, .. }
         | PredicateAst::AnOpponentControlsMoreThanPlayer { filter, .. }
+        | PredicateAst::AnOpponentHasFewerThanPlayer { filter, .. }
         | PredicateAst::PlayerControlsMoreThanYou { filter, .. }
         | PredicateAst::SourceHasAttachmentsMatching { filter, .. } => {
             filter_references_tag(filter, tag)
