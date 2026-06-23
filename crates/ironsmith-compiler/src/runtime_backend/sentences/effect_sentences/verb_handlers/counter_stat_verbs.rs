@@ -39,8 +39,15 @@ const COUNTER_ADDITIONAL_WORD: &str = "additional";
 const COUNTERS_ON_SOURCE_REFERENCE_PHRASES: &[&[&str]] = &[
     &["it"],
     &["this"],
+    &["this", "artifact"],
+    &["this", "aura"],
+    &["this", "battle"],
+    &["this", "card"],
     &["this", "creature"],
+    &["this", "enchantment"],
+    &["this", "land"],
     &["this", "permanent"],
+    &["this", "planeswalker"],
     &["this", "source"],
 ];
 const COUNTERS_ON_TAGGED_REFERENCE_PHRASES: &[&[&str]] = &[

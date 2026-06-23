@@ -44,6 +44,7 @@ pub enum ValueSurfaceHint {
     ForEach,
     CardsExiledThisWay,
     CardsDiscardedThisWay,
+    PermanentsSacrificedThisWay,
     CountersRemovedThisWay,
     Difference,
 }
@@ -826,6 +827,12 @@ pub enum Condition {
         amount: u32,
         symbol: Option<ManaSymbol>,
     },
+    TriggeringSpellManaSpentToCastAtLeast {
+        amount: u32,
+        symbol: Option<ManaSymbol>,
+    },
+    ColoredManaSpentToCastThisSpellAtLeast(u32),
+    TriggeringSpellColoredManaSpentToCastAtLeast(u32),
     YouControlMoreCreaturesThanTargetSpellController,
     TargetHasGreatestPowerAmongCreatures,
     TargetManaValueLteColorsSpentToCastThisSpell,

@@ -5320,8 +5320,8 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         )));
     }
 
-    let (remaining_tokens, target_set_same_controller) =
-        strip_same_controller_target_set_suffix(remaining);
+    let (remaining_tokens, target_set_same_controller, target_set_different_controllers) =
+        strip_controller_target_set_suffix(remaining);
     let remaining = remaining_tokens.as_slice();
     let remaining_word_view = UtilWordView::new(remaining);
     let remaining_words_with_articles = remaining_word_view.to_word_refs();
@@ -5339,9 +5339,8 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         let object_tokens = trim_commas(&remaining[..for_each_token_idx]);
         if !object_tokens.is_empty() {
             let mut filter = parse_object_filter(&object_tokens, other)?;
-            if target_set_same_controller {
-                filter.target_set_same_controller = true;
-            }
+            filter.target_set_same_controller = target_set_same_controller;
+            filter.target_set_different_controllers = target_set_different_controllers;
             return Ok(TargetAst::WithCountValue(
                 Box::new(TargetAst::Object(filter, target_span, None)),
                 ChoiceCount::dynamic_x(),
@@ -5351,9 +5350,8 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     }
 
     let mut filter = parse_object_filter(remaining, other)?;
-    if target_set_same_controller {
-        filter.target_set_same_controller = true;
-    }
+    filter.target_set_same_controller = target_set_same_controller;
+    filter.target_set_different_controllers = target_set_different_controllers;
     if filter.with_counter.is_none()
         && remaining_words
             .first()
@@ -5391,10 +5389,12 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     ))
 }
 
-fn strip_same_controller_target_set_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
+fn strip_controller_target_set_suffix(
+    tokens: &[OwnedLexToken],
+) -> (Vec<OwnedLexToken>, bool, bool) {
     let view = UtilWordView::new(tokens);
     let words = view.to_word_refs();
-    let Some(tail_start) = words
+    if let Some(tail_start) = words
         .len()
         .checked_sub(5)
         .filter(|start| words[*start..] == ["controlled", "by", "the", "same", "player"])
@@ -5404,13 +5404,25 @@ fn strip_same_controller_target_set_suffix(tokens: &[OwnedLexToken]) -> (Vec<Own
                 .checked_sub(4)
                 .filter(|start| words[*start..] == ["controlled", "by", "same", "player"])
         })
-    else {
-        return (tokens.to_vec(), false);
-    };
-    let Some(token_end) = view.token_index_for_word_index(tail_start) else {
-        return (tokens.to_vec(), false);
-    };
-    (trim_commas(&tokens[..token_end]), true)
+    {
+        let Some(token_end) = view.token_index_for_word_index(tail_start) else {
+            return (tokens.to_vec(), false, false);
+        };
+        return (trim_commas(&tokens[..token_end]), true, false);
+    }
+
+    if let Some(tail_start) = words
+        .len()
+        .checked_sub(4)
+        .filter(|start| words[*start..] == ["controlled", "by", "different", "players"])
+    {
+        let Some(token_end) = view.token_index_for_word_index(tail_start) else {
+            return (tokens.to_vec(), false, false);
+        };
+        return (trim_commas(&tokens[..token_end]), false, true);
+    }
+
+    (tokens.to_vec(), false, false)
 }
 
 /// Splits a token slice into "or"-separated option slices, preserving the

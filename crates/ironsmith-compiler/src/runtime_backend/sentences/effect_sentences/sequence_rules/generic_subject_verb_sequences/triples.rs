@@ -1,3 +1,4 @@
+use super::super::super::clause_pattern_helpers::parse_choose_target_prelude_sentence;
 use super::super::super::clause_primitives::parse_choose_card_name_clause;
 use super::super::super::dispatch_entry::{
     ConsultCastCost, consult_cast_effects, consult_stop_rule_is_single_match,
@@ -14,6 +15,7 @@ use crate::cards::builders::{
     TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Value};
+use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
 use crate::runtime_backend::front_end::lexer::{OwnedLexToken, find_token_word};
@@ -30,7 +32,7 @@ use crate::runtime_backend::token_primitives::{
 };
 use crate::runtime_backend::util::{
     helper_tag_for_tokens, non_article_word_refs, parse_choice_count_token_prefix_consumed,
-    trim_commas, word_refs_at_is_article,
+    parse_number_word_u32, trim_commas, word_refs_at_is_article,
 };
 use crate::target::ChooseSpec;
 use crate::target::{PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -341,6 +343,77 @@ fn abundant_harvest_branch_effects(
             PlayerAst::You,
         ),
     ]
+}
+
+pub(crate) fn parse_choose_two_targets_counter_first_if_power_then_fight(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let Some(mut effects) = parse_choose_target_prelude_sentence(&first_tokens)? else {
+        return Ok(None);
+    };
+    if effects.len() != 2 {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_word_refs = TokenWordView::new(&second_tokens).word_refs();
+    if !word_slice_starts_with(
+        &second_word_refs,
+        &[
+            "put", "a", "+1/+1", "counter", "on", "the", "creature", "you", "control", "if", "it",
+            "has", "power",
+        ],
+    ) {
+        return Ok(None);
+    }
+    let Some(power_idx) = word_slice_find_word(&second_word_refs, "power") else {
+        return Ok(None);
+    };
+    let Some(power_word) = second_word_refs.get(power_idx + 1) else {
+        return Ok(None);
+    };
+    let Some(required_power) = parse_number_word_u32(power_word) else {
+        return Ok(None);
+    };
+    if second_word_refs.get(power_idx + 2..power_idx + 4) != Some(&["or", "greater"][..]) {
+        return Ok(None);
+    }
+
+    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    let third_word_refs = TokenWordView::new(&third_tokens).word_refs();
+    if !word_slice_eq(
+        &third_word_refs,
+        &["then", "those", "creatures", "fight", "each", "other"],
+    ) {
+        return Ok(None);
+    }
+
+    let first_tag = TagKey::from("targeted_0");
+    let second_tag = TagKey::from("targeted_1");
+    let mut power_filter = ObjectFilter::default();
+    power_filter.power = Some(crate::filter::Comparison::GreaterThanOrEqual(
+        required_power as i32,
+    ));
+
+    effects.push(EffectAst::Conditional {
+        predicate: PredicateAst::TaggedMatches(first_tag.clone(), power_filter),
+        if_true: vec![EffectAst::subject_verb_put_counters(
+            CounterType::PlusOnePlusOne,
+            Value::Fixed(1),
+            TargetAst::Tagged(first_tag.clone(), None),
+            None,
+            false,
+        )],
+        if_false: Vec::new(),
+    });
+    effects.push(EffectAst::subject_verb_fight(
+        TargetAst::Tagged(first_tag, None),
+        TargetAst::Tagged(second_tag, None),
+    ));
+
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(

@@ -376,6 +376,7 @@ pub struct ObjectFilter {
     pub stack_kind: Option<StackObjectKind>,
     pub target_count: Option<ChoiceCount>,
     pub target_set_same_controller: bool,
+    pub target_set_different_controllers: bool,
     pub targets_only_player: Option<PlayerFilter>,
     pub targets_only_object: Option<Box<ObjectFilter>>,
     pub targets_only_any_of: bool,

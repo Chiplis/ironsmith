@@ -3638,19 +3638,29 @@ pub(crate) fn parse_token_granted_ability_followup_sentence_lexed(
 ) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
     let words = TokenWordView::new(tokens);
     let prefix_len = if word_view_has_prefix(&words, &["it", "has"])
+        || word_view_has_prefix(&words, &["it", "gains"])
         || word_view_has_prefix(&words, &["that", "token", "has"])
+        || word_view_has_prefix(&words, &["that", "token", "gains"])
         || word_view_has_prefix(&words, &["the", "token", "has"])
+        || word_view_has_prefix(&words, &["the", "token", "gains"])
     {
         if word_view_has_prefix(&words, &["it", "has"]) {
+            2
+        } else if word_view_has_prefix(&words, &["it", "gains"]) {
             2
         } else {
             3
         }
     } else if word_view_has_prefix(&words, &["they", "have"])
+        || word_view_has_prefix(&words, &["they", "gain"])
         || word_view_has_prefix(&words, &["those", "tokens", "have"])
+        || word_view_has_prefix(&words, &["those", "tokens", "gain"])
         || word_view_has_prefix(&words, &["the", "tokens", "have"])
+        || word_view_has_prefix(&words, &["the", "tokens", "gain"])
     {
         if word_view_has_prefix(&words, &["they", "have"]) {
+            2
+        } else if word_view_has_prefix(&words, &["they", "gain"]) {
             2
         } else {
             3

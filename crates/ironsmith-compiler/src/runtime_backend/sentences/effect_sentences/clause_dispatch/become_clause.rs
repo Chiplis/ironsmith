@@ -25,7 +25,7 @@ use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value};
 use crate::host::{CardTextError, EffectAst, IT_TAG, TagKey, TargetAst};
 use crate::target::{ChooseSpec, ObjectFilter};
-use crate::types::{CardType, Subtype};
+use crate::types::{CardType, Subtype, SubtypeFamily};
 
 const ADDITION_TAIL_PHRASES: &[&[&str]] = &[
     &["in", "addition", "to", "its", "other", "types"],
@@ -64,6 +64,8 @@ const SOURCE_POWER_TOUGHNESS_CLAUSES: &[&[&str]] = &[
     &["source", "power", "and", "toughness"],
 ];
 const CREATURE_OR_CREATURES_WORDS: &[&str] = &["creature", "creatures"];
+const ALL_CREATURE_TYPES_WORDS: &[&str] = &["all", "creature", "types"];
+const AND_ALL_CREATURE_TYPES_WORDS: &[&str] = &["and", "all", "creature", "types"];
 
 fn split_trailing_except_tokens(
     tokens: &[OwnedLexToken],
@@ -105,6 +107,25 @@ fn is_still_a_land_suffix(tokens: &[OwnedLexToken]) -> bool {
     )
 }
 
+fn subject_words_are_tagged_object_reference(words: &[&str]) -> bool {
+    if super::is_tagged_object_reference(words) {
+        return true;
+    }
+    for prefix in [
+        &["each", "of"][..],
+        &["all", "of"][..],
+        &["each"][..],
+        &["all"][..],
+    ] {
+        if let Some(rest) = words.strip_prefix(prefix)
+            && super::is_tagged_object_reference(rest)
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn recover_leading_duration_target(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
     let clause = LexedClause::new(tokens).trimmed();
     let words = clause.word_refs();
@@ -122,6 +143,28 @@ fn parse_copy_exception_preserves_source_abilities(tokens: &[OwnedLexToken]) -> 
         &LexedClause::new(tokens).word_refs(),
         COPY_PRESERVES_SOURCE_ABILITIES_WORDS,
     )
+}
+
+fn split_animation_suffix_all_creature_types(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, SubtypeFamily)> {
+    let clause = LexedClause::new(tokens).trimmed();
+    let words = clause.word_refs();
+    if word_slice_eq(&words, ALL_CREATURE_TYPES_WORDS) {
+        return Some((Vec::new(), SubtypeFamily::Creature));
+    }
+    if words.len() > AND_ALL_CREATURE_TYPES_WORDS.len()
+        && words[words.len() - AND_ALL_CREATURE_TYPES_WORDS.len()..]
+            == *AND_ALL_CREATURE_TYPES_WORDS
+    {
+        let split_word_idx = words.len() - AND_ALL_CREATURE_TYPES_WORDS.len();
+        let split_token_idx = clause.token_index_for_word_index(split_word_idx)?;
+        return Some((
+            clause.before(split_token_idx).trim(),
+            SubtypeFamily::Creature,
+        ));
+    }
+    None
 }
 
 pub(crate) fn parse_become_clause(
@@ -228,6 +271,11 @@ pub(crate) fn parse_become_clause(
             None,
             None,
         )
+    } else if target_subject_words.is_empty()
+        || word_slice_eq_any(&target_subject_words, IT_THEY_THEM_CLAUSES)
+        || subject_words_are_tagged_object_reference(&target_subject_words)
+    {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
     } else if target_subject_words
         .first()
         .is_some_and(|word| matches!(*word, "all" | "each"))
@@ -238,11 +286,6 @@ pub(crate) fn parse_become_clause(
             None,
             None,
         )
-    } else if target_subject_words.is_empty()
-        || word_slice_eq_any(&target_subject_words, IT_THEY_THEM_CLAUSES)
-        || super::is_tagged_object_reference(&target_subject_words)
-    {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
     } else if word_slice_eq_any(&target_subject_words, THIS_SOURCE_SUBJECT_CLAUSES) {
         TargetAst::Source(span_from_tokens(subject_tokens))
     } else {
@@ -404,6 +447,7 @@ pub(crate) fn parse_become_clause(
 
             let mut abilities = Vec::new();
             let mut granted_abilities = Vec::<GrantedAbilityAst>::new();
+            let mut subtype_families = Vec::<SubtypeFamily>::new();
             let suffix_tokens = if let Some(creature_token_idx) =
                 become_body_clause.token_index_for_word_index(creature_idx)
             {
@@ -424,15 +468,28 @@ pub(crate) fn parse_become_clause(
             {
                 let trimmed_suffix_tokens = LexedClause::new(&suffix_tokens[1..]).trim();
                 let trimmed_suffix = strip_trailing_addition_tail_tokens(&trimmed_suffix_tokens);
-                let suffix_words = LexedClause::new(trimmed_suffix).word_refs();
-                if let Ok((parsed_abilities, _)) =
-                    parse_granted_abilities_for_gain_clause(trimmed_suffix, &suffix_words, false)
-                    && !parsed_abilities.is_empty()
+                let (ability_suffix_tokens, suffix_grants_all_creature_types) =
+                    if let Some((ability_tokens, family)) =
+                        split_animation_suffix_all_creature_types(trimmed_suffix)
+                    {
+                        subtype_families.push(family);
+                        (ability_tokens, true)
+                    } else {
+                        (trimmed_suffix.to_vec(), false)
+                    };
+                let suffix_words = LexedClause::new(&ability_suffix_tokens).word_refs();
+                if ability_suffix_tokens.is_empty() {
+                    suffix_grants_all_creature_types
+                } else if let Ok((parsed_abilities, _)) = parse_granted_abilities_for_gain_clause(
+                    &ability_suffix_tokens,
+                    &suffix_words,
+                    false,
+                ) && !parsed_abilities.is_empty()
                 {
                     granted_abilities = parsed_abilities;
                     true
                 } else {
-                    parse_ability_line(trimmed_suffix)
+                    parse_ability_line(&ability_suffix_tokens)
                         .map(|actions| {
                             abilities = actions
                                 .into_iter()
@@ -458,6 +515,7 @@ pub(crate) fn parse_become_clause(
                     target,
                     vec![CardType::Creature],
                     Vec::new(),
+                    Vec::new(),
                     None,
                     Vec::new(),
                     Vec::new(),
@@ -470,6 +528,7 @@ pub(crate) fn parse_become_clause(
                 target,
                 card_types,
                 subtypes,
+                subtype_families,
                 colors,
                 abilities,
                 granted_abilities,
@@ -488,6 +547,7 @@ pub(crate) fn parse_become_clause(
             target,
             card_types,
             subtypes,
+            Vec::new(),
             colors,
             Vec::new(),
             Vec::new(),
@@ -506,6 +566,7 @@ pub(crate) fn parse_become_clause(
             target,
             card_types,
             subtypes,
+            Vec::new(),
             colors,
             Vec::new(),
             Vec::new(),

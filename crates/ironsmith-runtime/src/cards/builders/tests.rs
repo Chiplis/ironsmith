@@ -68765,6 +68765,306 @@ fn parse_oracle_tainted_strike_compiles_strictly() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_inkmoth_nexus_animation_keeps_types_and_keywords() {
+    let def = parse_oracle_card_definition("Inkmoth Nexus");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "{1}: This land becomes 1/1 phyrexian blinkmoth artifact creature with flying and infect until end of turn. It's still a land"
+        ),
+        "expected Inkmoth Nexus source animation to preserve artifact type, subtypes, keywords, and still-land text, got {rendered}"
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .find(|activated| activated.mana_cost.display() == "{1}")
+        .expect("Inkmoth Nexus should have a {1} animation ability");
+    let apply = activated.effects.segments[0].default_effects[0]
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .expect("Inkmoth animation should lower to one continuous effect");
+
+    assert!(
+        matches!(
+            apply.modification.as_ref(),
+            Some(crate::continuous::Modification::AddCardTypes(card_types))
+                if card_types.contains(&CardType::Creature)
+                    && card_types.contains(&CardType::Artifact)
+        ),
+        "expected Inkmoth animation to add artifact creature types, got {apply:#?}"
+    );
+    assert!(
+        apply.additional_modifications.iter().any(|modification| {
+            matches!(
+                modification,
+                crate::continuous::Modification::AddSubtypes(subtypes)
+                    if subtypes.contains(&Subtype::Phyrexian)
+                        && subtypes.contains(&Subtype::Blinkmoth)
+            )
+        }) && apply.additional_modifications.iter().any(|modification| {
+            matches!(
+                modification,
+                crate::continuous::Modification::AddAbility(ability)
+                    if ability.id() == StaticAbilityId::Flying
+            )
+        }) && apply.additional_modifications.iter().any(|modification| {
+            matches!(
+                modification,
+                crate::continuous::Modification::AddAbility(ability)
+                    if ability.id() == StaticAbilityId::Infect
+            )
+        }),
+        "expected Inkmoth animation to add Phyrexian Blinkmoth, flying, and infect, got {apply:#?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_mutavault_animation_keeps_all_creature_types() {
+    let def = parse_oracle_card_definition("Mutavault");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "{1}: This land becomes 2/2 creature with all creature types until end of turn. It's still a land"
+        ),
+        "expected Mutavault source animation to preserve all creature types and still-land text, got {rendered}"
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .find(|activated| activated.mana_cost.display() == "{1}")
+        .expect("Mutavault should have a {1} animation ability");
+    let apply = activated.effects.segments[0].default_effects[0]
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .expect("Mutavault animation should lower to one continuous effect");
+
+    assert!(
+        apply.additional_modifications.iter().any(|modification| {
+            matches!(
+                modification,
+                crate::continuous::Modification::AddAllSubtypesOfFamily(
+                    crate::types::SubtypeFamily::Creature
+                )
+            )
+        }),
+        "expected Mutavault animation to add every creature subtype, got {apply:#?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_neighboring_manlands_keep_animation_details() {
+    for (name, expected) in [
+        (
+            "Soulstone Sanctuary",
+            "{4}: this land becomes 3/3 creature with vigilance and all creature types. it's still a land",
+        ),
+        (
+            "Faceless Haven",
+            "{s}{s}{s}: this land becomes 4/3 creature with vigilance and all creature types until end of turn. it's still a land",
+        ),
+        (
+            "Dread Statuary",
+            "{4}: this land becomes 4/2 golem artifact creature until end of turn. it's still a land",
+        ),
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = canonical_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains(expected),
+            "expected {name} animation to preserve manland details, got {rendered}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mutavault_runtime_animation_grants_all_creature_types_until_eot() {
+    let def = parse_oracle_card_definition("Mutavault");
+    let activated = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .find(|activated| activated.mana_cost.display() == "{1}")
+        .expect("Mutavault should have a {1} animation ability");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert!(
+        game.current_card_types(source)
+            .is_some_and(|types| types == vec![CardType::Land]),
+        "Mutavault should start as only a land"
+    );
+    assert!(!game.current_has_subtype(source, Subtype::Elf));
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Mutavault animation should resolve");
+
+    assert!(
+        game.current_card_types(source).is_some_and(|types| {
+            types.contains(&CardType::Land) && types.contains(&CardType::Creature)
+        }),
+        "Mutavault should remain a land and become a creature"
+    );
+    assert_eq!(game.current_power(source), Some(2));
+    assert_eq!(game.current_toughness(source), Some(2));
+    assert!(game.current_has_subtype(source, Subtype::Elf));
+    assert!(game.current_has_subtype(source, Subtype::Goblin));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn score_improver_target_set_cauldron_of_souls_preserves_persist_set() {
+    assert_oracle_card_parses_strict("Cauldron of Souls");
+    let def = parse_oracle_card_definition("Cauldron of Souls");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains("Choose any number of target creatures")
+            && rendered.contains("Each of those creatures gains"),
+        "expected Cauldron of Souls to render the persistent target set, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        debug.contains("targetonlyeffect")
+            && debug.contains("applycontinuouseffect")
+            && debug.contains("targeted_0")
+            && debug.contains("persist"),
+        "expected Cauldron of Souls to target once and apply persist to that tagged set, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn score_improver_target_set_run_away_together_preserves_those_return_reference() {
+    let def = parse_oracle_card_definition("Run Away Together");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains("Choose two target creatures")
+            && rendered.contains("Return those creatures to their owners' hands"),
+        "expected Run Away Together to reuse the target set for the return clause, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("targetonlyeffect")
+            && debug.contains("returntohandeffect")
+            && debug.contains("targeted_0"),
+        "expected Run Away Together to lower return-those-creatures through the tagged target set, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn score_improver_target_set_hog_monkey_rampage_preserves_counter_and_fight() {
+    assert_oracle_card_parses_strict("Hog-Monkey Rampage");
+    let def = parse_oracle_card_definition("Hog-Monkey Rampage");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Choose target creature you control and target creature an opponent controls"
+        ) && rendered.contains("Put a +1/+1 counter on the creature you control")
+            && rendered.contains("Then those creatures fight each other"),
+        "expected Hog-Monkey Rampage to preserve the two-target counter/fight sequence, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.matches("targetonlyeffect").count() >= 2
+            && debug.contains("conditionaleffect")
+            && debug.contains("putcounterseffect")
+            && debug.contains("fighteffect")
+            && debug.contains("targeted_0")
+            && debug.contains("targeted_1"),
+        "expected Hog-Monkey Rampage to target both creatures once and reuse them for counter/fight, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn score_improver_target_set_ever_after_applies_color_and_type_to_returned_set() {
+    assert_oracle_card_parses_strict("Ever After");
+    let def = parse_oracle_card_definition("Ever After");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Return up to two target creature cards from your graveyard to the battlefield"
+        ) && rendered.contains("Each of those creatures is a black Zombie"),
+        "expected Ever After to apply black Zombie to the returned set, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("returnfromgraveyardtobattlefieldeffect")
+            && debug.contains("applycontinuouseffect")
+            && debug.contains("returned_0")
+            && debug.contains("addcolors")
+            && debug.contains("zombie"),
+        "expected Ever After to tag returned creatures before color/type modification, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn score_improver_target_set_fall_of_the_titans_preserves_surge_and_damage() {
+    assert_oracle_card_parses_strict("Fall of the Titans");
+    let def = parse_oracle_card_definition("Fall of the Titans");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains("Fall of the Titans deals X damage to each of up to two targets")
+            && rendered.contains("Surge {X}{R}"),
+        "expected Fall of the Titans to preserve Surge and counted any-target damage, got {rendered}"
+    );
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    let surge_debug = format!("{:#?}", def.alternative_casts).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("dealdamageeffect")
+            && spell_debug.contains("withcount")
+            && spell_debug.contains("anytarget")
+            && spell_debug.contains("min: 0")
+            && spell_debug.contains("max: some")
+            && spell_debug.contains("2")
+            && surge_debug.contains("surge"),
+        "expected Fall of the Titans to model up-to-two any-target damage plus named Surge, got spell={spell_debug}; surge={surge_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn tainted_strike_runtime_grants_infect_and_pump_until_end_of_turn() {
     let def = parse_oracle_card_definition("Tainted Strike");
     let spell = def

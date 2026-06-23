@@ -19,15 +19,76 @@ use crate::zone::Zone;
 
 use super::types::{TargetingInvalidReason, TargetingResult};
 
-fn spec_requires_same_controller_target_set(spec: &ChooseSpec) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TargetSetControllerConstraint {
+    Same,
+    Different,
+}
+
+fn spec_target_set_controller_constraint(
+    spec: &ChooseSpec,
+) -> Option<TargetSetControllerConstraint> {
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. }
         | ChooseSpec::Target(spec)
         | ChooseSpec::WithCount(spec, _)
-        | ChooseSpec::WithCountValue(spec, _, _) => spec_requires_same_controller_target_set(spec),
-        ChooseSpec::Object(filter) => filter.target_set_same_controller,
-        _ => false,
+        | ChooseSpec::WithCountValue(spec, _, _) => spec_target_set_controller_constraint(spec),
+        ChooseSpec::Object(filter) => {
+            if filter.target_set_same_controller {
+                Some(TargetSetControllerConstraint::Same)
+            } else if filter.target_set_different_controllers {
+                Some(TargetSetControllerConstraint::Different)
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
+}
+
+fn target_count_for_spec(spec: &ChooseSpec) -> Option<usize> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } | ChooseSpec::Target(spec) => {
+            target_count_for_spec(spec)
+        }
+        ChooseSpec::WithCount(_, count) | ChooseSpec::WithCountValue(_, count, _) => {
+            if count.min == count.max.unwrap_or(count.min) && !count.dynamic_x && !count.random {
+                count.max
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn different_controller_target_sets(grouped: &[Vec<Target>], count: usize) -> Vec<Vec<Target>> {
+    fn recurse(
+        grouped: &[Vec<Target>],
+        count: usize,
+        group_idx: usize,
+        current: &mut Vec<Target>,
+        out: &mut Vec<Vec<Target>>,
+    ) {
+        if current.len() == count {
+            out.push(current.clone());
+            return;
+        }
+        if group_idx >= grouped.len() || current.len() + (grouped.len() - group_idx) < count {
+            return;
+        }
+
+        recurse(grouped, count, group_idx + 1, current, out);
+        for target in &grouped[group_idx] {
+            current.push(*target);
+            recurse(grouped, count, group_idx + 1, current, out);
+            current.pop();
+        }
+    }
+
+    let mut out = Vec::new();
+    recurse(grouped, count, 0, &mut Vec::new(), &mut out);
+    out
 }
 
 pub fn legal_target_sets_for_spec(
@@ -35,9 +96,9 @@ pub fn legal_target_sets_for_spec(
     spec: &ChooseSpec,
     legal_targets: &[Target],
 ) -> Vec<Vec<Target>> {
-    if !spec_requires_same_controller_target_set(spec) {
+    let Some(constraint) = spec_target_set_controller_constraint(spec) else {
         return Vec::new();
-    }
+    };
 
     let mut by_controller: HashMap<PlayerId, Vec<Target>> = HashMap::new();
     for target in legal_targets {
@@ -53,7 +114,16 @@ pub fn legal_target_sets_for_spec(
             .push(*target);
     }
 
-    by_controller.into_values().collect()
+    let grouped = by_controller.into_values().collect::<Vec<_>>();
+    match constraint {
+        TargetSetControllerConstraint::Same => grouped,
+        TargetSetControllerConstraint::Different => {
+            let Some(count) = target_count_for_spec(spec) else {
+                return Vec::new();
+            };
+            different_controller_target_sets(&grouped, count)
+        }
+    }
 }
 
 pub fn has_enough_legal_targets_for_spec(

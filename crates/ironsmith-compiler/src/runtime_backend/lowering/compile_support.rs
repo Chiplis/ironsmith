@@ -717,6 +717,18 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 symbol: *symbol,
             }
         }
+        PredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol } => {
+            Condition::TriggeringSpellManaSpentToCastAtLeast {
+                amount: *amount,
+                symbol: *symbol,
+            }
+        }
+        PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
+            Condition::ColoredManaSpentToCastThisSpellAtLeast(*amount)
+        }
+        PredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount) => {
+            Condition::TriggeringSpellColoredManaSpentToCastAtLeast(*amount)
+        }
         PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell => {
             Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
         }

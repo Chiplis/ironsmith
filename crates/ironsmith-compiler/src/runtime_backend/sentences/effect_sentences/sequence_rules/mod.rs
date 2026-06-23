@@ -249,6 +249,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
             generic_subject_verb_sequences::quads::parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle,
     },
     SequenceRuleDef {
+        name: "choose-two-targets-counter-first-if-power-then-fight",
+        feature_tag: Some("target-set-counter-fight"),
+        priority: 342,
+        consumed_sentences: 3,
+        predicate: first_word_choose,
+        parser:
+            generic_subject_verb_sequences::triples::parse_choose_two_targets_counter_first_if_power_then_fight,
+    },
+    SequenceRuleDef {
         name: "choose-land-or-nonland-consult-hand-bottom",
         feature_tag: Some("consult-choice-kind"),
         priority: 341,

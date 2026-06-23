@@ -699,6 +699,37 @@ fn passive_addition_tail_len(words: &[&str]) -> Option<(usize, bool)> {
     None
 }
 
+fn passive_subject_is_tagged_object_reference(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["it"]
+            | ["they"]
+            | ["them"]
+            | ["that"]
+            | ["that", "card"]
+            | ["that", "creature"]
+            | ["that", "permanent"]
+            | ["that", "object"]
+            | ["those"]
+            | ["those", "cards"]
+            | ["those", "creatures"]
+            | ["those", "permanents"]
+            | ["those", "objects"]
+            | ["each", "of", "them"]
+            | ["each", "of", "those"]
+            | ["each", "of", "those", "cards"]
+            | ["each", "of", "those", "creatures"]
+            | ["each", "of", "those", "permanents"]
+            | ["each", "of", "those", "objects"]
+            | ["all", "of", "them"]
+            | ["all", "of", "those"]
+            | ["all", "of", "those", "cards"]
+            | ["all", "of", "those", "creatures"]
+            | ["all", "of", "those", "permanents"]
+            | ["all", "of", "those", "objects"]
+    )
+}
+
 fn parse_passive_color_type_addition_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -729,15 +760,7 @@ fn parse_passive_color_type_addition_sentence(
         .tokens();
     let subject_words = TokenWordView::new(subject_tokens).to_word_refs();
 
-    let target = if matches!(
-        subject_words.as_slice(),
-        ["it"]
-            | ["that", "card"]
-            | ["that", "creature"]
-            | ["that", "permanent"]
-            | ["those", "cards"]
-            | ["each", "of", "them"]
-    ) {
+    let target = if passive_subject_is_tagged_object_reference(&subject_words) {
         TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()))
     } else {
         parse_target_phrase(subject_tokens)?

@@ -83,6 +83,14 @@ fn bind_iterated_value_to_choose_spec(value: &Value, spec: &ChooseSpec) -> Value
     }
 }
 
+fn reserved_or_next_object_tag(ctx: &mut EffectLoweringContext, prefix: &str) -> String {
+    let prefix_with_sep = format!("{prefix}_");
+    ctx.last_object_tag
+        .clone()
+        .filter(|tag| tag.starts_with(&prefix_with_sep))
+        .unwrap_or_else(|| ctx.next_tag(prefix))
+}
+
 fn prevention_target_from_non_choice_target(
     target: &TargetAst,
     ctx: &EffectLoweringContext,
@@ -1589,14 +1597,13 @@ fn compile_subject_verb_effect(
             for choice in choices {
                 push_choice(&mut all_choices, choice);
             }
-            Ok((
-                vec![Effect::put_onto_battlefield(
-                    spec,
-                    *tapped,
-                    controller_filter,
-                )],
-                all_choices,
-            ))
+            let mut effect = Effect::put_onto_battlefield(spec.clone(), *tapped, controller_filter);
+            if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
+                let tag = reserved_or_next_object_tag(ctx, "moved");
+                ctx.last_object_tag = Some(tag.clone());
+                effect = effect.tag(tag);
+            }
+            Ok((vec![effect], all_choices))
         }
         SubjectVerbActionAst::LookAtObjects { filter } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
@@ -2963,7 +2970,7 @@ fn compile_subject_verb_effect(
                 };
                 let mut effect = Effect::new(move_effect);
                 if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
-                    let tag = ctx.next_tag("moved");
+                    let tag = reserved_or_next_object_tag(ctx, "moved");
                     ctx.last_object_tag = Some(tag.clone());
                     effect = effect.tag(tag);
                 }
@@ -3054,7 +3061,7 @@ fn compile_subject_verb_effect(
             let should_tag = choose_spec_targets_object(&spec)
                 && (ctx.auto_tag_object_targets || attached_to.is_some());
             if should_tag {
-                let tag = ctx.next_tag("moved");
+                let tag = reserved_or_next_object_tag(ctx, "moved");
                 moved_tag = Some(tag.clone());
                 ctx.last_object_tag = Some(tag.clone());
                 effect = effect.tag(tag);
@@ -3156,6 +3163,7 @@ fn compile_subject_verb_effect(
             target,
             card_types,
             subtypes,
+            subtype_families,
             colors,
             abilities,
             granted_abilities,
@@ -3194,6 +3202,11 @@ fn compile_subject_verb_effect(
                 }
                 for modification in granted_modifications {
                     apply = apply.with_additional_modification(modification);
+                }
+                for family in subtype_families {
+                    apply = apply.with_additional_modification(
+                        crate::continuous::Modification::AddAllSubtypesOfFamily(*family),
+                    );
                 }
                 Effect::new(apply)
             })
@@ -5023,7 +5036,7 @@ fn compile_subject_verb_effect(
         } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
-            let effect = Effect::for_each(
+            let mut effect = Effect::for_each(
                 resolved_filter,
                 vec![Effect::put_counters(
                     *counter_type,
@@ -5031,6 +5044,11 @@ fn compile_subject_verb_effect(
                     ChooseSpec::Iterated,
                 )],
             );
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("counters");
+                effect = effect.tag_all(tag.clone());
+                ctx.last_object_tag = Some(tag);
+            }
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::RemoveUpToAnyCounters {

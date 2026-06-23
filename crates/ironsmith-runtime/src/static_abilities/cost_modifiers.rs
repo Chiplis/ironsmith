@@ -262,11 +262,24 @@ fn describe_types_among_scope(filter: &ObjectFilter) -> String {
     description
 }
 
+fn describe_colors_among_scope(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    pluralize_cost_noun_phrase(strip_indefinite_article(&description))
+}
+
 fn is_source_exiled_count_filter(filter: &ObjectFilter) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
     })
+}
+
+fn describe_cost_count_filter(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    if filter.card_types.as_slice() == [CardType::Instant, CardType::Sorcery] {
+        return description.replace("instant or sorcery card", "instant and sorcery card");
+    }
+    description
 }
 
 fn describe_spell_cast_count_tail(
@@ -327,7 +340,7 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             Some(if is_source_exiled_count_filter(filter) {
                 "for each card exiled this way".to_string()
             } else {
-                format!("for each {}", filter.description())
+                format!("for each {}", describe_cost_count_filter(filter))
             }),
         ),
         Value::CountScaled(filter, multiplier) => (
@@ -335,7 +348,7 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             Some(if is_source_exiled_count_filter(filter) {
                 "for each card exiled this way".to_string()
             } else {
-                format!("for each {}", filter.description())
+                format!("for each {}", describe_cost_count_filter(filter))
             }),
         ),
         Value::GreatestCount(filter) => (
@@ -357,6 +370,13 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             Some(format!(
                 "for each creature type among {}",
                 describe_types_among_scope(filter)
+            )),
+        ),
+        Value::ColorsAmong(filter) => (
+            "{1}".to_string(),
+            Some(format!(
+                "for each color among {}",
+                describe_colors_among_scope(filter)
             )),
         ),
         Value::CreaturesDiedThisTurn => (
@@ -2379,6 +2399,32 @@ mod tests {
         assert_eq!(
             reduction.display(),
             "Domain — This spell costs {1} less to cast for each basic land type among lands you control"
+        );
+    }
+
+    #[test]
+    fn this_spell_cost_reduction_display_handles_colors_among() {
+        let reduction = ThisSpellCostReduction::new(
+            Value::ColorsAmong(ObjectFilter::permanent().you_control()),
+            Always,
+        );
+
+        assert_eq!(
+            reduction.display(),
+            "This spell costs {1} less to cast for each color among permanents you control"
+        );
+    }
+
+    #[test]
+    fn this_spell_cost_reduction_display_uses_instant_and_sorcery_card_template() {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+        filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+        let reduction = ThisSpellCostReduction::new(Value::Count(filter), Always);
+
+        assert_eq!(
+            reduction.display(),
+            "This spell costs {1} less to cast for each instant and sorcery card in your graveyard"
         );
     }
 }

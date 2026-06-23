@@ -377,6 +377,74 @@ fn spell_cast_trigger_targets_source(trigger: &TriggerSpec) -> bool {
     }
 }
 
+fn trigger_is_spell_cast(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_is_spell_cast(trigger),
+        TriggerSpec::SpellCast { .. } => true,
+        _ => false,
+    }
+}
+
+fn retarget_spell_cast_mana_spent_predicate(
+    trigger: &TriggerSpec,
+    predicate: PredicateAst,
+) -> PredicateAst {
+    if !trigger_is_spell_cast(trigger) {
+        return predicate;
+    }
+
+    match predicate {
+        PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
+            PredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol }
+        }
+        PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
+            PredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount)
+        }
+        PredicateAst::Not(inner) => PredicateAst::Not(Box::new(
+            retarget_spell_cast_mana_spent_predicate(trigger, *inner),
+        )),
+        PredicateAst::And(left, right) => PredicateAst::And(
+            Box::new(retarget_spell_cast_mana_spent_predicate(trigger, *left)),
+            Box::new(retarget_spell_cast_mana_spent_predicate(trigger, *right)),
+        ),
+        PredicateAst::Or(left, right) => PredicateAst::Or(
+            Box::new(retarget_spell_cast_mana_spent_predicate(trigger, *left)),
+            Box::new(retarget_spell_cast_mana_spent_predicate(trigger, *right)),
+        ),
+        other => other,
+    }
+}
+
+fn retarget_spell_cast_mana_spent_condition(
+    trigger: &TriggerSpec,
+    condition: Condition,
+) -> Condition {
+    if !trigger_is_spell_cast(trigger) {
+        return condition;
+    }
+
+    match condition {
+        Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
+            Condition::TriggeringSpellManaSpentToCastAtLeast { amount, symbol }
+        }
+        Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
+            Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount)
+        }
+        Condition::Not(inner) => Condition::Not(Box::new(
+            retarget_spell_cast_mana_spent_condition(trigger, *inner),
+        )),
+        Condition::And(left, right) => Condition::And(
+            Box::new(retarget_spell_cast_mana_spent_condition(trigger, *left)),
+            Box::new(retarget_spell_cast_mana_spent_condition(trigger, *right)),
+        ),
+        Condition::Or(left, right) => Condition::Or(
+            Box::new(retarget_spell_cast_mana_spent_condition(trigger, *left)),
+            Box::new(retarget_spell_cast_mana_spent_condition(trigger, *right)),
+        ),
+        other => other,
+    }
+}
+
 fn retarget_it_target_to_source(target: &mut TargetAst) {
     match target {
         TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => {
@@ -744,6 +812,11 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         body_effects = if_true.clone();
         intervening_if = merge_intervening_predicates(intervening_if, Some(predicate.clone()));
     }
+    if let Some(predicate) = intervening_if.take() {
+        intervening_if = Some(retarget_spell_cast_mana_spent_predicate(
+            &trigger, predicate,
+        ));
+    }
     if discard_one_or_more_trigger_uses_event_count(&trigger) {
         for effect in &mut body_effects {
             replace_it_count_with_event_count(effect);
@@ -962,6 +1035,8 @@ fn rewrite_lower_parsed_ability_internal(
                 triggered.intervening_if.take(),
                 parsed_intervening_if,
             );
+            let intervening_if = intervening_if
+                .map(|condition| retarget_spell_cast_mana_spent_condition(&trigger, condition));
             if let Some(condition) = intervening_if.as_ref() {
                 retarget_source_move_to_damaged_death_card(&mut lowered, condition);
             }

@@ -1993,6 +1993,28 @@ fn split_ability_loss_transform_subtype_card_type(text: &str) -> Option<(String,
 fn normalize_temporary_animation_oracle_surface(line: &str) -> Option<String> {
     let trimmed = line.trim().trim_end_matches('.');
     let lower = trimmed.to_ascii_lowercase();
+    if lower.contains("this land becomes ")
+        && lower.ends_with(" in addition to its other types until end of turn")
+    {
+        let suffix = " in addition to its other types until end of turn";
+        let prefix_len = trimmed.len() - suffix.len();
+        let prefix = trimmed[..prefix_len].trim();
+        return Some(format!("{prefix} until end of turn. It's still a land."));
+    }
+    if lower.contains("this land becomes ") && lower.ends_with(" in addition to its other types") {
+        let suffix = " in addition to its other types";
+        let prefix_len = trimmed.len() - suffix.len();
+        let prefix = trimmed[..prefix_len].trim();
+        return Some(format!("{prefix}. It's still a land."));
+    }
+    if lower.contains("this land becomes ")
+        && lower.contains(" creature")
+        && lower.ends_with(" until end of turn")
+        && !lower.contains("still a land")
+    {
+        return Some(format!("{trimmed}. It's still a land."));
+    }
+
     if lower.ends_with(" creature that's still a land until end of turn") {
         let prefix_len = trimmed.len() - " creature that's still a land until end of turn".len();
         let prefix = trimmed[..prefix_len].trim();
@@ -3573,11 +3595,12 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             " until end of turn. If it's not your turn, untap those creatures.",
         );
     }
+    let normalized_lower = normalized.to_ascii_lowercase();
     let preserve_plural_creatures_you_control = normalized
         .contains("from the command zone this game")
-        || normalized
-            .to_ascii_lowercase()
-            .contains("if it is not your turn, untap them");
+        || normalized_lower.contains("if it is not your turn, untap them")
+        || (normalized_lower.contains("creatures you control get ")
+            && normalized_lower.contains(" and gain "));
     if !preserve_plural_creatures_you_control {
         if normalized.starts_with("creatures you control get ") {
             normalized = normalized.replacen(
@@ -7679,6 +7702,15 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::Iterated => "that object".to_string(),
         ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
             let inner_text = describe_choose_spec(inner);
+            let controller_suffix = match inner.base() {
+                ChooseSpec::Object(filter) if filter.target_set_same_controller => {
+                    " controlled by the same player"
+                }
+                ChooseSpec::Object(filter) if filter.target_set_different_controllers => {
+                    " controlled by different players"
+                }
+                _ => "",
+            };
             let random_suffix = if count.is_random() {
                 if count.is_single() {
                     " chosen at random"
@@ -7698,35 +7730,55 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                     let count_text =
                         |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                     if count.is_up_to_dynamic_x() {
-                        return format!("up to X target {plural}{random_suffix}");
+                        return format!(
+                            "up to X target {plural}{controller_suffix}{random_suffix}"
+                        );
                     }
                     if count.is_dynamic_x() {
-                        return format!("X target {plural}{random_suffix}");
+                        return format!("X target {plural}{controller_suffix}{random_suffix}");
                     }
                     match (count.min, count.max) {
-                        (0, None) => format!("any number of target {plural}{random_suffix}"),
-                        (min, None) => format!("at least {min} target {plural}{random_suffix}"),
+                        (0, None) => {
+                            format!(
+                                "any number of target {plural}{controller_suffix}{random_suffix}"
+                            )
+                        }
+                        (min, None) => {
+                            format!(
+                                "at least {min} target {plural}{controller_suffix}{random_suffix}"
+                            )
+                        }
                         (0, Some(max)) => {
                             if max == 1 {
-                                format!("up to one target {base}{random_suffix}")
+                                format!("up to one target {base}{controller_suffix}{random_suffix}")
                             } else {
-                                format!("up to {} target {plural}{random_suffix}", count_text(max))
+                                format!(
+                                    "up to {} target {plural}{controller_suffix}{random_suffix}",
+                                    count_text(max)
+                                )
                             }
                         }
                         (min, Some(max)) if min == max => {
                             if min == 1 {
-                                format!("target {base}{random_suffix}")
+                                format!("target {base}{controller_suffix}{random_suffix}")
                             } else {
-                                format!("{} target {plural}{random_suffix}", count_text(min))
+                                format!(
+                                    "{} target {plural}{controller_suffix}{random_suffix}",
+                                    count_text(min)
+                                )
                             }
                         }
-                        (1, Some(2)) => format!("one or two target {plural}{random_suffix}"),
+                        (1, Some(2)) => {
+                            format!("one or two target {plural}{controller_suffix}{random_suffix}")
+                        }
                         (1, Some(3)) => {
-                            format!("one, two, or three target {plural}{random_suffix}")
+                            format!(
+                                "one, two, or three target {plural}{controller_suffix}{random_suffix}"
+                            )
                         }
                         (min, Some(max)) => {
                             format!(
-                                "{} to {} target {plural}{random_suffix}",
+                                "{} to {} target {plural}{controller_suffix}{random_suffix}",
                                 count_text(min),
                                 count_text(max)
                             )
@@ -7738,37 +7790,48 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                     let count_text =
                         |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                     if count.is_up_to_dynamic_x() {
-                        return format!("up to X {plural}{random_suffix}");
+                        return format!("up to X {plural}{controller_suffix}{random_suffix}");
                     }
                     if count.is_dynamic_x() {
-                        return format!("X {plural}{random_suffix}");
+                        return format!("X {plural}{controller_suffix}{random_suffix}");
                     }
                     match (count.min, count.max) {
-                        (0, None) => format!("any number of {plural}{random_suffix}"),
+                        (0, None) => {
+                            format!("any number of {plural}{controller_suffix}{random_suffix}")
+                        }
                         (min, None) => {
                             if min == 1 {
-                                format!("at least one {base}{random_suffix}")
+                                format!("at least one {base}{controller_suffix}{random_suffix}")
                             } else {
-                                format!("at least {} {plural}{random_suffix}", count_text(min))
+                                format!(
+                                    "at least {} {plural}{controller_suffix}{random_suffix}",
+                                    count_text(min)
+                                )
                             }
                         }
                         (0, Some(max)) => {
                             if max == 1 {
-                                format!("up to one {base}{random_suffix}")
+                                format!("up to one {base}{controller_suffix}{random_suffix}")
                             } else {
-                                format!("up to {} {plural}{random_suffix}", count_text(max))
+                                format!(
+                                    "up to {} {plural}{controller_suffix}{random_suffix}",
+                                    count_text(max)
+                                )
                             }
                         }
                         (min, Some(max)) if min == max => {
                             if min == 1 {
-                                format!("one {base}{random_suffix}")
+                                format!("one {base}{controller_suffix}{random_suffix}")
                             } else {
-                                format!("{} {plural}{random_suffix}", count_text(min))
+                                format!(
+                                    "{} {plural}{controller_suffix}{random_suffix}",
+                                    count_text(min)
+                                )
                             }
                         }
                         (min, Some(max)) => {
                             format!(
-                                "{} to {} {plural}{random_suffix}",
+                                "{} to {} {plural}{controller_suffix}{random_suffix}",
                                 count_text(min),
                                 count_text(max)
                             )
@@ -10238,6 +10301,11 @@ pub(super) fn describe_apply_continuous_animation_effect(
             crate::continuous::Modification::AddSubtypes(candidate_subtypes) => {
                 subtypes.extend(candidate_subtypes.iter().copied());
             }
+            crate::continuous::Modification::AddAllSubtypesOfFamily(
+                crate::types::SubtypeFamily::Creature,
+            ) => {
+                ability_text.push("all creature types".to_string());
+            }
             crate::continuous::Modification::AddAbility(ability) => {
                 ability_text.push(lowercase_first(&ability.display()));
             }
@@ -10254,11 +10322,12 @@ pub(super) fn describe_apply_continuous_animation_effect(
             effect.target_spec.as_ref(),
             Some(ChooseSpec::Tagged(tag)) if tag.as_str().starts_with("returned_")
         );
-    let preserves_land_types = effect
+    let mut preserves_land_types = effect
         .target_spec
         .as_ref()
         .and_then(choose_spec_land_filter)
-        .is_some();
+        .is_some()
+        || target.eq_ignore_ascii_case("this land");
     let (target_text, plural_target) =
         if let Some(target_text) = plural_non_target_land_animation_target(effect) {
             (target_text, true)
@@ -10267,6 +10336,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
         } else {
             (target.to_string(), plural_target)
         };
+    preserves_land_types = preserves_land_types || target_text.eq_ignore_ascii_case("this land");
 
     let mut descriptor = Vec::new();
     if let Some(colors) = colors {
@@ -12843,6 +12913,34 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 format!("at least {amount} mana was spent to cast the target spell")
             }
         }
+        Condition::TriggeringSpellManaSpentToCastAtLeast { amount, symbol } => {
+            if let Some(symbol) = symbol {
+                if *amount == 1 {
+                    format!("{} was spent to cast it", describe_mana_symbol(*symbol))
+                } else {
+                    format!(
+                        "at least {amount} {} mana was spent to cast it",
+                        describe_mana_symbol(*symbol)
+                    )
+                }
+            } else {
+                format!("at least {amount} mana was spent to cast it")
+            }
+        }
+        Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
+            if *amount == 1 {
+                "colored mana was spent to cast this spell".to_string()
+            } else {
+                format!("at least {amount} colored mana was spent to cast this spell")
+            }
+        }
+        Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount) => {
+            if *amount == 1 {
+                "colored mana was spent to cast it".to_string()
+            } else {
+                format!("at least {amount} colored mana was spent to cast it")
+            }
+        }
         Condition::YouControlMoreCreaturesThanTargetSpellController => {
             "you control more creatures than the target spell's controller".to_string()
         }
@@ -13793,6 +13891,18 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             } = inner.as_ref()
             {
                 "no mana was spent to cast the target spell".to_string()
+            } else if let Condition::TriggeringSpellManaSpentToCastAtLeast {
+                amount: 1,
+                symbol: None,
+            } = inner.as_ref()
+            {
+                "no mana was spent to cast it".to_string()
+            } else if let Condition::ColoredManaSpentToCastThisSpellAtLeast(1) = inner.as_ref() {
+                "no colored mana was spent to cast this spell".to_string()
+            } else if let Condition::TriggeringSpellColoredManaSpentToCastAtLeast(1) =
+                inner.as_ref()
+            {
+                "no colored mana was spent to cast it".to_string()
             } else if let Condition::YourTurn = inner.as_ref() {
                 "it is not your turn".to_string()
             } else if let Condition::PermanentLeftBattlefieldThisTurn = inner.as_ref() {

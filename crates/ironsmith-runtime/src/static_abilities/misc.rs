@@ -3059,6 +3059,7 @@ impl ReplacementMatcher for ConditionalWouldEnterBattlefieldMatcher {
 fn enter_with_counter_filter_condition_uses_entering_object(condition: &Condition) -> bool {
     match condition {
         Condition::ManaSpentToCastThisSpellAtLeast { .. }
+        | Condition::ColoredManaSpentToCastThisSpellAtLeast(_)
         | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_) => true,

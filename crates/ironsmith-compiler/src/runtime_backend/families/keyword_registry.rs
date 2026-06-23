@@ -274,6 +274,20 @@ fn optional_cost_tail_effect_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedL
     (!effect_tokens.is_empty()).then_some(effect_tokens)
 }
 
+fn keyword_tokens_for_shape<'a>(
+    line: &'a RewriteKeywordLine,
+    tokens: &'a [OwnedLexToken],
+    shape: KeywordPrefixShape,
+) -> Option<&'a [OwnedLexToken]> {
+    if keyword_prefix_shape(tokens) == Some(shape) {
+        return Some(tokens);
+    }
+    if keyword_prefix_shape(&line.full_parse_tokens) == Some(shape) {
+        return Some(line.full_parse_tokens.as_slice());
+    }
+    None
+}
+
 pub(super) fn lower_additional_cost(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
@@ -335,11 +349,13 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
-    if keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Surge) {
-        let raw_tokens = lex_line(line.text.as_str(), line.info.line_index)?;
+    if let Some(raw_tokens) = keyword_tokens_for_shape(line, tokens, KeywordPrefixShape::Surge) {
         let cost_tokens = raw_tokens.get(1..).unwrap_or_default();
         let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
-            CardTextError::ParseError(format!("surge keyword missing cost '{}'", line.text))
+            CardTextError::ParseError(format!(
+                "surge keyword missing cost '{}'",
+                line.info.raw_line
+            ))
         })?;
         let condition = crate::static_abilities::ThisSpellCostCondition::ConditionExpr {
             condition: crate::ConditionExpr::Or(
@@ -1101,6 +1117,8 @@ fn parse_additional_cost_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardText
 fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let rendered = render_token_slice(tokens).trim().to_ascii_lowercase();
     Ok(token_slice_first_is(tokens, "encore")
+        || keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Surge)
+        || keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Freerunning)
         || keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Sneak)
         || parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
         || parse_you_may_rather_than_spell_cost_line_lexed(tokens, rendered.as_str())?.is_some()

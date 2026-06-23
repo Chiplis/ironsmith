@@ -213,6 +213,44 @@ fn absorb_predicate_into_trigger(
     }
 }
 
+fn retarget_spell_cast_mana_spent_predicate(
+    trigger: &TriggerSpec,
+    predicate: PredicateAst,
+) -> PredicateAst {
+    fn trigger_is_spell_cast(trigger: &TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => trigger_is_spell_cast(trigger),
+            TriggerSpec::SpellCast { .. } => true,
+            _ => false,
+        }
+    }
+
+    if !trigger_is_spell_cast(trigger) {
+        return predicate;
+    }
+
+    fn retarget(predicate: PredicateAst) -> PredicateAst {
+        match predicate {
+            PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
+                PredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol }
+            }
+            PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
+                PredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount)
+            }
+            PredicateAst::Not(inner) => PredicateAst::Not(Box::new(retarget(*inner))),
+            PredicateAst::And(left, right) => {
+                PredicateAst::And(Box::new(retarget(*left)), Box::new(retarget(*right)))
+            }
+            PredicateAst::Or(left, right) => {
+                PredicateAst::Or(Box::new(retarget(*left)), Box::new(retarget(*right)))
+            }
+            other => other,
+        }
+    }
+
+    retarget(predicate)
+}
+
 fn absorb_single_conditional_effect_into_trigger(
     trigger: TriggerSpec,
     effects: Vec<EffectAst>,
@@ -643,6 +681,7 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
             effects,
             max_triggers_per_turn,
         } => {
+            let predicate = retarget_spell_cast_mana_spent_predicate(&trigger, predicate);
             let (trigger, predicate) = absorb_predicate_into_trigger(trigger, predicate);
             let (trigger, effects) =
                 absorb_single_conditional_effect_into_trigger(trigger, effects);

@@ -262,6 +262,18 @@ const TAGGED_OBJECT_REFERENCE_PHRASES: &[&[&str]] = &[
     &["those", "permanents"],
     &["those", "objects"],
 ];
+const RETURN_TAGGED_OBJECT_REFERENCE_PHRASES: &[&[&str]] = &[
+    &["it"],
+    &["them"],
+    &["that", "card"],
+    &["that", "creature"],
+    &["that", "permanent"],
+    &["that", "object"],
+    &["those", "cards"],
+    &["those", "creatures"],
+    &["those", "permanents"],
+    &["those", "objects"],
+];
 const OF_WORD: &str = "of";
 const HAVE_OR_HAS_WORDS: &[&str] = &["have", "has"];
 const THIS_SOURCE_WORDS: &[&str] = &["this"];
@@ -2179,6 +2191,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
     let for_each_subject_filter = parse_for_each_object_subject(subject_tokens)?;
     let rest = &tokens[verb_token_idx + 1..];
+    if matches!(verb, Verb::Return)
+        && word_slice_eq_any(&subject_words, RETURN_TAGGED_OBJECT_REFERENCE_PHRASES)
+    {
+        let mut return_tokens = subject_tokens.to_vec();
+        return_tokens.extend(rest.iter().cloned());
+        return parse_effect_with_verb(verb, Some(SubjectAst::This), &return_tokens);
+    }
     if matches!(verb, Verb::Put)
         && subject_words
             .first()

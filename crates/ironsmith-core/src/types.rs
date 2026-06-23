@@ -177,6 +177,7 @@ pub enum Subtype {
     Beast,
     Berserker,
     Bird,
+    Blinkmoth,
     Boar,
     Cat,
     Centaur,
@@ -480,6 +481,7 @@ impl Subtype {
             Subtype::Beast,
             Subtype::Berserker,
             Subtype::Bird,
+            Subtype::Blinkmoth,
             Subtype::Boar,
             Subtype::Cat,
             Subtype::Centaur,
@@ -821,6 +823,7 @@ impl Subtype {
                 | Subtype::Beast
                 | Subtype::Berserker
                 | Subtype::Bird
+                | Subtype::Blinkmoth
                 | Subtype::Boar
                 | Subtype::Cat
                 | Subtype::Centaur

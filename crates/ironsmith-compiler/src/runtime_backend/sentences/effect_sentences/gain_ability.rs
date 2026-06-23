@@ -157,6 +157,7 @@ const CANT_BE_BLOCKED_EXCEPT_BY_HASTE_PREFIXES: &[&[&str]] = &[
     ],
 ];
 const TOKEN_WORD: &str = "token";
+const TOKENS_WORD: &str = "tokens";
 const ALSO_WORD: &str = "also";
 const AND_OR_THEN_WORDS: &[&str] = &["and", "then"];
 const TRIGGER_INTRO_WORDS: &[&str] = &["when", "whenever", "at"];
@@ -172,6 +173,59 @@ const SOURCE_HEAD_WORD: &str = "this";
 const SOURCE_REFERENCE_NOUN_WORDS: &[&str] = &["creature", "permanent", "spell", "card"];
 const SOURCE_SUBJECT_PHRASES: &[&[&str]] =
     &[&["this"], &["this", "creature"], &["this", "permanent"]];
+const DEMONSTRATIVE_PLAYER_SUBJECT_NOUNS: &[&str] = &[
+    "player",
+    "players",
+    "opponent",
+    "opponents",
+    "controller",
+    "controllers",
+    "owner",
+    "owners",
+];
+
+fn demonstrative_subject_is_player_reference(words: &[&str]) -> bool {
+    if words.len() >= 2
+        && DEMONSTRATIVE_SUBJECT_WORDS.contains(&words[0])
+        && DEMONSTRATIVE_PLAYER_SUBJECT_NOUNS.contains(&words[1])
+    {
+        return true;
+    }
+
+    words.len() >= 4
+        && matches!(words[0], "each" | "all")
+        && words[1] == "of"
+        && DEMONSTRATIVE_SUBJECT_WORDS.contains(&words[2])
+        && DEMONSTRATIVE_PLAYER_SUBJECT_NOUNS.contains(&words[3])
+}
+
+fn subject_words_are_demonstrative_reference(words: &[&str]) -> bool {
+    !demonstrative_subject_is_player_reference(words)
+        && (words
+            .first()
+            .is_some_and(|word| DEMONSTRATIVE_SUBJECT_WORDS.contains(word))
+            || (words.len() >= 3
+                && matches!(words[0], "each" | "all")
+                && words[1] == "of"
+                && DEMONSTRATIVE_SUBJECT_WORDS.contains(&words[2])))
+}
+
+fn subject_words_contain_base_pt_clause(words: &[&str]) -> bool {
+    words.iter().enumerate().any(|(idx, word)| {
+        HAS_OR_HAVE_WORDS.contains(word)
+            && words
+                .get(idx + 1..)
+                .is_some_and(|tail| word_slice_starts_with(tail, BASE_POWER_TOUGHNESS_PREFIX))
+    })
+}
+
+fn single_or_sequence_effect(mut effects: Vec<EffectAst>) -> Option<EffectAst> {
+    if effects.len() == 1 {
+        effects.pop()
+    } else {
+        Some(EffectAst::Sequence { effects })
+    }
+}
 
 fn gain_find_any_phrase_start<'a>(
     words: &[&str],
@@ -955,14 +1009,17 @@ fn parse_simple_ability_modifier_clause_lexed(
     if subject_tokens.is_empty() && !implied_it_subject {
         return Ok(None);
     }
+    let subject_words = GainAbilityWordView::new(subject_tokens);
+    let subject_word_refs = subject_words.to_word_refs();
+    if subject_words_contain_base_pt_clause(&subject_word_refs) {
+        return Ok(parse_gain_ability_sentence(tokens)?.and_then(single_or_sequence_effect));
+    }
 
     if !losing
         && !subject_tokens.is_empty()
         && let Some((subject_verb, _)) = find_verb_lexed(subject_tokens)
         && subject_verb != Verb::Get
     {
-        let subject_words = GainAbilityWordView::new(&subject_tokens);
-        let subject_word_refs = subject_words.to_word_refs();
         let target_phrase_with_controller_tail = subject_word_refs
             .first()
             .is_some_and(|word| *word == TARGET_WORD)
@@ -1063,8 +1120,6 @@ fn parse_simple_ability_modifier_clause_lexed(
         // half. The characteristic-setting half is handled by chain parsing.
     }
 
-    let subject_words = GainAbilityWordView::new(subject_tokens);
-    let subject_word_refs = subject_words.to_word_refs();
     let is_pronoun_subject =
         implied_it_subject || word_slice_eq_any(&subject_word_refs, PRONOUN_TAGGED_SUBJECT_PHRASES);
     if is_pronoun_subject {
@@ -1091,11 +1146,13 @@ fn parse_simple_ability_modifier_clause_lexed(
         )));
     }
 
-    let is_demonstrative_subject = subject_word_refs
-        .first()
-        .is_some_and(|word| DEMONSTRATIVE_SUBJECT_WORDS.contains(word));
+    let is_demonstrative_subject = subject_words_are_demonstrative_reference(&subject_word_refs);
     if is_demonstrative_subject || subject_word_refs.iter().any(|word| *word == TARGET_WORD) {
-        let target = parse_target_phrase(subject_tokens)?;
+        let target = if is_demonstrative_subject {
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_lexed_tokens(subject_tokens))
+        } else {
+            parse_target_phrase(subject_tokens)?
+        };
         if losing {
             return Ok(Some(EffectAst::subject_verb_remove_abilities_from_target(
                 target, abilities, duration,
@@ -1198,14 +1255,17 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     if subject_tokens.is_empty() && !implied_it_subject {
         return Ok(None);
     }
+    let subject_words = GainAbilityWordView::new(&subject_tokens);
+    let subject_word_refs = subject_words.to_word_refs();
+    if subject_words_contain_base_pt_clause(&subject_word_refs) {
+        return Ok(parse_gain_ability_sentence(tokens)?.and_then(single_or_sequence_effect));
+    }
 
     if !losing
         && !subject_tokens.is_empty()
         && let Some((subject_verb, _)) = find_verb(&subject_tokens)
         && subject_verb != Verb::Get
     {
-        let subject_words = GainAbilityWordView::new(&subject_tokens);
-        let subject_word_refs = subject_words.to_word_refs();
         let target_phrase_with_controller_tail = subject_word_refs
             .first()
             .copied()
@@ -1267,8 +1327,6 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         }
     }
 
-    let subject_words = GainAbilityWordView::new(&subject_tokens);
-    let subject_word_refs = subject_words.to_word_refs();
     let is_pronoun_subject =
         implied_it_subject || word_slice_eq_any(&subject_word_refs, PRONOUN_TAGGED_SUBJECT_PHRASES);
     if is_pronoun_subject {
@@ -1294,11 +1352,13 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         )));
     }
 
-    let is_demonstrative_subject = subject_word_refs
-        .first()
-        .is_some_and(|word| DEMONSTRATIVE_SUBJECT_WORDS.contains(word));
+    let is_demonstrative_subject = subject_words_are_demonstrative_reference(&subject_word_refs);
     if is_demonstrative_subject || subject_word_refs.iter().any(|word| *word == TARGET_WORD) {
-        let target = parse_target_phrase(&subject_tokens)?;
+        let target = if is_demonstrative_subject {
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens))
+        } else {
+            parse_target_phrase(&subject_tokens)?
+        };
         if losing {
             return Ok(Some(EffectAst::subject_verb_remove_abilities_from_target(
                 target, abilities, duration,
@@ -1376,7 +1436,9 @@ pub(crate) fn parse_gain_ability_sentence(
     };
     if let Some((Verb::Create, create_idx)) = find_verb(tokens)
         && create_idx < gain_token_idx
-        && word_list.iter().any(|word| *word == TOKEN_WORD)
+        && word_list
+            .iter()
+            .any(|word| *word == TOKEN_WORD || *word == TOKENS_WORD)
     {
         return Ok(None);
     }
@@ -1883,11 +1945,10 @@ pub(crate) fn parse_gain_ability_sentence(
         return Ok(Some(effects));
     }
 
-    let is_demonstrative_subject = real_subject_words
-        .first()
-        .is_some_and(|word| DEMONSTRATIVE_SUBJECT_WORDS.contains(word));
+    let is_demonstrative_subject = subject_words_are_demonstrative_reference(&real_subject_words);
     if is_demonstrative_subject {
-        let target = parse_target_phrase(&real_subject_tokens)?;
+        let target =
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens));
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
@@ -2635,6 +2696,26 @@ mod tests {
                 && string_contains(&debug, "wither")
                 && debug.matches("endofturn").count() >= 2,
             "expected shared self-targeted base P/T plus wither grant until EOT, got {debug}"
+        );
+    }
+
+    #[test]
+    fn leading_duration_demonstrative_base_pt_then_gains_keyword_parses() {
+        let tokens = tokenize_line(
+            "Until end of turn, that creature has base power and toughness 4/4 and gains indestructible.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("leading-duration base-pt then gains clause should parse")
+            .expect("leading-duration base-pt then gains clause should produce effects");
+
+        let debug = format!("{effects:?}").to_ascii_lowercase();
+        assert!(
+            string_contains(&debug, "setbasepowertoughness")
+                && string_contains(&debug, "grantabilitiestotarget")
+                && string_contains(&debug, "indestructible")
+                && debug.matches("endofturn").count() >= 2,
+            "expected demonstrative base P/T plus keyword grant until EOT, got {debug}"
         );
     }
 

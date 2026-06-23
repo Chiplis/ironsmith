@@ -13766,6 +13766,90 @@ fn rewrite_lowered_supports_spent_to_cast_conditional_chain() -> Result<(), Card
 }
 
 #[test]
+fn rewrite_lowered_preserves_etb_spent_to_cast_it_intervening_if() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Gruul Scrapper")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "When this creature enters, if {R} was spent to cast it, it gains haste until end of turn."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("intervening_if"), "{debug}");
+    assert!(debug.contains("ManaSpentToCastThisSpellAtLeast"), "{debug}");
+    assert!(debug.contains("Red"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_retargets_spell_cast_spent_mana_intervening_if() -> Result<(), CardTextError> {
+    let builder =
+        CardDefinitionBuilder::new(CardId::new(), "Sahagin").card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever you cast a noncreature spell, if at least four mana was spent to cast it, put a +1/+1 counter on this creature."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("TriggeringSpellManaSpentToCastAtLeast"),
+        "{debug}"
+    );
+    assert!(debug.contains("amount: 4"), "{debug}");
+    assert!(debug.contains("PutCountersEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_keeps_spent_mana_counter_and_unblockable_followup() -> Result<(), CardTextError>
+{
+    let builder =
+        CardDefinitionBuilder::new(CardId::new(), "Sahagin").card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever you cast a noncreature spell, if at least four mana was spent to cast it, put a +1/+1 counter on this creature and it can't be blocked this turn."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("TriggeringSpellManaSpentToCastAtLeast"),
+        "{debug}"
+    );
+    assert!(debug.contains("PutCountersEffect"), "{debug}");
+    assert!(debug.contains("CantEffect"), "{debug}");
+    assert!(debug.contains("BeBlocked"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_retargets_spell_cast_no_colored_mana_intervening_if() -> Result<(), CardTextError>
+{
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Void Mirror")
+        .card_types(vec![CardType::Artifact]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever a player casts a spell, if no colored mana was spent to cast it, counter that spell."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("Not"), "{debug}");
+    assert!(
+        debug.contains("TriggeringSpellColoredManaSpentToCastAtLeast"),
+        "{debug}"
+    );
+    assert!(debug.contains("CounterEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_supports_radiance_shared_color_fanout() {
     let text = "Radiance — Target creature and each other creature that shares a color with it gain haste until end of turn.";
     let lexed =
@@ -13933,6 +14017,52 @@ fn rewrite_lexed_effect_sentence_supports_equal_to_damage_to_any_target_with_sou
         debug.contains("target: AnyTarget") || debug.contains("target: Any"),
         "expected any-target damage lowering, got {debug}"
     );
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_supports_draw_for_each_counter_on_source() {
+    let text = "Draw a card for each lore counter on this enchantment.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify source-counter draw sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should accept source-counter draw");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Draw"), "{debug}");
+    assert!(debug.contains("CountersOnSource(Lore)"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_supports_draw_for_each_counter_on_this_aura() {
+    let text = "Draw a card for each page counter on this Aura.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify aura-counter draw sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should accept aura-counter draw");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Draw"), "{debug}");
+    assert!(
+        debug.contains("CountersOnSource(Named(\"page\"))"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_supports_draw_for_each_spell_cast_this_turn() {
+    let text = "Draw a card for each other instant and sorcery spell you've cast this turn.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify spell-cast-count draw sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should accept spell-cast-count draw");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Draw"), "{debug}");
+    assert!(debug.contains("SpellsCastThisTurnMatching"), "{debug}");
+    assert!(debug.contains("exclude_source: true"), "{debug}");
 }
 
 #[test]

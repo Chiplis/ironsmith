@@ -13,6 +13,7 @@ pub(super) fn ast_compiled_lines(def: &CardDefinition) -> Vec<RawRenderedLine> {
     stacker::maybe_grow(1024 * 1024, 8 * 1024 * 1024, || compiled_lines_inner(def))
         .into_iter()
         .map(|line| rewrite_self_exile_cost_source(def, &line))
+        .map(|line| rewrite_named_source_counter_reference(def, &line))
         .map(RawRenderedLine)
         .collect()
 }
@@ -31,6 +32,23 @@ fn rewrite_self_exile_cost_source(def: &CardDefinition, line: &str) -> String {
         return line.to_string();
     }
     line.replace(&source_phrase, &format!("Exile {}", def.card.name))
+}
+
+fn rewrite_named_source_counter_reference(def: &CardDefinition, line: &str) -> String {
+    if !def.card.name.starts_with("The ") {
+        return line.to_string();
+    }
+    let Some(primary_type) = def.card.card_types.first() else {
+        return line.to_string();
+    };
+    let source_type = primary_type.name().to_ascii_lowercase();
+    let mut rewritten = line.to_string();
+    for counter_noun in ["counter", "counters"] {
+        let pattern = format!("{counter_noun} on this {source_type}");
+        let replacement = format!("{counter_noun} on {}", def.card.name);
+        rewritten = rewritten.replace(&pattern, &replacement);
+    }
+    rewritten
 }
 
 fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
@@ -1410,7 +1428,9 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.contains(": this creature gains ")
         || lower.contains(": this creature deals ")
         || lower.contains(": whenever this creature deals combat damage to a player")
-        || lower.starts_with("this planeswalker has ");
+        || lower.starts_with("this planeswalker has ")
+        || lower.starts_with("this planeswalker deals ")
+        || lower.contains(": this planeswalker deals ");
     if card.supertypes.contains(&Supertype::Legendary) && lower.starts_with("soulshift ") {
         if !self_name.is_empty() {
             return format!("{self_name} has {}", lowercase_first(line));
@@ -2628,12 +2648,7 @@ pub(super) fn describe_alternative_cast_line(
         method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Surge") => {
             method
                 .mana_cost()
-                .map(|cost| {
-                    format!(
-                        "Surge {} (You may cast this spell for its surge cost if you or a teammate has cast another spell this turn.)",
-                        cost.to_oracle()
-                    )
-                })
+                .map(|cost| format!("Surge {}", cost.to_oracle()))
                 .unwrap_or_else(|| "Surge".to_string())
         }
         method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Freerunning") => {

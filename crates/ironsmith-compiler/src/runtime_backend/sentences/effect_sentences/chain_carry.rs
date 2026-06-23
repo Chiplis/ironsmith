@@ -1806,6 +1806,7 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
     matches!(
         predicate,
         PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
+            | PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(_)
             | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
             | PredicateAst::ItMatches(_)
             | PredicateAst::TargetMatches(_)

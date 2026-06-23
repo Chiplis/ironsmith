@@ -187,6 +187,7 @@ mod tests {
                 aura_attach_filter: None,
                 x_value: None,
                 cast_order_this_turn: None,
+                mana_spent_to_cast: crate::player::ManaPool::default(),
                 counters: std::collections::HashMap::new(),
                 is_token: false,
                 tapped: false,

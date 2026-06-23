@@ -86,6 +86,81 @@ fn effect_contains_search_library(effect: &EffectAst) -> bool {
     found
 }
 
+fn last_demonstrative_collection_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
+    match effects.last()? {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { count },
+            ..
+        }) => {
+            let Value::Count(filter) = count else {
+                return None;
+            };
+            Some(filter.clone())
+        }
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PumpAll { filter, .. },
+            ..
+        }) => Some(filter.clone()),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. },
+            ..
+        }) => Some(filter.clone()),
+        EffectAst::ForEachObject { filter, .. } => Some(filter.clone()),
+        _ => None,
+    }
+}
+
+fn starts_with_demonstrative_object_gain(words: &[&str]) -> bool {
+    let subject_is_demonstrative = words
+        .first()
+        .is_some_and(|word| matches!(*word, "that" | "those"))
+        || (words.len() >= 3
+            && matches!(words[0], "each" | "all")
+            && words[1] == "of"
+            && matches!(words[2], "that" | "those"));
+    subject_is_demonstrative && words.iter().any(|word| matches!(*word, "gain" | "gains"))
+}
+
+fn build_grant_all_from_demonstrative_gain(
+    filter: ObjectFilter,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let mut parsed = parse_effect_sentence_lexed(sentence_tokens)?;
+    let [effect] = parsed.as_mut_slice() else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+        return Ok(None);
+    };
+    match action.clone() {
+        SubjectVerbActionAst::GrantAbilitiesToTarget {
+            abilities,
+            duration,
+            condition,
+            ..
+        } => Ok(Some(if let Some(condition) = condition {
+            EffectAst::subject_verb_grant_abilities_all_with_condition(
+                filter, abilities, duration, condition,
+            )
+        } else {
+            EffectAst::subject_verb_grant_abilities_all(filter, abilities, duration)
+        })),
+        SubjectVerbActionAst::GrantAbilitiesAll {
+            abilities,
+            duration,
+            condition,
+            ..
+        } => Ok(Some(if let Some(condition) = condition {
+            EffectAst::subject_verb_grant_abilities_all_with_condition(
+                filter, abilities, duration, condition,
+            )
+        } else {
+            EffectAst::subject_verb_grant_abilities_all(filter, abilities, duration)
+        })),
+        _ => Ok(None),
+    }
+}
+
 fn effect_needs_followup_library_shuffle(effect: &EffectAst) -> bool {
     if matches!(
         effect,
@@ -862,6 +937,30 @@ fn pre_rule_token_followups(
     Ok(None)
 }
 
+fn pre_rule_draw_count_demonstrative_gain_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = LexedClause::new(sentence_tokens).word_refs();
+    if !starts_with_demonstrative_object_gain(&words) {
+        return Ok(None);
+    }
+    let Some(filter) = last_demonstrative_collection_filter(state.effects) else {
+        return Ok(None);
+    };
+    let Some(effect) = build_grant_all_from_demonstrative_gain(filter, sentence_tokens)? else {
+        return Ok(None);
+    };
+    state.effects.push(effect);
+    *state.carried_context = None;
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("subject-verb verb=Grant subject=demonstrative recognizer=draw-count-followup"),
+    }))
+}
+
 fn parse_create_more_of_prior_tokens(
     sentence_tokens: &[OwnedLexToken],
     prior_effects: &[EffectAst],
@@ -1385,6 +1484,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         priority: 40,
         heads: &["copy", "that"],
         run: pre_rule_copy_and_cast_followups,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "draw-count-demonstrative-gain",
+        priority: 45,
+        heads: &["that", "those", "each", "all"],
+        run: pre_rule_draw_count_demonstrative_gain_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "token-followups",

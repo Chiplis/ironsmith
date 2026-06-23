@@ -77,6 +77,58 @@ fn tagged_object_was_cast(game: &GameState, tag: &crate::TagKey, ctx: &Execution
     false
 }
 
+fn mana_pool_amount(
+    spent: &crate::player::ManaPool,
+    symbol: Option<crate::mana::ManaSymbol>,
+) -> u32 {
+    if let Some(symbol) = symbol {
+        spent.amount(symbol)
+    } else {
+        spent.total()
+    }
+}
+
+fn mana_pool_colored_total(spent: &crate::player::ManaPool) -> u32 {
+    spent.white + spent.blue + spent.black + spent.red + spent.green
+}
+
+fn triggering_spell_mana_spent_at_least(
+    game: &GameState,
+    triggering_event: Option<&TriggerEvent>,
+    amount: u32,
+    symbol: Option<crate::mana::ManaSymbol>,
+) -> bool {
+    let Some(event) = triggering_event else {
+        return false;
+    };
+    let Some(spell_cast) = event.downcast::<crate::events::SpellCastEvent>() else {
+        return false;
+    };
+    if let Some(snapshot) = spell_cast.snapshot.as_ref() {
+        return mana_pool_amount(&snapshot.mana_spent_to_cast, symbol) >= amount;
+    }
+    game.object(spell_cast.spell)
+        .is_some_and(|obj| mana_pool_amount(&obj.mana_spent_to_cast, symbol) >= amount)
+}
+
+fn triggering_spell_colored_mana_spent_at_least(
+    game: &GameState,
+    triggering_event: Option<&TriggerEvent>,
+    amount: u32,
+) -> bool {
+    let Some(event) = triggering_event else {
+        return false;
+    };
+    let Some(spell_cast) = event.downcast::<crate::events::SpellCastEvent>() else {
+        return false;
+    };
+    if let Some(snapshot) = spell_cast.snapshot.as_ref() {
+        return mana_pool_colored_total(&snapshot.mana_spent_to_cast) >= amount;
+    }
+    game.object(spell_cast.spell)
+        .is_some_and(|obj| mana_pool_colored_total(&obj.mana_spent_to_cast) >= amount)
+}
+
 fn this_spell_was_cast_from_zone(
     game: &GameState,
     source: ObjectId,
@@ -161,6 +213,8 @@ mod tests {
     use crate::events::{DamageEvent, DamageTarget, RawEvent};
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::player::ManaPool;
+    use crate::provenance::ProvNodeId;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -180,6 +234,52 @@ mod tests {
             .build();
         let owner = game.players[owner_index].id;
         game.create_object_from_card(&card, owner, Zone::Battlefield);
+    }
+
+    #[test]
+    fn triggering_spell_mana_spent_condition_uses_spell_cast_snapshot() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let spell = game.new_object_id();
+        let mut snapshot = crate::snapshot::ObjectSnapshot::for_testing(spell, alice, "Big Spell");
+        snapshot.mana_spent_to_cast = ManaPool {
+            red: 2,
+            colorless: 2,
+            ..ManaPool::default()
+        };
+        let event = RawEvent::new(
+            crate::events::spells::SpellCastEvent::new_with_snapshot(
+                spell,
+                alice,
+                Zone::Hand,
+                snapshot,
+            ),
+            ProvNodeId::default(),
+        );
+        let ctx = ExecutionContext::new_default(source, alice).with_triggering_event(event);
+
+        assert!(
+            evaluate_condition(
+                &game,
+                &Condition::TriggeringSpellManaSpentToCastAtLeast {
+                    amount: 4,
+                    symbol: None,
+                },
+                &ctx,
+            )
+            .expect("triggering spell total mana condition should evaluate")
+        );
+        assert!(
+            !evaluate_condition(
+                &game,
+                &Condition::Not(Box::new(
+                    Condition::TriggeringSpellColoredManaSpentToCastAtLeast(1)
+                )),
+                &ctx,
+            )
+            .expect("triggering spell colored mana condition should evaluate")
+        );
     }
 
     #[test]
@@ -1236,13 +1336,20 @@ fn evaluate_condition_shared_core(
             let Some(source_obj) = game.object(ctx.source) else {
                 return Some(false);
             };
-            let spent = if let Some(sym) = symbol {
-                source_obj.mana_spent_to_cast.amount(*sym)
-            } else {
-                source_obj.mana_spent_to_cast.total()
-            };
-            Some(spent >= *amount)
+            Some(mana_pool_amount(&source_obj.mana_spent_to_cast, *symbol) >= *amount)
         }
+        Condition::TriggeringSpellManaSpentToCastAtLeast { amount, symbol } => Some(
+            triggering_spell_mana_spent_at_least(game, ctx.triggering_event, *amount, *symbol),
+        ),
+        Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
+            let Some(source_obj) = game.object(ctx.source) else {
+                return Some(false);
+            };
+            Some(mana_pool_colored_total(&source_obj.mana_spent_to_cast) >= *amount)
+        }
+        Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount) => Some(
+            triggering_spell_colored_mana_spent_at_least(game, ctx.triggering_event, *amount),
+        ),
         Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
             let Some(source_obj) = game.object(ctx.source) else {
                 return Some(false);
@@ -1432,6 +1539,9 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::TargetSpellCastOrderThisTurn(..) => {}
         Condition::TargetSpellControllerIsPoisoned => {}
         Condition::TargetSpellManaSpentToCastAtLeast { .. } => {}
+        Condition::TriggeringSpellManaSpentToCastAtLeast { .. } => {}
+        Condition::ColoredManaSpentToCastThisSpellAtLeast(..) => {}
+        Condition::TriggeringSpellColoredManaSpentToCastAtLeast(..) => {}
         Condition::YouControlMoreCreaturesThanTargetSpellController => {}
         Condition::TargetHasGreatestPowerAmongCreatures => {}
         Condition::TargetManaValueLteColorsSpentToCastThisSpell => {}
@@ -2379,6 +2489,8 @@ pub fn evaluate_condition_external(
         | Condition::TargetSpellCastOrderThisTurn(_)
         | Condition::TargetSpellControllerIsPoisoned
         | Condition::TargetSpellManaSpentToCastAtLeast { .. }
+        | Condition::TriggeringSpellManaSpentToCastAtLeast { .. }
+        | Condition::TriggeringSpellColoredManaSpentToCastAtLeast(_)
         | Condition::YouControlMoreCreaturesThanTargetSpellController
         | Condition::TargetHasGreatestPowerAmongCreatures
         | Condition::TargetManaValueLteColorsSpentToCastThisSpell
@@ -2408,6 +2520,7 @@ pub fn evaluate_condition_external(
         | Condition::SourceHasCounterAtLeast { .. }
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
+        | Condition::ColoredManaSpentToCastThisSpellAtLeast(_)
         | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
@@ -3159,6 +3272,8 @@ fn evaluate_condition_simple(
         | Condition::TargetSpellCastOrderThisTurn(_)
         | Condition::TargetSpellControllerIsPoisoned
         | Condition::TargetSpellManaSpentToCastAtLeast { .. }
+        | Condition::TriggeringSpellManaSpentToCastAtLeast { .. }
+        | Condition::TriggeringSpellColoredManaSpentToCastAtLeast(_)
         | Condition::YouControlMoreCreaturesThanTargetSpellController
         | Condition::TargetHasGreatestPowerAmongCreatures
         | Condition::TargetManaValueLteColorsSpentToCastThisSpell
@@ -3195,6 +3310,7 @@ fn evaluate_condition_simple(
         | Condition::SourceHasCountersAtLeast(_)
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
+        | Condition::ColoredManaSpentToCastThisSpellAtLeast(_)
         | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
@@ -3877,15 +3993,31 @@ fn evaluate_condition(
                 if let crate::effects::ResolvedTarget::Object(id) = target
                     && let Some(obj) = game.object(*id)
                 {
-                    let spent = if let Some(sym) = symbol {
-                        obj.mana_spent_to_cast.amount(*sym)
-                    } else {
-                        obj.mana_spent_to_cast.total()
-                    };
-                    return Ok(spent >= *amount);
+                    return Ok(mana_pool_amount(&obj.mana_spent_to_cast, *symbol) >= *amount);
                 }
             }
             Ok(false)
+        }
+        Condition::TriggeringSpellManaSpentToCastAtLeast { amount, symbol } => {
+            Ok(triggering_spell_mana_spent_at_least(
+                game,
+                ctx.triggering_event.as_ref(),
+                *amount,
+                *symbol,
+            ))
+        }
+        Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
+            let Some(source_obj) = game.object(ctx.source) else {
+                return Ok(false);
+            };
+            Ok(mana_pool_colored_total(&source_obj.mana_spent_to_cast) >= *amount)
+        }
+        Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount) => {
+            Ok(triggering_spell_colored_mana_spent_at_least(
+                game,
+                ctx.triggering_event.as_ref(),
+                *amount,
+            ))
         }
         Condition::YouControlMoreCreaturesThanTargetSpellController => {
             let target_controller = ctx.targets.iter().find_map(|target| match target {

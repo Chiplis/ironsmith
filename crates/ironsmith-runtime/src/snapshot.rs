@@ -24,6 +24,7 @@ use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::mana::ManaCost;
 use crate::object::AuraAttachmentFilter;
 use crate::object::{AttachmentTarget, CounterType, Object, ObjectKind};
+use crate::player::ManaPool;
 use crate::static_abilities::StaticAbilityId;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
@@ -94,6 +95,8 @@ pub struct ObjectSnapshot {
     /// 1-based cast index for this spell cast during the current turn, if this snapshot
     /// represents a spell that was cast this turn.
     pub cast_order_this_turn: Option<u32>,
+    /// Mana spent to cast this object when it was a spell on the stack.
+    pub mana_spent_to_cast: ManaPool,
 
     // === Non-copiable state ===
     /// Counters on the object.
@@ -162,6 +165,7 @@ impl ObjectSnapshot {
             aura_attach_filter: obj.aura_attach_filter.clone(),
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
+            mana_spent_to_cast: obj.mana_spent_to_cast.clone(),
 
             // Non-copiable state (from game state extension maps)
             counters: obj.counters.clone(),
@@ -455,6 +459,7 @@ impl ObjectSnapshot {
             aura_attach_filter: None,
             x_value: None,
             cast_order_this_turn: None,
+            mana_spent_to_cast: ManaPool::default(),
             counters: HashMap::new(),
             is_token: false,
             tapped: false,

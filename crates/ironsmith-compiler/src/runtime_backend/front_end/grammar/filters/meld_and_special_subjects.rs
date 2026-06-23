@@ -12,6 +12,10 @@ const SAME_COLOR_PREFIX_PATTERN: LexPattern<'static> =
 const MANA_SPENT_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::any_phrase(&[
     &["mana", "was", "spent", "to", "cast", "this", "spell"],
     &["mana", "were", "spent", "to", "cast", "this", "spell"],
+    &["mana", "was", "spent", "to", "cast", "it"],
+    &["mana", "were", "spent", "to", "cast", "it"],
+    &["mana", "was", "spent", "to", "cast", "that", "spell"],
+    &["mana", "were", "spent", "to", "cast", "that", "spell"],
 ])]);
 const SAME_COLOR_MANA_SPENT_TAIL_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::any_phrase(&[
@@ -225,7 +229,7 @@ pub(super) fn parse_graveyard_threshold_predicate(
 pub(super) fn parse_mana_spent_to_cast_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<(u32, Option<ManaSymbol>)> {
-    if tokens.len() < 10 {
+    if tokens.len() < 8 {
         return None;
     }
 

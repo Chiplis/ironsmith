@@ -886,9 +886,23 @@ fn advance_reference_frame_for_effect(
                         tag.as_str().to_string()
                     });
                 }
-                SubjectVerbActionAst::MoveToZone { target, .. } => {
+                SubjectVerbActionAst::MoveToZone { target, zone, .. } => {
                     let refs = lowering_reference_frame(frame);
                     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
+                    if *zone == crate::zone::Zone::Battlefield
+                        && matches!(
+                            &spec,
+                            ChooseSpec::WithCount(inner, _)
+                                if !inner.is_target()
+                                    && matches!(
+                                        inner.base(),
+                                        ChooseSpec::Object(filter)
+                                            if filter.zone == Some(crate::zone::Zone::Hand)
+                                    )
+                        )
+                    {
+                        next_reference_tag(id_gen, "chosen");
+                    }
                     if frame.auto_tag_object_targets
                         && let Some(tag) =
                             propagated_or_generated_object_tag(&spec, id_gen, "moved")
@@ -1001,6 +1015,12 @@ fn advance_reference_frame_for_effect(
                     if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "pumped"));
                     }
+                }
+                SubjectVerbActionAst::PutCountersAll { filter, .. } => {
+                    if frame.auto_tag_object_targets {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "counters"));
+                    }
+                    track_player_from_object_filter(filter, frame);
                 }
                 _ => {}
             }

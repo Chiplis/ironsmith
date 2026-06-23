@@ -1362,6 +1362,7 @@ pub(crate) fn parse_sentence_implicit_become_clause(
                 target,
                 card_types,
                 subtypes,
+                Vec::new(),
                 None,
                 Vec::new(),
                 Vec::new(),

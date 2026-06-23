@@ -276,12 +276,16 @@ pub(crate) fn parse_draw(
                 })
                 .is_some();
                 if has_for_each {
-                    let dynamic = parse_dynamic_cost_modifier_value(&tail)?.ok_or_else(|| {
-                        CardTextError::ParseError(format!(
-                            "unsupported draw for-each clause (clause: '{}')",
-                            crate::runtime_backend::token_word_refs(tokens).join(" ")
-                        ))
-                    })?;
+                    let dynamic = if let Some(value) = parse_draw_for_each_object_filter_value(&tail)? {
+                        value
+                    } else {
+                        parse_dynamic_cost_modifier_value(&tail)?.ok_or_else(|| {
+                            CardTextError::ParseError(format!(
+                                "unsupported draw for-each clause (clause: '{}')",
+                                crate::runtime_backend::token_word_refs(tokens).join(" ")
+                            ))
+                        })?
+                    };
                     match count {
                         Value::Fixed(1) => count = dynamic,
                         _ => {
@@ -650,6 +654,9 @@ pub(crate) fn parse_draw_card_prefixed_count_value(
         return Ok(None);
     }
 
+    if let Some(value) = parse_draw_for_each_object_filter_value(tokens)? {
+        return Ok(Some(value));
+    }
     if let Some(value) = parse_draw_equal_to_value(tokens)? {
         return Ok(Some(value));
     }
@@ -658,6 +665,147 @@ pub(crate) fn parse_draw_card_prefixed_count_value(
     }
 
     Ok(None)
+}
+
+fn parse_draw_for_each_object_filter_value(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Value>, CardTextError> {
+    let token_words = token_words(tokens);
+    if !word_slice_starts_with(&token_words, ZONE_MOVE_FOR_EACH_PHRASE) {
+        return Ok(None);
+    }
+
+    let filter_start =
+        token_index_for_word_index(tokens, ZONE_MOVE_FOR_EACH_PHRASE.len()).unwrap_or(tokens.len());
+    let filter_tokens = trim_commas(&tokens[filter_start..]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(known_value) = parse_draw_for_each_known_count_value(&filter_tokens)? {
+        return Ok(Some(known_value));
+    }
+
+    if let Some(cast_this_turn_value) =
+        crate::runtime_backend::front_end::shared::value_helpers::parse_spells_cast_this_turn_matching_count_value_lexed(&filter_tokens)
+    {
+        return Ok(Some(cast_this_turn_value));
+    }
+
+    if let Some(this_way_value) = parse_draw_for_each_this_way_metric_value(&filter_tokens) {
+        return Ok(Some(this_way_value));
+    }
+
+    if let Some(counter_value) = parse_draw_for_each_counter_reference_value(&filter_tokens) {
+        return Ok(Some(counter_value));
+    }
+
+    Ok(Some(Value::Count(parse_object_filter(&filter_tokens, false)?)))
+}
+
+fn parse_draw_for_each_known_count_value(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Value>, CardTextError> {
+    let words = token_words(tokens);
+    if let ["color" | "colors", "among", ..] = words.as_slice() {
+        let filter_start = token_index_for_word_index(tokens, 2).unwrap_or(tokens.len());
+        let filter_tokens = trim_commas(&tokens[filter_start..]);
+        if filter_tokens.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(Value::ColorsAmong(parse_object_filter(
+            &filter_tokens,
+            false,
+        )?)));
+    }
+
+    Ok(match words.as_slice() {
+        ["creature" | "creatures", "that", "died", "this", "turn"] => {
+            Some(Value::CreaturesDiedThisTurn)
+        }
+        [
+            "creature" | "creatures",
+            "that",
+            "died",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn",
+        ] => Some(Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You)),
+        _ => None,
+    })
+}
+
+fn parse_draw_for_each_this_way_metric_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = token_words(tokens);
+    if !words.ends_with(ZONE_MOVE_THIS_WAY_PHRASE) {
+        return None;
+    }
+
+    let metric = Value::PendingEffectMetric {
+        source: ironsmith_core::EffectMetricSource::Outcome,
+        metric: ironsmith_core::EffectMetric::Count,
+    };
+    if words.contains(&"discarded") {
+        return Some(metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDiscardedThisWay));
+    }
+    if words.contains(&"sacrificed")
+        && words
+            .iter()
+            .any(|word| matches!(*word, "permanent" | "permanents"))
+    {
+        return Some(
+            metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::PermanentsSacrificedThisWay),
+        );
+    }
+    if words.contains(&"exiled") {
+        return Some(metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsExiledThisWay));
+    }
+
+    Some(metric)
+}
+
+fn parse_draw_for_each_counter_reference_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = token_words(tokens);
+    let counter_idx = find_index(words.as_slice(), |word| {
+        *word == "counter" || *word == "counters"
+    })?;
+    if counter_idx == 0 || !words.get(counter_idx + 1).is_some_and(|word| *word == "on") {
+        return None;
+    }
+
+    let counter_type =
+        crate::runtime_backend::parse_counter_type_from_tokens(&tokens[..=counter_idx]);
+    let reference = words.get(counter_idx + 2..)?;
+    match reference {
+        ["it"]
+        | ["this"]
+        | ["this", "artifact"]
+        | ["this", "aura"]
+        | ["this", "battle"]
+        | ["this", "card"]
+        | ["this", "creature"]
+        | ["this", "enchantment"]
+        | ["this", "land"]
+        | ["this", "permanent"]
+        | ["this", "planeswalker"]
+        | ["this", "source"] => Some(match counter_type {
+            Some(counter_type) => Value::CountersOnSource(counter_type),
+            None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+        }),
+        ["that"]
+        | ["that", "creature"]
+        | ["that", "object"]
+        | ["that", "permanent"]
+        | ["those"]
+        | ["those", "creatures"]
+        | ["those", "permanents"] => Some(Value::CountersOn(
+            Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+            counter_type,
+        )),
+        _ => None,
+    }
 }
 
 pub(crate) fn parse_draw_equal_to_value(

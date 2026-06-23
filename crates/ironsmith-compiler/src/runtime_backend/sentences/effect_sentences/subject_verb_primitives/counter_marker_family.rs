@@ -212,7 +212,6 @@ const TAPPED_WORD: &str = "tapped";
 const BATTLEFIELD_WORD: &str = "battlefield";
 const ADDITIONAL_WORD: &str = "additional";
 const BATTLEFIELD_PREFIX: &[&str] = &["battlefield"];
-const COUNTER_MARKER_GAIN_ABILITY_WORDS: &[&str] = &["gain", "gains", "has", "have"];
 const YOUR_CHOICE_OF_PREFIX_PHRASE: &[&str] = &["your", "choice", "of"];
 const PRESERVE_CONTROL_SUBJECT_PHRASES: &[&[&str]] = &[&["its"], &["their"]];
 const YOU_CONTROL_SUBJECT_PHRASES: &[&[&str]] = &[&["your"]];
@@ -240,11 +239,6 @@ const COUNTER_MARKER_ONTO_BATTLEFIELD_MOVE_PATTERN: LexPattern<'static> = LexPat
     LexPattern::word("onto"),
     LexPattern::object("zone", LexCaptureKind::OneOf(BATTLEFIELD_PREFIX)),
 ]);
-const COUNTER_MARKER_GAIN_ABILITY_ACTION_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::action(
-        "ability_action",
-        LexCaptureKind::OneOf(COUNTER_MARKER_GAIN_ABILITY_WORDS),
-    )]);
 const COUNTER_MARKER_YOUR_CHOICE_OF_PREFIX_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "choice",
@@ -389,14 +383,6 @@ fn counter_marker_strip_then_prefix(
     counter_marker_strip_prefix_pattern(clause, COUNTER_MARKER_THEN_PREFIX_PATTERN, "then")
 }
 
-fn counter_marker_mentions_gain_ability_action(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    let words = clause.word_refs();
-    COUNTER_MARKER_GAIN_ABILITY_ACTION_PATTERN
-        .find_in_word_refs(&words)
-        .and_then(|matched| matched.capture_word_range("ability_action"))
-        .is_some()
-}
-
 fn counter_marker_mentions_additional(descriptor_clause: SubjectVerbPrimitiveClause<'_>) -> bool {
     descriptor_clause.contains_word(ADDITIONAL_WORD)
 }
@@ -424,6 +410,122 @@ fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
             _ => None,
         },
         _ => None,
+    }
+}
+
+fn retarget_it_target_for_counter_followup(target: &mut TargetAst, source_target: &TargetAst) {
+    match target {
+        TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG => {
+            *target = source_target.clone();
+        }
+        TargetAst::Object(filter, _, _)
+            if *filter == ObjectFilter::tagged(TagKey::from(IT_TAG)) =>
+        {
+            *target = source_target.clone();
+        }
+        TargetAst::WithCount(inner, _) => {
+            retarget_it_target_for_counter_followup(inner, source_target);
+        }
+        _ => {}
+    }
+}
+
+fn retarget_it_filter_for_counter_followup(
+    filter: &mut ObjectFilter,
+    source_filter: &ObjectFilter,
+) {
+    if *filter == ObjectFilter::tagged(TagKey::from(IT_TAG)) {
+        *filter = source_filter.clone();
+        return;
+    }
+    if let Some(targets) = filter.targets_object.as_deref_mut() {
+        retarget_it_filter_for_counter_followup(targets, source_filter);
+    }
+    if let Some(targets) = filter.targets_only_object.as_deref_mut() {
+        retarget_it_filter_for_counter_followup(targets, source_filter);
+    }
+    for branch in &mut filter.any_of {
+        retarget_it_filter_for_counter_followup(branch, source_filter);
+    }
+}
+
+fn retarget_it_restriction_for_counter_followup(
+    restriction: &mut crate::effect::Restriction,
+    source_filter: &ObjectFilter,
+) {
+    use crate::effect::Restriction;
+
+    match restriction {
+        Restriction::Attack(filter)
+        | Restriction::Block(filter)
+        | Restriction::MustBeBlocked(filter)
+        | Restriction::BlockAlone(filter)
+        | Restriction::Untap(filter)
+        | Restriction::BeBlocked(filter)
+        | Restriction::BeDestroyed(filter)
+        | Restriction::BeRegenerated(filter)
+        | Restriction::BeSacrificed(filter)
+        | Restriction::HaveCountersPlaced(filter)
+        | Restriction::BeTargeted(filter)
+        | Restriction::BeCountered(filter)
+        | Restriction::Transform(filter)
+        | Restriction::PhaseOut(filter)
+        | Restriction::AttackOrBlock(filter)
+        | Restriction::AttackOrBlockAlone(filter)
+        | Restriction::ActivateAbilitiesOf(filter)
+        | Restriction::ActivateTapAbilitiesOf(filter)
+        | Restriction::ActivateNonManaAbilitiesOf(filter) => {
+            retarget_it_filter_for_counter_followup(filter, source_filter);
+        }
+        Restriction::BlockSpecificAttacker { blockers, attacker }
+        | Restriction::MustBlockSpecificAttacker { blockers, attacker } => {
+            retarget_it_filter_for_counter_followup(blockers, source_filter);
+            retarget_it_filter_for_counter_followup(attacker, source_filter);
+        }
+        Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
+        | Restriction::CastSpellsMatching(_, attackers)
+        | Restriction::CastMoreThanOneSpellEachTurn(_, attackers) => {
+            retarget_it_filter_for_counter_followup(attackers, source_filter);
+        }
+        Restriction::BeTargetedFrom(target, source) => {
+            retarget_it_filter_for_counter_followup(target, source_filter);
+            retarget_it_filter_for_counter_followup(source, source_filter);
+        }
+        Restriction::BeTargetedPlayerFrom(_, source) => {
+            retarget_it_filter_for_counter_followup(source, source_filter);
+        }
+        _ => {}
+    }
+}
+
+fn retarget_it_effect_for_counter_followup(effect: &mut EffectAst, source_target: &TargetAst) {
+    let source_filter = target_ast_to_object_filter(source_target.clone());
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
+            SubjectVerbActionAst::Pump { target, .. }
+            | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
+            | SubjectVerbActionAst::GrantToTarget { target, .. }
+            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. } => {
+                retarget_it_target_for_counter_followup(target, source_target);
+            }
+            SubjectVerbActionAst::Cant { restriction, .. } => {
+                if let Some(source_filter) = source_filter.as_ref() {
+                    retarget_it_restriction_for_counter_followup(restriction, source_filter);
+                }
+            }
+            _ => {}
+        },
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        }
+        | EffectAst::SelfReplacement {
+            if_true, if_false, ..
+        } => {
+            for nested in if_true.iter_mut().chain(if_false.iter_mut()) {
+                retarget_it_effect_for_counter_followup(nested, source_target);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -759,15 +861,15 @@ pub(crate) fn parse_sentence_put_counter_sequence_matched(
         }
     }
 
-    // Handle "put ... counter on X and it gains ... until end of turn."
+    // Handle "put ... counter on X and it ..." follow-ups.
     if let Some((first_clause, second_clause)) = clause.split_once_on_phrase(&["and", "it"]) {
         let first_clause = first_clause.from(1).trimmed();
         let second_clause = second_clause.trimmed();
         if !first_clause.is_empty()
             && !second_clause.is_empty()
-            && counter_marker_mentions_gain_ability_action(second_clause)
             && let Ok(first) = parse_put_counters(first_clause.tokens())
-            && let Some(mut gain_effects) = parse_gain_ability_sentence(second_clause.tokens())?
+            && let Ok(mut followup_effects) = parse_effect_chain(second_clause.tokens())
+            && !followup_effects.is_empty()
         {
             let source_target = match &first {
                 effect if subject_verb_put_counters_target(effect).is_some() => {
@@ -780,28 +882,12 @@ pub(crate) fn parse_sentence_put_counter_sequence_matched(
             };
 
             if let Some(source_target) = source_target {
-                for effect in &mut gain_effects {
-                    match effect {
-                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                            action:
-                                SubjectVerbActionAst::Pump { target, .. }
-                                | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
-                                | SubjectVerbActionAst::GrantToTarget { target, .. }
-                                | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. },
-                            ..
-                        }) => {
-                            if let TargetAst::Tagged(tag, _) = target
-                                && tag.as_str() == IT_TAG
-                            {
-                                *target = source_target.clone();
-                            }
-                        }
-                        _ => {}
-                    }
+                for effect in &mut followup_effects {
+                    retarget_it_effect_for_counter_followup(effect, &source_target);
                 }
 
                 let mut effects = vec![first];
-                effects.append(&mut gain_effects);
+                effects.append(&mut followup_effects);
                 return Ok(Some(effects));
             }
         }

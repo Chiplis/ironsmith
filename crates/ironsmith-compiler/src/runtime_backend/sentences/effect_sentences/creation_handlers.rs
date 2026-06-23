@@ -264,8 +264,13 @@ const CREATE_PT_WORDS: &[&str] = &["x/x"];
 const CREATE_WHERE_WORD: &str = "where";
 const CREATE_EXILED_THIS_WAY_WORDS: &[&str] = &["exiled", "this", "way"];
 const CREATE_THIS_WAY_PHRASE: &[&str] = &["this", "way"];
-const CREATE_HASTE_GRANT_PHRASES: &[&[&str]] =
-    &[&["has", "haste"], &["gain", "haste"], &["gains", "haste"]];
+const CREATE_HASTE_GRANT_PHRASES: &[&[&str]] = &[
+    &["has", "haste"],
+    &["gain", "haste"],
+    &["gains", "haste"],
+    &["that", "token", "gains", "haste"],
+    &["those", "tokens", "gain", "haste"],
+];
 const CREATE_OTHER_THAN_FIRST_PHRASE: &[&str] = &["other", "than", "the", "first"];
 const CREATE_TIME_OR_TIMES_WORDS: &[&str] = &["time", "times"];
 const CREATE_ONCE_WORD: &str = "once";
@@ -1297,6 +1302,9 @@ pub(crate) fn parse_create(
     let mut granted_abilities = Vec::new();
     if create_words_contains_word(&modifier_tail_words, CREATE_DECAYED_WORD) {
         granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Decayed));
+    }
+    if create_words_contains_any_phrase(&modifier_tail_words, CREATE_HASTE_GRANT_PHRASES) {
+        granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
     }
     if grants_unblockable {
         granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Unblockable));

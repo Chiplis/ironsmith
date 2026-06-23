@@ -669,6 +669,12 @@ pub(crate) enum PredicateAst {
         amount: u32,
         symbol: Option<ManaSymbol>,
     },
+    TriggeringSpellManaSpentToCastAtLeast {
+        amount: u32,
+        symbol: Option<ManaSymbol>,
+    },
+    ColoredManaSpentToCastThisSpellAtLeast(u32),
+    TriggeringSpellColoredManaSpentToCastAtLeast(u32),
     SnowManaOfAnySpellColorSpentToCastThisSpell,
     SameColorManaSpentToCastThisSpellAtLeast(u32),
     ThisSpellWasCastFromZone(Zone),
@@ -1276,6 +1282,7 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         card_types: Vec<CardType>,
         subtypes: Vec<Subtype>,
+        subtype_families: Vec<SubtypeFamily>,
         colors: Option<ColorSet>,
         abilities: Vec<StaticAbility>,
         granted_abilities: Vec<GrantedAbilityAst>,
@@ -2638,6 +2645,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 card_types,
                 subtypes,
+                subtype_families,
                 colors,
                 abilities,
                 granted_abilities,
@@ -2649,6 +2657,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("card_types", card_types)
                 .field("subtypes", subtypes)
+                .field("subtype_families", subtype_families)
                 .field("colors", colors)
                 .field("abilities", abilities)
                 .field("granted_abilities", granted_abilities)
@@ -4569,6 +4578,7 @@ impl EffectAst {
         target: TargetAst,
         card_types: Vec<CardType>,
         subtypes: Vec<Subtype>,
+        subtype_families: Vec<SubtypeFamily>,
         colors: Option<ColorSet>,
         abilities: Vec<StaticAbility>,
         granted_abilities: Vec<GrantedAbilityAst>,
@@ -4583,6 +4593,7 @@ impl EffectAst {
                 target,
                 card_types,
                 subtypes,
+                subtype_families,
                 colors,
                 abilities,
                 granted_abilities,

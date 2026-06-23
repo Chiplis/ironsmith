@@ -133,6 +133,10 @@ const DEFINITE_ARTICLE_WORD: &str = "the";
 const MANA_SPENT_TO_CAST_THIS_SPELL_PHRASES: &[&[&str]] = &[
     &["was", "spent", "to", "cast", "this", "spell"],
     &["were", "spent", "to", "cast", "this", "spell"],
+    &["was", "spent", "to", "cast", "it"],
+    &["were", "spent", "to", "cast", "it"],
+    &["was", "spent", "to", "cast", "that", "spell"],
+    &["were", "spent", "to", "cast", "that", "spell"],
 ];
 const YOU_CONTROL_PREFIXES: &[&[&str]] = &[&["you", "control"], &["you", "controls"]];
 const THAT_PLAYER_CONTROLS_PREFIXES: &[&[&str]] = &[
@@ -3452,6 +3456,7 @@ fn parse_while_conjoined_predicate(
     if matches!(
         left,
         PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
+            | PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(_)
             | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
     ) {
         return Err(CardTextError::ParseError(format!(
@@ -5116,7 +5121,9 @@ fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAs
 }
 
 fn parse_mana_spent_capture_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_snow_mana_of_any_spell_color_spent_to_cast_shape(tokens)
+    parse_no_mana_spent_to_cast_shape(tokens)
+        .or_else(|| parse_no_colored_mana_spent_to_cast_shape(tokens))
+        .or_else(|| parse_snow_mana_of_any_spell_color_spent_to_cast_shape(tokens))
         .or_else(|| parse_mana_symbol_spent_to_cast_shape(tokens))
         .or_else(|| {
             parse_same_color_mana_spent_to_cast_predicate(tokens)
@@ -5127,6 +5134,80 @@ fn parse_mana_spent_capture_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
                 PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol }
             })
         })
+}
+
+fn parse_no_mana_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = LexedClause::new(tokens).word_refs();
+    match words.as_slice() {
+        ["no", "mana", "was" | "were", "spent", "to", "cast", "it"]
+        | [
+            "no",
+            "mana",
+            "was" | "were",
+            "spent",
+            "to",
+            "cast",
+            "this",
+            "spell",
+        ]
+        | [
+            "no",
+            "mana",
+            "was" | "were",
+            "spent",
+            "to",
+            "cast",
+            "that",
+            "spell",
+        ] => Some(PredicateAst::Not(Box::new(
+            PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                amount: 1,
+                symbol: None,
+            },
+        ))),
+        _ => None,
+    }
+}
+
+fn parse_no_colored_mana_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = LexedClause::new(tokens).word_refs();
+    match words.as_slice() {
+        [
+            "no",
+            "colored",
+            "mana",
+            "was" | "were",
+            "spent",
+            "to",
+            "cast",
+            "it",
+        ]
+        | [
+            "no",
+            "colored",
+            "mana",
+            "was" | "were",
+            "spent",
+            "to",
+            "cast",
+            "this",
+            "spell",
+        ]
+        | [
+            "no",
+            "colored",
+            "mana",
+            "was" | "were",
+            "spent",
+            "to",
+            "cast",
+            "that",
+            "spell",
+        ] => Some(PredicateAst::Not(Box::new(
+            PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(1),
+        ))),
+        _ => None,
+    }
 }
 
 fn parse_snow_mana_of_any_spell_color_spent_to_cast_shape(
@@ -8704,6 +8785,19 @@ mod tests {
                 PredicateAst::ManaSpentToCastThisSpellAtLeast {
                     amount: 3,
                     symbol: Some(_),
+                }
+            ),
+            "{parsed:?}"
+        );
+
+        let tokens = lex_line("If at least four mana was spent to cast it", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert!(
+            matches!(
+                parsed,
+                PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                    amount: 4,
+                    symbol: None,
                 }
             ),
             "{parsed:?}"
