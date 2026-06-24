@@ -583,6 +583,36 @@ const CAST_CREATURE_THIS_WAY_HASTE_SENTENCE_PATTERN: ClauseShape<'static> = clau
             "until", "end", "of", "turn",
         ]
 );
+const CAST_THIS_WAY_ENTERS_TAPPED_SENTENCE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "if", "you", "cast", "a", "spell", "this", "way", "that", "artifact", "enters",
+                "tapped",
+            ],
+            &[
+                "if",
+                "you",
+                "cast",
+                "a",
+                "spell",
+                "this",
+                "way",
+                "that",
+                "permanent",
+                "enters",
+                "tapped",
+            ],
+            &[
+                "if", "you", "cast", "a", "spell", "this", "way", "that", "creature", "enters",
+                "tapped",
+            ],
+            &[
+                "if", "you", "cast", "a", "spell", "this", "way", "it", "enters", "tapped",
+            ],
+            &["if", "you", "do", "it", "enters", "tapped"],
+        ]
+);
 const CONTROL_OPPONENTS_WHILE_SEARCHING_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2828,10 +2858,17 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("during"),
             StaticAbilityLineHeadHint::Pair("during", "each"),
         ],
+        "parse_as_you_cascade_land_drop_line" => vec![
+            StaticAbilityLineHeadHint::Single("as"),
+            StaticAbilityLineHeadHint::Pair("as", "you"),
+        ],
         "parse_play_from_permission_with_haste_this_way_line"
-        | "parse_play_from_permission_with_enter_counter_this_way_line" => vec![
+        | "parse_play_from_permission_with_enter_counter_this_way_line"
+        | "parse_play_from_permission_with_enter_tapped_this_way_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
+            StaticAbilityLineHeadHint::Single("once"),
+            StaticAbilityLineHeadHint::Pair("once", "during"),
         ],
         "parse_you_may_cast_exile_counter_cards_with_mana_permission_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
@@ -3253,10 +3290,12 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_you_may_cast_exile_counter_cards_with_mana_permission_line
         ),
         multi_static_ability_ast_rule!(parse_surveilled_graveyard_play_life_cost_line),
+        single_static_ability_ast_rule!(parse_as_you_cascade_land_drop_line),
         single_static_ability_ast_rule!(parse_play_from_permission_with_haste_this_way_line),
         single_static_ability_ast_rule!(
             parse_play_from_permission_with_enter_counter_this_way_line
         ),
+        single_static_ability_ast_rule!(parse_play_from_permission_with_enter_tapped_this_way_line),
         single_static_ability_ast_rule!(parse_you_may_static_grant_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
@@ -10721,6 +10760,37 @@ pub(crate) fn parse_you_may_static_grant_line(
     }
 }
 
+pub(crate) fn parse_as_you_cascade_land_drop_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    if words.as_slice()
+        == [
+            "as",
+            "you",
+            "cascade",
+            "you",
+            "may",
+            "put",
+            "a",
+            "land",
+            "card",
+            "from",
+            "among",
+            "the",
+            "exiled",
+            "cards",
+            "onto",
+            "the",
+            "battlefield",
+            "tapped",
+        ]
+    {
+        return Ok(Some(StaticAbility::cascade_land_drop()));
+    }
+    Ok(None)
+}
+
 pub(crate) fn parse_play_from_permission_with_haste_this_way_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -10791,6 +10861,41 @@ pub(crate) fn parse_play_from_permission_with_enter_counter_this_way_line(
                 StaticAbility::grants(spec.with_beneficiary(beneficiary).with_cast_this_way_grant(
                     StaticAbility::enters_with_counters_value(counter_type, Value::Fixed(1)),
                 ))
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
+pub(crate) fn parse_play_from_permission_with_enter_tapped_this_way_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    let [permission_sentence, tapped_sentence] = sentences.as_slice() else {
+        return Ok(None);
+    };
+
+    if !CAST_THIS_WAY_ENTERS_TAPPED_SENTENCE_PATTERN.matches(LexedClause::new(tapped_sentence)) {
+        return Ok(None);
+    }
+
+    match parse_permission_clause_spec(permission_sentence)? {
+        Some(crate::cards::builders::PermissionClauseSpec::GrantBySpec {
+            player,
+            spec,
+            lifetime: crate::cards::builders::PermissionLifetime::Static,
+        }) if matches!(
+            spec.grantable,
+            crate::grant::Grantable::PlayFrom
+                | crate::grant::Grantable::AlternativeCast(_)
+                | crate::grant::Grantable::DerivedAlternativeCast(_)
+        ) =>
+        {
+            Ok(static_grant_beneficiary(player).map(|beneficiary| {
+                StaticAbility::grants(
+                    spec.with_beneficiary(beneficiary)
+                        .with_cast_this_way_grant(StaticAbility::enters_tapped_ability()),
+                )
             }))
         }
         _ => Ok(None),

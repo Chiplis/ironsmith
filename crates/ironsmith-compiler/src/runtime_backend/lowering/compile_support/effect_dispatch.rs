@@ -1432,10 +1432,13 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::ControlCombatChoicesThisTurn {
             attackers,
             blockers,
+            this_combat,
         } => Ok((
-            vec![Effect::control_combat_choices_this_turn(
-                *attackers, *blockers,
-            )],
+            vec![if *this_combat {
+                Effect::control_combat_choices_this_combat(*attackers, *blockers)
+            } else {
+                Effect::control_combat_choices_this_turn(*attackers, *blockers)
+            }],
             Vec::new(),
         )),
         SubjectVerbActionAst::GainControl { target, duration } => {

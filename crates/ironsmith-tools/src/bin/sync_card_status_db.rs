@@ -199,6 +199,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         score_delta_summary.decreased_count,
         format_signed_average(&score_delta_summary.decreased_deltas)
     );
+    if score_delta_summary.regressions.is_empty() {
+        println!("- Regressed strict-compiled cards: none");
+    } else {
+        println!("- Regressed strict-compiled cards:");
+        for regression in &score_delta_summary.regressions {
+            println!(
+                "  - {}: {:.4} -> {:.4} ({:+.4})",
+                regression.card_name,
+                regression.before_score,
+                regression.after_score,
+                regression.delta()
+            );
+        }
+    }
     if let Some(tag) = &args.tag {
         println!("- Tag filter: {tag}");
         println!("- DB pruning skipped: yes");
@@ -252,6 +266,20 @@ struct ScoreDeltaSummary {
     decreased_count: usize,
     increased_deltas: Vec<f32>,
     decreased_deltas: Vec<f32>,
+    regressions: Vec<ScoreRegression>,
+}
+
+#[derive(Debug)]
+struct ScoreRegression {
+    card_name: String,
+    before_score: f32,
+    after_score: f32,
+}
+
+impl ScoreRegression {
+    fn delta(&self) -> f32 {
+        self.after_score - self.before_score
+    }
 }
 
 fn summarize_score_deltas(
@@ -270,8 +298,18 @@ fn summarize_score_deltas(
         } else if delta < 0.0 {
             summary.decreased_count += 1;
             summary.decreased_deltas.push(delta);
+            summary.regressions.push(ScoreRegression {
+                card_name: card_name.clone(),
+                before_score: *before_score,
+                after_score: *after_score,
+            });
         }
     }
+    summary.regressions.sort_by(|left, right| {
+        left.delta()
+            .total_cmp(&right.delta())
+            .then_with(|| left.card_name.cmp(&right.card_name))
+    });
     summary
 }
 

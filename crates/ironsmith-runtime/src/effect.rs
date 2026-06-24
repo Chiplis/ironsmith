@@ -3796,6 +3796,14 @@ impl Effect {
         Self::new(ControlCombatChoicesThisTurnEffect::new(attackers, blockers))
     }
 
+    /// Create an effect that lets you choose attackers and/or blockers this combat.
+    pub fn control_combat_choices_this_combat(attackers: bool, blockers: bool) -> Self {
+        use crate::effects::ControlCombatChoicesThisTurnEffect;
+        Self::new(ControlCombatChoicesThisTurnEffect::new_with_surface(
+            attackers, blockers, true,
+        ))
+    }
+
     // === Card Manipulation Effects ===
 
     /// Create a "discard" effect.

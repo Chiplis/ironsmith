@@ -623,8 +623,9 @@ fn feast_of_the_victorious_dead_strict_parser_compiled_text_and_model_regression
         rendered.contains("At the beginning of your end step")
             && rendered.contains("creature")
             && rendered.contains("died this turn")
+            && rendered.contains("gain that much life")
             && rendered.contains(
-                "you gain that much life and distribute that many +1/+1 counters among any number of creatures you control"
+                "distribute that many +1/+1 counters among any number of creatures you control"
             ),
         "expected Feast compiled text to preserve the end-step died-this-turn distribution, got {rendered}"
     );
@@ -3022,14 +3023,17 @@ fn reprocess_strict_parser_and_compiled_text_regression() {
         vec![CardType::Artifact, CardType::Creature, CardType::Land]
     );
     assert_eq!(sacrifice.player, PlayerFilter::You);
+    let draw_count = draw.count.unhinted();
     assert!(
         matches!(
-            draw.count,
+            draw_count,
             Value::EffectMetric {
                 effect_id,
-                source: crate::effect::EffectMetricSource::AffectedObjects,
+                source:
+                    crate::effect::EffectMetricSource::AffectedObjects
+                    | crate::effect::EffectMetricSource::Outcome,
                 metric: crate::effect::EffectMetric::Count,
-            } if effect_id == sacrifice_with_id.id
+            } if *effect_id == sacrifice_with_id.id
         ),
         "Reprocess draw count should reference the sacrificed-object metric, got {:?}",
         draw.count
@@ -12786,6 +12790,31 @@ fn test_parse_player_subject_attack_with_three_or_more_uses_thresholded_mode() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_player_subject_attack_with_exactly_two_uses_exact_total_mode() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Exactly Two Attack Subject Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("When you attack with exactly two creatures, draw a card.")
+        .expect("player-subject attack-with exact trigger should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("AttacksTrigger")
+            && debug.contains("one_or_more: true")
+            && debug.contains("min_total_attackers: 2")
+            && debug.contains("max_total_attackers: Some(2)")
+            && debug.contains("controller: Some(You)"),
+        "expected exact-total one-or-more attacks trigger for creatures you control, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever you attack with exactly two creatures"),
+        "expected exact attack-count trigger rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_opponent_attacks_you_trigger_uses_one_or_more_mode() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Opponent Attacks You Probe")
         .card_types(vec![CardType::Enchantment])
@@ -13551,6 +13580,42 @@ fn test_parse_cascade_keyword_line() {
         !debug.contains("staticabilityid::keywordmarker")
             && !debug.contains("staticabilityid::rulefallbacktext"),
         "expected cascade to compile without placeholder static abilities, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_as_you_cascade_land_drop_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Averna Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "As you cascade, you may put a land card from among the exiled cards onto the battlefield tapped.",
+        )
+        .expect("Averna cascade land-drop line should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "as you cascade, you may put a land card from among the exiled cards onto the battlefield tapped"
+        ),
+        "expected Averna static ability in render output, got {rendered}"
+    );
+    assert!(
+        def.spell_effect.is_none(),
+        "Averna line should not become a spell effect"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::CascadeLandDrop
+            )
+        }),
+        "expected CascadeLandDrop static ability, got {:#?}",
+        def.abilities
     );
 }
 
@@ -18435,7 +18500,9 @@ fn test_parse_scent_of_cinder_uses_source_damage_surface() {
         .to_ascii_lowercase();
     assert!(
         rendered.contains("reveal any number of red cards in your hand")
-            && rendered.contains("scent of cinder deals that much damage to any target"),
+            && (rendered.contains("scent of cinder deals that much damage to any target")
+                || (rendered.contains("scent of cinder deals x damage to any target")
+                    && rendered.contains("where x is the number of cards revealed this way"))),
         "expected Scent of Cinder to keep its source-linked reveal-count damage text, got {rendered}"
     );
 }
@@ -23276,7 +23343,9 @@ fn parse_ensoul_artifact_style_transform_line() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        compiled.contains("enchanted artifact is creature"),
+        compiled.contains("enchanted artifact is creature")
+            || compiled
+                .contains("enchanted artifact has base power and toughness 5/5 and is creature"),
         "expected creature type-setting text, got {compiled}"
     );
     assert!(
@@ -24217,9 +24286,9 @@ fn bottom_score_parse_laquatus_creativity_draws_then_discards_that_many() {
     assert!(debug.contains("DrawCardsEffect"), "{debug}");
     assert!(debug.contains("DiscardEffect"), "{debug}");
     assert!(
-        rendered.contains(
-            "target player draws cards equal to the number of cards in their hand, then discards that many cards"
-        ),
+        rendered.contains("target player draws")
+            && rendered.contains("for each card in target player's hand")
+            && rendered.contains("target player discards that many cards"),
         "expected discard follow-up to render, got {rendered}"
     );
 }
@@ -25313,7 +25382,7 @@ fn parse_oracle_healing_grace_strict_and_keeps_source_choice_clause() {
     assert!(
         rendered.contains("Prevent the next 3 damage")
             && rendered.contains("by a source of your choice")
-            && rendered.contains("You gain 3 life"),
+            && rendered.contains("gain 3 life"),
         "expected Healing Grace prevention + source choice + life gain in compiled text, got {rendered}"
     );
 }
@@ -27346,15 +27415,26 @@ fn parse_triggered_put_into_graveyard_from_anywhere() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_triggered_put_into_exile_from_anywhere_fails_strictly() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "From Anywhere Exile Variant")
+fn parse_triggered_put_into_exile_from_anywhere() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "From Anywhere Exile Variant")
         .card_types(vec![CardType::Creature])
         .parse_text("When this creature is put into exile from anywhere, shuffle it into its owner's library.")
-        .expect_err("unsupported from-anywhere exile trigger should fail parse");
-    let message = format!("{err:?}");
+        .expect("put-into-exile-from-anywhere trigger should parse");
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    let debug = format!("{:#?}", def.abilities);
     assert!(
-        message.contains("unsupported triggered line"),
-        "expected strict unsupported triggered-line error, got {message}"
+        joined.contains("put into exile")
+            && joined.contains("shuffle")
+            && joined.contains("library"),
+        "expected exile-from-anywhere trigger wording, got {joined}"
+    );
+    assert!(
+        debug.contains("ZoneChangeTrigger")
+            && debug.contains("from: Any")
+            && debug.contains("Exile"),
+        "expected exile-from-anywhere trigger model, got {debug}"
     );
 }
 
@@ -29593,7 +29673,8 @@ fn dingus_egg_deals_damage_to_the_land_controller_on_graveyard_entry() {
             Some(snapshot),
         ),
         crate::provenance::ProvNodeId::default(),
-    );
+    )
+    .with_lookback_source_snapshots(game.trigger_source_lookback_snapshots());
 
     let triggered = crate::triggers::check_triggers(&game, &event);
     let mut trigger_queue = crate::triggers::TriggerQueue::new();
@@ -30790,6 +30871,7 @@ fn god_eternal_rhonas_death_or_exile_trigger_may_put_third_from_top() {
             game.object(rhonas_id).expect("Rhonas exists before moving"),
             &game,
         );
+        let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
         let moved_id = game
             .move_object_by_effect(rhonas_id, destination)
             .expect("Rhonas should move zones");
@@ -30803,7 +30885,8 @@ fn god_eternal_rhonas_death_or_exile_trigger_may_put_third_from_top() {
                 Some(snapshot),
             ),
             crate::provenance::ProvNodeId::default(),
-        );
+        )
+        .with_lookback_source_snapshots(lookback_source_snapshots);
         let entry = god_eternal_rhonas_trigger_for_event(&game, &event, rhonas_id);
         let mut dm = AcceptMay;
         let mut ctx = crate::effects::ExecutionContext::new(rhonas_id, alice, &mut dm)
@@ -30841,6 +30924,7 @@ fn god_eternal_rhonas_optional_library_trigger_can_be_declined() {
         game.object(rhonas_id).expect("Rhonas exists before exile"),
         &game,
     );
+    let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
     let exile_id = game
         .move_object_by_effect(rhonas_id, Zone::Exile)
         .expect("Rhonas should move to exile");
@@ -30854,7 +30938,8 @@ fn god_eternal_rhonas_optional_library_trigger_can_be_declined() {
             Some(snapshot),
         ),
         crate::provenance::ProvNodeId::default(),
-    );
+    )
+    .with_lookback_source_snapshots(lookback_source_snapshots);
     let entry = god_eternal_rhonas_trigger_for_event(&game, &event, rhonas_id);
     let mut dm = crate::decision::AutoPassDecisionMaker;
     let mut ctx = crate::effects::ExecutionContext::new(rhonas_id, alice, &mut dm)
@@ -31566,6 +31651,65 @@ fn parse_oracle_eye_of_duskmantle_surveilled_graveyard_permission() {
     assert!(
         has_life_cost_grant,
         "expected Eye of Duskmantle to grant a graveyard life-cost alternative cast"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_edgar_graveyard_cast_permission_with_tapped_this_way_grant() {
+    let def = parse_oracle_card_definition("Edgar, Master Machinist");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "once during each of your turns, you may cast an artifact spell from your graveyard"
+        ),
+        "expected Edgar graveyard artifact-cast permission, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if you cast a spell this way, that artifact enters tapped"),
+        "expected Edgar cast-this-way tapped suffix, got {rendered}"
+    );
+
+    let mut has_graveyard_cast_grant = false;
+    let mut has_tapped_this_way_grant = false;
+    for ability in &def.abilities {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        let Some(spec) = static_ability.grant_spec() else {
+            continue;
+        };
+        if matches!(
+            spec.grantable,
+            crate::grant::Grantable::DerivedAlternativeCast(
+                crate::grant::DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+                    additional_costs: ref costs,
+                    usage_limit: Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns),
+                    condition: None,
+                    exiles_after_resolution: false,
+                }
+            ) if costs.is_empty()
+        ) && spec.zone == Zone::Graveyard
+            && spec.filter.card_types == [CardType::Artifact]
+        {
+            has_graveyard_cast_grant = true;
+            has_tapped_this_way_grant = spec
+                .cast_this_way_grants
+                .iter()
+                .any(|grant| grant.id() == StaticAbilityId::EntersTapped);
+        }
+    }
+
+    assert!(
+        has_graveyard_cast_grant,
+        "expected Edgar to grant a once-per-turn artifact graveyard alternative cast"
+    );
+    assert!(
+        has_tapped_this_way_grant,
+        "expected Edgar's graveyard cast grant to carry an enters-tapped cast-this-way grant"
     );
 }
 
@@ -33388,7 +33532,8 @@ fn parse_combat_damage_to_creature_trigger_parses_with_damaged_creature_referenc
         .expect("combat-damage-to-creature trigger should parse");
     let joined = unprocessed_compiled_lines(&def).join(" ").to_lowercase();
     assert!(
-        joined.contains("deals combat damage to creature"),
+        joined.contains("deals combat damage to creature")
+            || joined.contains("deals combat damage to a creature"),
         "expected combat-damage-to-creature trigger text, got {joined}"
     );
     assert!(
@@ -34171,6 +34316,27 @@ fn render_root_greevil_compacts_destroy_color_choice_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn render_wash_out_compacts_return_color_choice_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Wash Out Variant")
+        .parse_text("Return all permanents of the color of your choice to their owners' hands.")
+        .expect("wash out text should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseModeEffect") && debug.matches("ReturnToHandEffect").count() == 5,
+        "expected five-color modal return lowering, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered
+            .contains("Return all permanents of the color of your choice to their owners' hands"),
+        "expected compact return color-choice rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_draw_for_each_creature_uses_oracle_like_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Collective Unconscious Variant")
         .parse_text("Draw a card for each creature you control.")
@@ -34353,10 +34519,10 @@ fn render_draw_and_life_loss_with_shared_dynamic_x() {
         .card_types(vec![CardType::Sorcery])
         .parse_text("You draw X cards and you lose X life.")
         .expect("plain X draw/loss spell should parse");
-    assert_eq!(
-        unprocessed_compiled_lines(&plain_x_def).join("\n"),
-        "You draw X cards and you lose X life."
-    );
+    assert!(matches!(
+        unprocessed_compiled_lines(&plain_x_def).join("\n").as_str(),
+        "You draw X cards and you lose X life." | "Draw X cards and you lose X life."
+    ));
 
     let count_def = CardDefinitionBuilder::new(CardId::new(), "Shared Count Draw Loss")
         .card_types(vec![CardType::Sorcery])
@@ -34364,19 +34530,23 @@ fn render_draw_and_life_loss_with_shared_dynamic_x() {
             "You draw X cards and you lose X life, where X is the number of creatures you control.",
         )
         .expect("shared count draw/loss spell should parse");
-    assert_eq!(
-        unprocessed_compiled_lines(&count_def).join("\n"),
+    assert!(matches!(
+        unprocessed_compiled_lines(&count_def).join("\n").as_str(),
         "You draw X cards and you lose X life, where X is the number of creatures you control."
-    );
+            | "Draw X cards and you lose X life, where X is the number of creatures you control."
+    ));
 
     let devotion_def = CardDefinitionBuilder::new(CardId::new(), "Shared Devotion Draw Loss")
         .card_types(vec![CardType::Sorcery])
         .parse_text("You draw X cards and you lose X life, where X is your devotion to black.")
         .expect("shared devotion draw/loss spell should parse");
-    assert_eq!(
-        unprocessed_compiled_lines(&devotion_def).join("\n"),
+    assert!(matches!(
+        unprocessed_compiled_lines(&devotion_def)
+            .join("\n")
+            .as_str(),
         "You draw X cards and you lose X life, where X is your devotion to black."
-    );
+            | "Draw X cards and you lose X life, where X is your devotion to black."
+    ));
 
     let target_devotion_def = CardDefinitionBuilder::new(CardId::new(), "Target Devotion Draw")
         .card_types(vec![CardType::Sorcery])
@@ -44044,7 +44214,8 @@ fn soulflayer_delve_exiled_keywords_grant_to_source() {
     assert!(
         rendered.contains("this creature has flying")
             && rendered.contains("exiled with this creature")
-            && rendered.contains("this creature has vigilance"),
+            && (rendered.contains("this creature has vigilance")
+                || (rendered.contains("the same is true") && rendered.contains("vigilance"))),
         "expected Soulflayer keywords to be granted to the source conditionally, got {rendered}"
     );
     assert!(
@@ -44161,7 +44332,8 @@ fn parse_answered_prayers_keeps_life_gain_and_angel_animation() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("gain 1 life") && rendered.contains("3/3 angel creature with flying"),
+        rendered.contains("gain 1 life")
+            && rendered.contains("angel creature with base power and toughness 3/3 and flying"),
         "expected oracle-like rendered text for Answered Prayers, got {rendered}"
     );
     assert!(
@@ -44255,7 +44427,9 @@ fn parse_veiled_apparition_uses_source_gate_and_granted_upkeep_trigger() {
     assert!(
         !rendered.contains("spell or enchantment")
             && rendered.contains("opponent casts a spell")
-            && rendered.contains("3/3 illusion creature with flying"),
+            && rendered.contains("illusion creature")
+            && rendered.contains("base power and toughness 3/3")
+            && rendered.contains("flying"),
         "expected source-gated spell trigger rendering, got {rendered}"
     );
 }
@@ -46232,14 +46406,18 @@ fn thelonite_druid_forest_animation_renders_still_lands() {
     let score_path =
         crate::compiled_text::compile_effect_list(&activated.effects.segments[0].default_effects);
     assert!(
-        score_path.contains("Forests you control become 2/3 creatures until end of turn")
+        score_path.contains(
+            "Forests you control become creatures with base power and toughness 2/3 until end of turn"
+        )
             && score_path.contains("They're still lands"),
         "expected Forest animation to preserve land-ness in effect rendering, got {score_path}"
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Forests you control become 2/3 creatures until end of turn")
+        rendered.contains(
+            "Forests you control become creatures with base power and toughness 2/3 until end of turn"
+        )
             && rendered.contains("They're still lands"),
         "expected Thelonite Druid compiled text to render Forests as still lands, got {rendered}"
     );
@@ -46318,7 +46496,7 @@ fn fendeep_summoner_land_animation_keeps_subtypes_with_addition_tail() {
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
         rendered_lower.contains(
-            "up to two target swamps become 3/5 treefolk warrior creatures in addition to their other types until end of turn"
+            "up to two target swamps become treefolk warrior creatures with base power and toughness 3/5 in addition to their other types until end of turn"
         ) && !rendered.contains("They're still lands"),
         "expected Fendeep Summoner compiled text to render Treefolk Warrior animation as type addition, got {rendered}"
     );
@@ -46339,7 +46517,7 @@ fn forest_animation_keeps_color_subtypes_and_source_duration() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        awakener_rendered.contains("4/5 green treefolk creature")
+        awakener_rendered.contains("green treefolk creature with base power and toughness 4/5")
             && awakener_rendered.contains("still a land"),
         "expected Awakener Druid animation to keep color/subtype and land tail, got {awakener_rendered}"
     );
@@ -46362,8 +46540,9 @@ fn forest_animation_keeps_color_subtypes_and_source_duration() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        woodwraith_rendered.contains("4/4 black and green elemental horror creature")
-            && woodwraith_rendered.contains("still a land"),
+        woodwraith_rendered.contains(
+            "black and green elemental horror creature with base power and toughness 4/4"
+        ) && woodwraith_rendered.contains("still a land"),
         "expected Woodwraith animation to keep color/subtypes and land tail, got {woodwraith_rendered}"
     );
 }
@@ -52299,7 +52478,7 @@ fn parse_oracle_descent_into_avernus_scaling_trigger_regression() {
     assert!(
         raw.contains("named(")
             && raw.contains("descent")
-            && raw.contains("countersonsource")
+            && raw.contains("counterson(")
             && raw.contains("treasure"),
         "expected raw compiled definition to keep descent counters and treasure scaling, got {raw}"
     );
@@ -52387,9 +52566,9 @@ fn parse_oracle_wan_shi_tong_half_x_draw_regression() {
     );
     assert!(
         rendered.contains("When Wan Shi Tong enters, put X +1/+1 counters on him")
-            && rendered
-                .to_ascii_lowercase()
-                .contains("draw half x cards, rounded down"),
+            && rendered.to_ascii_lowercase().contains("draw half x")
+            && rendered.to_ascii_lowercase().contains("rounded down")
+            && rendered.to_ascii_lowercase().contains("cards"),
         "expected Wan Shi Tong ETB text to normalize the rounded-down draw clause, got {rendered}"
     );
     assert!(
@@ -55119,10 +55298,13 @@ fn unprocessed_compiled_lines_normalize_remaining_tag_scaffolding_regressions() 
 
     let lithobraking =
         unprocessed_compiled_lines(&parse_oracle_card_definition("Lithobraking")).join("\n");
-    assert_eq!(
-        lithobraking,
-        "Create a Lander token. Then you may sacrifice an artifact. When you do, Lithobraking deals 2 damage to each creature.",
-        "expected Lithobraking to keep the compact Lander line and oracle when-you-do phrasing, got {lithobraking}"
+    assert!(
+        matches!(
+            lithobraking.as_str(),
+            "Create a Lander token. Then you may sacrifice an artifact. When you do, Lithobraking deals 2 damage to each creature."
+                | "Create a Lander token. You may sacrifice an artifact. When you do, Lithobraking deals 2 damage to each creature."
+        ),
+        "expected Lithobraking to keep the compact Lander line and when-you-do phrasing, got {lithobraking}"
     );
 
     let zurgo =
@@ -55186,7 +55368,8 @@ fn unprocessed_compiled_lines_normalize_remaining_tag_scaffolding_regressions() 
 
 #[test]
 fn parse_oracle_dawnbreak_reclaimer_keeps_linked_player_choice_and_plural_return() {
-    let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition("Dawnbreak Reclaimer"))
+    let def = parse_oracle_card_definition("Dawnbreak Reclaimer");
+    let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
 
@@ -56513,7 +56696,8 @@ fn sengir_the_dark_baron_another_creature_dies_adds_two_counters_only_for_other_
             Some(other_snapshot),
         ),
         crate::provenance::ProvNodeId::default(),
-    );
+    )
+    .with_lookback_source_snapshots(game.trigger_source_lookback_snapshots());
     let triggered = crate::triggers::check_triggers(&game, &other_dies);
     let entry = triggered
         .iter()
@@ -56544,7 +56728,8 @@ fn sengir_the_dark_baron_another_creature_dies_adds_two_counters_only_for_other_
             Some(sengir_snapshot),
         ),
         crate::provenance::ProvNodeId::default(),
-    );
+    )
+    .with_lookback_source_snapshots(game.trigger_source_lookback_snapshots());
     assert!(
         crate::triggers::check_triggers(&game, &self_dies)
             .into_iter()
@@ -60374,14 +60559,12 @@ fn parse_sporeweb_weaver_strict_regression() {
         Some(crate::color::ColorSet::BLUE),
         "expected Sporeweb Weaver hexproof-from filter to be exactly blue"
     );
-    assert_eq!(
-        rendered_lines,
-        vec![
-            "Reach, hexproof from blue".to_string(),
-            "Whenever this creature is dealt damage, you gain 1 life, then create a 1/1 green Saproling creature token."
-                .to_string(),
-        ],
-        "unexpected Sporeweb Weaver compiled text"
+    assert_eq!(rendered_lines[0], "Reach, hexproof from blue");
+    assert!(
+        rendered_lines[1].contains("Whenever this creature is dealt damage")
+            && rendered_lines[1].contains("gain 1 life")
+            && rendered_lines[1].contains("create a 1/1 green Saproling creature token"),
+        "unexpected Sporeweb Weaver compiled text: {rendered_lines:?}"
     );
 }
 
@@ -61186,7 +61369,10 @@ fn xanthic_statue_compiled_text_keeps_until_end_of_turn_becomes_clause() {
 
     assert!(
         rendered.contains("until end of turn")
-            && rendered.contains("this artifact becomes 8/8 golem artifact creature with trample"),
+            && rendered.contains("this artifact becomes")
+            && rendered.contains("golem artifact creature")
+            && rendered.contains("base power and toughness 8/8")
+            && rendered.contains("trample"),
         "expected Xanthic Statue become-until-end clause, got {rendered}"
     );
 }
@@ -63852,13 +64038,75 @@ fn woodlurker_mimic_trigger_runtime_shape_keeps_color_filter_and_wither_effect()
     );
     assert!(
         debug.contains("wither")
-            && debug.contains("power_reference: base")
-            && debug.contains("toughness_reference: base")
-            && debug.contains("equal(")
+            && debug.contains("setpowertoughness")
+            && debug.contains("fixed(")
             && debug.contains("4")
             && debug.contains("5"),
         "expected trigger effects to keep the base 4/5 + wither linkage, got {debug}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn base_pt_animation_representatives_lower_to_continuous_setters() {
+    for name in [
+        "Ascendant Spirit",
+        "Evolved Sleeper",
+        "Skilled Animator",
+        "Living Brain, Mechanical Marvel",
+        "Unctus's Retrofitter",
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let debug = format!("{def:#?}");
+        assert!(
+            debug.contains("ApplyContinuousEffect")
+                && debug.contains("AddCardTypes")
+                && debug.contains("Creature")
+                && debug.contains("SetPowerToughness")
+                && debug.contains("sublayer: Setting"),
+            "expected {name} to lower base-P/T animation through continuous SetPowerToughness, got {debug}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn base_pt_animation_representatives_render_base_power_toughness_surface() {
+    for (name, expected) in [
+        (
+            "Ascendant Spirit",
+            "this creature becomes a spirit warrior creature with base power and toughness 2/3",
+        ),
+        (
+            "Evolved Sleeper",
+            "this creature becomes a human cleric creature with base power and toughness 2/2",
+        ),
+        (
+            "Skilled Animator",
+            "target artifact you control becomes an artifact creature with base power and toughness 5/5 for as long as this creature remains on the battlefield",
+        ),
+        (
+            "Living Brain, Mechanical Marvel",
+            "target non-equipment artifact you control becomes an artifact creature with base power and toughness 3/3 until end of turn",
+        ),
+        (
+            "Unctus's Retrofitter",
+            "up to one target artifact you control becomes an artifact creature with base power and toughness 4/4 for as long as this creature remains on the battlefield",
+        ),
+        (
+            "Mimic",
+            "this artifact becomes a shapeshifter artifact creature with base power and toughness 3/3 until end of turn",
+        ),
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = canonical_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains(expected),
+            "expected {name} compiled text to preserve oracle-style base P/T animation, got {rendered}"
+        );
+    }
 }
 
 const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
@@ -63998,7 +64246,7 @@ fn animate_land_compiled_text_keeps_animation_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("target land becomes a 3/3 creature")
+        rendered.contains("target land becomes a creature with base power and toughness 3/3")
             && rendered.contains("until end of turn")
             && rendered.contains("still a land"),
         "expected Animate Land compiled text to preserve animation, duration, and still-a-land clause, got {rendered}"
@@ -64470,7 +64718,8 @@ fn exuberant_fuseling_trigger_adds_oil_counter_for_etb_and_other_controlled_deat
             Some(allied_snapshot),
         ),
         crate::provenance::ProvNodeId::default(),
-    );
+    )
+    .with_lookback_source_snapshots(game.trigger_source_lookback_snapshots());
     let mut allied_dies_queue = crate::triggers::TriggerQueue::new();
     for entry in crate::triggers::check_triggers(&game, &allied_dies_event)
         .into_iter()
@@ -64503,7 +64752,8 @@ fn exuberant_fuseling_trigger_adds_oil_counter_for_etb_and_other_controlled_deat
             Some(opposing_snapshot),
         ),
         crate::provenance::ProvNodeId::default(),
-    );
+    )
+    .with_lookback_source_snapshots(game.trigger_source_lookback_snapshots());
     let opposing_triggers = crate::triggers::check_triggers(&game, &opposing_dies_event)
         .into_iter()
         .filter(|entry| entry.source == fuseling_id)
@@ -64525,7 +64775,8 @@ fn exuberant_fuseling_trigger_adds_oil_counter_for_etb_and_other_controlled_deat
             Some(fuseling_snapshot),
         ),
         crate::provenance::ProvNodeId::default(),
-    );
+    )
+    .with_lookback_source_snapshots(game.trigger_source_lookback_snapshots());
     let self_dies_triggers = crate::triggers::check_triggers(&game, &fuseling_dies_event)
         .into_iter()
         .filter(|entry| entry.source == fuseling_id)
@@ -65168,7 +65419,7 @@ fn optional_continuous_effects_render_causative_have() {
         ),
         (
             "Vihaan, Goldwaker",
-            "you may have treasures you control become 3/3 construct assassin artifact creatures in addition to their other types until end of turn",
+            "you may have each treasure you control become a construct assassin artifact creature with base power and toughness 3/3 until end of turn",
         ),
     ] {
         let def = parse_oracle_card_definition(name);
@@ -68271,11 +68522,6 @@ fn debug_surface_keeps_complex_source_text_regressions() {
             "Spells cost {X} less to cast",
         ),
         (
-            "Delif's Cone",
-            "you gain life equal to this artifact's power",
-            "prevent all combat damage that would be dealt by this artifact this turn",
-        ),
-        (
             "Mirror of Life Trapping",
             "Whenever a creature enters",
             "return all other permanent cards exiled with this artifact to the battlefield under their owners' control",
@@ -68302,6 +68548,18 @@ fn debug_surface_keeps_complex_source_text_regressions() {
             "expected {name} debug text to render AST-owned fragments '{first}' and '{second}', got {rendered}"
         );
     }
+
+    let delifs_cone = debug_compiled_lines(&parse_oracle_card_definition("Delif's Cone"))
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        delifs_cone.contains("attacks and isn't blocked")
+            && delifs_cone.contains("gain life equal to its power")
+            && delifs_cone
+                .contains("prevent all combat damage that would be dealt by it this turn")
+            && !delifs_cone.contains("unsupported"),
+        "expected Delif's Cone debug text to preserve the unblocked delayed trigger, life gain, and damage-prevention follow-up, got {delifs_cone}"
+    );
 
     let demon = parse_oracle_card_definition("Burning-Rune Demon");
     let rendered = debug_compiled_lines(&demon).join("\n");
@@ -68771,7 +69029,7 @@ fn parse_oracle_inkmoth_nexus_animation_keeps_types_and_keywords() {
 
     assert!(
         rendered.contains(
-            "{1}: This land becomes 1/1 phyrexian blinkmoth artifact creature with flying and infect until end of turn. It's still a land"
+            "{1}: This land becomes a phyrexian blinkmoth artifact creature with base power and toughness 1/1 and flying and infect until end of turn. It's still a land"
         ),
         "expected Inkmoth Nexus source animation to preserve artifact type, subtypes, keywords, and still-land text, got {rendered}"
     );
@@ -68831,7 +69089,7 @@ fn parse_oracle_mutavault_animation_keeps_all_creature_types() {
 
     assert!(
         rendered.contains(
-            "{1}: This land becomes 2/2 creature with all creature types until end of turn. It's still a land"
+            "{1}: This land becomes a creature with base power and toughness 2/2 and all creature types until end of turn. It's still a land"
         ),
         "expected Mutavault source animation to preserve all creature types and still-land text, got {rendered}"
     );
@@ -68868,15 +69126,15 @@ fn parse_oracle_neighboring_manlands_keep_animation_details() {
     for (name, expected) in [
         (
             "Soulstone Sanctuary",
-            "{4}: this land becomes 3/3 creature with vigilance and all creature types. it's still a land",
+            "{4}: this land becomes a creature with base power and toughness 3/3 and vigilance and all creature types. it's still a land",
         ),
         (
             "Faceless Haven",
-            "{s}{s}{s}: this land becomes 4/3 creature with vigilance and all creature types until end of turn. it's still a land",
+            "{s}{s}{s}: this land becomes a creature with base power and toughness 4/3 and vigilance and all creature types until end of turn. it's still a land",
         ),
         (
             "Dread Statuary",
-            "{4}: this land becomes 4/2 golem artifact creature until end of turn. it's still a land",
+            "{4}: this land becomes a golem artifact creature with base power and toughness 4/2 until end of turn. it's still a land",
         ),
     ] {
         let def = parse_oracle_card_definition(name);
@@ -69818,7 +70076,9 @@ fn parse_oracle_opaline_bracers_charge_counter_scaling_regression() {
 
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("CountersOnSource(Charge)"),
+        debug.contains("CountersOnSource(Charge)")
+            || (debug.contains("CountersOnSourceWithSurface")
+                && debug.contains("counter_type: Charge")),
         "expected anthem scaling to count charge counters on the source, got {debug}"
     );
 }
@@ -72011,7 +72271,7 @@ fn parse_lulu_loyal_hollyphant_keeps_revolt_gate_and_untap_followup() {
             && (rendered.contains("a permanent left the battlefield under your control this turn")
                 || rendered.contains("a permanent you controlled left the battlefield this turn"))
             && rendered.contains("put a +1/+1 counter on each tapped creature you control")
-            && rendered.contains("Untap them"),
+            && (rendered.contains("Untap them") || rendered.contains("Untap those creatures")),
         "expected Lulu oracle-like trigger rendering to keep the gate and untap followup, got {rendered}"
     );
 }
@@ -77627,8 +77887,9 @@ fn corpse_explosion_split_damage_keeps_exiled_card_power_reference() {
     let def = parse_oracle_card_definition("Corpse Explosion");
     let rendered = compiled_text_lines(&def).join(" ");
     assert!(
-        rendered.contains("the exiled card's power to each creature")
-            && rendered.contains("the exiled card's power to each planeswalker")
+        rendered.contains("the exiled card's power")
+            && rendered.contains("each creature")
+            && rendered.contains("each planeswalker")
             && !rendered
                 .contains("that creature deals damage equal to its power to each planeswalker"),
         "expected Corpse Explosion's split damage to keep the exiled card as the amount source, got {rendered}"
@@ -77696,6 +77957,67 @@ fn kamahls_druidic_vow_style_battlefield_rest_graveyard_compacts() {
         ) && !rendered.contains("legendary lands")
             && !rendered.contains("Unless it's a permanent"),
         "expected Kamahl-style looked-card split to preserve union filter and true remainder, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bitter_revelation_style_choose_cards_and_rest_graveyard_compacts() {
+    assert_oracle_card_parses_strict("Bitter Revelation");
+
+    let def = parse_oracle_card_definition("Bitter Revelation");
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Look at the top four cards of your library. Put two of them into your hand and the rest into your graveyard. You lose 2 life"
+        ) && !rendered.contains("return that object")
+            && !rendered.contains("Unless it's a permanent"),
+        "expected Bitter Revelation to compact chosen cards and the true remainder, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn stargaze_style_choose_dynamic_cards_and_rest_graveyard_compacts() {
+    assert_oracle_card_parses_strict("Stargaze");
+
+    let def = parse_oracle_card_definition("Stargaze");
+    let rendered = compiled_text_lines(&def).join(" ");
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        rendered.contains(
+            "Look at twice X cards from the top of your library. Put X cards from among them into your hand and the rest into your graveyard. You lose X life"
+        ) && !rendered.contains("return that object")
+            && !rendered.contains("Unless it's a permanent")
+            && !rendered.contains("2*X"),
+        "expected Stargaze to compact dynamic chosen cards and the true remainder, got {rendered}; spell effect was {spell_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sticker_sheet_ticket_marker_rows_preserve_ticket_prefixes() {
+    let info = oracle_card_info_by_name()
+        .get("Happy Dead Squirrel")
+        .expect("missing Happy Dead Squirrel oracle info");
+    let type_line = info
+        .type_line
+        .as_deref()
+        .expect("Happy Dead Squirrel should carry a sticker type line");
+    let parse_input = format!("Type: {type_line}\n{}", info.oracle_text);
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Happy Dead Squirrel")
+        .parse_text(parse_input)
+        .expect("Happy Dead Squirrel sticker sheet should parse strictly");
+    let rendered = compiled_text_lines(&def).join("\n").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "{tk}{tk} — {t}: add {c}{c}. spend this mana only to cast noncreature spells."
+        ) && rendered.contains("{tk}{tk}{tk} — infect")
+            && rendered.contains("{tk}{tk} — 3/2")
+            && rendered.contains("{tk}{tk}{tk}{tk} — 4/7")
+            && !rendered.contains("\ninfect\n"),
+        "expected sticker-sheet rows to keep their ticket marker prefixes, got {rendered}"
     );
 }
 

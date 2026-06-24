@@ -247,6 +247,61 @@ fn expand_graveyard_or_hand_disjunction_filter(
     filter
 }
 
+fn expand_tagged_hand_or_graveyard_disjunction_filter(
+    mut filter: ObjectFilter,
+    words: &[&str],
+) -> ObjectFilter {
+    let has_graveyard = choice_object_shape_matches_words(words, GRAVEYARD_WORD_PATTERN);
+    let has_or = words.iter().any(|word| *word == "or");
+    if !(has_graveyard && has_or) {
+        return filter;
+    }
+    let graveyard_arm_is_plain_card = words.windows(4).any(|window| {
+        matches!(
+            window,
+            ["or", "a", "card", "from"] | ["or", "the", "card", "from"]
+        )
+    }) || words
+        .windows(3)
+        .any(|window| matches!(window, ["or", "card", "from"]));
+
+    let mut hand_arm = filter.clone();
+    hand_arm.zone = Some(Zone::Hand);
+    hand_arm.controller = None;
+    hand_arm.owner = None;
+    hand_arm.any_of.clear();
+    if !hand_arm
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+    {
+        hand_arm.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    }
+
+    let mut graveyard_arm = filter.clone();
+    graveyard_arm.zone = Some(Zone::Graveyard);
+    graveyard_arm.any_of.clear();
+    graveyard_arm
+        .tagged_constraints
+        .retain(|constraint| constraint.tag.as_str() != IT_TAG);
+    if graveyard_arm_is_plain_card {
+        graveyard_arm.excluded_card_types.clear();
+    }
+
+    filter.zone = None;
+    filter.controller = None;
+    filter.owner = None;
+    filter.tagged_constraints.clear();
+    if graveyard_arm_is_plain_card {
+        filter.excluded_card_types.clear();
+    }
+    filter.any_of = vec![hand_arm, graveyard_arm];
+    filter
+}
+
 fn parse_choose_objects_for_each_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::runtime_backend::token_word_refs(tokens);
     if choice_object_shape_matches_words(&words, FOR_EACH_CARD_DISCARDED_THIS_WAY_PATTERN) {
@@ -552,6 +607,8 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 });
         }
+        choose_filter =
+            expand_tagged_hand_or_graveyard_disjunction_filter(choose_filter, &choose_words);
     }
     if matches!(
         choose_filter.zone,

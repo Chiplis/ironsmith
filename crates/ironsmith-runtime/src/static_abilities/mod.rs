@@ -1862,6 +1862,10 @@ impl StaticAbility {
         Self::new(Cascade)
     }
 
+    pub fn cascade_land_drop() -> Self {
+        Self::new(CascadeLandDrop)
+    }
+
     pub fn read_ahead() -> Self {
         Self::new(ReadAhead)
     }

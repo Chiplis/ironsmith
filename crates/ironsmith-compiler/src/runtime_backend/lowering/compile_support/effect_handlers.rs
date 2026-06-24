@@ -664,8 +664,13 @@ pub(super) fn try_compile_stack_and_condition_effect(
             predicate,
             effects,
         } => {
-            let (inner_effects, inner_choices) =
-                with_preserved_lowering_context(ctx, |_| {}, |ctx| compile_effects(effects, ctx))?;
+            let (inner_effects, inner_choices) = with_preserved_lowering_context(
+                ctx,
+                |ctx| {
+                    ctx.last_effect_id = Some(*condition);
+                },
+                |ctx| compile_effects(effects, ctx),
+            )?;
             let predicate = effect_predicate_from_if_result(*predicate);
             let effect = Effect::if_then(*condition, predicate, inner_effects);
             (vec![effect], inner_choices)
@@ -675,8 +680,13 @@ pub(super) fn try_compile_stack_and_condition_effect(
             predicate,
             effects,
         } => {
-            let (inner_effects, inner_choices) =
-                with_preserved_lowering_context(ctx, |_| {}, |ctx| compile_effects(effects, ctx))?;
+            let (inner_effects, inner_choices) = with_preserved_lowering_context(
+                ctx,
+                |ctx| {
+                    ctx.last_effect_id = Some(*condition);
+                },
+                |ctx| compile_effects(effects, ctx),
+            )?;
             let predicate = effect_predicate_from_if_result(*predicate);
             let effect =
                 Effect::reflexive_trigger(*condition, predicate, inner_effects, inner_choices);

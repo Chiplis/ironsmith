@@ -1690,6 +1690,7 @@ export default function Workspace({
             middleInspectorDock={showMiddleInspectorDock ? (
               <RightRail
                 pinnedObjectId={pinnedInspectorObjectId}
+                selectedObjectId={selectedObjectId}
                 transientInspectorPreview={activeTransientInspectorPreview}
                 transientInspectorPreviewIndex={transientInspectorPreviewIndex}
                 transientInspectorPreviewCount={transientInspectorPreviews.length}
@@ -1720,6 +1721,7 @@ export default function Workspace({
           <div className="pointer-events-none relative flex h-full w-full items-start justify-start overflow-visible">
             <RightRail
               pinnedObjectId={pinnedInspectorObjectId}
+              selectedObjectId={selectedObjectId}
               transientInspectorPreview={activeTransientInspectorPreview}
               transientInspectorPreviewIndex={transientInspectorPreviewIndex}
               transientInspectorPreviewCount={transientInspectorPreviews.length}
@@ -1781,6 +1783,7 @@ export default function Workspace({
             {!showMiddleInspectorDock ? (
               <RightRail
                 pinnedObjectId={pinnedInspectorObjectId}
+                selectedObjectId={selectedObjectId}
                 transientInspectorPreview={activeTransientInspectorPreview}
                 transientInspectorPreviewIndex={transientInspectorPreviewIndex}
                 transientInspectorPreviewCount={transientInspectorPreviews.length}
@@ -1794,6 +1797,7 @@ export default function Workspace({
             {!showMiddleInspectorDock && inspectorDebug && (
               <RightRail
                 pinnedObjectId={pinnedInspectorObjectId}
+                selectedObjectId={selectedObjectId}
                 transientInspectorPreview={activeTransientInspectorPreview}
                 transientInspectorPreviewIndex={transientInspectorPreviewIndex}
                 transientInspectorPreviewCount={transientInspectorPreviews.length}

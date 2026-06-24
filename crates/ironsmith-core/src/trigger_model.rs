@@ -52,6 +52,10 @@ pub enum TriggerKind {
         filter: ObjectFilter,
         min_total_attackers: usize,
     },
+    AttacksOneOrMoreWithExactTotal {
+        filter: ObjectFilter,
+        total_attackers: usize,
+    },
     AttacksAlone {
         filter: ObjectFilter,
     },
@@ -491,6 +495,18 @@ impl Trigger {
             TriggerKind::AttacksOneOrMoreWithMinTotal {
                 filter,
                 min_total_attackers,
+            },
+        )
+    }
+    pub fn attacks_one_or_more_with_exact_total(
+        filter: ObjectFilter,
+        total_attackers: usize,
+    ) -> Self {
+        Self::typed(
+            "attacks_one_or_more_with_exact_total",
+            TriggerKind::AttacksOneOrMoreWithExactTotal {
+                filter,
+                total_attackers,
             },
         )
     }

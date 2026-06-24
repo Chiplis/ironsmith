@@ -119,6 +119,7 @@ impl OrTrigger {
             || !object_filter_is_your_commander(&zone_change.object_filter, &[])
             || attacks.one_or_more
             || attacks.min_total_attackers != 1
+            || attacks.max_total_attackers.is_some()
             || !object_filter_is_your_commander(&attacks.filter, &[CardType::Creature])
         {
             return None;

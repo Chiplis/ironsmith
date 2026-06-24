@@ -302,6 +302,20 @@ impl StaticAbilityKind for Cascade {
     }
 }
 
+/// "As you cascade, you may put a land card from among the exiled cards onto the battlefield tapped."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CascadeLandDrop;
+
+impl StaticAbilityKind for CascadeLandDrop {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CascadeLandDrop
+    }
+
+    fn display(&self) -> String {
+        "As you cascade, you may put a land card from among the exiled cards onto the battlefield tapped".to_string()
+    }
+}
+
 /// "For each {B} in a cost, you may pay 2 life rather than pay that mana."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BlackManaMayBePaidWithLife;

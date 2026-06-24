@@ -707,6 +707,9 @@ fn parse_draw_for_each_known_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let words = token_words(tokens);
+    if draw_for_each_kick_count_words(&words) {
+        return Ok(Some(Value::KickCount));
+    }
     if let ["color" | "colors", "among", ..] = words.as_slice() {
         let filter_start = token_index_for_word_index(tokens, 2).unwrap_or(tokens.len());
         let filter_tokens = trim_commas(&tokens[filter_start..]);
@@ -735,6 +738,22 @@ fn parse_draw_for_each_known_count_value(
         ] => Some(Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You)),
         _ => None,
     })
+}
+
+fn draw_for_each_kick_count_words(words: &[&str]) -> bool {
+    let Some((first, rest)) = words.split_first() else {
+        return false;
+    };
+    if !matches!(first, &"time" | &"times") {
+        return false;
+    };
+    let Some(source_words) = rest.strip_suffix(&["was", "kicked"]) else {
+        return false;
+    };
+    source_words == ["this"]
+        || source_words == ["this", "spell"]
+        || source_words == ["it"]
+        || source_reference_surface_for_words(source_words).is_some()
 }
 
 fn parse_draw_for_each_this_way_metric_value(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -767,16 +786,32 @@ fn parse_draw_for_each_this_way_metric_value(tokens: &[OwnedLexToken]) -> Option
 }
 
 fn parse_draw_for_each_counter_reference_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = token_words(tokens);
+    let words = tokens
+        .iter()
+        .filter(|token| token.as_word().is_some())
+        .map(OwnedLexToken::parser_text)
+        .collect::<Vec<_>>();
     let counter_idx = find_index(words.as_slice(), |word| {
         *word == "counter" || *word == "counters"
     })?;
-    if counter_idx == 0 || !words.get(counter_idx + 1).is_some_and(|word| *word == "on") {
+    if counter_idx == 0 {
         return None;
     }
 
     let counter_type =
         crate::runtime_backend::parse_counter_type_from_tokens(&tokens[..=counter_idx]);
+    if let Some(counter_type) = counter_type
+        && words
+            .get(counter_idx + 1..)
+            .is_some_and(|tail| tail == ["you", "have"] || tail == ["you", "ve"])
+    {
+        return Some(Value::PlayerCounters(PlayerFilter::You, counter_type));
+    }
+
+    if !words.get(counter_idx + 1).is_some_and(|word| *word == "on") {
+        return None;
+    }
+
     let reference = words.get(counter_idx + 2..)?;
     match reference {
         ["it"]
@@ -804,7 +839,9 @@ fn parse_draw_for_each_counter_reference_value(tokens: &[OwnedLexToken]) -> Opti
             Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
             counter_type,
         )),
-        _ => None,
+        _ => source_reference_surface_for_words(reference).map(|surface| {
+            Value::CountersOn(Box::new(source_choose_spec_for_surface(surface)), counter_type)
+        }),
     }
 }
 

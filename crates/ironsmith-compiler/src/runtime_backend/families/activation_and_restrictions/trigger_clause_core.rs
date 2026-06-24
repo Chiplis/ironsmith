@@ -451,6 +451,9 @@ const ATTACKS_AND_IS_NOT_BLOCKED_TAIL_PATTERN: ClauseShape<'static> = clause_sha
             &["and", "isnt", "blocked"],
             &["and", "isn't", "blocked"],
             &["and", "is", "not", "blocked"],
+            &["and", "isnt", "blocked", "this", "combat"],
+            &["and", "isn't", "blocked", "this", "combat"],
+            &["and", "is", "not", "blocked", "this", "combat"],
         ]
 );
 const ATTACKS_A_PLAYER_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["a", "player"]);
@@ -1553,6 +1556,16 @@ pub(crate) fn parse_leading_or_more_quantifier(
             .ok()
             .flatten()?;
     Some((count, &tokens[used..]))
+}
+
+pub(crate) fn parse_leading_exactly_quantifier(
+    tokens: &[OwnedLexToken],
+) -> Option<(u32, &[OwnedLexToken])> {
+    if !tokens.first()?.is_word("exactly") {
+        return None;
+    }
+    let (count, used) = parse_number(&tokens[1..])?;
+    Some((count, &tokens[1 + used..]))
 }
 
 pub(crate) fn parse_trigger_clause_lexed(

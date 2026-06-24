@@ -41,9 +41,9 @@ use super::super::util::{
     parse_choice_count_token_prefix_consumed, parse_mana_symbol, parse_number,
     parse_number_word_u32, parse_quantity_comparison_prefix, parse_target_count_range_prefix,
     parse_target_phrase, parse_value, parse_value_expr_words, replace_unbound_x_with_value,
-    source_reference_surface_for_words, span_from_tokens, strip_leading_article_word_refs,
-    this_source_surface_for_words, token_index_for_word_index, trim_commas,
-    value_contains_unbound_x, words, wrap_target_count,
+    source_choose_spec_for_surface, source_reference_surface_for_words, span_from_tokens,
+    strip_leading_article_word_refs, this_source_surface_for_words, token_index_for_word_index,
+    trim_commas, value_contains_unbound_x, words, wrap_target_count,
 };
 use super::super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_counters_on_reference_value,

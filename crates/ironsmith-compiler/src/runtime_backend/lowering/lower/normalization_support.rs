@@ -81,6 +81,7 @@ fn apply_trigger_intro_surface(trigger: TriggerSpec, full_tokens: &[OwnedLexToke
         | TriggerSpec::AttacksOneOrMore(_)
         | TriggerSpec::PlayersAttackedOneOrMore(_)
         | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
+        | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
         | TriggerSpec::AttacksAlone(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)

@@ -303,27 +303,9 @@ pub(crate) fn word_view_has_any_prefix(words: &TokenWordView<'_>, prefixes: &[&[
 }
 
 pub(crate) fn rewrite_followup_intro_to_if_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut rewritten = tokens.to_vec();
-    let words = TokenWordView::new(&rewritten);
-    if !word_view_has_any_prefix(
-        &words,
-        &[
-            &["when", "you", "do"],
-            &["whenever", "you", "do"],
-            &["when", "it", "connives", "this", "way"],
-            &["when", "it", "connive", "this", "way"],
-            &["whenever", "it", "connives", "this", "way"],
-            &["whenever", "it", "connive", "this", "way"],
-        ],
-    ) {
-        return rewritten;
-    }
-
-    let Some(first_word_idx) = words.token_index_for_word_index(0) else {
-        return rewritten;
-    };
-    rewritten[first_word_idx].replace_word("if");
-    rewritten
+    // Preserve reflexive "when" prefixes so lowering emits a stack-queued
+    // ReflexiveTriggerEffect instead of an inline IfEffect.
+    tokens.to_vec()
 }
 
 fn token_range_for_word_span(

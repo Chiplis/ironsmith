@@ -216,13 +216,11 @@ export default function MobileBattleScene({
   const opponentHudRef = useRef(null);
   const controlBandRef = useRef(null);
   const selfHudRef = useRef(null);
-  const handFanRef = useRef(null);
   const [actionStackElement, setActionStackElement] = useState(null);
 
   const [topbarHeight, setTopbarHeight] = useState(DEFAULT_TOPBAR_HEIGHT);
   const [controlBandHeight, setControlBandHeight] = useState(DEFAULT_CONTROL_BAND_HEIGHT);
   const [selfHudHeight, setSelfHudHeight] = useState(DEFAULT_SELF_HUD_HEIGHT);
-  const [handFanHeight, setHandFanHeight] = useState(DEFAULT_HAND_PEEK_HEIGHT);
 
   const layout = useMobileBattleLayout({
     topBandHeight: topbarHeight,
@@ -231,7 +229,7 @@ export default function MobileBattleScene({
     opponentManaPoolHeight: 0,
     selfManaPoolHeight: 0,
     selfHudHeight: selfHudHeight,
-    handPeekHeight: handFanHeight,
+    handPeekHeight: DEFAULT_HAND_PEEK_HEIGHT,
     stackVisible,
     stackRailWidth: MOBILE_STACK_RAIL_WIDTH_PX,
     opponentFrontCount: opponentRows.frontCount,
@@ -245,7 +243,6 @@ export default function MobileBattleScene({
       measureElementHeight(opponentHudRef.current, DEFAULT_TOPBAR_HEIGHT, setTopbarHeight),
       measureElementHeight(controlBandRef.current, DEFAULT_CONTROL_BAND_HEIGHT, setControlBandHeight),
       measureElementHeight(selfHudRef.current, DEFAULT_SELF_HUD_HEIGHT, setSelfHudHeight),
-      measureElementHeight(handFanRef.current, DEFAULT_HAND_PEEK_HEIGHT, setHandFanHeight),
     ].filter(Boolean);
     return () => {
       for (const observer of observers) observer.disconnect();
@@ -679,6 +676,7 @@ export default function MobileBattleScene({
         "--mobile-battle-top-status-height": `${layout.topStatusHeight}px`,
         "--mobile-battle-control-height": `${layout.controlBandHeight}px`,
         "--mobile-battle-opponent-band-height": `${layout.opponentBandHeight}px`,
+        "--mobile-battle-self-band-height": `${layout.selfBandHeight}px`,
         "--mobile-battle-self-back-visible-height": `${layout.selfBackVisibleHeight}px`,
         "--mobile-battle-scene-padding": `${layout.sidePadding}px`,
         "--mobile-battle-section-gap": `${layout.sectionGap}px`,
@@ -779,7 +777,7 @@ export default function MobileBattleScene({
             />
           </div>
 
-          <div ref={handFanRef} className="mobile-mtga-scene-row mobile-mtga-scene-row--hand">
+          <div className="mobile-mtga-scene-row mobile-mtga-scene-row--hand">
             <MobileHandFan
               me={me}
               selectedObjectId={selectedObjectId}

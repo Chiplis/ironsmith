@@ -25,33 +25,49 @@ fn line_starts_with_effect_statement_sentence(tokens: &[OwnedLexToken]) -> bool 
     if sentences.len() <= 1 {
         return false;
     }
-    sentences
-        .first()
-        .and_then(|sentence| sentence.first())
-        .is_some_and(|token| {
-            token.is_word("add")
-                || token.is_word("choose")
-                || token.is_word("counter")
-                || token.is_word("create")
-                || token.is_word("deal")
-                || token.is_word("destroy")
-                || token.is_word("discard")
-                || token.is_word("draw")
-                || token.is_word("exchange")
-                || token.is_word("exile")
-                || token.is_word("gain")
-                || token.is_word("look")
-                || token.is_word("mill")
-                || token.is_word("put")
-                || token.is_word("return")
-                || token.is_word("reveal")
-                || token.is_word("sacrifice")
-                || token.is_word("search")
-                || token.is_word("shuffle")
-                || token.is_word("surveil")
-                || token.is_word("tap")
-                || token.is_word("untap")
-        })
+    let Some(first_sentence) = sentences.first() else {
+        return false;
+    };
+    if structure::classify_statement_line_family_lexed(first_sentence).is_some() {
+        return true;
+    }
+    let first_words = first_sentence
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>();
+    if matches!(
+        first_words.as_slice(),
+        ["any", "player" | "opponent", "may", "have", ..]
+    ) && first_words
+        .iter()
+        .any(|word| matches!(*word, "deal" | "deals"))
+    {
+        return true;
+    }
+    first_sentence.first().is_some_and(|token| {
+        token.is_word("add")
+            || token.is_word("choose")
+            || token.is_word("counter")
+            || token.is_word("create")
+            || token.is_word("deal")
+            || token.is_word("destroy")
+            || token.is_word("discard")
+            || token.is_word("draw")
+            || token.is_word("exchange")
+            || token.is_word("exile")
+            || token.is_word("gain")
+            || token.is_word("look")
+            || token.is_word("mill")
+            || token.is_word("put")
+            || token.is_word("return")
+            || token.is_word("reveal")
+            || token.is_word("sacrifice")
+            || token.is_word("search")
+            || token.is_word("shuffle")
+            || token.is_word("surveil")
+            || token.is_word("tap")
+            || token.is_word("untap")
+    })
 }
 
 fn token_word_is_effect_head(word: &str) -> bool {

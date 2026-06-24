@@ -87,6 +87,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
             | TriggerSpec::AttacksOneOrMore(_)
             | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
+            | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
             | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
             | TriggerSpec::CounterPutOn { .. }
             | TriggerSpec::EntersBattlefieldOneOrMore { .. }

@@ -658,7 +658,7 @@ function PriorityActionStrip({
     onScrollStart: onActionHoverEnd,
   });
   const compactLandscapeViewport = typeof window !== "undefined"
-    && window.matchMedia("(max-height: 480px) and (orientation: landscape)").matches;
+    && window.matchMedia("(max-width: 720px) and (orientation: landscape)").matches;
   const groupKeysSignature = useMemo(
     () => groups.map((group) => group.key).join("|"),
     [groups]
@@ -2290,7 +2290,7 @@ function PriorityControlStack({
   className = "",
 }) {
   const compactLandscapeViewport = typeof window !== "undefined"
-    && window.matchMedia("(max-height: 480px) and (orientation: landscape)").matches;
+    && window.matchMedia("(max-width: 720px) and (orientation: landscape)").matches;
   const advanceLabelText = safeInlineLabel(advanceControlLabel);
   const checkboxLabelClass =
     "priority-control-toggle action-strip-toggle flex items-center gap-1.5 text-[11px] uppercase tracking-wider cursor-pointer transition-colors";
@@ -2629,7 +2629,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     && typeof effectiveSubmitAction.onSubmit === "function";
   const canAdvanceViewedCardsStep = !!decision;
   const compactLandscapeViewport = typeof window !== "undefined"
-    && window.matchMedia("(max-height: 480px) and (orientation: landscape)").matches;
+    && window.matchMedia("(max-width: 720px) and (orientation: landscape)").matches;
   const completeViewedCardsStep = useCallback(() => {
     if (!viewedCardsToken) return;
     setAcknowledgedViewedCardsToken(viewedCardsToken);

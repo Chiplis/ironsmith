@@ -1360,44 +1360,63 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
         .iter()
         .position(|word| shared_util_shape_matches_word(word, COUNTER_OR_COUNTERS_WORD_PATTERN))
         .map(|relative_idx| counter_descriptor_start + relative_idx)
-        && words
-            .get(counter_idx + 1)
-            .is_some_and(|word| shared_util_shape_matches_word(word, ON_WORD_PATTERN))
     {
         let parsed_counter_type = if counter_idx > counter_descriptor_start {
             parse_counter_type_words(&words[counter_descriptor_start..=counter_idx])
         } else {
             None
         };
-        let reference_start = counter_idx + 2;
-        let mut reference_end = reference_start;
-        while reference_end < words.len()
-            && !shared_util_shape_matches_word(words[reference_end], PLUS_OR_MINUS_WORD_PATTERN)
+        if let Some(counter_type) = parsed_counter_type
+            && words
+                .get(counter_idx + 1..counter_idx + 3)
+                .is_some_and(|tail| tail == ["you", "have"] || tail == ["you", "ve"])
         {
-            reference_end += 1;
+            return Some((
+                Value::PlayerCounters(PlayerFilter::You, counter_type),
+                counter_idx + 3,
+            ));
         }
-        let reference = &words[reference_start..reference_end];
-        if shared_util_shape_matches_words(reference, SOURCE_COUNTER_REFERENCE_PATTERN) {
-            // Preserve the "this <type>" surface so the count renders/links against
-            // the named permanent ("on this artifact") rather than the bare source.
-            let value = match parsed_counter_type {
-                Some(counter_type) => match this_source_surface_for_words(reference) {
-                    Some(surface) => Value::CountersOn(
-                        Box::new(source_choose_spec_for_surface(surface)),
-                        Some(counter_type),
-                    ),
-                    None => Value::CountersOnSource(counter_type),
-                },
-                None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
-            };
-            return Some((value, reference_end));
-        }
-        if shared_util_shape_matches_words(reference, TAGGED_COUNTER_REFERENCE_PATTERN) {
-            let value = Value::CountersOn(
-                Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
-                parsed_counter_type,
-            );
-            return Some((value, reference_end));
+        if words
+            .get(counter_idx + 1)
+            .is_some_and(|word| shared_util_shape_matches_word(word, ON_WORD_PATTERN))
+        {
+            let reference_start = counter_idx + 2;
+            let mut reference_end = reference_start;
+            while reference_end < words.len()
+                && !shared_util_shape_matches_word(words[reference_end], PLUS_OR_MINUS_WORD_PATTERN)
+            {
+                reference_end += 1;
+            }
+            let reference = &words[reference_start..reference_end];
+            if shared_util_shape_matches_words(reference, SOURCE_COUNTER_REFERENCE_PATTERN) {
+                // Preserve the "this <type>" surface so the count renders/links against
+                // the named permanent ("on this artifact") rather than the bare source.
+                let value = match parsed_counter_type {
+                    Some(counter_type) => match this_source_surface_for_words(reference) {
+                        Some(surface) => Value::CountersOn(
+                            Box::new(source_choose_spec_for_surface(surface)),
+                            Some(counter_type),
+                        ),
+                        None => Value::CountersOnSource(counter_type),
+                    },
+                    None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+                };
+                return Some((value, reference_end));
+            }
+            if let Some(surface) = source_reference_surface_for_words(reference) {
+                let value = Value::CountersOn(
+                    Box::new(source_choose_spec_for_surface(surface)),
+                    parsed_counter_type,
+                );
+                return Some((value, reference_end));
+            }
+            if shared_util_shape_matches_words(reference, TAGGED_COUNTER_REFERENCE_PATTERN) {
+                let value = Value::CountersOn(
+                    Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                    parsed_counter_type,
+                );
+                return Some((value, reference_end));
+            }
         }
     }
 
@@ -1452,17 +1471,41 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
             filter_end,
         ));
     }
+    if for_each_kick_count_words(count_words) {
+        return Some((Value::KickCount, filter_end));
+    }
     if let Some(counter_idx) = find_index(count_words, |word| {
         shared_util_shape_matches_word(word, COUNTER_OR_COUNTERS_WORD_PATTERN)
-    }) && count_words
-        .get(counter_idx + 1)
-        .is_some_and(|word| shared_util_shape_matches_word(word, ON_WORD_PATTERN))
-    {
+    }) {
         let counter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(count_words);
         if let Some(counter_type) = parse_counter_type_from_tokens(&counter_tokens) {
-            let reference = &count_words[counter_idx + 2..];
-            if shared_util_shape_matches_words(reference, SOURCE_COUNTER_REFERENCE_PATTERN) {
-                if let Some(surface) = this_source_surface_for_words(reference) {
+            if count_words
+                .get(counter_idx + 1..counter_idx + 3)
+                .is_some_and(|tail| tail == ["you", "have"] || tail == ["you", "ve"])
+            {
+                return Some((
+                    Value::PlayerCounters(PlayerFilter::You, counter_type),
+                    filter_end,
+                ));
+            }
+            if count_words
+                .get(counter_idx + 1)
+                .is_some_and(|word| shared_util_shape_matches_word(word, ON_WORD_PATTERN))
+            {
+                let reference = &count_words[counter_idx + 2..];
+                if shared_util_shape_matches_words(reference, SOURCE_COUNTER_REFERENCE_PATTERN) {
+                    if let Some(surface) = this_source_surface_for_words(reference) {
+                        return Some((
+                            Value::CountersOn(
+                                Box::new(source_choose_spec_for_surface(surface)),
+                                Some(counter_type),
+                            ),
+                            filter_end,
+                        ));
+                    }
+                    return Some((Value::CountersOnSource(counter_type), filter_end));
+                }
+                if let Some(surface) = source_reference_surface_for_words(reference) {
                     return Some((
                         Value::CountersOn(
                             Box::new(source_choose_spec_for_surface(surface)),
@@ -1471,24 +1514,39 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                         filter_end,
                     ));
                 }
-                return Some((Value::CountersOnSource(counter_type), filter_end));
-            }
-            if shared_util_shape_matches_words(reference, TAGGED_COUNTER_REFERENCE_PATTERN) {
-                return Some((
-                    Value::CountersOn(
-                        Box::new(ChooseSpec::Tagged(TagKey::from(
-                            crate::cards::builders::IT_TAG,
-                        ))),
-                        Some(counter_type),
-                    ),
-                    filter_end,
-                ));
+                if shared_util_shape_matches_words(reference, TAGGED_COUNTER_REFERENCE_PATTERN) {
+                    return Some((
+                        Value::CountersOn(
+                            Box::new(ChooseSpec::Tagged(TagKey::from(
+                                crate::cards::builders::IT_TAG,
+                            ))),
+                            Some(counter_type),
+                        ),
+                        filter_end,
+                    ));
+                }
             }
         }
     }
 
     let filter = parse_object_filter_words(&words[idx..filter_end], other).ok()?;
     Some((Value::Count(filter), filter_end))
+}
+
+fn for_each_kick_count_words(words: &[&str]) -> bool {
+    let Some((first, rest)) = words.split_first() else {
+        return false;
+    };
+    if !matches!(first, &"time" | &"times") {
+        return false;
+    };
+    let Some(source_words) = rest.strip_suffix(&["was", "kicked"]) else {
+        return false;
+    };
+    source_words == ["this"]
+        || source_words == ["this", "spell"]
+        || source_words == ["it"]
+        || source_reference_surface_for_words(source_words).is_some()
 }
 
 pub(crate) fn is_article(word: &str) -> bool {

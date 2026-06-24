@@ -1,12 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import HandZone from "@/components/board/HandZone";
 import { cn } from "@/lib/utils";
 
-// Half-hidden hand at the bottom of the battlefield. Tap whitespace (anywhere not on
-// a `.hand-card`) to fan in place from ~peek to ~fanned height. Drag from a card upward
-// uses HandZone's existing pointer-down → drag flow, which Workspace's drop handler
-// recognizes via the existing `[data-mobile-hand-drop-target]` attribute on the
-// MobileBattlefieldBand self-side wrapper.
+// Half-hidden hand at the bottom of the battlefield. Tap the fan surface to
+// toggle it, while drag gestures still use HandZone's existing pointer-down
+// flow that Workspace recognizes via `[data-mobile-hand-drop-target]`.
 export default function MobileHandFan({
   me,
   selectedObjectId,
@@ -14,12 +12,70 @@ export default function MobileHandFan({
   className,
 }) {
   const [fanned, setFanned] = useState(false);
+  const pendingTapRef = useRef(null);
+  const suppressNextClickRef = useRef(false);
+  const suppressClickTimerRef = useRef(null);
 
-  const handleClick = useCallback((event) => {
-    if (event.target instanceof Element && event.target.closest(".game-card.hand-card")) {
+  useEffect(() => () => {
+    if (suppressClickTimerRef.current != null) {
+      window.clearTimeout(suppressClickTimerRef.current);
+      suppressClickTimerRef.current = null;
+    }
+  }, []);
+
+  const suppressNextClick = useCallback(() => {
+    suppressNextClickRef.current = true;
+    if (suppressClickTimerRef.current != null) {
+      window.clearTimeout(suppressClickTimerRef.current);
+    }
+    suppressClickTimerRef.current = window.setTimeout(() => {
+      suppressNextClickRef.current = false;
+      suppressClickTimerRef.current = null;
+    }, 250);
+  }, []);
+
+  const handlePointerDown = useCallback((event) => {
+    if (event.button != null && event.button !== 0) {
+      pendingTapRef.current = null;
       return;
     }
+    pendingTapRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+  }, []);
+
+  const handlePointerUp = useCallback((event) => {
+    const pending = pendingTapRef.current;
+    pendingTapRef.current = null;
+    if (!pending) return;
+    if (pending.pointerId != null && event.pointerId !== pending.pointerId) return;
+    const dx = event.clientX - pending.startX;
+    const dy = event.clientY - pending.startY;
+    if ((dx * dx + dy * dy) > 16 * 16) return;
+    if (!fanned && event.target instanceof Element && event.target.closest(".game-card.hand-card")) {
+      return;
+    }
+    if (fanned) {
+      suppressNextClick();
+    }
     setFanned((current) => !current);
+  }, [fanned, suppressNextClick]);
+
+  const handlePointerCancel = useCallback(() => {
+    pendingTapRef.current = null;
+  }, []);
+
+  const handleClickCapture = useCallback((event) => {
+    if (!suppressNextClickRef.current) return;
+    suppressNextClickRef.current = false;
+    if (suppressClickTimerRef.current != null) {
+      window.clearTimeout(suppressClickTimerRef.current);
+      suppressClickTimerRef.current = null;
+    }
+    event.preventDefault();
+    event.stopPropagation();
   }, []);
 
   return (
@@ -30,7 +86,12 @@ export default function MobileHandFan({
         className,
       )}
       data-fanned={fanned ? "true" : "false"}
-      onClick={handleClick}
+      aria-expanded={fanned}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onPointerLeave={handlePointerCancel}
+      onClickCapture={handleClickCapture}
     >
       <div className="mobile-mtga-hand-fan-viewport">
         <HandZone

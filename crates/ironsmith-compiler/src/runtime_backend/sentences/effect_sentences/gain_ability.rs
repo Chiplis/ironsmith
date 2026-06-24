@@ -29,7 +29,7 @@ use super::lex_chain_helpers::find_verb_lexed;
 use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 #[allow(unused_imports)]
-use super::{Verb, find_verb, parse_effect_chain};
+use super::{Verb, find_verb, parse_effect_chain, parse_effect_clause_with_trailing_if};
 use crate::ability::Ability;
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
@@ -2362,18 +2362,14 @@ fn parse_granted_triggered_otherwise_ability(
         return Ok(None);
     }
 
-    let mut true_effects = parse_effect_chain(&true_tokens)?;
-    if true_effects.len() != 1 {
-        return Ok(None);
-    }
-    let mut conditional = true_effects.remove(0);
+    let mut conditional = parse_effect_clause_with_trailing_if(&true_tokens)?;
     let EffectAst::Conditional { if_false, .. } = &mut conditional else {
         return Ok(None);
     };
     if !if_false.is_empty() {
         return Ok(None);
     }
-    *if_false = parse_effect_chain(&false_tokens)?;
+    *if_false = vec![parse_effect_clause_with_trailing_if(&false_tokens)?];
     if if_false.is_empty() {
         return Ok(None);
     }
@@ -2971,13 +2967,45 @@ mod tests {
             .expect("quoted monarch trigger should parse")
             .expect("quoted monarch trigger should produce effects");
 
-        let debug = format!("{effects:?}");
+        let granted_abilities = effects
+            .iter()
+            .find_map(|effect| match effect {
+                EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+                    SubjectVerbActionAst::GrantAbilitiesAll { abilities, .. } => Some(abilities),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("expected global grant effect");
+        let granted_trigger = granted_abilities
+            .iter()
+            .find_map(|ability| match ability {
+                GrantedAbilityAst::ParsedObjectAbility { ability, .. } => Some(ability),
+                _ => None,
+            })
+            .expect("expected parsed granted trigger");
+        let trigger_effects = granted_trigger
+            .effects_ast
+            .as_ref()
+            .expect("expected granted trigger effects");
+        let false_branch = trigger_effects
+            .iter()
+            .find_map(|effect| match effect {
+                EffectAst::Conditional {
+                    predicate,
+                    if_false,
+                    ..
+                } if matches!(predicate, PredicateAst::PlayerIsMonarch { .. }) => Some(if_false),
+                _ => None,
+            })
+            .expect("expected monarch conditional inside granted trigger");
         assert!(
-            string_contains(&debug, "GrantAbilitiesAll")
-                && string_contains(&debug, "Conditional")
-                && string_contains(&debug, "PlayerIsMonarch")
-                && string_contains(&debug, "BecomeMonarch"),
-            "expected granted trigger to keep monarch if/otherwise effects, got {debug}"
+            false_branch.iter().any(|effect| matches!(
+                effect,
+                EffectAst::SubjectVerb(subject_verb)
+                    if matches!(subject_verb.action, SubjectVerbActionAst::BecomeMonarch)
+            )),
+            "expected otherwise branch to become the monarch"
         );
     }
 

@@ -2856,16 +2856,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "Whenever this creature attacks, target creature defending player controls blocks it this combat if able.".to_string();
     }
     if lower_compact_trimmed
-        == "look at the top four cards of your library, choose two cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, unless it's a permanent, put that object into its owner's graveyard, then lose 2 life"
-    {
-        return "Look at the top four cards of your library. Put two of them into your hand and the rest into your graveyard. You lose 2 life.".to_string();
-    }
-    if lower_compact_trimmed
-        == "look at the top 2*x cards of your library, choose x cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, unless it's a permanent, put that object into its owner's graveyard, then lose x life"
-    {
-        return "Look at twice X cards from the top of your library. Put X cards from among them into your hand and the rest into your graveyard. You lose X life.".to_string();
-    }
-    if lower_compact_trimmed
         == "mill two cards, choose up to one permanent cards, for each card chosen this way, return that object to its owner's hand, then gain 2 life"
     {
         return "Mill two cards. You may put a permanent card from among the milled cards into your hand. You gain 2 life.".to_string();
@@ -4344,7 +4334,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if (lower_normalized.contains("tap x target artifacts or creatures or lands")
         || lower_normalized.contains("tap x target artifacts, creatures, or lands"))
-        && lower_normalized.contains("you lose x life")
+        && (lower_normalized.contains("you lose x life")
+            || lower_normalized.contains("lose x life"))
     {
         return "Tap X target artifacts, creatures, and/or lands. You lose X life.".to_string();
     }
@@ -7375,6 +7366,9 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         _ => None,
     };
     if let Some(suffix) = controller_suffix {
+        if let Some((head, tail)) = subject.split_once(" that shares ") {
+            return format!("{} {} that shares {}", head.trim(), suffix, tail.trim());
+        }
         if let Some((head, tail)) = subject.split_once(" named ") {
             return format!("{} {} named {}", head.trim(), suffix, tail.trim());
         }
@@ -8692,6 +8686,66 @@ pub(super) fn describe_compact_destroy_color_choice(effect: &Effect) -> Option<S
     Some(format!(
         "Destroy {} of the color of your choice.",
         base_desc
+    ))
+}
+
+pub(super) fn describe_compact_return_to_hand_color_choice(effect: &Effect) -> Option<String> {
+    let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    if choose_mode.min_choose_count != choose_mode.choose_count
+        || !matches!(choose_mode.choose_count, Value::Fixed(1))
+        || choose_mode.modes.len() != 5
+    {
+        return None;
+    }
+
+    let mut base_filter: Option<crate::target::ObjectFilter> = None;
+    let mut seen_colors = Vec::new();
+
+    for mode in &choose_mode.modes {
+        if mode.effects.len() != 1 {
+            return None;
+        }
+        let return_to_hand =
+            mode.effects[0].downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+        let ChooseSpec::All(filter) = &return_to_hand.spec else {
+            return None;
+        };
+
+        let colors = filter.colors?;
+        if colors.count() != 1 {
+            return None;
+        }
+
+        let color = crate::color::Color::ALL
+            .iter()
+            .copied()
+            .find(|candidate| colors.contains(*candidate))?;
+        if seen_colors.contains(&color) {
+            return None;
+        }
+        seen_colors.push(color);
+
+        let mut normalized_filter = filter.clone();
+        normalized_filter.colors = None;
+        if let Some(existing) = &base_filter {
+            if existing != &normalized_filter {
+                return None;
+            }
+        } else {
+            base_filter = Some(normalized_filter);
+        }
+    }
+
+    if seen_colors.len() != 5 {
+        return None;
+    }
+
+    let base_spec = ChooseSpec::All(base_filter?);
+    let base_desc = describe_choose_spec(&base_spec);
+    Some(format!(
+        "Return {} of the color of your choice to {}.",
+        base_desc,
+        owner_hand_phrase_for_spec(&base_spec)
     ))
 }
 
@@ -10413,7 +10467,11 @@ pub(super) fn describe_apply_continuous_animation_effect(
             } else {
                 format!("{}/{}", describe_value(power), describe_value(toughness))
             };
-            let pt_noun_phrase = format!("{pt} {noun_phrase}");
+            let pt_noun_phrase = if dynamic_equal_pt {
+                format!("{pt} {noun_phrase}")
+            } else {
+                format!("{noun_phrase} with base power and toughness {pt}")
+            };
             if returned_permanent_animation {
                 format!("{target_text} are {pt_noun_phrase}")
             } else if plural_target {
@@ -10438,7 +10496,14 @@ pub(super) fn describe_apply_continuous_animation_effect(
         return None;
     };
     if !ability_text.is_empty() {
-        text.push_str(" with ");
+        let ability_connector = if text.contains(" with base power and toughness ")
+            || text.contains(" with power and toughness each equal to ")
+        {
+            " and "
+        } else {
+            " with "
+        };
+        text.push_str(ability_connector);
         text.push_str(&join_with_and(&ability_text));
     }
     let adds_artifact_type = card_types
@@ -10472,16 +10537,16 @@ pub(super) fn describe_apply_continuous_animation_effect(
         && target_text == "target land";
     match &tail {
         Some(tail) if inline_still_land => {
-            text.push_str(" that's still a land");
             text.push(' ');
             text.push_str(tail);
+            text.push_str(". It's still a land");
         }
         Some(tail) => {
             text.push(' ');
             text.push_str(tail);
         }
         None if inline_still_land => {
-            text.push_str(" that's still a land");
+            text.push_str(". It's still a land");
         }
         None => {}
     }
@@ -11946,14 +12011,28 @@ fn spell_cast_this_turn_condition_filter(
     Some((player, filter))
 }
 
+fn describe_spell_cast_condition_object(filter: &ObjectFilter) -> String {
+    let described = describe_for_each_filter(filter);
+    if described == "card in your hand" || described == "spell in your hand" {
+        return "a spell from your hand".to_string();
+    }
+    if let Some(base) = described.strip_suffix(" card in your hand") {
+        return with_indefinite_article(&format!("{base} spell from your hand"));
+    }
+    if let Some(base) = described.strip_suffix(" spell in your hand") {
+        return with_indefinite_article(&format!("{base} spell from your hand"));
+    }
+    with_indefinite_article(&described)
+}
+
 fn describe_both_spell_cast_condition(left: &Condition, right: &Condition) -> Option<String> {
     let (left_player, left_filter) = spell_cast_this_turn_condition_filter(left)?;
     let (right_player, right_filter) = spell_cast_this_turn_condition_filter(right)?;
     if left_player != right_player {
         return None;
     }
-    let left_spell = with_indefinite_article(&describe_for_each_filter(left_filter));
-    let right_spell = with_indefinite_article(&describe_for_each_filter(right_filter));
+    let left_spell = describe_spell_cast_condition_object(left_filter);
+    let right_spell = describe_spell_cast_condition_object(right_filter);
     let opener = match left_player {
         PlayerFilter::You => "you've cast".to_string(),
         player => {
@@ -11963,6 +12042,41 @@ fn describe_both_spell_cast_condition(left: &Condition, right: &Condition) -> Op
     };
     Some(format!(
         "{opener} both {left_spell} and {right_spell} this turn"
+    ))
+}
+
+fn describe_missing_counter_spell_cast_gate(left: &Condition, right: &Condition) -> Option<String> {
+    describe_missing_counter_spell_cast_gate_ordered(left, right)
+        .or_else(|| describe_missing_counter_spell_cast_gate_ordered(right, left))
+}
+
+fn describe_missing_counter_spell_cast_gate_ordered(
+    spell_condition: &Condition,
+    counter_condition: &Condition,
+) -> Option<String> {
+    let Condition::SourceHasNoCounter(counter_type) = counter_condition else {
+        return None;
+    };
+    let Condition::Not(inner) = spell_condition else {
+        return None;
+    };
+    if !matches!(
+        inner.as_ref(),
+        Condition::ValueComparison {
+            left: Value::SpellsCastThisTurnMatching {
+                exclude_source: false,
+                ..
+            },
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        }
+    ) {
+        return None;
+    }
+    Some(format!(
+        "{} and this creature doesn't have {} on it",
+        describe_condition(spell_condition),
+        with_indefinite_article(&format!("{} counter", counter_type.description()))
     ))
 }
 
@@ -13814,7 +13928,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     "{} {} cast {} this turn",
                     subject,
                     player_verb(&subject, "have", "has"),
-                    with_indefinite_article(&describe_for_each_filter(filter))
+                    describe_spell_cast_condition_object(filter)
                 );
             }
             let operator_text = match operator {
@@ -13961,6 +14075,29 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     player_verb(&subject, "control", "controls"),
                     object_text
                 )
+            } else if let Condition::ValueComparison {
+                left:
+                    Value::SpellsCastThisTurnMatching {
+                        player,
+                        filter,
+                        exclude_source: false,
+                    },
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            } = inner.as_ref()
+            {
+                let object_text = describe_spell_cast_condition_object(filter);
+                if *player == PlayerFilter::Any {
+                    format!("no player has cast {object_text} this turn")
+                } else {
+                    let subject = describe_player_filter(player);
+                    format!(
+                        "{} {} cast {} this turn",
+                        subject,
+                        player_verb(&subject, "haven't", "hasn't"),
+                        object_text
+                    )
+                }
             } else {
                 format!("not ({})", describe_condition(inner))
             }
@@ -13973,6 +14110,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             }
             if let Some(spell_cast_condition) = describe_both_spell_cast_condition(left, right) {
                 return spell_cast_condition;
+            }
+            if let Some(counter_spell_gate) = describe_missing_counter_spell_cast_gate(left, right)
+            {
+                return counter_spell_gate;
             }
             if let Some(source_activity_condition) =
                 describe_source_neither_attacked_nor_entered_condition(left, right)
@@ -14783,13 +14924,13 @@ mod tests {
             normalize_common_semantic_phrasing(
                 "Look at the top four cards of your library, choose two cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, Unless it's a permanent, put that object into its owner's graveyard, then lose 2 life."
             ),
-            "Look at the top four cards of your library. Put two of them into your hand and the rest into your graveyard. You lose 2 life."
+            "Look at the top four cards of your library, choose two cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, Unless it's a permanent, put that object into its owner's graveyard, then lose 2 life."
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
                 "Look at the top 2*X cards of your library, choose X cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, Unless it's a permanent, put that object into its owner's graveyard, then lose X life."
             ),
-            "Look at twice X cards from the top of your library. Put X cards from among them into your hand and the rest into your graveyard. You lose X life."
+            "Look at the top 2*X cards of your library, choose X cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, Unless it's a permanent, put that object into its owner's graveyard, then lose X life."
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
@@ -14925,7 +15066,7 @@ mod tests {
             describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
                 .as_deref(),
             Some(
-                "Target land you control becomes 4/4 elemental creature until end of turn. It's still a land"
+                "Target land you control becomes an elemental creature with base power and toughness 4/4 until end of turn. It's still a land"
             )
         );
     }
@@ -14999,7 +15140,7 @@ mod tests {
             describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
                 .as_deref(),
             Some(
-                "Up to two target Swamps become 3/5 treefolk warrior creatures in addition to their other types until end of turn"
+                "Up to two target Swamps become treefolk warrior creatures with base power and toughness 3/5 in addition to their other types until end of turn"
             )
         );
     }
@@ -15130,7 +15271,7 @@ mod tests {
 
         assert_eq!(
             describe_token_blueprint(&token),
-            "1/1 colorless Snake artifact creature token. It has \"Whenever this token deals combat damage to a player: that player gets a poison counter\" and \"Whenever this token deals damage to a player: you get a poison counter\""
+            "1/1 colorless Snake artifact creature token. It has \"Whenever this token deals combat damage to a player, that player gets a poison counter\" and \"Whenever this token deals damage to a player, you get a poison counter\""
         );
     }
 }

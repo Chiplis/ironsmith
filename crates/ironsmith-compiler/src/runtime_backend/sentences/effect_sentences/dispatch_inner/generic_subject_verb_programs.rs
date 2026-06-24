@@ -388,10 +388,18 @@ const CONTROL_COMBAT_BLOCK_ACTION_PATTERN: LexPattern<'static> =
         "combat_action",
         LexCaptureKind::OneOf(&["block"]),
     )]);
-const CONTROL_COMBAT_ATTACK_SCOPE_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["this", "turn"])]);
+const CONTROL_COMBAT_SCOPE_PHRASES: &[&[&str]] = &[&["this", "turn"], &["this", "combat"]];
+const CONTROL_COMBAT_ATTACK_SCOPE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::tail(
+        "choice_scope",
+        LexCaptureKind::OneOfPhrase(CONTROL_COMBAT_SCOPE_PHRASES),
+    ),
+]);
 const CONTROL_COMBAT_BLOCK_SCOPE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["this", "turn"]),
+    LexPattern::tail(
+        "choice_scope",
+        LexCaptureKind::OneOfPhrase(CONTROL_COMBAT_SCOPE_PHRASES),
+    ),
     LexPattern::phrase(&["and", "how", "those", "creatures", "block"]),
 ]);
 const DEFERRED_MANA_VALUE_CONSTRAINT_PHRASES: &[&[&str]] = &[
@@ -1761,18 +1769,27 @@ fn parse_generic_control_combat_choices_subject_verb(
 
     let action_clause = action_clause.trimmed();
     let scope_clause = scope_clause.trimmed();
+    let this_combat = scope_clause
+        .words()
+        .to_word_refs()
+        .iter()
+        .any(|word| *word == "combat");
     if CONTROL_COMBAT_ATTACK_ACTION_PATTERN.matches_clause(action_clause)
         && CONTROL_COMBAT_ATTACK_SCOPE_PATTERN.matches_clause(scope_clause)
     {
-        Ok(Some(
-            EffectAst::subject_verb_control_combat_choices_this_turn(true, false),
-        ))
+        Ok(Some(if this_combat {
+            EffectAst::subject_verb_control_combat_choices(true, false, true)
+        } else {
+            EffectAst::subject_verb_control_combat_choices_this_turn(true, false)
+        }))
     } else if CONTROL_COMBAT_BLOCK_ACTION_PATTERN.matches_clause(action_clause)
         && CONTROL_COMBAT_BLOCK_SCOPE_PATTERN.matches_clause(scope_clause)
     {
-        Ok(Some(
-            EffectAst::subject_verb_control_combat_choices_this_turn(false, true),
-        ))
+        Ok(Some(if this_combat {
+            EffectAst::subject_verb_control_combat_choices(false, true, true)
+        } else {
+            EffectAst::subject_verb_control_combat_choices_this_turn(false, true)
+        }))
     } else {
         Ok(None)
     }
@@ -2806,19 +2823,28 @@ mod generic_subject_verb_program_tests {
 
     #[test]
     fn control_combat_choices_uses_captured_block_shape() {
-        let tokens = crate::runtime_backend::lex_line(
-            "You choose which creatures block this turn and how those creatures block.",
-            0,
-        )
-        .expect("combat choice block text should lex");
-        let effect = parse_generic_control_combat_choices_subject_verb(&tokens)
-            .expect("combat choice block parser should not error")
-            .expect("combat choice block parser should match");
-        let debug = format!("{effect:#?}");
+        for (text, this_combat) in [
+            (
+                "You choose which creatures block this turn and how those creatures block.",
+                false,
+            ),
+            (
+                "You choose which creatures block this combat and how those creatures block.",
+                true,
+            ),
+        ] {
+            let tokens =
+                crate::runtime_backend::lex_line(text, 0).expect("combat choice block text should lex");
+            let effect = parse_generic_control_combat_choices_subject_verb(&tokens)
+                .expect("combat choice block parser should not error")
+                .expect("combat choice block parser should match");
+            let debug = format!("{effect:#?}");
 
-        assert!(debug.contains("ControlCombatChoicesThisTurn"), "{debug}");
-        assert!(debug.contains("attackers: false"), "{debug}");
-        assert!(debug.contains("blockers: true"), "{debug}");
+            assert!(debug.contains("ControlCombatChoicesThisTurn"), "{debug}");
+            assert!(debug.contains("attackers: false"), "{debug}");
+            assert!(debug.contains("blockers: true"), "{debug}");
+            assert!(debug.contains(&format!("this_combat: {this_combat}")), "{debug}");
+        }
     }
 
     #[test]

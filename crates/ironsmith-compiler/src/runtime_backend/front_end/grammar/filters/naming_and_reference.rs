@@ -59,6 +59,7 @@ const CARD_OR_PERMANENT_WORDS: &[&str] = &["card", "permanent"];
 const SHARES_CARD_TYPE_REQUIRED_WORDS: &[&str] = &["card", "type"];
 const SHARES_CARD_TYPE_WITH_TAGGED_REQUIRED_WORDS: &[&str] = &["type", "it"];
 const SHARES_COLOR_WITH_TAGGED_REQUIRED_WORDS: &[&str] = &["shares", "color", "it"];
+const CREATURE_TYPE_PHRASES: &[&[&str]] = &[&["creature", "type"], &["creature", "types"]];
 const EXILED_CARD_REFERENCE_PHRASES: &[&[&str]] = &[
     &["with", "exiled", "card"],
     &["with", "exiled", "cards"],
@@ -1113,6 +1114,9 @@ pub(super) fn apply_reference_and_tag_stage(
             && words_contain_any_word(all_words, SHARE_WORDS)
             && words_contain_any_word(all_words, CARD_OR_PERMANENT_WORDS);
     let has_share_color = words_contain_all(all_words, SHARES_COLOR_WITH_TAGGED_REQUIRED_WORDS);
+    let has_share_creature_type = contains_any_phrase(all_words, CREATURE_TYPE_PHRASES)
+        && words_contain_any_word(all_words, SHARE_WORDS)
+        && words_contain_any_word(all_words, IT_OR_THEM_WORDS);
     let has_same_mana_value = find_phrase_start(all_words, SAME_MANA_VALUE_AS_PHRASE).is_some();
     let has_equal_or_lesser_mana_value =
         find_phrase_start(all_words, EQUAL_OR_LESSER_MANA_VALUE_PHRASE).is_some();
@@ -1141,6 +1145,12 @@ pub(super) fn apply_reference_and_tag_stage(
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
             relation: TaggedOpbjectRelation::SharesColorWithTagged,
+        });
+    }
+    if has_share_creature_type {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: IT_TAG.into(),
+            relation: TaggedOpbjectRelation::SharesSubtypeWithTagged,
         });
     }
     if has_same_mana_value && references_sacrifice_cost_object {

@@ -1,6 +1,7 @@
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt;
 use crate::filter::ObjectFilterExt as _;
+use crate::grant::DerivedAlternativeCastRuntimeExt as _;
 
 // ============================================================================
 // Pip-by-Pip Mana Payment Helpers
@@ -3715,6 +3716,24 @@ fn apply_play_from_cast_this_way_grants(
         return;
     };
     spell_as_cast.zone = zone;
+    let selected_play_from_alternative = match casting_method {
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            ..
+        } => crate::decision::resolve_play_from_alternative_method(
+            game,
+            caster,
+            &spell_as_cast,
+            zone,
+            *idx,
+        )
+        .or_else(|| spell_as_cast.cast_alternative_method.clone()),
+        _ => None,
+    };
     let ctx = game.filter_context_for(caster, Some(source.id));
     let mut granted = Vec::new();
     for ability in &source.abilities {
@@ -3727,8 +3746,22 @@ fn apply_play_from_cast_this_way_grants(
         let Some(spec) = static_ability.grant_spec() else {
             continue;
         };
+        let grantable_matches_cast = match &spec.grantable {
+            crate::grant::Grantable::PlayFrom => true,
+            crate::grant::Grantable::AlternativeCast(method) => {
+                selected_play_from_alternative.as_ref() == Some(method)
+            }
+            crate::grant::Grantable::DerivedAlternativeCast(derived) => {
+                selected_play_from_alternative
+                    .as_ref()
+                    .is_some_and(|selected| {
+                        derived.materialize_for(&spell_as_cast).as_ref() == Some(selected)
+                    })
+            }
+            crate::grant::Grantable::Ability(_) => false,
+        };
         if spec.zone == zone
-            && matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+            && grantable_matches_cast
             && !spec.cast_this_way_grants.is_empty()
             && spec.filter.matches(&spell_as_cast, &ctx, game)
         {

@@ -870,6 +870,12 @@ fn sync_card_status_db_reports_strict_compiled_score_summary() {
         stdout.contains("- Cards with decreased strict-compiled score: 1 (avg -0.2000)"),
         "expected decreased-score summary in output, got {stdout}"
     );
+    assert!(
+        stdout.contains(
+            "- Regressed strict-compiled cards:\n  - Counterspell: 1.2000 -> 1.0000 (-0.2000)"
+        ),
+        "expected regressed card details in output, got {stdout}"
+    );
 }
 
 #[test]

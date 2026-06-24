@@ -1604,9 +1604,10 @@ where
         M::downcast_ref::<ironsmith_core::ControlCombatChoicesThisTurnEffect>(&effect)
     {
         return Ok(Effect::new(
-            crate::effects::ControlCombatChoicesThisTurnEffect::new(
+            crate::effects::ControlCombatChoicesThisTurnEffect::new_with_surface(
                 payload.attackers,
                 payload.blockers,
+                payload.this_combat,
             ),
         ));
     }

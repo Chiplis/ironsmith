@@ -348,6 +348,151 @@ fn strip_not_named_phrase(text: &str) -> String {
     out.join(" ")
 }
 
+fn is_power_toughness_shorthand_token(token: &str) -> bool {
+    let token = token.trim_matches(|ch: char| matches!(ch, ',' | '.' | ';' | ':'));
+    let Some((power, toughness)) = token.split_once('/') else {
+        return false;
+    };
+    let is_pt_part = |part: &str| {
+        !part.is_empty()
+            && part
+                .chars()
+                .all(|ch| ch.is_ascii_digit() || matches!(ch, 'x' | 'X' | '*' | '+'))
+    };
+    is_pt_part(power) && is_pt_part(toughness)
+}
+
+fn find_creature_word(rest: &str) -> Option<(usize, usize, &'static str)> {
+    let lower = rest.to_ascii_lowercase();
+    let mut best: Option<(usize, usize, &'static str)> = None;
+    for (needle, word) in [
+        (" creatures", "creatures"),
+        (" creature", "creature"),
+        ("creatures", "creatures"),
+        ("creature", "creature"),
+    ] {
+        let Some(pos) = lower.find(needle) else {
+            continue;
+        };
+        let start = if needle.starts_with(' ') {
+            pos + 1
+        } else {
+            pos
+        };
+        let end = start + word.len();
+        let boundary_before = start == 0
+            || lower[..start]
+                .chars()
+                .last()
+                .is_some_and(|ch| ch.is_whitespace());
+        let boundary_after = lower[end..]
+            .chars()
+            .next()
+            .is_none_or(|ch| ch.is_whitespace() || matches!(ch, ',' | '.' | ';' | ':'));
+        if !boundary_before || !boundary_after {
+            continue;
+        }
+        if best.is_none_or(|(best_start, _, _)| start < best_start) {
+            best = Some((start, end, word));
+        }
+    }
+    best
+}
+
+fn normalize_fixed_pt_animation_shorthand_once(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let (marker_start, marker) = [" becomes ", " become ", " are "]
+        .iter()
+        .filter_map(|marker| lower.find(marker).map(|idx| (idx, *marker)))
+        .min_by_key(|(idx, _)| *idx)?;
+
+    let marker_end = marker_start + marker.len();
+    let after_marker = &text[marker_end..];
+    let leading_space = after_marker.len() - after_marker.trim_start().len();
+    let mut value_start = marker_end + leading_space;
+    let after_marker_lower = text[value_start..].to_ascii_lowercase();
+    for article in ["a ", "an "] {
+        if after_marker_lower.starts_with(article) {
+            value_start += article.len();
+            break;
+        }
+    }
+
+    let after_article = &text[value_start..];
+    let pt_end_rel = after_article.find(char::is_whitespace)?;
+    let pt = &after_article[..pt_end_rel];
+    if !is_power_toughness_shorthand_token(pt) {
+        return None;
+    }
+
+    let mut rest_start = value_start + pt_end_rel;
+    let rest_after_pt = &text[rest_start..];
+    let post_pt_space = rest_after_pt.len() - rest_after_pt.trim_start().len();
+    rest_start += post_pt_space;
+    let rest = &text[rest_start..];
+    let (creature_start, creature_end, creature_word) = find_creature_word(rest)?;
+    let descriptor = rest[..creature_start].trim();
+    let tail = rest[creature_end..].trim_start();
+    let tail_lower = tail.to_ascii_lowercase();
+    if tail_lower.contains("lose all abilities") || tail_lower.contains("loses all abilities") {
+        return None;
+    }
+
+    let mut noun_phrase = String::new();
+    if !descriptor.is_empty() {
+        noun_phrase.push_str(descriptor);
+        noun_phrase.push(' ');
+    }
+    noun_phrase.push_str(creature_word);
+
+    let mut replacement = format!("{noun_phrase} with base power and toughness {pt}");
+    if let Some(stripped) = tail.strip_prefix("with ") {
+        replacement.push_str(" and ");
+        replacement.push_str(stripped.trim_start());
+    } else if !tail.is_empty() {
+        replacement.push(' ');
+        replacement.push_str(tail);
+    }
+
+    let mut normalized = String::with_capacity(text.len() + 32);
+    normalized.push_str(&text[..marker_end]);
+    normalized.push_str(&replacement);
+    Some(normalized)
+}
+
+fn normalize_fixed_pt_animation_shorthand(text: &str) -> String {
+    let mut normalized = text.to_string();
+    while let Some(next) = normalize_fixed_pt_animation_shorthand_once(&normalized) {
+        if next == normalized {
+            break;
+        }
+        normalized = next;
+    }
+    normalized
+}
+
+fn normalize_leading_until_end_of_turn_animation(text: &str) -> String {
+    let Some(rest) = text.strip_prefix("Until end of turn, ") else {
+        return text.to_string();
+    };
+    let lower_rest = rest.to_ascii_lowercase();
+    if !(lower_rest.contains(" become") && lower_rest.contains(" with base power and toughness ")) {
+        return text.to_string();
+    }
+
+    for marker in [" that's still a land", " that are still lands"] {
+        if let Some(idx) = lower_rest.find(marker) {
+            let mut out = String::with_capacity(text.len());
+            out.push_str(rest[..idx].trim_end());
+            out.push_str(" until end of turn");
+            out.push_str(&rest[idx..]);
+            return out;
+        }
+    }
+
+    format!("{rest} until end of turn")
+}
+
 fn normalize_clause_line(text: &str) -> String {
     let normalized = text
         .split_whitespace()
@@ -376,7 +521,20 @@ fn normalize_clause_line(text: &str) -> String {
         .replace(
             "Artifact or creature or planeswalker",
             "Artifact, creature, or planeswalker",
+        )
+        .replace(
+            "Whenever this land attacks",
+            "Whenever this creature attacks",
+        )
+        .replace(
+            "whenever this land attacks",
+            "whenever this creature attacks",
         );
+    let normalized = normalize_fixed_pt_animation_shorthand(&normalized);
+    let normalized = normalize_leading_until_end_of_turn_animation(&normalized);
+    let normalized = normalized
+        .replace(" each become ", " become ")
+        .replace(" each becomes ", " become ");
     normalize_end_turn_creature_buff_split(&normalized)
 }
 
@@ -3487,11 +3645,45 @@ fn semantic_clauses(text: &str) -> Vec<String> {
     if has_creature_type_choice_clause {
         clauses.retain(|clause| clause.to_ascii_lowercase() != "choose a creature type");
     }
-    clauses
+    merge_still_land_clauses(clauses)
 }
 
 pub fn semantic_clauses_for_compare(text: &str) -> Vec<String> {
     semantic_clauses(text)
+}
+
+fn still_land_tail_for_clause(clause: &str) -> Option<&'static str> {
+    let lower = clause
+        .trim()
+        .trim_end_matches('.')
+        .to_ascii_lowercase()
+        .replace('’', "'");
+    match lower.as_str() {
+        "it's still a land" | "it is still a land" => Some("that's still a land"),
+        "they're still lands" | "they are still lands" => Some("that are still lands"),
+        _ => None,
+    }
+}
+
+fn merge_still_land_clauses(clauses: Vec<String>) -> Vec<String> {
+    let mut merged: Vec<String> = Vec::with_capacity(clauses.len());
+    for clause in clauses {
+        if let Some(tail) = still_land_tail_for_clause(&clause)
+            && let Some(previous) = merged.last_mut()
+        {
+            let previous_lower = previous.to_ascii_lowercase();
+            if previous_lower.contains(" become")
+                && !previous_lower.contains("still a land")
+                && !previous_lower.contains("still lands")
+            {
+                let trimmed = previous.trim_end_matches('.');
+                *previous = format!("{trimmed} {tail}.");
+                continue;
+            }
+        }
+        merged.push(clause);
+    }
+    merged
 }
 
 fn split_compiled_lines_for_semantic_compare(lines: &[String]) -> Vec<String> {
@@ -5776,6 +5968,130 @@ mod tests {
         assert!(
             similarity >= 0.99 && !mismatch,
             "expected no mismatch for Veiled Apparition animation grant wording"
+        );
+    }
+
+    #[test]
+    fn fixed_pt_animation_shorthand_compares_to_explicit_base_pt_land_surface() {
+        let oracle = "Target land becomes a 3/3 Elemental creature with flying until end of turn. It's still a land.";
+        let compiled = vec![
+            "Target land becomes an elemental creature with base power and toughness 3/3 and flying until end of turn. It's still a land.".to_string(),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_card_semantics_scored("Hydroform", oracle, &compiled, strict_embedding());
+
+        assert!(
+            similarity >= 0.99 && !mismatch,
+            "similarity={similarity} mismatch={mismatch}"
+        );
+    }
+
+    #[test]
+    fn fixed_pt_animation_shorthand_compares_leading_until_still_land_surface() {
+        let oracle = "Until end of turn, target land becomes a 3/3 creature that's still a land.";
+        let compiled = vec![
+            "Target land becomes a creature with base power and toughness 3/3 until end of turn. It's still a land.".to_string(),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_card_semantics_scored("Animate Land", oracle, &compiled, strict_embedding());
+
+        assert!(
+            similarity >= 0.99 && !mismatch,
+            "similarity={similarity} mismatch={mismatch}"
+        );
+    }
+
+    #[test]
+    fn fixed_pt_animation_shorthand_compares_to_explicit_base_pt_artifact_surface() {
+        let oracle = "{1}: This land becomes a 1/1 Phyrexian Blinkmoth artifact creature with flying and infect until end of turn. It's still a land.";
+        let compiled = vec![
+            "{1}: This land becomes a phyrexian blinkmoth artifact creature with base power and toughness 1/1 and flying and infect until end of turn. It's still a land".to_string(),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+            compare_card_semantics_scored("Inkmoth Nexus", oracle, &compiled, strict_embedding());
+
+        assert_eq!(delta, 0);
+        assert!(
+            similarity >= 0.99 && !mismatch,
+            "similarity={similarity} mismatch={mismatch}"
+        );
+    }
+
+    #[test]
+    fn animated_land_attack_trigger_and_each_become_surfaces_compare() {
+        let oracle = "Heroic — Whenever you cast a spell that targets Anthousa, up to three target lands you control each become 2/2 Warrior creatures until end of turn. They're still lands.\nWhenever this land attacks, other creatures you control get +1/+1 until end of turn.";
+        let compiled = vec![
+            "Heroic — Whenever you cast a spell that targets this creature, up to three target lands you control become warrior creatures with base power and toughness 2/2 until end of turn. They're still lands.".to_string(),
+            "Whenever this creature attacks, other creatures you control get +1/+1 until end of turn.".to_string(),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_card_semantics_scored(
+                "Anthousa, Setessan Hero",
+                oracle,
+                &compiled,
+                strict_embedding(),
+            );
+
+        assert!(
+            similarity >= 0.99 && !mismatch,
+            "similarity={similarity} mismatch={mismatch}"
+        );
+    }
+
+    #[test]
+    fn anthousa_animation_surface_stays_above_latest_sync_score() {
+        let oracle = "Heroic — Whenever you cast a spell that targets Anthousa, up to three target lands you control each become 2/2 Warrior creatures until end of turn. They're still lands.";
+        let compiled = vec![
+            "Heroic — Whenever you cast a spell that targets this creature, up to three target lands you control become warrior creatures with base power and toughness 2/2 until end of turn. They're still lands.".to_string(),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_card_semantics_scored(
+                "Anthousa, Setessan Hero",
+                oracle,
+                &compiled,
+                strict_embedding(),
+            );
+
+        if similarity < 0.9981 || mismatch {
+            eprintln!("oracle_clauses={:?}", semantic_clauses(oracle));
+            eprintln!(
+                "compiled_clauses={:?}",
+                semantic_clauses(&compiled.join("\n"))
+            );
+        }
+        assert!(
+            similarity >= 0.9981 && !mismatch,
+            "similarity={similarity} mismatch={mismatch}"
+        );
+    }
+
+    #[test]
+    fn restless_cottage_attack_followup_surface_stays_above_latest_sync_score() {
+        let oracle = "This land enters tapped.\n{T}: Add {B} or {G}.\n{2}{B}{G}: This land becomes a 4/4 black and green Horror creature until end of turn. It's still a land.\nWhenever this land attacks, create a Food token and exile up to one target card from a graveyard.";
+        let compiled = vec![
+            "This land enters tapped.".to_string(),
+            "{T}: Add {B} or {G}.".to_string(),
+            "{2}{B}{G}: This land becomes a black and green horror creature with base power and toughness 4/4 until end of turn. It's still a land.".to_string(),
+            "Whenever this creature attacks, create a Food token, then exile up to one target card in a graveyard.".to_string(),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_card_semantics_scored(
+                "Restless Cottage",
+                oracle,
+                &compiled,
+                strict_embedding(),
+            );
+
+        if similarity < 0.9658 {
+            eprintln!("oracle_clauses={:?}", semantic_clauses(oracle));
+            eprintln!(
+                "compiled_clauses={:?}",
+                semantic_clauses(&compiled.join("\n"))
+            );
+        }
+        assert!(
+            similarity >= 0.9658,
+            "similarity={similarity} mismatch={mismatch}"
         );
     }
 

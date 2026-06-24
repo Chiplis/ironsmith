@@ -1223,6 +1223,18 @@ impl EffectExecutor for DevourEffect {
                 });
 
             if !removed.is_empty() {
+                let mut lookback_source_snapshots = Vec::new();
+                for snapshot in removed
+                    .iter()
+                    .flat_map(|event| event.lookback_source_snapshots())
+                {
+                    if !lookback_source_snapshots
+                        .iter()
+                        .any(|existing: &ObjectSnapshot| existing.stable_id == snapshot.stable_id)
+                    {
+                        lookback_source_snapshots.push(snapshot.clone());
+                    }
+                }
                 let mut event = ZoneChangeEvent::batch_with_snapshots(
                     event_objects,
                     Zone::Battlefield,
@@ -1233,7 +1245,8 @@ impl EffectExecutor for DevourEffect {
                 event.result_objects = result_objects;
                 game.queue_trigger_event(
                     ctx.provenance,
-                    TriggerEvent::new_with_provenance(event, ctx.provenance),
+                    TriggerEvent::new_with_provenance(event, ctx.provenance)
+                        .with_lookback_source_snapshots(lookback_source_snapshots),
                 );
             }
         }

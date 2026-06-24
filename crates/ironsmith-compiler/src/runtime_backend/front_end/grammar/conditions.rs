@@ -1859,6 +1859,10 @@ fn parse_player_spell_cast_this_turn_shape(
     let action_shapes: &[(&[&str], bool)] = &[
         (&["did", "not", "cast"], true),
         (&["didnt", "cast"], true),
+        (&["haven't", "cast"], true),
+        (&["havent", "cast"], true),
+        (&["hasn't", "cast"], true),
+        (&["hasnt", "cast"], true),
         (&["have", "cast"], false),
         (&["has", "cast"], false),
         (&["cast"], false),

@@ -2382,6 +2382,13 @@ impl<
         Self::identified(StaticAbilityId::Cascade, "cascade")
     }
 
+    pub fn cascade_land_drop() -> Self {
+        Self::identified(
+            StaticAbilityId::CascadeLandDrop,
+            "As you cascade, you may put a land card from among the exiled cards onto the battlefield tapped",
+        )
+    }
+
     pub fn read_ahead() -> Self {
         Self::identified(StaticAbilityId::ReadAhead, "read ahead")
     }

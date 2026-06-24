@@ -9,11 +9,15 @@ use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
     LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,
 };
+use crate::effects::zones::{
+    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::tag::TagKey;
 use crate::target::PlayerFilter;
+use crate::zone::Zone;
 
 use super::runtime_helpers::{
     cast_effect_driven_spell_without_paying, effect_driven_cast_options_for_card,
@@ -42,6 +46,103 @@ fn mana_value_on_stack(cost: Option<&ManaCost>, x_value: Option<u32>) -> u32 {
         .filter(|pip| pip.iter().any(|symbol| matches!(symbol, ManaSymbol::X)))
         .count() as u32;
     cost.mana_value() + x_pips.saturating_mul(x)
+}
+
+fn controller_has_cascade_land_drop(game: &GameState, controller: crate::ids::PlayerId) -> bool {
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+    game.permanents_controlled_by(controller)
+        .into_iter()
+        .any(|permanent| {
+            view.static_abilities_rc(permanent)
+                .is_some_and(|abilities| {
+                    abilities.iter().any(|ability| {
+                        ability.id() == crate::static_abilities::StaticAbilityId::CascadeLandDrop
+                    })
+                })
+        })
+}
+
+fn cascade_exiled_land_options(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    all_tag: &TagKey,
+) -> Vec<(String, crate::ids::ObjectId)> {
+    let Some(snapshots) = ctx.get_tagged_all(all_tag.as_str()) else {
+        return Vec::new();
+    };
+    snapshots
+        .iter()
+        .filter_map(|snapshot| {
+            let object_id = if game.object(snapshot.object_id).is_some() {
+                snapshot.object_id
+            } else {
+                game.find_object_by_stable_id(snapshot.stable_id)?
+            };
+            let object = game.object(object_id)?;
+            (object.zone == Zone::Exile && object.is_land())
+                .then(|| (object.name.clone(), object_id))
+        })
+        .collect()
+}
+
+fn maybe_put_cascade_land_onto_battlefield(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    all_tag: &TagKey,
+    source_name: &str,
+) -> Result<Option<crate::ids::ObjectId>, ExecutionError> {
+    if !controller_has_cascade_land_drop(game, ctx.controller) {
+        return Ok(None);
+    }
+
+    let options = cascade_exiled_land_options(game, ctx, all_tag);
+    if options.is_empty() {
+        return Ok(None);
+    }
+
+    let choice_ctx = crate::decisions::context::BooleanContext::new(
+        ctx.controller,
+        Some(ctx.source),
+        "Put a land card exiled with cascade onto the battlefield tapped?".to_string(),
+    )
+    .with_source_name(source_name);
+    let should_put_land = ctx.decision_maker.decide_boolean(game, &choice_ctx);
+    if ctx.decision_maker.awaiting_choice() || !should_put_land {
+        return Ok(None);
+    }
+
+    let chosen_id = if options.len() == 1 {
+        options[0].1
+    } else {
+        let Some(chosen) = crate::decisions::ask_choose_one(
+            game,
+            ctx.decision_maker,
+            ctx.controller,
+            ctx.source,
+            &options,
+        ) else {
+            return Ok(None);
+        };
+        chosen
+    };
+
+    let chosen_stable_id = game.object(chosen_id).map(|object| object.stable_id);
+    match move_to_battlefield_with_options(
+        game,
+        ctx,
+        chosen_id,
+        BattlefieldEntryOptions::specific(ctx.controller, true),
+    ) {
+        BattlefieldEntryOutcome::Moved(new_id) => {
+            if let Some(stable_id) = chosen_stable_id
+                && let Some(tagged) = ctx.tagged_objects.get_mut(all_tag)
+            {
+                tagged.retain(|snapshot| snapshot.stable_id != stable_id);
+            }
+            Ok(Some(new_id))
+        }
+        BattlefieldEntryOutcome::Prevented => Ok(None),
+    }
 }
 
 impl EffectExecutor for CascadeEffect {
@@ -86,6 +187,9 @@ impl EffectExecutor for CascadeEffect {
                 card.mana_cost.as_ref().map_or(0, ManaCost::mana_value) < source_mana_value
             },
         )?;
+
+        let cascade_land_id =
+            maybe_put_cascade_land_onto_battlefield(game, ctx, &all_tag, &source_name)?;
 
         let mut casted_card = None;
         if let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned() {
@@ -175,6 +279,8 @@ impl EffectExecutor for CascadeEffect {
                 from_zone,
                 ctx.provenance,
             ))
+        } else if let Some(land_id) = cascade_land_id {
+            Ok(EffectOutcome::with_objects(vec![land_id]))
         } else {
             Ok(EffectOutcome::count(0))
         }

@@ -2051,7 +2051,7 @@ fn rewrite_statement_lowering_uses_parse_tokens_when_groups_are_missing()
         [crate::cards::builders::LineAst::Statement { effects }] => {
             let debug = format!("{effects:?}");
             assert!(debug.contains("Exile"), "{debug}");
-            assert!(debug.contains("IfResult"), "{debug}");
+            assert!(debug.contains("WhenResult"), "{debug}");
             assert!(debug.contains("Draw"), "{debug}");
         }
         other => panic!("expected single rewritten statement chunk, got {other:?}"),
@@ -6733,7 +6733,7 @@ fn dynamic_draw_count_lowers_destroyed_this_way_to_prior_effect_metric() {
     assert!(
         debug.contains("WithIdEffect")
             && debug.contains("EffectMetric")
-            && debug.contains("AffectedObjects")
+            && debug.contains("Outcome")
             && debug.contains("DrawCardsEffect"),
         "expected draw count to bind to prior destroy metric, got {debug}"
     );

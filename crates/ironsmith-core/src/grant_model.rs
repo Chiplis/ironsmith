@@ -643,6 +643,20 @@ where
             "a spell".to_string()
         }
 
+        fn cast_this_way_entered_object_subject(filter: &ObjectFilter) -> Option<String> {
+            if !is_simple_card_type_filter(filter) || filter.card_types.len() != 1 {
+                return None;
+            }
+            match filter.card_types[0] {
+                CardType::Artifact
+                | CardType::Creature
+                | CardType::Enchantment
+                | CardType::Planeswalker
+                | CardType::Battle => Some(filter.card_types[0].to_string().to_ascii_lowercase()),
+                _ => None,
+            }
+        }
+
         fn sacrifice_cost_filter_description(filter: &ObjectFilter) -> Option<String> {
             let mut normalized = filter.clone();
             normalized.controller = None;
@@ -793,6 +807,21 @@ where
                 return format!(
                     ". If you cast {spell_text} this way, it gains haste until end of turn"
                 );
+            }
+            if grants.len() == 1
+                && matches!(
+                    grants[0].to_ascii_lowercase().as_str(),
+                    "enters tapped" | "this enters tapped"
+                )
+            {
+                if self.filter == ObjectFilter::source() {
+                    return ". If you do, it enters tapped".to_string();
+                }
+                if let Some(subject) = cast_this_way_entered_object_subject(&self.filter) {
+                    return format!(". If you cast a spell this way, that {subject} enters tapped");
+                }
+                let spell_text = cast_this_way_spell_subject(&self.filter);
+                return format!(". If you cast {spell_text} this way, it enters tapped");
             }
             if grants.len() == 1
                 && let Some(rest) = grants[0]
@@ -1108,6 +1137,7 @@ where
                     line.push_str(" by ");
                     line.push_str(&cost_text);
                 }
+                line.push_str(&cast_this_way_suffix());
                 if *exiles_after_resolution {
                     line.push_str(". If you cast it this way and it would be put into your graveyard, exile it instead");
                 }
@@ -1121,12 +1151,21 @@ where
             } else {
                 ""
             };
-            let mut line = format!(
-                "{prefix}{} cast {} from your graveyard by {}",
-                may_prefix.to_ascii_lowercase(),
-                filter_desc,
-                cost_text
-            );
+            let mut line = if additional_costs.is_empty() {
+                format!(
+                    "{prefix}{} cast {} from your graveyard",
+                    may_prefix.to_ascii_lowercase(),
+                    filter_desc
+                )
+            } else {
+                format!(
+                    "{prefix}{} cast {} from your graveyard by {}",
+                    may_prefix.to_ascii_lowercase(),
+                    filter_desc,
+                    cost_text
+                )
+            };
+            line.push_str(&cast_this_way_suffix());
             if *exiles_after_resolution {
                 line.push_str(
                     ". If a spell cast this way would be put into your graveyard, exile it instead",

@@ -2011,6 +2011,14 @@ impl Effect {
         ))
     }
 
+    pub fn control_combat_choices_this_combat(attackers: bool, blockers: bool) -> Self {
+        Self::new(
+            crate::effects::ControlCombatChoicesThisTurnEffect::new_with_surface(
+                attackers, blockers, true,
+            ),
+        )
+    }
+
     pub fn create_tokens(token: crate::cards::CardDefinition, count: impl Into<Value>) -> Self {
         Self::new(crate::effects::CreateTokenEffect::you(token, count.into()))
     }

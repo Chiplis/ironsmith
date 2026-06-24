@@ -61,7 +61,7 @@ mod tests {
         id
     }
 
-    fn dies_event(object_id: ObjectId, snapshot: ObjectSnapshot) -> TriggerEvent {
+    fn dies_event(game: &GameState, object_id: ObjectId, snapshot: ObjectSnapshot) -> TriggerEvent {
         TriggerEvent::new_with_provenance(
             ZoneChangeEvent::with_cause(
                 object_id,
@@ -72,6 +72,7 @@ mod tests {
             ),
             crate::provenance::ProvNodeId::default(),
         )
+        .with_lookback_source_snapshots(game.trigger_source_lookback_snapshots())
     }
 
     // ========================================
@@ -215,7 +216,7 @@ mod tests {
         let snapshot = ObjectSnapshot::from_object(game.object(victim_id).unwrap(), &game);
 
         // Simulate death event
-        let event = dies_event(victim_id, snapshot);
+        let event = dies_event(&game, victim_id, snapshot);
 
         let triggered = check_triggers(&game, &event);
         assert_eq!(
@@ -240,7 +241,7 @@ mod tests {
         let snapshot = ObjectSnapshot::from_object(game.object(blood_artist_id).unwrap(), &game);
 
         // Simulate Blood Artist dying
-        let event = dies_event(blood_artist_id, snapshot);
+        let event = dies_event(&game, blood_artist_id, snapshot);
 
         // Note: The trigger checks the battlefield, but Blood Artist triggers when it dies
         // because it uses last-known information. In this test, we're checking the trigger
@@ -273,7 +274,7 @@ mod tests {
         let snapshot = ObjectSnapshot::from_object(game.object(victim_id).unwrap(), &game);
 
         // Simulate death event
-        let event = dies_event(victim_id, snapshot);
+        let event = dies_event(&game, victim_id, snapshot);
 
         let triggered = check_triggers(&game, &event);
         assert_eq!(
@@ -302,7 +303,7 @@ mod tests {
         let snapshot = ObjectSnapshot::from_object(game.object(victim_id).unwrap(), &game);
 
         // Simulate death event
-        let event = dies_event(victim_id, snapshot);
+        let event = dies_event(&game, victim_id, snapshot);
 
         let triggered = check_triggers(&game, &event);
         assert_eq!(
@@ -339,7 +340,7 @@ mod tests {
         let snapshot = ObjectSnapshot::from_object(game.object(artifact_id).unwrap(), &game);
 
         // Simulate the artifact being destroyed (goes to graveyard)
-        let event = dies_event(artifact_id, snapshot);
+        let event = dies_event(&game, artifact_id, snapshot);
 
         let triggered = check_triggers(&game, &event);
         assert_eq!(
@@ -570,7 +571,7 @@ mod tests {
 
         // Simulate death of first creature
         let snapshot1 = ObjectSnapshot::from_object(game.object(victim1_id).unwrap(), &game);
-        let event1 = dies_event(victim1_id, snapshot1);
+        let event1 = dies_event(&game, victim1_id, snapshot1);
 
         let triggered1 = check_triggers(&game, &event1);
         assert_eq!(triggered1.len(), 1);
@@ -578,7 +579,7 @@ mod tests {
 
         // Simulate death of second creature
         let snapshot2 = ObjectSnapshot::from_object(game.object(victim2_id).unwrap(), &game);
-        let event2 = dies_event(victim2_id, snapshot2);
+        let event2 = dies_event(&game, victim2_id, snapshot2);
 
         let triggered2 = check_triggers(&game, &event2);
         assert_eq!(triggered2.len(), 1);
@@ -605,7 +606,7 @@ mod tests {
         let snapshot = ObjectSnapshot::from_object(game.object(victim_id).unwrap(), &game);
 
         // Simulate death event
-        let event = dies_event(victim_id, snapshot);
+        let event = dies_event(&game, victim_id, snapshot);
 
         let triggered = check_triggers(&game, &event);
         assert_eq!(
@@ -632,7 +633,7 @@ mod tests {
         let snapshot = ObjectSnapshot::from_object(game.object(vampire_id).unwrap(), &game);
 
         // Simulate death event
-        let event = dies_event(vampire_id, snapshot);
+        let event = dies_event(&game, vampire_id, snapshot);
 
         let triggered = check_triggers(&game, &event);
         assert_eq!(
@@ -672,7 +673,7 @@ mod tests {
         let snapshot = ObjectSnapshot::from_object(game.object(token_id).unwrap(), &game);
 
         // Simulate token dying
-        let event = dies_event(token_id, snapshot);
+        let event = dies_event(&game, token_id, snapshot);
 
         let triggered = check_triggers(&game, &event);
         assert_eq!(

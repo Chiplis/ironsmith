@@ -288,9 +288,12 @@ export default function TableCore({
       ref={tableRef}
       className="table-gradient table-shell relative rounded-none grid gap-0 p-0 min-h-0 h-full overflow-visible"
       data-drop-zone
+      data-tablet-compact={tabletCompactViewport ? "true" : "false"}
       style={{
         gridTemplateRows: mergeActionBarIntoMyZone
-          ? "minmax(0,1fr) minmax(0,1fr)"
+          ? (tabletCompactViewport
+            ? "minmax(0,0.9fr) minmax(0,1.1fr)"
+            : "minmax(0,1fr) minmax(0,1fr)")
           : sharedMiddleElement
             ? "minmax(0,1.09fr) auto minmax(0,1fr)"
             : `minmax(0,1fr) ${actionBarHeight}px minmax(0,1fr)`,
@@ -330,6 +333,7 @@ export default function TableCore({
         embeddedActionBar={mergeActionBarIntoMyZone ? actionBarElement : null}
         zoneActionControls={!mergeActionBarIntoMyZone ? zoneActionControls : null}
         hideHeader={Boolean(sharedMiddleElement)}
+        hideMobileHandRail={tabletCompactViewport}
       />
       <OpenDecklistModal
         decklist={openDecklist}

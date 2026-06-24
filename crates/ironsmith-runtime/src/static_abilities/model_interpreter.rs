@@ -316,6 +316,7 @@ impl StaticAbilityModelInterpreter {
                 | StaticAbilityId::SplitSecond
                 | StaticAbilityId::Rebound
                 | StaticAbilityId::Cascade
+                | StaticAbilityId::CascadeLandDrop
                 | StaticAbilityId::ReadAhead
                 | StaticAbilityId::Unleash
                 | StaticAbilityId::Bloodthirst

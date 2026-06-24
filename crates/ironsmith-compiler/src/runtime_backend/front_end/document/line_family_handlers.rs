@@ -278,19 +278,22 @@ pub(super) fn run_labeled_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     if is_sticker_sheet_ticket_marker_line(ctx) {
-        let Some(static_line) = parse_static_line_cst(ctx.line)? else {
-            return Err(CardTextError::ParseError(format!(
-                "parser could not lower sticker ticket marker line: '{}'",
-                ctx.line.info.raw_line
-            )));
-        };
         return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Static(static_line),
+            RewriteLineCst::Static(sticker_sheet_ticket_marker_static_line(ctx)),
             ctx.idx + 1,
         )));
     }
 
     try_parse_labeled_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
+}
+
+fn sticker_sheet_ticket_marker_static_line(ctx: &LineDispatchContext<'_>) -> StaticLineCst {
+    StaticLineCst {
+        info: ctx.line.info.clone(),
+        text: ctx.line.info.normalized.normalized.clone(),
+        parse_tokens: ctx.line.tokens.clone(),
+        chosen_option_label: None,
+    }
 }
 
 fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {

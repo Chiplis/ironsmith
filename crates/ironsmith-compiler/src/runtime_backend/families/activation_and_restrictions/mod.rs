@@ -132,7 +132,7 @@ pub(crate) use keyword_activated_lines::{
 };
 use trigger_clause_core::*;
 pub(crate) use trigger_clause_core::{
-    parse_leading_or_more_quantifier, parse_trigger_clause_lexed,
+    parse_leading_exactly_quantifier, parse_leading_or_more_quantifier, parse_trigger_clause_lexed,
 };
 use trigger_subject_filters::*;
 pub(crate) use trigger_subject_filters::{

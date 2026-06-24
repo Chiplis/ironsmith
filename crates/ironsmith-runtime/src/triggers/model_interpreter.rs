@@ -139,6 +139,12 @@ pub(crate) fn interpret_trigger_model(
             filter,
             min_total_attackers,
         ),
+        TriggerKind::AttacksOneOrMoreWithExactTotal {
+            filter,
+            total_attackers,
+        } => {
+            crate::triggers::Trigger::attacks_one_or_more_with_exact_total(filter, total_attackers)
+        }
         TriggerKind::AttacksAlone { filter } => crate::triggers::Trigger::attacks_alone(filter),
         TriggerKind::AttacksYou { filter } => crate::triggers::Trigger::attacks_you(filter),
         TriggerKind::AttacksYouOneOrMore { filter } => {

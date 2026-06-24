@@ -230,6 +230,11 @@ const THEIR_WORD: &str = "their";
 const HAVE_WORD: &str = "have";
 const DOESNT_HAVE_PHRASES: &[&[&str]] = &[&["doesnt", "have"], &["doesn't", "have"]];
 const DOES_NOT_HAVE_PHRASE: &[&str] = &["does", "not", "have"];
+const NEGATED_HAVE_PHRASES: &[&[&str]] = &[
+    &["doesnt", "have"],
+    &["doesn't", "have"],
+    &["does", "not", "have"],
+];
 const YOU_WORD: &str = "you";
 const MORE_WORD: &str = "more";
 const THAN_WORD: &str = "than";
@@ -1107,6 +1112,31 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
         counter_type,
         count: 1,
     })
+}
+
+fn parse_source_doesnt_have_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject(
+            "subject",
+            LexCaptureKind::UntilAnyPhrase(NEGATED_HAVE_PHRASES),
+        ),
+        LexPattern::action("action", LexCaptureKind::OneOfPhrase(NEGATED_HAVE_PHRASES)),
+        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
+        LexPattern::modifier("target", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_source_reference_clause(subject_clause) {
+        return None;
+    }
+    let target_clause = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !is_exact_counter_on_source_tail_clause(target_clause) {
+        return None;
+    }
+    let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
+    Some(PredicateAst::SourceHasNoCounter(counter_type))
 }
 
 fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -2640,6 +2670,66 @@ fn parse_repeated_if_or_predicate(
     };
     let right = parse_predicate(right_clause.tokens())?;
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
+}
+
+fn parse_repeated_and_predicate(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    for split_idx in (1..tokens.len().saturating_sub(1)).rev() {
+        if !token_word_is(&tokens[split_idx], AND_WORD) {
+            continue;
+        }
+
+        let left_tokens = &tokens[..split_idx];
+        let right_tokens = &tokens[split_idx + 1..];
+        if left_tokens.is_empty() || right_tokens.is_empty() {
+            continue;
+        }
+        if left_tokens
+            .iter()
+            .any(|token| token_word_is(token, AND_WORD))
+            || right_tokens
+                .iter()
+                .any(|token| token_word_is(token, AND_WORD))
+        {
+            continue;
+        }
+        if !predicate_conjunction_side_looks_standalone(left_tokens)
+            || !predicate_conjunction_side_looks_standalone(right_tokens)
+        {
+            continue;
+        }
+
+        let left = match parse_predicate(left_tokens) {
+            Ok(predicate) => predicate,
+            Err(_) => continue,
+        };
+        let right = match parse_predicate(right_tokens) {
+            Ok(predicate) => predicate,
+            Err(_) => continue,
+        };
+        return Ok(Some(PredicateAst::And(Box::new(left), Box::new(right))));
+    }
+
+    Ok(None)
+}
+
+fn predicate_conjunction_side_looks_standalone(tokens: &[OwnedLexToken]) -> bool {
+    predicate_tokens_start_with_reference(tokens)
+        && predicate_tokens_contain_predicate_operator(tokens)
+}
+
+fn predicate_tokens_contain_predicate_operator(tokens: &[OwnedLexToken]) -> bool {
+    tokens.iter().any(|token| {
+        token_word_is_any(
+            token,
+            &[
+                "are", "arent", "aren't", "cast", "control", "controls", "did", "didnt", "didn't",
+                "does", "doesnt", "doesn't", "has", "hasnt", "hasn't", "have", "havent", "haven't",
+                "is", "isnt", "isn't",
+            ],
+        )
+    })
 }
 
 fn predicate_reference_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -6711,6 +6801,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_repeated_if_or_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
+    if let Some(predicate) = parse_repeated_and_predicate(predicate_tokens)? {
+        return Ok(predicate);
+    }
     {
         let simple_words = non_article_token_word_refs(predicate_tokens);
         if matches!(
@@ -6901,6 +6994,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_there_are_no_counters_on_source_predicate(tokens) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_source_doesnt_have_counter_predicate(tokens) {
         return Ok(predicate);
     }
 
@@ -8948,6 +9045,28 @@ mod tests {
             "expected negated spell-cast matching predicate, got {parsed:?}"
         );
 
+        let tokens = lex_line("If you haven't cast a spell from your hand this turn", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        let PredicateAst::Not(inner) = parsed else {
+            panic!("expected negated hand-origin spell-cast predicate, got {parsed:?}");
+        };
+        let PredicateAst::ValueComparison {
+            left:
+                Value::SpellsCastThisTurnMatching {
+                    player,
+                    filter,
+                    exclude_source,
+                },
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        } = *inner
+        else {
+            panic!("expected hand-origin spell-cast value comparison, got {inner:?}");
+        };
+        assert_eq!(player, PlayerFilter::You);
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert!(!exclude_source);
+
         Ok(())
     }
 
@@ -9699,6 +9818,10 @@ mod tests {
                     counter_type: CounterType::PlusOnePlusOne,
                     count: 1,
                 },
+            ),
+            (
+                "If this creature doesn't have a flying counter on it",
+                PredicateAst::SourceHasNoCounter(CounterType::Flying),
             ),
             (
                 "If this creature has two stun counters on it",

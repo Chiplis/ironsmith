@@ -1,5 +1,8 @@
 use super::super::grammar::structure;
 use super::super::lex_patterns::LexPattern;
+use super::super::lexer::{
+    parser_token_word_refs, word_slice_contains_phrase, word_slice_starts_with,
+};
 use super::*;
 
 const REVEAL_THIS_CARD_FROM_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
@@ -45,6 +48,41 @@ fn parse_any_player_no_one_does_statement(
     }))
 }
 
+fn is_each_player_choose_unselected_bounce_then_draw_statement(tokens: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(tokens);
+    word_slice_starts_with(
+        &words,
+        &[
+            "each",
+            "player",
+            "chooses",
+            "a",
+            "nonland",
+            "permanent",
+            "they",
+            "control",
+        ],
+    ) && word_slice_contains_phrase(
+        &words,
+        &[
+            "return",
+            "all",
+            "nonland",
+            "permanents",
+            "not",
+            "chosen",
+            "this",
+            "way",
+        ],
+    ) && word_slice_contains_phrase(
+        &words,
+        &[
+            "you", "draw", "a", "card", "for", "each", "opponent", "who", "has", "more", "cards",
+            "in", "their", "hand", "than", "you",
+        ],
+    )
+}
+
 fn join_statement_parse_sentence_group(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
     let mut joined = Vec::new();
     for sentence in sentences {
@@ -79,6 +117,15 @@ pub(super) fn parse_statement_line_cst(
     }
     if let Some(statement) = parse_any_player_no_one_does_statement(line)? {
         return Ok(Some(statement));
+    }
+    if is_each_player_choose_unselected_bounce_then_draw_statement(&line.tokens) {
+        parse_effect_sentences_lexed(&line.tokens)?;
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            parse_tokens: line.tokens.clone(),
+            parse_groups: vec![line.tokens.clone()],
+        }));
     }
     let line_family = structure::classify_statement_line_family_lexed(&line.tokens);
     let static_probe = parse_static_ability_ast_line_lexed(&line.tokens)
@@ -333,6 +380,9 @@ fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
         )
     ) {
         return false;
+    }
+    if is_each_player_choose_unselected_bounce_then_draw_statement(tokens) {
+        return true;
     }
     let effect_sentences = split_lexed_sentences(tokens)
         .into_iter()

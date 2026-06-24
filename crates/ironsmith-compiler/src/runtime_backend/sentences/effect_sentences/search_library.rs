@@ -628,6 +628,9 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
                     SubjectVerbActionAst::ShuffleLibrary,
                 ));
             }
+            effects.push(EffectAst::subject_verb_shuffle_graveyard_into_library(
+                player,
+            ));
         } else if has_hand_clause {
             effects.push(EffectAst::subject_verb_shuffle_hand_and_graveyard_into_library(player));
         } else {

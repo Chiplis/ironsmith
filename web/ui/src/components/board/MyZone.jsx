@@ -254,6 +254,7 @@ export default function MyZone({
   zoneActionControls = null,
   hideHeader = false,
   mobileBattleScene = false,
+  hideMobileHandRail = false,
   playerAccent: explicitPlayerAccent = null,
   onOpenDecklist = null,
   onMobileCardActionMenu = null,
@@ -290,7 +291,7 @@ export default function MyZone({
   const transientZoneViews = Object.keys(zoneActivity || {});
   const zoneEntries = buildZoneEntries(player, [...zoneViews, ...transientZoneViews]);
   const activeZoneEntries = zoneEntries.filter((entry) => entry.active);
-  const mobileHandRailVisible = mergedMobileHeader && Boolean(player?.can_view_hand);
+  const mobileHandRailVisible = mergedMobileHeader && !hideMobileHandRail && Boolean(player?.can_view_hand);
   const displayZoneEntries = activeZoneEntries.filter((entry) =>
     shouldShowZoneBody(player, entry, zoneActivity?.[entry.zone] || null)
   );

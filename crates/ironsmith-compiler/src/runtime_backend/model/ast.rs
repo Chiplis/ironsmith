@@ -130,6 +130,10 @@ pub(crate) enum TriggerSpec {
         filter: ObjectFilter,
         min_total_attackers: u32,
     },
+    AttacksOneOrMoreWithExactTotal {
+        filter: ObjectFilter,
+        total_attackers: u32,
+    },
     AttacksAlone(ObjectFilter),
     AttacksYouOrPlaneswalkerYouControl(ObjectFilter),
     AttacksYouOrPlaneswalkerYouControlOneOrMore(ObjectFilter),
@@ -1020,6 +1024,7 @@ pub(crate) enum SubjectVerbActionAst {
     ControlCombatChoicesThisTurn {
         attackers: bool,
         blockers: bool,
+        this_combat: bool,
     },
     GainControl {
         target: TargetAst,
@@ -2211,10 +2216,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ControlCombatChoicesThisTurn {
                 attackers,
                 blockers,
+                this_combat,
             } => f
                 .debug_struct("ControlCombatChoicesThisTurn")
                 .field("attackers", attackers)
                 .field("blockers", blockers)
+                .field("this_combat", this_combat)
                 .finish(),
             Self::GainControl { target, duration } => f
                 .debug_struct("GainControl")
@@ -6008,12 +6015,21 @@ impl EffectAst {
         attackers: bool,
         blockers: bool,
     ) -> Self {
+        Self::subject_verb_control_combat_choices(attackers, blockers, false)
+    }
+
+    pub(crate) fn subject_verb_control_combat_choices(
+        attackers: bool,
+        blockers: bool,
+        this_combat: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::ControlCombatChoicesThisTurn {
                 attackers,
                 blockers,
+                this_combat,
             },
         )
     }

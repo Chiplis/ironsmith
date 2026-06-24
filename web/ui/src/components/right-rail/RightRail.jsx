@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import HoverArtOverlay from "./HoverArtOverlay";
 import { useHover } from "@/context/HoverContext";
 import { useGame } from "@/context/GameContext";
+import { resolveInspectorObjectId } from "@/lib/inspector-selection";
 import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { playerAccentVars } from "@/lib/player-colors";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
@@ -259,6 +260,7 @@ function objectInspectableInCurrentContext(state, decision, objectId) {
 
 export default function RightRail({
   pinnedObjectId,
+  selectedObjectId: activeSelectedObjectId = null,
   transientInspectorPreview = null,
   transientInspectorPreviewIndex = 0,
   transientInspectorPreviewCount = 0,
@@ -304,8 +306,28 @@ export default function RightRail({
     () => resolveLinkedInspectorObjectId(state, hoveredObjectId, hoveredLinkedObjectIds),
     [state, hoveredLinkedObjectIds, hoveredObjectId]
   );
-  const pinnedInspectorObjectId = pinnedObjectId != null ? String(pinnedObjectId) : null;
   const focusedDecision = isFocusedDecision(decision);
+  const selectedInspectorObjectId = activeSelectedObjectId != null ? String(activeSelectedObjectId) : null;
+  const selectedInspectorIsViewedCard = isViewedCardObject(state, selectedInspectorObjectId);
+  const selectedInspectorLocation = useMemo(
+    () => locateObjectInState(state, selectedInspectorObjectId),
+    [selectedInspectorObjectId, state]
+  );
+  const selectedInspectorCanPersist = canPersistPinnedInspector(selectedInspectorLocation);
+  const selectedInspectorIsInspectable =
+    objectInspectableInCurrentContext(state, decision, selectedInspectorObjectId);
+  const relevantSelectedObjectId = !selectedInspectorIsInspectable
+    ? null
+    : focusedDecision
+      ? (
+        decisionReferencesObject(decision, selectedInspectorObjectId)
+        || selectedInspectorIsViewedCard
+        || selectedInspectorCanPersist
+          ? selectedInspectorObjectId
+          : null
+      )
+      : selectedInspectorObjectId;
+  const pinnedInspectorObjectId = pinnedObjectId != null ? String(pinnedObjectId) : null;
   const pinnedInspectorIsViewedCard = isViewedCardObject(state, pinnedInspectorObjectId);
   const pinnedInspectorLocation = useMemo(
     () => locateObjectInState(state, pinnedInspectorObjectId),
@@ -336,17 +358,16 @@ export default function RightRail({
       : null
   );
   const relevantHoveredObjectId = directHoveredInspectorObjectId ?? linkedInspectorObjectId;
-  const decisionLockedObjectId = focusedDecision
-    ? (relevantHoveredObjectId ?? relevantPinnedObjectId)
-    : null;
-
-  const selectedObjectId = focusedDecision
-    ? decisionLockedObjectId
-    : (relevantHoveredObjectId ?? relevantPinnedObjectId);
+  const selectedObjectId = resolveInspectorObjectId({
+    selectedObjectId: relevantSelectedObjectId,
+    pinnedObjectId: relevantPinnedObjectId,
+    hoveredObjectId: relevantHoveredObjectId,
+  });
+  const hasInspectorSelectionLock = relevantSelectedObjectId != null || relevantPinnedObjectId != null;
   const validSelectedObjectId = objectInspectableInCurrentContext(state, decision, selectedObjectId)
     ? selectedObjectId
     : null;
-  const transientPreviewSuppressedByHover = relevantHoveredObjectId != null;
+  const transientPreviewSuppressedByHover = !hasInspectorSelectionLock && relevantHoveredObjectId != null;
   const hasActiveTransientInspectorPreview =
     hasTransientInspectorPreview && !transientPreviewSuppressedByHover;
   const inlineDock = fixedInlineDockForVariant(inspectorVariant);
@@ -357,7 +378,7 @@ export default function RightRail({
     !hasRealStackEntries
     &&
     !focusedDecision
-    && pinnedInspectorObjectId == null
+    && !hasInspectorSelectionLock
     && hoveredObjectId == null
     &&
     validSelectedObjectId != null

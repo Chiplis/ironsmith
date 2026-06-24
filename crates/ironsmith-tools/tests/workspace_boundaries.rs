@@ -8121,7 +8121,7 @@ fn keyword_static_you_may_static_grant_uses_clause_shapes() {
     let parser = function_source(
         &content,
         "pub(crate) fn parse_you_may_static_grant_line",
-        "pub(crate) fn parse_play_from_permission_with_haste_this_way_line",
+        "pub(crate) fn parse_as_you_cascade_land_drop_line",
     );
 
     for required in [
@@ -10250,7 +10250,7 @@ fn predicate_demonstrative_descriptor_tail_uses_token_ranges() {
         "THAT_ENCHANTMENT_PREFIX_PATTERN.matches_non_article_tokens(predicate_tokens)",
     ] {
         assert!(
-            !content.contains(forbidden),
+            !helper.contains(forbidden),
             "{relative} should not rebuild demonstrative descriptor filters from raw descriptor words: found `{forbidden}`"
         );
     }

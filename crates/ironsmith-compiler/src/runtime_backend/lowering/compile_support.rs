@@ -1282,13 +1282,10 @@ fn normalize_hand_or_graveyard_cross_zone_filter(filter: &mut ObjectFilter) {
         return;
     }
 
-    let has_hand_or_graveyard_zone = filter.any_of.iter().any(|option| {
-        let mut bare = option.clone();
-        let Some(zone) = bare.zone.take() else {
-            return false;
-        };
-        bare == ObjectFilter::default() && matches!(zone, Zone::Hand | Zone::Graveyard)
-    });
+    let has_hand_or_graveyard_zone = filter
+        .any_of
+        .iter()
+        .any(|option| matches!(option.zone, Some(Zone::Hand | Zone::Graveyard)));
     if has_hand_or_graveyard_zone {
         filter.zone = None;
         filter.controller = None;
@@ -1305,12 +1302,8 @@ fn hand_or_graveyard_choice_zones(filter: &ObjectFilter) -> Option<Vec<Zone>> {
 
     let mut zones = Vec::new();
     for option in &filter.any_of {
-        if option.zone.is_none() {
-            return None;
-        }
-        let mut bare = option.clone();
-        let zone = bare.zone.take()?;
-        if bare != ObjectFilter::default() || !matches!(zone, Zone::Hand | Zone::Graveyard) {
+        let zone = option.zone?;
+        if !matches!(zone, Zone::Hand | Zone::Graveyard) {
             return None;
         }
         if !zones.contains(&zone) {

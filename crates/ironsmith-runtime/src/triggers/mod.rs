@@ -536,6 +536,17 @@ impl Trigger {
         ))
     }
 
+    /// Create a "when exactly N [filter] attack" trigger that fires once per declaration.
+    pub fn attacks_one_or_more_with_exact_total(
+        filter: ObjectFilter,
+        total_attackers: usize,
+    ) -> Self {
+        Self::new(AttacksTrigger::one_or_more_with_exact_total_attackers(
+            filter,
+            total_attackers,
+        ))
+    }
+
     /// Create a "when [filter] attacks alone" trigger.
     pub fn attacks_alone(filter: ObjectFilter) -> Self {
         Self::new(AttacksAloneTrigger::new(filter))

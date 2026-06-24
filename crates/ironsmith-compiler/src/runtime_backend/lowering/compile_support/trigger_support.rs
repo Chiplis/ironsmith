@@ -42,6 +42,10 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             filter,
             min_total_attackers,
         } => Trigger::attacks_one_or_more_with_min_total(filter, min_total_attackers as usize),
+        TriggerSpec::AttacksOneOrMoreWithExactTotal {
+            filter,
+            total_attackers,
+        } => Trigger::attacks_one_or_more_with_exact_total(filter, total_attackers as usize),
         TriggerSpec::AttacksAlone(filter) => Trigger::attacks_alone(filter),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter) => Trigger::attacks_you(filter),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(filter) => {
@@ -640,6 +644,14 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         {
             Some(PlayerFilter::Defending)
         }
+        TriggerSpec::AttacksOneOrMoreWithMinTotal { filter, .. }
+        | TriggerSpec::AttacksOneOrMoreWithExactTotal { filter, .. }
+            if filter
+                .attacking_player_or_planeswalker_controlled_by
+                .is_some() =>
+        {
+            Some(PlayerFilter::Defending)
+        }
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)
@@ -716,6 +728,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
             | TriggerSpec::AttacksOneOrMore(_)
             | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
+            | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
             | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
             | TriggerSpec::KeywordAction { .. }
             | TriggerSpec::KeywordActionTaggedObject { .. }

@@ -2170,6 +2170,92 @@ fn parse_regenerate_then_gain_control_if_regenerates_bundle(
     ])
 }
 
+fn parse_each_player_choose_unselected_bounce_then_draw_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let sentences = split_lexed_sentences(tokens);
+    let [choose_sentence, return_sentence, draw_sentence] = sentences.as_slice() else {
+        return None;
+    };
+
+    let choose_words = parser_token_word_refs(choose_sentence);
+    let return_words = parser_token_word_refs(return_sentence);
+    if !word_slice_eq(
+        &choose_words,
+        &[
+            "each",
+            "player",
+            "chooses",
+            "a",
+            "nonland",
+            "permanent",
+            "they",
+            "control",
+        ],
+    ) {
+        return None;
+    }
+    if !word_slice_starts_with(
+        &return_words,
+        &[
+            "return",
+            "all",
+            "nonland",
+            "permanents",
+            "not",
+            "chosen",
+            "this",
+            "way",
+            "to",
+            "their",
+        ],
+    ) || !return_words.last().is_some_and(|word| *word == "hands")
+    {
+        return None;
+    }
+
+    let chosen_tag = TagKey::from("chosen_this_way");
+    let mut effects = vec![
+        EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::ChooseObjects {
+                filter: ObjectFilter::nonland_permanent()
+                    .controlled_by(PlayerFilter::IteratedPlayer),
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::Implicit,
+                tag: chosen_tag.clone(),
+            }],
+        },
+        EffectAst::subject_verb_return_all_to_hand(
+            ObjectFilter::nonland_permanent().not_tagged(chosen_tag),
+        ),
+    ];
+    let draw_words = parser_token_word_refs(draw_sentence);
+    if !word_slice_eq(
+        &draw_words,
+        &[
+            "then", "you", "draw", "a", "card", "for", "each", "opponent", "who", "has", "more",
+            "cards", "in", "their", "hand", "than", "you",
+        ],
+    ) {
+        return None;
+    }
+    effects.push(EffectAst::ForEachPlayersFiltered {
+        filter: PlayerFilter::CardsInHandAtLeastMoreThanYou {
+            base: Box::new(PlayerFilter::Opponent),
+            count: 1,
+        },
+        effects: vec![EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw {
+                count: Value::Fixed(1),
+            },
+        )],
+    });
+    Some(effects)
+}
+
 pub(crate) fn parse_exact_card_effect_bundle_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
@@ -2206,6 +2292,9 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if let Some(effects) =
         parse_proliferate_then_choose_permanents_phase_out_single_sentence(tokens)
     {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_each_player_choose_unselected_bounce_then_draw_bundle(tokens) {
         return Some(effects);
     }
     let sentences = split_lexed_sentences(tokens);

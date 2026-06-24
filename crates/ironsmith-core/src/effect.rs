@@ -4744,13 +4744,19 @@ impl PoisonCountersEffect {
 pub struct ControlCombatChoicesThisTurnEffect {
     pub attackers: bool,
     pub blockers: bool,
+    pub this_combat: bool,
 }
 
 impl ControlCombatChoicesThisTurnEffect {
     pub fn new(attackers: bool, blockers: bool) -> Self {
+        Self::new_with_surface(attackers, blockers, false)
+    }
+
+    pub fn new_with_surface(attackers: bool, blockers: bool, this_combat: bool) -> Self {
         Self {
             attackers,
             blockers,
+            this_combat,
         }
     }
 }

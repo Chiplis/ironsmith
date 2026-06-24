@@ -2172,6 +2172,19 @@ mod tests {
     }
 
     #[test]
+    fn statement_line_cst_recognizes_each_player_choose_then_bounce_unchosen()
+    -> Result<(), CardTextError> {
+        let line = single_preprocessed_line(
+            "Each player chooses a nonland permanent they control. Return all nonland permanents not chosen this way to their owners' hands. Then you draw a card for each opponent who has more cards in their hand than you.",
+        );
+
+        assert!(looks_like_statement_line_lexed(&line));
+        assert!(parse_statement_line_cst(&line)?.is_some());
+
+        Ok(())
+    }
+
+    #[test]
     fn unsupported_line_reason_recognizes_modal_header_from_tokens() {
         let line = single_preprocessed_line("Choose one —");
 
@@ -2307,7 +2320,7 @@ mod tests {
 
         assert_eq!(
             groups,
-            vec!["exile target artifact. if you do, draw a card.".to_string()]
+            vec!["exile target artifact. when you do, draw a card.".to_string()]
         );
     }
 

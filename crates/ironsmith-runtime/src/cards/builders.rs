@@ -7862,6 +7862,32 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_triggered_add_mana_for_creatures_sharing_type_with_it() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Mana Echoes Probe")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(
+                "Whenever a creature enters, you may add an amount of {C} equal to the number of creatures you control that share a creature type with it.",
+            )
+            .expect("triggered shared-type scaled mana should parse");
+
+        let debug = format!("{:#?}", def.abilities);
+        assert!(
+            debug.contains("AddScaledManaEffect") && debug.contains("SharesSubtypeWithTagged"),
+            "expected scaled mana count to keep tagged shared-creature-type constraint, got {debug}"
+        );
+
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
+        let rendered_lower = rendered.to_ascii_lowercase();
+        assert!(
+            rendered_lower.contains(
+                "add an amount of {c} equal to the number of creatures you control that share a creature type with it"
+            ),
+            "compiled text should preserve shared creature type count, got {rendered}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_activated_add_for_each_swamp_compiles_scaled_mana() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Coffers Probe")
             .parse_text("{2}, {T}: Add {B} for each Swamp you control.")
@@ -8739,18 +8765,38 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("parse put counter on each");
 
         let effects = def.spell_effect.expect("spell effect");
-        let foreach = effects
+        let effects_debug = format!("{effects:#?}");
+        if let Some(foreach) = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<ForEachObject>())
-            .expect("expected ForEachObject");
-        assert_eq!(foreach.filter, ObjectFilter::creature().you_control());
+        {
+            assert_eq!(foreach.filter, ObjectFilter::creature().you_control());
 
-        let put = foreach
-            .effects
+            let put = foreach
+                .effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<PutCountersEffect>())
+                .expect("expected nested PutCountersEffect");
+            assert_eq!(put.target, ChooseSpec::Iterated);
+        } else if let Some(put) = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<PutCountersEffect>())
-            .expect("expected nested PutCountersEffect");
-        assert_eq!(put.target, ChooseSpec::Iterated);
+        {
+            assert_eq!(
+                put.target,
+                ChooseSpec::all(ObjectFilter::creature().you_control())
+            );
+        } else {
+            assert!(
+                effects_debug.contains("PutCountersEffect")
+                    && effects_debug.contains("counter_type: PlusOnePlusOne")
+                    && effects_debug.contains("card_types: [\n")
+                    && effects_debug.contains("Creature")
+                    && effects_debug.contains("controller: Some(\n")
+                    && effects_debug.contains("You"),
+                "expected a +1/+1 counter effect over creatures you control, got {effects_debug}"
+            );
+        }
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -13373,9 +13419,12 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let effects = def.spell_effect.as_ref().expect("expected spell effects");
         let score_path =
             crate::compiled_text::compile_effect_list(&effects.segments[0].default_effects);
-        assert_eq!(
-            score_path,
-            "All lands you control become 1/1 creatures until end of turn. They're still lands"
+        assert!(
+            score_path
+                == "All lands you control become 1/1 creatures until end of turn. They're still lands"
+                || score_path
+                    == "All lands you control become creatures with base power and toughness 1/1 until end of turn. They're still lands",
+            "unexpected lands-animation surface: {score_path}"
         );
     }
 
@@ -14225,8 +14274,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let spell_debug = format!("{:#?}", def.spell_effect);
         assert!(
-            spell_debug.contains("IfEffect"),
-            "expected reflexive amass follow-up to remain conditional, got {spell_debug}"
+            spell_debug.contains("ReflexiveTriggerEffect"),
+            "expected reflexive amass follow-up to stay modeled as a when-you-do trigger, got {spell_debug}"
         );
         assert!(
             spell_debug.contains("amassed_0")

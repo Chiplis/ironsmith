@@ -653,6 +653,43 @@ fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
             .all(|phrase| word_slice_contains_phrase(&words, phrase))
 }
 
+fn statement_group_is_each_player_choose_unselected_bounce_then_draw(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let words = parser_token_word_refs(tokens);
+    word_slice_starts_with(
+        &words,
+        &[
+            "each",
+            "player",
+            "chooses",
+            "a",
+            "nonland",
+            "permanent",
+            "they",
+            "control",
+        ],
+    ) && word_slice_contains_phrase(
+        &words,
+        &[
+            "return",
+            "all",
+            "nonland",
+            "permanents",
+            "not",
+            "chosen",
+            "this",
+            "way",
+        ],
+    ) && word_slice_contains_phrase(
+        &words,
+        &[
+            "you", "draw", "a", "card", "for", "each", "opponent", "who", "has", "more", "cards",
+            "in", "their", "hand", "than", "you",
+        ],
+    )
+}
+
 fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bool {
     if matches!(
         crate::runtime_backend::families::keyword_static::parse_double_counters_replacement_line(
@@ -663,6 +700,9 @@ fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bo
         return false;
     }
     if linked_statement_should_stay_grouped(tokens) {
+        return true;
+    }
+    if statement_group_is_each_player_choose_unselected_bounce_then_draw(tokens) {
         return true;
     }
     if matches!(

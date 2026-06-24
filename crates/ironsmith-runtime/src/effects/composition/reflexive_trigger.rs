@@ -1,10 +1,19 @@
 //! Reflexive trigger effect implementation.
 
+use std::collections::HashMap;
+
+use crate::card::LinkedFaceLayout;
 use crate::decisions::context::{TargetRequirementContext, TargetsContext};
-use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt};
+use crate::effect::{
+    Effect, EffectId, EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt,
+    OutcomeObjectMemory,
+};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
+use crate::object::ObjectKind;
+use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 use crate::target::ChooseSpec;
 use crate::targeting::normalize_targets_for_requirements;
 
@@ -106,13 +115,119 @@ fn choose_reflexive_targets(
     Some(chosen_targets)
 }
 
+fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> ObjectSnapshot {
+    let mut snapshot = game
+        .object(memory.object_id)
+        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+        .unwrap_or_else(|| ObjectSnapshot {
+            object_id: memory.object_id,
+            stable_id: memory.stable_id,
+            kind: if memory.is_token {
+                ObjectKind::Token
+            } else {
+                ObjectKind::Card
+            },
+            card: None,
+            controller: memory.controller,
+            owner: memory.owner,
+            name: String::new(),
+            mana_cost: None,
+            colors: memory.colors,
+            supertypes: Vec::new(),
+            card_types: memory.card_types.clone(),
+            subtypes: memory.subtypes.clone(),
+            compiled_card_text: String::new(),
+            other_face: None,
+            other_face_name: None,
+            linked_face_layout: LinkedFaceLayout::None,
+            power: memory.power,
+            toughness: memory.toughness,
+            base_power: memory.power,
+            base_toughness: memory.toughness,
+            loyalty: None,
+            defense: None,
+            abilities: Vec::new(),
+            aura_attach_filter: None,
+            x_value: None,
+            cast_order_this_turn: None,
+            mana_spent_to_cast: crate::player::ManaPool::default(),
+            counters: HashMap::new(),
+            is_token: memory.is_token,
+            tapped: false,
+            attacking: false,
+            flipped: false,
+            face_down: false,
+            transform_count: 0,
+            attached_to: None,
+            attachments: Vec::new(),
+            was_enchanted: false,
+            is_monstrous: false,
+            is_commander: false,
+            zone: memory.zone,
+        });
+
+    snapshot.stable_id = memory.stable_id;
+    snapshot.controller = memory.controller;
+    snapshot.owner = memory.owner;
+    snapshot.zone = memory.zone;
+    snapshot.power = memory.power;
+    snapshot.toughness = memory.toughness;
+    snapshot.card_types = memory.card_types.clone();
+    snapshot.colors = memory.colors;
+    snapshot.subtypes = memory.subtypes.clone();
+    snapshot.is_token = memory.is_token;
+    snapshot
+}
+
+fn snapshots_from_object_ids(
+    game: &GameState,
+    ids: &[crate::ids::ObjectId],
+) -> Vec<ObjectSnapshot> {
+    ids.iter()
+        .filter_map(|id| game.object(*id))
+        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+        .collect()
+}
+
+fn reflexive_it_snapshots(game: &GameState, outcome: &EffectOutcome) -> Vec<ObjectSnapshot> {
+    if let Some(memory) = outcome.affected_object_memory()
+        && !memory.is_empty()
+    {
+        return memory
+            .iter()
+            .map(|memory| snapshot_from_memory(game, memory))
+            .collect();
+    }
+    if let Some(memory) = outcome.chosen_object_memory()
+        && !memory.is_empty()
+    {
+        return memory
+            .iter()
+            .map(|memory| snapshot_from_memory(game, memory))
+            .collect();
+    }
+    if let Some(ids) = outcome.affected_objects()
+        && !ids.is_empty()
+    {
+        return snapshots_from_object_ids(game, ids);
+    }
+    if let Some(ids) = outcome.chosen_objects()
+        && !ids.is_empty()
+    {
+        return snapshots_from_object_ids(game, ids);
+    }
+    Vec::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ReflexiveTriggerEffect, choose_reflexive_targets};
     use crate::cards::definitions::{grizzly_bears, lightning_bolt};
     use crate::decision::DecisionMaker;
     use crate::decisions::context::TargetsContext;
-    use crate::effect::{ChoiceCount, Effect, EffectId, EffectOutcome, EffectPredicate};
+    use crate::effect::{
+        ChoiceCount, Effect, EffectId, EffectOutcome, EffectPredicate, OutcomeObjectMemory,
+    };
     use crate::effects::{EffectExecutor, ExecutionContext};
     use crate::game_state::{GameState, Target};
     use crate::ids::PlayerId;
@@ -178,7 +293,12 @@ mod tests {
             target: Target::Object(tagged),
         };
         let mut ctx = ExecutionContext::new(source, alice, &mut dm);
-        ctx.store_outcome(condition, EffectOutcome::count(1));
+        ctx.store_outcome(
+            condition,
+            EffectOutcome::count(1).with_affected_object_memory(vec![
+                OutcomeObjectMemory::from_snapshot(&tagged_snapshot),
+            ]),
+        );
         ctx.x_value = Some(7);
         ctx.combat.defending_player = Some(bob);
         ctx.set_tagged_objects(TagKey::from("sacrificed"), vec![tagged_snapshot.clone()]);
@@ -199,6 +319,12 @@ mod tests {
             .expect("tagged object snapshots carried to stack entry");
         assert_eq!(captured.len(), 1);
         assert_eq!(captured[0].object_id, tagged_snapshot.object_id);
+        let it = entry
+            .tagged_objects
+            .get(&TagKey::from("__it__"))
+            .expect("condition object memory exposed as reflexive it tag");
+        assert_eq!(it.len(), 1);
+        assert_eq!(it[0].object_id, tagged_snapshot.object_id);
         assert_eq!(
             entry.source_name.as_deref(),
             Some(game.object(source).expect("source object").name.as_str())
@@ -225,18 +351,26 @@ impl EffectExecutor for ReflexiveTriggerEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let outcome = ctx
             .get_outcome(self.condition)
+            .cloned()
             .ok_or(ExecutionError::EffectNotFound(self.condition))?;
-        if !self.predicate.evaluate_outcome(outcome) {
+        if !self.predicate.evaluate_outcome(&outcome) {
             return Ok(EffectOutcome::resolved());
         }
+        let fallback_it_snapshots = reflexive_it_snapshots(game, &outcome);
 
         let targets = choose_reflexive_targets(game, ctx, &self.choices)
             .ok_or(ExecutionError::InvalidTarget)?;
 
+        let mut tagged_objects = ctx.tagged_objects.clone();
+        let it_tag = TagKey::from("__it__");
+        if !tagged_objects.contains_key(&it_tag) && !fallback_it_snapshots.is_empty() {
+            tagged_objects.insert(it_tag, fallback_it_snapshots);
+        }
+
         let mut entry = StackEntry::ability(ctx.source, ctx.controller, self.effects.clone())
             .with_targets(targets)
             .with_optional_costs_paid(ctx.optional_costs_paid.clone())
-            .with_tagged_objects(ctx.tagged_objects.clone());
+            .with_tagged_objects(tagged_objects);
 
         if let Some(x) = ctx.x_value {
             entry = entry.with_x(x);

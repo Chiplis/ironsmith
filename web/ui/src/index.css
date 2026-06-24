@@ -9724,7 +9724,7 @@ textarea,
   color: #fff0ca;
 }
 
-@media (max-height: 480px) and (orientation: landscape) {
+@media (max-width: 720px) and (orientation: landscape) {
   .add-card-sheet {
     max-height: 96vh !important;
   }
@@ -10867,7 +10867,7 @@ select::-ms-expand {
   }
 }
 
-@media (max-height: 480px) and (orientation: landscape) {
+@media (max-width: 720px) and (orientation: landscape) {
   .app-shell {
     gap: 0;
     padding: 0;
@@ -13224,7 +13224,7 @@ select::-ms-expand {
     pointer-events: auto;
   }
 
-  @media (orientation: landscape) and (max-height: 480px) {
+  @media (orientation: landscape) and (max-width: 720px) {
     .mobile-decision-dock--inline {
       max-width: 100%;
     }
@@ -14104,7 +14104,7 @@ select::-ms-expand {
    stack rail, and the cog-only Topbar overlay.
    Reuses Ironsmith's warm palette — no MTGA colors.
    ============================================================ */
-@media (max-height: 480px) and (orientation: landscape) {
+@media (max-width: 720px) and (orientation: landscape) {
   /* Topbar trims to a floating cog at the top-right corner. */
   .topbar-mobile-overlay--cog-only {
     position: fixed;
@@ -14138,6 +14138,7 @@ select::-ms-expand {
     width: 100%;
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
     gap: var(--mobile-battle-section-gap, 6px);
     padding-left: var(--mobile-battle-scene-padding, 8px);
     padding-right: var(--mobile-battle-scene-padding, 8px);
@@ -14156,6 +14157,10 @@ select::-ms-expand {
   }
   .mobile-mtga-scene-row--hand {
     flex: 0 0 auto;
+    position: relative;
+    height: var(--mobile-mtga-hand-peek-height, 34px);
+    min-height: var(--mobile-mtga-hand-peek-height, 34px);
+    overflow: visible;
   }
 
   /* HUDs (opponent + self) ------------------------------------- */
@@ -14470,14 +14475,16 @@ select::-ms-expand {
     flex-direction: column;
     gap: var(--mobile-battle-row-gap, 6px);
     width: 100%;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-height: 0;
     overflow: hidden;
   }
   .mobile-mtga-battlefield-band--opponent {
+    height: var(--mobile-battle-opponent-band-height, 110px);
     justify-content: flex-end;
   }
   .mobile-mtga-battlefield-band--self {
+    height: var(--mobile-battle-self-band-height, 100px);
     justify-content: flex-start;
   }
   .mobile-mtga-battlefield-lane {
@@ -14496,6 +14503,10 @@ select::-ms-expand {
 
   /* Hand fan -------------------------------------------------- */
   .mobile-mtga-hand-fan {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
     width: 100%;
     height: var(--mobile-mtga-hand-peek-height, 34px);
     overflow: visible;
@@ -14507,7 +14518,6 @@ select::-ms-expand {
     clip-path: inset(-400px -60px 0 -60px);
     transition: height 220ms ease-out;
     cursor: pointer;
-    position: relative;
     z-index: 30;
   }
   .mobile-mtga-hand-fan--fanned {
@@ -15818,7 +15828,7 @@ select::-ms-expand {
   border-left: 0 !important;
 }
 
-@media (max-height: 480px) and (orientation: landscape) {
+@media (max-width: 720px) and (orientation: landscape) {
   .priority-inline-panel {
     padding-top: 0;
     padding-bottom: 0;
@@ -15925,7 +15935,7 @@ select::-ms-expand {
     ) !important;
 }
 
-@media (max-height: 480px) and (orientation: landscape) {
+@media (max-width: 720px) and (orientation: landscape) {
   .action-strip-options-region.action-strip-scroll button.action-strip-pill,
   .action-strip-options-region .action-strip-scroll button.action-strip-pill,
   .action-strip-options-region .action-strip-pill {
@@ -17807,4 +17817,192 @@ select::-ms-expand {
 .game-card.blocker-attacker-active {
   --card-rotate: 1.5deg;
   --card-scale: 1.03;
+}
+
+/* Tablet table layout: keep the self header/action strip compact while
+   retaining the familiar bottom hand dock. */
+@media (min-width: 721px) and (max-width: 1023px) {
+  .table-shell[data-tablet-compact="true"] {
+    padding: 0 0 max(42px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-panel-header--merged {
+    min-height: 48px !important;
+    padding: 4px 8px !important;
+    gap: 6px !important;
+    align-items: stretch !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .my-zone-header-meta {
+    position: relative;
+    flex: 0 0 auto;
+    width: max-content;
+    max-width: min(32vw, 240px);
+    padding-top: 0;
+    padding-bottom: 14px;
+    padding-right: 0;
+    gap: 6px !important;
+    align-items: center;
+  }
+
+  .table-shell[data-tablet-compact="true"] [data-my-zone] .my-zone-header-meta .battlefield-header-zone-counts {
+    position: absolute;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 1px;
+    justify-content: center !important;
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    pointer-events: none;
+  }
+
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-zone-meta {
+    justify-content: center;
+    gap: 3px !important;
+    font-size: 9px !important;
+    letter-spacing: 0.04em !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell {
+    display: flex;
+    flex: 0 1 min(50vw, 440px) !important;
+    min-width: 0;
+    max-width: min(58vw, 520px);
+    margin-left: 4px;
+    align-self: stretch;
+  }
+
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell .table-action-bar {
+    min-height: 38px !important;
+    height: 100% !important;
+    border: 0 !important;
+    border-left: 1px solid rgba(255, 240, 206, 0.08) !important;
+    border-radius: 0 !important;
+    background: linear-gradient(180deg, rgba(42, 35, 31, 0.98), rgba(18, 16, 15, 0.98)) !important;
+    box-shadow: none !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell .table-action-bar[data-expanded="true"] {
+    min-height: 58px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell .priority-inline-panel {
+    height: 100%;
+    padding: 0 !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell .action-strip-layout {
+    min-height: 34px !important;
+    height: 100%;
+    gap: 0 !important;
+    padding: 0 !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell .action-strip-advance-button {
+    width: 96px !important;
+    min-width: 96px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell .action-strip-pill {
+    max-width: min(18vw, 118px) !important;
+    min-height: 30px !important;
+    padding-inline: 8px !important;
+    font-size: 10px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-panel--opponents .battlefield-panel-header {
+    min-height: 34px !important;
+    padding: 3px 8px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-panel--opponents .battlefield-panel-header > div {
+    gap: 5px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-panel--opponents .battlefield-life,
+  .table-shell[data-tablet-compact="true"] [data-my-zone] .battlefield-panel-header .battlefield-life {
+    min-width: 30px !important;
+    height: 26px !important;
+    padding-inline: 7px !important;
+    font-size: 17px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-panel--opponents .battlefield-name {
+    max-width: clamp(68px, 15cqw, 126px) !important;
+    height: 26px !important;
+    padding-inline: 8px !important;
+    font-size: 12px !important;
+    letter-spacing: 0.03em !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] [data-my-zone] .battlefield-panel-header .battlefield-name {
+    max-width: min(122px, 24cqw) !important;
+    height: 26px !important;
+    font-size: 13px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-panel--opponents .battlefield-header-zone-counts {
+    padding-left: 4px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-panel--opponents .battlefield-counts {
+    gap: 3px !important;
+    font-size: 9px !important;
+    letter-spacing: 0.02em !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-panel--opponents .battlefield-count-item {
+    padding: 3px 5px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-panel--opponents .battlefield-count-item:nth-child(1),
+  .table-shell[data-tablet-compact="true"] .battlefield-panel--opponents .battlefield-count-item:nth-child(2) {
+    display: none !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-zone-strip {
+    gap: 4px !important;
+    padding: 4px 2px 2px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-zone-entry {
+    padding: 4px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-row {
+    min-height: 0 !important;
+    padding: 6px 8px 8px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-panel--opponents .battlefield-row[data-bf-side="top"] {
+    padding-top: 8px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] [data-my-zone] .battlefield-row[data-bf-side="bottom"] {
+    padding-top: 5px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .table-shell[data-tablet-compact="true"] .battlefield-row::before {
+    inset: 6px !important;
+  }
+
+  [data-bottom-dock] {
+    bottom: 4px !important;
+    padding-inline: 4px !important;
+  }
+
+  [data-bottom-dock] .hand-reveal-shell {
+    max-width: calc(100vw - 24px) !important;
+  }
+
+  [data-bottom-dock] .hand-reveal-shell[data-open="true"] {
+    --hand-reveal-y: -8px;
+  }
+
+  [data-bottom-dock] .hand-reveal-shell[data-open="true"] .game-card.hand-card {
+    height: 92px !important;
+    min-height: 92px !important;
+  }
 }

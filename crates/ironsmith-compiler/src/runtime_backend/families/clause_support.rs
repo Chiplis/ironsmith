@@ -1204,6 +1204,7 @@ pub(crate) fn parse_triggered_line_lexed(
                 };
                 let mut object_tokens = &trigger_tokens[with_object_start..];
                 let mut min_total_attackers = None;
+                let mut exact_total_attackers = None;
                 let mut one_or_more = false;
                 if let Some((count, stripped)) =
                     super::activation_and_restrictions::parse_leading_or_more_quantifier(
@@ -1215,6 +1216,14 @@ pub(crate) fn parse_triggered_line_lexed(
                     if count > 1 {
                         min_total_attackers = Some(count);
                     }
+                } else if let Some((count, stripped)) =
+                    super::activation_and_restrictions::parse_leading_exactly_quantifier(
+                        object_tokens,
+                    )
+                {
+                    one_or_more = true;
+                    exact_total_attackers = Some(count);
+                    object_tokens = stripped;
                 }
                 if !object_tokens.is_empty() {
                     let mut filter = super::object_filters::parse_object_filter_lexed(
@@ -1230,7 +1239,12 @@ pub(crate) fn parse_triggered_line_lexed(
                     if filter.controller.is_none() {
                         filter.controller = Some(player);
                     }
-                    let trigger = if let Some(min_total_attackers) = min_total_attackers {
+                    let trigger = if let Some(total_attackers) = exact_total_attackers {
+                        TriggerSpec::AttacksOneOrMoreWithExactTotal {
+                            filter,
+                            total_attackers,
+                        }
+                    } else if let Some(min_total_attackers) = min_total_attackers {
                         TriggerSpec::AttacksOneOrMoreWithMinTotal {
                             filter,
                             min_total_attackers,
@@ -1279,6 +1293,7 @@ pub(crate) fn parse_triggered_line_lexed(
                 };
                 let mut object_tokens = &trigger_tokens[with_object_start..];
                 let mut min_total_attackers = None;
+                let mut exact_total_attackers = None;
                 let mut one_or_more = false;
                 if let Some((count, stripped)) =
                     super::activation_and_restrictions::parse_leading_or_more_quantifier(
@@ -1290,6 +1305,14 @@ pub(crate) fn parse_triggered_line_lexed(
                     if count > 1 {
                         min_total_attackers = Some(count);
                     }
+                } else if let Some((count, stripped)) =
+                    super::activation_and_restrictions::parse_leading_exactly_quantifier(
+                        object_tokens,
+                    )
+                {
+                    one_or_more = true;
+                    exact_total_attackers = Some(count);
+                    object_tokens = stripped;
                 }
                 if !object_tokens.is_empty() {
                     let mut filter = super::object_filters::parse_object_filter_lexed(
@@ -1307,7 +1330,12 @@ pub(crate) fn parse_triggered_line_lexed(
                     }
                     filter.attacking_player_or_planeswalker_controlled_by = Some(attacked_player);
                     filter.targets_only_player = Some(PlayerFilter::Any);
-                    let trigger = if let Some(min_total_attackers) = min_total_attackers {
+                    let trigger = if let Some(total_attackers) = exact_total_attackers {
+                        TriggerSpec::AttacksOneOrMoreWithExactTotal {
+                            filter,
+                            total_attackers,
+                        }
+                    } else if let Some(min_total_attackers) = min_total_attackers {
                         TriggerSpec::AttacksOneOrMoreWithMinTotal {
                             filter,
                             min_total_attackers,

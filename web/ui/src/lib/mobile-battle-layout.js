@@ -199,6 +199,7 @@ export function solveMobileBattleLayout({
     cardHeight,
     opponentBandHeight,
     selfFrontHeight: cardHeight,
+    selfBandHeight,
     selfBackVisibleHeight,
     selfBackVisibleRatio: MOBILE_BACK_ROW_VISIBLE_RATIO,
     compactMode,

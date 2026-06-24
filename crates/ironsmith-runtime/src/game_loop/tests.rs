@@ -6525,7 +6525,7 @@ fn dance_of_the_manse_compiled_text_matches_oracle_animation_clause() {
 
     assert_eq!(
         rendered,
-        "Return up to X target artifact and/or non-Aura enchantment cards each with mana value X or less from your graveyard to the battlefield. If X is 6 or more, those permanents are 4/4 creatures in addition to their other types."
+        "Return up to X target artifact and/or non-Aura enchantment cards each with mana value X or less from your graveyard to the battlefield. If X is 6 or more, those permanents are creatures with base power and toughness 4/4 in addition to their other types."
     );
 }
 
@@ -45639,6 +45639,65 @@ fn test_generated_cascade_can_choose_adventure_half() {
     assert_eq!(stack_obj.name, "Treats to Share");
 }
 
+#[test]
+fn test_cascade_land_drop_puts_exiled_land_onto_battlefield_before_cleanup() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let averna = CardDefinitionBuilder::new(CardId::from_raw(88_128), "Averna Probe")
+        .card_types(vec![CardType::Creature])
+        .with_ability(Ability::static_ability(StaticAbility::cascade_land_drop()))
+        .build();
+    game.create_object_from_definition(&averna, alice, Zone::Battlefield);
+
+    let source = CardBuilder::new(CardId::from_raw(88_129), "Cascade Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let source_id = game.create_object_from_card(&source, alice, Zone::Stack);
+
+    let hit = CardBuilder::new(CardId::from_raw(88_130), "Cascade Hit")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    game.create_object_from_card(&hit, alice, Zone::Library);
+
+    let land = CardBuilder::new(CardId::from_raw(88_131), "Cascade Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_card(&land, alice, Zone::Library);
+    let land_stable_id = game
+        .object(land_id)
+        .expect("cascade land should exist")
+        .stable_id;
+
+    let effect = Effect::new(crate::effects::CascadeEffect::new());
+    let mut dm = ChooseFreeCastOptionByLabel {
+        needle: "Cascade Hit",
+    };
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
+    execute_effect(&mut game, &effect, &mut ctx).expect("cascade effect should resolve");
+
+    let current_land_id = game
+        .find_object_by_stable_id(land_stable_id)
+        .expect("cascade land should still be tracked");
+    let current_land = game
+        .object(current_land_id)
+        .expect("cascade land should exist after cascade");
+    assert_eq!(current_land.zone, Zone::Battlefield);
+    assert_eq!(game.controller_of(current_land), alice);
+    assert!(game.is_tapped(current_land_id));
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("cascade-cast spell should be stacked");
+    let stack_obj = game
+        .object(stack_entry.object_id)
+        .expect("cascade hit should exist on the stack");
+    assert_eq!(stack_obj.name, "Cascade Hit");
+}
+
 #[cfg(feature = "generated-registry")]
 #[test]
 fn test_generated_parent_name_adventure_card_resolves_adventure_half() {
@@ -58992,6 +59051,7 @@ fn trove_tracker_dies_trigger_draws_a_card() {
             .expect("Trove Tracker permanent should exist"),
         &game,
     );
+    let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
     let dies_event = crate::events::RawEvent::new(
         crate::events::ZoneChangeEvent::with_cause(
             tracker_id,
@@ -59001,7 +59061,8 @@ fn trove_tracker_dies_trigger_draws_a_card() {
             Some(snapshot),
         ),
         crate::provenance::ProvNodeId::default(),
-    );
+    )
+    .with_lookback_source_snapshots(lookback_source_snapshots);
     queue_triggers_from_event(&mut game, &mut trigger_queue, dies_event, false);
 
     assert_eq!(

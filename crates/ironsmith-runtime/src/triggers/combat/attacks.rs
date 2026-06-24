@@ -19,6 +19,8 @@ pub struct AttacksTrigger {
     pub one_or_more: bool,
     /// Minimum number of total attackers required for this trigger to fire.
     pub min_total_attackers: usize,
+    /// Maximum number of total attackers allowed for this trigger to fire.
+    pub max_total_attackers: Option<usize>,
 }
 
 /// Trigger that fires once when one or more matching players are attacked.
@@ -71,6 +73,7 @@ impl AttacksTrigger {
             filter,
             one_or_more: false,
             min_total_attackers: 1,
+            max_total_attackers: None,
         }
     }
 
@@ -80,6 +83,7 @@ impl AttacksTrigger {
             filter,
             one_or_more: true,
             min_total_attackers: 1,
+            max_total_attackers: None,
         }
     }
 
@@ -93,6 +97,22 @@ impl AttacksTrigger {
             filter,
             one_or_more: true,
             min_total_attackers: min_total_attackers.max(1),
+            max_total_attackers: None,
+        }
+    }
+
+    /// Create an attacks trigger that fires once for one-or-more attackers and
+    /// only if exactly `total_attackers` attackers were declared.
+    pub fn one_or_more_with_exact_total_attackers(
+        filter: ObjectFilter,
+        total_attackers: usize,
+    ) -> Self {
+        let total_attackers = total_attackers.max(1);
+        Self {
+            filter,
+            one_or_more: true,
+            min_total_attackers: total_attackers,
+            max_total_attackers: Some(total_attackers),
         }
     }
 
@@ -221,6 +241,11 @@ impl TriggerMatcher for AttacksTrigger {
         if e.total_attackers < self.min_total_attackers {
             return false;
         }
+        if let Some(max_total_attackers) = self.max_total_attackers
+            && e.total_attackers > max_total_attackers
+        {
+            return false;
+        }
         if self.one_or_more {
             return self.is_first_matching_attacker_this_combat(e.attacker, &attack_target, ctx);
         }
@@ -264,6 +289,29 @@ impl TriggerMatcher for AttacksTrigger {
         };
 
         if self.one_or_more {
+            if let Some(exact_total) = self.max_total_attackers
+                && exact_total == self.min_total_attackers
+            {
+                let exact_total_text = ironsmith_core::cardinal_word(exact_total as u32)
+                    .unwrap_or_else(|| exact_total.to_string());
+                if display_filter.source {
+                    let other_count = exact_total.saturating_sub(1) as u32;
+                    let other_text = ironsmith_core::cardinal_word(other_count)
+                        .unwrap_or_else(|| other_count.to_string());
+                    return format!(
+                        "Whenever this creature and exactly {other_text} other creatures attack{target_tail}"
+                    );
+                }
+                if let Some(controlled_subject) = subject.strip_suffix(" you control") {
+                    return format!(
+                        "Whenever you attack with exactly {exact_total_text} {}",
+                        pluralize_attack_subject(controlled_subject)
+                    );
+                }
+                return format!(
+                    "Whenever exactly {exact_total_text} {subject} attack{target_tail}"
+                );
+            }
             if self.min_total_attackers > 1 {
                 if display_filter.source {
                     let other_count = self.min_total_attackers.saturating_sub(1) as u32;
@@ -787,6 +835,76 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(!trigger.matches(&second_event, &ctx));
+    }
+
+    #[test]
+    fn test_one_or_more_with_exact_total_attackers_requires_exact_count() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(100);
+        let attacker_one = create_creature(&mut game, "A", alice);
+        let attacker_two = create_creature(&mut game, "B", alice);
+        let attacker_three = create_creature(&mut game, "C", alice);
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: attacker_one,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(AttackerInfo {
+            creature: attacker_two,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(AttackerInfo {
+            creature: attacker_three,
+            target: AttackTarget::Player(bob),
+        });
+        game.combat = Some(combat);
+
+        let trigger =
+            AttacksTrigger::one_or_more_with_exact_total_attackers(ObjectFilter::creature(), 2);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        let below_exact = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                attacker_one,
+                AttackEventTarget::Player(bob),
+                1,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&below_exact, &ctx));
+
+        let exact_first = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                attacker_one,
+                AttackEventTarget::Player(bob),
+                2,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&exact_first, &ctx));
+
+        let exact_second = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                attacker_two,
+                AttackEventTarget::Player(bob),
+                2,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&exact_second, &ctx));
+
+        let above_exact = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                attacker_one,
+                AttackEventTarget::Player(bob),
+                3,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&above_exact, &ctx));
     }
 
     #[test]
