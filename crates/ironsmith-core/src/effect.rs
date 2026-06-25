@@ -9,7 +9,7 @@ use crate::tag::TagKey;
 use crate::target_model::ChooseSpec;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::value_model::{Restriction, Value, ValueSurfaceHint};
-use crate::{Color, ColorSet};
+use crate::{Color, ColorSet, SourceReferenceSurface};
 
 /// Identifier for an effect within an effect sequence.
 ///
@@ -266,6 +266,7 @@ pub struct ApplyContinuousEffect<
     pub until: Until,
     pub condition: Option<Condition>,
     pub source_type: Option<SourceType>,
+    pub source_reference_surface: Option<SourceReferenceSurface>,
     pub lock_filter_at_resolution: bool,
     pub resolve_set_pt_values_at_resolution: bool,
     pub require_creature_target: bool,
@@ -284,6 +285,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             until,
             condition: None,
             source_type: None,
+            source_reference_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -300,6 +302,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             until,
             condition: None,
             source_type: None,
+            source_reference_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -319,6 +322,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             until,
             condition: None,
             source_type: None,
+            source_reference_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -342,6 +346,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             until,
             condition: None,
             source_type: None,
+            source_reference_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -368,6 +373,11 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
 
     pub fn with_source_type(mut self, source_type: SourceType) -> Self {
         self.source_type = Some(source_type);
+        self
+    }
+
+    pub fn with_source_reference_surface(mut self, surface: SourceReferenceSurface) -> Self {
+        self.source_reference_surface = Some(surface);
         self
     }
 

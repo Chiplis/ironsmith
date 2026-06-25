@@ -1914,6 +1914,87 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand(
     )
 }
 
+pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom_same_sentence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let Some(action_match) = parse_leading_may_action_lexed(&second_tokens, &["put"], true) else {
+        return Ok(None);
+    };
+    let second_words = TokenWordView::new(&second_tokens).word_refs();
+    if !word_slice_contains_all_words(&second_words, &["rest", "bottom", "library"]) {
+        return Ok(None);
+    }
+    let Some(order) = parse_consult_remainder_order(&second_words) else {
+        return Ok(None);
+    };
+
+    let chooser = leading_may_actor_to_player(action_match.actor, player);
+    let Some((filter, zone, tapped)) =
+        super::triples::parse_any_number_from_looked_cards_action(action_match.tail_tokens)
+    else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(
+        sentences[sentence_idx].lowered(),
+        if reveal_top { "revealed" } else { "looked" },
+    );
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    let mut choose_filter = filter;
+    choose_filter.zone = Some(Zone::Library);
+    choose_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: looked_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
+        player,
+        count,
+        looked_tag.clone(),
+    )];
+    if reveal_top {
+        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
+    }
+    effects.push(EffectAst::ChooseObjects {
+        filter: choose_filter,
+        count: ChoiceCount::any_number(),
+        count_value: None,
+        player: chooser,
+        tag: chosen_tag.clone(),
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: chosen_tag.clone(),
+        effects: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+            zone,
+            false,
+            ReturnControllerAst::Preserve,
+            tapped,
+            None,
+        )],
+    });
+    effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(chosen_tag),
+            order,
+            chooser,
+        ),
+    );
+
+    Ok(Some(effects))
+}
+
 /// Shared body for the mill-then-choose follow-up, parameterized by the
 /// optional "if you don't" branch so both the bare and the if-you-don't
 /// callers compose the same reusable primitive sequence (mirroring the retired

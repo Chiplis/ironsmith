@@ -14,6 +14,11 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function parseCssPixelValue(value) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function normalizeSemanticScore(rawScore) {
   const score = Number(rawScore);
   if (!Number.isFinite(score) || score < 0) return null;
@@ -871,8 +876,10 @@ export default function GameCard({
   const rootRef = useRef(null);
   const entryMotionRef = useRef(null);
   const bumpMotionRef = useRef(null);
+  const handUnselectMotionRef = useRef(null);
   const stackMotionRef = useRef(null);
   const stackCleanupTimersRef = useRef([]);
+  const previousInspectedRef = useRef(isInspected);
   const previousGroupSizeRef = useRef(groupSize);
   const counterBadges = variant === "battlefield"
     ? resolveBattlefieldCounters(card?.counters, card?.counter_signature)
@@ -1032,6 +1039,16 @@ export default function GameCard({
     }
   };
 
+  const clearHandUnselectAnimation = () => {
+    const node = rootRef.current;
+    if (!node) return;
+    node.style.removeProperty("--card-return-x");
+    node.style.removeProperty("--card-return-y");
+    node.style.removeProperty("--card-return-rotate");
+    node.style.removeProperty("--card-return-scale");
+    node.style.removeProperty("--card-flash-brightness");
+  };
+
   useLayoutEffect(() => {
     const node = rootRef.current;
     if (!node || !isNew) return undefined;
@@ -1105,6 +1122,83 @@ export default function GameCard({
       node.style.removeProperty("--card-jolt-x");
     };
   }, [bumpDirection, isBumped, isNew]);
+
+  useLayoutEffect(() => {
+    const node = rootRef.current;
+    const wasInspected = previousInspectedRef.current;
+    previousInspectedRef.current = isInspected;
+    if (!node || variant !== "hand") return undefined;
+
+    if (isInspected) {
+      cancelMotion(handUnselectMotionRef.current);
+      handUnselectMotionRef.current = null;
+      clearHandUnselectAnimation();
+      return undefined;
+    }
+
+    if (!wasInspected) return undefined;
+
+    cancelMotion(handUnselectMotionRef.current);
+    handUnselectMotionRef.current = null;
+
+    const computed = typeof window !== "undefined" ? window.getComputedStyle(node) : null;
+    const selectedShiftX = parseCssPixelValue(computed?.getPropertyValue("--mobile-hand-selected-shift-x"));
+    const selectedShiftY = parseCssPixelValue(computed?.getPropertyValue("--mobile-hand-selected-shift-y"));
+    const inMobileBattleHand = Boolean(node.closest(".mobile-battle-self-hand"));
+    const inFannedHand = Boolean(node.closest(".hand-zone-surface-mobile-fan"));
+    const startX = inMobileBattleHand ? selectedShiftX : 0;
+    const startY = inMobileBattleHand
+      ? -Math.max(72, Math.min(128, Math.abs(selectedShiftY || 92)))
+      : inFannedHand ? -22 : -14;
+    const startScale = inMobileBattleHand ? 1.13 : inFannedHand ? 1.09 : 1.045;
+    const startRotate = `${rotationSign * (inMobileBattleHand ? -1.2 : -2.2)}deg`;
+
+    node.style.setProperty("--card-return-x", `${startX.toFixed(1)}px`);
+    node.style.setProperty("--card-return-y", `${startY.toFixed(1)}px`);
+    node.style.setProperty("--card-return-rotate", startRotate);
+    node.style.setProperty("--card-return-scale", String(startScale));
+    node.style.setProperty("--card-flash-brightness", "1.04");
+
+    handUnselectMotionRef.current = animate(node, {
+      keyframes: [
+        {
+          "--card-return-x": `${startX.toFixed(1)}px`,
+          "--card-return-y": `${startY.toFixed(1)}px`,
+          "--card-return-rotate": startRotate,
+          "--card-return-scale": String(startScale),
+          "--card-flash-brightness": 1.04,
+          duration: 0,
+        },
+        {
+          "--card-return-x": `${(startX * 0.16).toFixed(1)}px`,
+          "--card-return-y": "5px",
+          "--card-return-rotate": `${rotationSign * 0.55}deg`,
+          "--card-return-scale": "0.988",
+          "--card-flash-brightness": 0.98,
+          duration: 160,
+        },
+        {
+          "--card-return-x": "0px",
+          "--card-return-y": "0px",
+          "--card-return-rotate": "0deg",
+          "--card-return-scale": "1",
+          "--card-flash-brightness": 1,
+          duration: 240,
+        },
+      ],
+      ease: uiSpring({ duration: 400, bounce: 0.18 }),
+      onComplete: () => {
+        handUnselectMotionRef.current = null;
+        clearHandUnselectAnimation();
+      },
+    });
+
+    return () => {
+      cancelMotion(handUnselectMotionRef.current);
+      handUnselectMotionRef.current = null;
+      clearHandUnselectAnimation();
+    };
+  }, [isInspected, rotationSign, variant]);
 
   useLayoutEffect(() => {
     const node = rootRef.current;
@@ -1220,8 +1314,11 @@ export default function GameCard({
     entryMotionRef.current = null;
     cancelMotion(bumpMotionRef.current);
     bumpMotionRef.current = null;
+    cancelMotion(handUnselectMotionRef.current);
+    handUnselectMotionRef.current = null;
     cancelMotion(stackMotionRef.current);
     stackMotionRef.current = null;
+    clearHandUnselectAnimation();
     clearStackAnimation();
   }, []);
 

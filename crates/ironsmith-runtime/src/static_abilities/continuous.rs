@@ -660,17 +660,7 @@ fn strip_article(text: String) -> String {
 }
 
 fn describe_source_reference_surface(surface: &SourceReferenceSurface) -> String {
-    match surface {
-        SourceReferenceSurface::FullName(text) | SourceReferenceSurface::ShortName(text) => {
-            text.clone()
-        }
-        SourceReferenceSurface::ThisPermanentType(text) => match text.to_ascii_lowercase().as_str()
-        {
-            "this equipment" => "this Equipment".to_string(),
-            "this aura" => "this Aura".to_string(),
-            _ => text.clone(),
-        },
-    }
+    surface.display_text()
 }
 
 fn counter_source_location(expr: &AnthemCountExpression) -> Option<(CounterType, String)> {

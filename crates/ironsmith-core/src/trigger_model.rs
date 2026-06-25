@@ -27,6 +27,7 @@ pub enum TriggerKind {
     ThisAttacksWithNOthers {
         count: usize,
         display_subject: Option<String>,
+        other_filter: Option<ObjectFilter>,
     },
     ThisAttacksWithExactNOthers {
         count: usize,
@@ -335,6 +336,7 @@ pub enum TriggerKind {
         source_filter: ObjectFilter,
         object_tag: TagKey,
         object_filter: ObjectFilter,
+        during_your_main_phase: bool,
     },
     KeywordAction {
         action: KeywordActionKind,
@@ -437,11 +439,20 @@ impl Trigger {
         count: usize,
         display_subject: Option<String>,
     ) -> Self {
+        Self::this_attacks_with_n_others_display_subject_and_filter(count, display_subject, None)
+    }
+
+    pub fn this_attacks_with_n_others_display_subject_and_filter(
+        count: usize,
+        display_subject: Option<String>,
+        other_filter: Option<ObjectFilter>,
+    ) -> Self {
         Self::typed(
             "this_attacks_with_n_others",
             TriggerKind::ThisAttacksWithNOthers {
                 count,
                 display_subject,
+                other_filter,
             },
         )
     }
@@ -1210,6 +1221,26 @@ impl Trigger {
                 source_filter,
                 object_tag,
                 object_filter,
+                during_your_main_phase: false,
+            },
+        )
+    }
+    pub fn keyword_action_matching_source_and_tagged_object_during_your_main_phase(
+        action: KeywordActionKind,
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        object_tag: TagKey,
+        object_filter: ObjectFilter,
+    ) -> Self {
+        Self::typed(
+            "keyword_action_matching_source_and_tagged_object",
+            TriggerKind::KeywordActionMatchingTaggedObject {
+                action,
+                player,
+                source_filter,
+                object_tag,
+                object_filter,
+                during_your_main_phase: true,
             },
         )
     }

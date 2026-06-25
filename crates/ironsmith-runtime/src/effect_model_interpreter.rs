@@ -480,6 +480,7 @@ where
             until: payload.until.clone(),
             condition: payload.condition.clone(),
             source_type: None,
+            source_reference_surface: payload.source_reference_surface.clone(),
             lock_filter_at_resolution: payload.lock_filter_at_resolution,
             resolve_set_pt_values_at_resolution: payload.resolve_set_pt_values_at_resolution,
             require_creature_target: payload.require_creature_target,

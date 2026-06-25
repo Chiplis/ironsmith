@@ -10205,11 +10205,17 @@ pub(crate) fn parse_may_choose_not_to_untap_during_untap_step_line(
     let Some(subject_clause) = clause.between_word_range(6, words.len() - 4) else {
         return Ok(None);
     };
-    if !MAY_CHOOSE_NOT_UNTAP_SOURCE_SUBJECT_PATTERN.matches(subject_clause) {
+    let subject_words = subject_clause.words().to_word_refs();
+    if !MAY_CHOOSE_NOT_UNTAP_SOURCE_SUBJECT_PATTERN.matches(subject_clause)
+        && !is_source_reference_words(&subject_words)
+    {
         return Ok(None);
     }
 
     let subject = subject_clause.text();
+    let subject = source_reference_surface_for_words(&subject_words)
+        .map(|surface| surface.display_text())
+        .unwrap_or(subject);
     Ok(Some(
         StaticAbility::may_choose_not_to_untap_during_untap_step(subject),
     ))

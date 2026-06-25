@@ -388,6 +388,11 @@ pub(crate) fn parse_exile(
             EffectAst::subject_verb_exile_all(filter, face_down)
         });
     }
+    if let Some(effect) =
+        parse_mixed_target_and_all_exile_list(tokens, subject, until_source_leaves, face_down)?
+    {
+        return Ok(effect);
+    }
     if !until_source_leaves
         && let Some(effect) = parse_exile_bottom_library_clause(tokens, subject, face_down)
     {
@@ -628,6 +633,104 @@ pub(crate) fn parse_same_name_exile_hand_and_graveyard_clause(
     } else {
         EffectAst::subject_verb_exile_all(filter, face_down)
     }))
+}
+
+fn strip_exile_list_segment_leading_conjunction(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let trimmed = trim_commas(tokens);
+    if trimmed
+        .first()
+        .is_some_and(|token| token.as_word().is_some_and(|word| word == "and"))
+    {
+        trim_commas(&trimmed[1..])
+    } else {
+        trimmed
+    }
+}
+
+fn split_exile_all_list_tail_segment(tokens: Vec<OwnedLexToken>) -> Vec<Vec<OwnedLexToken>> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut idx = 0usize;
+    while idx + 1 < tokens.len() {
+        let is_and = tokens[idx].as_word().is_some_and(|word| word == "and");
+        let next_starts_all_clause = tokens[idx + 1]
+            .as_word()
+            .is_some_and(|word| EXILE_ALL_OR_EACH_WORDS.contains(&word));
+        if is_and && next_starts_all_clause {
+            let part = trim_commas(&tokens[start..idx]);
+            if !part.is_empty() {
+                parts.push(part);
+            }
+            start = idx + 1;
+            idx += 1;
+        }
+        idx += 1;
+    }
+    let part = trim_commas(&tokens[start..]);
+    if !part.is_empty() {
+        parts.push(part);
+    }
+    parts
+}
+
+fn parse_mixed_target_and_all_exile_list(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+    until_source_leaves: bool,
+    face_down: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let segments = crate::runtime_backend::grammar::primitives::split_lexed_slices_on_comma(tokens);
+    if segments.len() < 2 {
+        return Ok(None);
+    }
+    let first_segment = trim_commas(segments[0]);
+    if first_segment.is_empty() {
+        return Ok(None);
+    }
+    let mut all_segments = Vec::new();
+    for segment in segments.iter().skip(1) {
+        let segment = strip_exile_list_segment_leading_conjunction(segment);
+        for segment in split_exile_all_list_tail_segment(segment) {
+            if segment.is_empty() {
+                return Ok(None);
+            }
+            let Some(first_word) = segment.first().and_then(|token| token.as_word()) else {
+                return Ok(None);
+            };
+            if !EXILE_ALL_OR_EACH_WORDS.contains(&first_word) {
+                return Ok(None);
+            }
+            all_segments.push(segment);
+        }
+    }
+
+    let mut effects = Vec::new();
+    let mut target = parse_target_phrase(&first_segment)?;
+    apply_exile_subject_hand_owner_context(&mut target, subject);
+    effects.push(if until_source_leaves {
+        EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
+    } else {
+        EffectAst::subject_verb_exile(target, face_down)
+    });
+
+    for segment in all_segments {
+        let filter_tokens = trim_commas(&segment[1..]);
+        if filter_tokens.is_empty() {
+            return Ok(None);
+        }
+        let mut filter = parse_object_filter_lexed(&filter_tokens, false)?;
+        apply_exile_subject_owner_context(&mut filter, subject);
+        effects.push(if until_source_leaves {
+            EffectAst::subject_verb_exile_all_until_source_leaves(
+                TargetAst::Object(filter, None, None),
+                face_down,
+            )
+        } else {
+            EffectAst::subject_verb_exile_all(filter, face_down)
+        });
+    }
+
+    Ok(Some(EffectAst::Sequence { effects }))
 }
 
 pub(crate) fn split_exile_face_down_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
@@ -936,7 +1039,8 @@ pub(crate) fn parse_target_player_graveyard_filter(
     let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
     filter.owner = match owner.player {
         PlayerAst::You => Some(PlayerFilter::You),
-        PlayerAst::That | PlayerAst::Target => Some(PlayerFilter::target_player()),
+        PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
+        PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent))),
         PlayerAst::ItsController => Some(PlayerFilter::ControllerOf(
             crate::filter::ObjectRef::tagged("triggering"),

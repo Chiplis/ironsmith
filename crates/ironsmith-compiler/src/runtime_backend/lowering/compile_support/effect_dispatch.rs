@@ -1441,7 +1441,12 @@ fn compile_subject_verb_effect(
             }],
             Vec::new(),
         )),
-        SubjectVerbActionAst::GainControl { target, duration } => {
+        SubjectVerbActionAst::GainControl {
+            target,
+            duration,
+            condition,
+            source_reference_surface,
+        } => {
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
@@ -1454,16 +1459,20 @@ fn compile_subject_verb_effect(
                     controller,
                 )
             };
-            let effect = tag_object_target_effect(
-                Effect::new(crate::effects::ApplyContinuousEffect::with_spec_runtime(
-                    spec.clone(),
-                    runtime_modification,
-                    duration.clone(),
-                )),
-                &spec,
-                ctx,
-                "controlled",
+            let mut continuous_effect = crate::effects::ApplyContinuousEffect::with_spec_runtime(
+                spec.clone(),
+                runtime_modification,
+                duration.clone(),
             );
+            if let Some(condition) = condition {
+                continuous_effect = continuous_effect.with_condition(condition.clone());
+            }
+            if let Some(surface) = source_reference_surface {
+                continuous_effect =
+                    continuous_effect.with_source_reference_surface(surface.clone());
+            }
+            let effect =
+                tag_object_target_effect(Effect::new(continuous_effect), &spec, ctx, "controlled");
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::RevealTop => {
@@ -2786,6 +2795,7 @@ fn compile_subject_verb_effect(
                 resolved_spec
             };
 
+            let mut aura_grant_effects = Vec::new();
             let mut effect = tag_object_target_effect(
                 if use_move_to_zone {
                     let move_back = crate::effects::MoveToZoneEffect::new(
@@ -2810,15 +2820,42 @@ fn compile_subject_verb_effect(
                         *tapped,
                     );
                     if let Some(as_aura) = as_aura {
+                        let mut attachment_filter = as_aura.attachment_filter.clone();
+                        if !as_aura.granted_abilities.is_empty() {
+                            let attachment_tag = TagKey::from("enchanted");
+                            effects.push(Effect::choose_objects(
+                                as_aura.attachment_filter.clone(),
+                                1usize,
+                                PlayerFilter::You,
+                                attachment_tag.clone(),
+                            ));
+                            attachment_filter = ObjectFilter::tagged(attachment_tag.clone());
+                            let grant_target_filter =
+                                as_aura.attachment_filter.clone().match_tagged(
+                                    attachment_tag.clone(),
+                                    crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                                );
+                            for modification in lower_granted_ability_grant_modifications(
+                                &as_aura.granted_abilities,
+                            )? {
+                                aura_grant_effects.push(Effect::new(
+                                    crate::effects::ApplyContinuousEffect::with_spec(
+                                        ChooseSpec::Object(grant_target_filter.clone()),
+                                        modification,
+                                        Until::Forever,
+                                    ),
+                                ));
+                            }
+                        }
                         let mut return_effect =
                             crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
                                 resolved_spec.clone(),
                                 *tapped,
                             )
-                            .as_aura(as_aura.attachment_filter.clone());
+                            .as_aura(attachment_filter.clone());
                         if as_aura.remove_all_abilities {
-                            return_effect = return_effect
-                                .as_aura_removing_all_abilities(as_aura.attachment_filter.clone());
+                            return_effect =
+                                return_effect.as_aura_removing_all_abilities(attachment_filter);
                         }
                         effect = Effect::new(return_effect);
                     }
@@ -2837,6 +2874,7 @@ fn compile_subject_verb_effect(
                 effect = effect.tag(tag);
             }
             effects.push(effect);
+            effects.extend(aura_grant_effects);
             if *transformed {
                 let transform_spec = if let Some(tag) = ctx.last_object_tag.clone() {
                     ChooseSpec::tagged(tag)
@@ -3416,10 +3454,12 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::BecomeAuraEnchantment {
             target,
             attachment_filter,
+            granted_abilities,
             duration,
-        } => compile_tagged_effect_for_target(target, ctx, "typed", |spec| {
-            Effect::new(
-                crate::effects::ApplyContinuousEffect::with_spec(
+        } => {
+            let grant_modifications = lower_granted_ability_grant_modifications(granted_abilities)?;
+            compile_tagged_effect_for_target(target, ctx, "typed", |spec| {
+                let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
                     spec,
                     crate::continuous::Modification::AddCardTypes(vec![CardType::Enchantment]),
                     duration.clone(),
@@ -3441,9 +3481,13 @@ fn compile_subject_verb_effect(
                     crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(
                         attachment_filter.clone().into(),
                     ),
-                ),
-            )
-        }),
+                );
+                for modification in grant_modifications {
+                    apply = apply.with_additional_modification(modification);
+                }
+                Effect::new(apply)
+            })
+        }
         SubjectVerbActionAst::BecomeBasicLandType {
             target,
             subtype,

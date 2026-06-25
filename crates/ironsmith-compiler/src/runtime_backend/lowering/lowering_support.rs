@@ -23,9 +23,8 @@ use super::compile_support::{
 };
 use super::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
-    bind_condition_counter_antecedent_in_effects, predicate_contains_source_match,
-    predicate_object_filter_antecedent, predicate_source_counter_antecedent,
-    retarget_it_animations_to_source,
+    bind_condition_counter_antecedent_in_effects, predicate_object_filter_antecedent,
+    predicate_source_counter_antecedent, retarget_it_animations_to_source,
 };
 use super::effect_ast_normalization::normalize_effects_ast;
 use super::effect_ast_traversal::for_each_nested_effects_mut;
@@ -850,7 +849,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
 
     if intervening_if
         .as_ref()
-        .is_some_and(predicate_contains_source_match)
+        .is_some_and(PredicateAst::establishes_source_object_antecedent)
     {
         retarget_it_animations_to_source(&mut body_effects);
     }

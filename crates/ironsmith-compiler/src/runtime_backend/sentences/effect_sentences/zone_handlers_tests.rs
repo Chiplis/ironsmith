@@ -28,6 +28,15 @@ fn parse_target_player_graveyard_filter_uses_shared_owner_prefix() {
 }
 
 #[test]
+fn parse_that_player_graveyard_filter_uses_contextual_owner() {
+    let tokens = tokenize_line("that player graveyard", 0);
+    let filter = parse_target_player_graveyard_filter(&tokens).expect("that-player graveyard");
+
+    assert_eq!(filter.zone, Some(Zone::Graveyard));
+    assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+}
+
+#[test]
 fn parse_sacrifice_strips_his_or_her_choice_suffix() {
     let tokens = tokenize_line("creature of his or her choice", 0);
     let effect = parse_sacrifice(&tokens, None, None).expect("sacrifice should parse");

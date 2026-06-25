@@ -446,6 +446,9 @@ const EXERT_CREATURE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["a", "creature"], &["creature"]]);
 const CREW_VEHICLE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["a", "vehicle"], &["vehicle"], &["vehicles"]]);
+const SADDLE_MOUNT_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["a", "mount"], &["mount"], &["mounts"]]);
+const DURING_YOUR_MAIN_PHASE_SUFFIX: &[&str] = &["during", "your", "main", "phase"];
 const YOU_OPEN_ATTRACTION_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2257,14 +2260,14 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
         let subject_words = subject_word_view.to_word_refs();
         if let Some(activator) = parse_trigger_subject_player_filter(&subject_words) {
-            let tail_words = &words[activate_idx + 1..];
+            let raw_tail_words = &words[activate_idx + 1..];
             let tail_tokens = &tokens[activate_idx + 1..];
             let (activation_cost_has_tap, ability_tail_tokens, ability_tail_words) =
-                split_activation_cost_tap_condition_tail_lexed(tail_tokens, tail_words);
+                split_activation_cost_tap_condition_tail_lexed(tail_tokens, raw_tail_words);
             let ability_tail_tokens = ability_tail_tokens.as_slice();
-            let ability_tail_words = ability_tail_words.as_slice();
+            let tail_words = ability_tail_words.as_slice();
             if let Some(filter) =
-                parse_loyalty_ability_trigger_tail_lexed(ability_tail_tokens, ability_tail_words)?
+                parse_loyalty_ability_trigger_tail_lexed(ability_tail_tokens, tail_words)?
             {
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
@@ -2274,10 +2277,9 @@ pub(crate) fn parse_trigger_clause_lexed(
                     activation_cost_has_tap,
                 });
             }
-            if let Some((owner_filter, marker)) = parse_possessive_ability_trigger_tail_lexed(
-                ability_tail_tokens,
-                ability_tail_words,
-            )? {
+            if let Some((owner_filter, marker)) =
+                parse_possessive_ability_trigger_tail_lexed(ability_tail_tokens, tail_words)?
+            {
                 let filter = match marker {
                     Some(marker) => owner_filter.with_ability_marker(marker),
                     None => owner_filter,
@@ -2291,7 +2293,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 });
             }
             if let Some((filter, non_mana_only)) =
-                parse_ability_of_object_trigger_tail_lexed(ability_tail_tokens, ability_tail_words)?
+                parse_ability_of_object_trigger_tail_lexed(ability_tail_tokens, tail_words)?
             {
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
@@ -2301,15 +2303,12 @@ pub(crate) fn parse_trigger_clause_lexed(
                     activation_cost_has_tap,
                 });
             }
-            if trigger_clause_shape_matches_words(
-                ability_tail_words,
-                ACTIVATED_ABILITY_TAIL_PATTERN,
-            ) {
+            if trigger_clause_shape_matches_words(tail_words, ACTIVATED_ABILITY_TAIL_PATTERN) {
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter: ObjectFilter::default(),
                     non_mana_only: trigger_clause_shape_matches_words(
-                        ability_tail_words,
+                        tail_words,
                         MANA_ABILITY_TAIL_PATTERN,
                     ),
                     loyalty_only: false,
@@ -3491,6 +3490,66 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    let (core_words, during_your_main_phase) = if words.ends_with(DURING_YOUR_MAIN_PHASE_SUFFIX) {
+        (
+            &words[..words.len() - DURING_YOUR_MAIN_PHASE_SUFFIX.len()],
+            true,
+        )
+    } else {
+        (words.as_slice(), false)
+    };
+    if let Some(saddle_word_idx) = find_index(core_words, |word| {
+        matches!(
+            crate::events::KeywordActionKind::from_trigger_word(word),
+            Some(crate::events::KeywordActionKind::Saddle)
+        )
+    }) && let Some(or_word_idx) =
+        find_index(&core_words[saddle_word_idx + 1..], |word| *word == "or")
+            .map(|idx| saddle_word_idx + 1 + idx)
+        && let Some(crew_word_idx) = find_index(&core_words[or_word_idx + 1..], |word| {
+            matches!(
+                crate::events::KeywordActionKind::from_trigger_word(word),
+                Some(crate::events::KeywordActionKind::Crew)
+            )
+        })
+        .map(|idx| or_word_idx + 1 + idx)
+    {
+        let subject_words = &core_words[..saddle_word_idx];
+        let saddle_tail = &core_words[saddle_word_idx + 1..or_word_idx];
+        let crew_tail = &core_words[crew_word_idx + 1..];
+        if is_source_reference_words(subject_words)
+            && trigger_clause_shape_matches_words(saddle_tail, SADDLE_MOUNT_TAIL_PATTERN)
+            && trigger_clause_shape_matches_words(crew_tail, CREW_VEHICLE_TAIL_PATTERN)
+        {
+            let source_filter = source_reference_surface_for_words(subject_words)
+                .or_else(|| this_source_surface_for_words(subject_words))
+                .map(ObjectFilter::source_with_surface)
+                .unwrap_or_else(ObjectFilter::source);
+            return Ok(TriggerSpec::Either(
+                Box::new(TriggerSpec::KeywordActionTaggedObject {
+                    action: crate::events::KeywordActionKind::Saddle,
+                    player: PlayerFilter::Any,
+                    source_filter: source_filter.clone(),
+                    object_tag: TagKey::from(IT_TAG),
+                    object_filter: ObjectFilter::default()
+                        .in_zone(Zone::Battlefield)
+                        .with_subtype(Subtype::Mount),
+                    during_your_main_phase,
+                }),
+                Box::new(TriggerSpec::KeywordActionTaggedObject {
+                    action: crate::events::KeywordActionKind::Crew,
+                    player: PlayerFilter::Any,
+                    source_filter,
+                    object_tag: TagKey::from(IT_TAG),
+                    object_filter: ObjectFilter::default()
+                        .in_zone(Zone::Battlefield)
+                        .with_subtype(Subtype::Vehicle),
+                    during_your_main_phase,
+                }),
+            ));
+        }
+    }
+
     if let Some(crew_word_idx) = find_index(&words, |word| {
         matches!(
             crate::events::KeywordActionKind::from_trigger_word(word),
@@ -3536,6 +3595,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 source_filter,
                 object_tag: TagKey::from(IT_TAG),
                 object_filter,
+                during_your_main_phase: false,
             });
         }
     }
@@ -3565,6 +3625,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                     source_filter: filter,
                     object_tag: TagKey::from("__public_revealed"),
                     object_filter,
+                    during_your_main_phase: false,
                 },
                 None if tail.is_empty() => TriggerSpec::KeywordAction {
                     action: crate::events::KeywordActionKind::Explore,
@@ -4256,6 +4317,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                         source_filter: filter,
                         object_tag: TagKey::from(crate::tag::EXPLOITED_TAG),
                         object_filter,
+                        during_your_main_phase: false,
                     },
                     None => TriggerSpec::KeywordAction {
                         action: crate::events::KeywordActionKind::Exploit,
@@ -4479,9 +4541,9 @@ pub(crate) fn parse_trigger_clause_lexed(
                     && right
                         .get(2 + used)
                         .is_some_and(|token| token.is_word("other"))
-                    && right.get(3 + used).is_some_and(|token| {
-                        token.is_word("creature") || token.is_word("creatures")
-                    })
+                    && !right[3 + used..].is_empty()
+                    && let Some(other_filter) =
+                        parse_attack_trigger_subject_filter_lexed(&right[3 + used..])?
                 {
                     let rendered_subject = crate::runtime_backend::lexer::render_token_slice(&left)
                         .trim()
@@ -4495,6 +4557,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                     return Ok(TriggerSpec::ThisAttacksWithNOthers {
                         other_count,
                         display_subject,
+                        other_filter: Some(other_filter),
                     });
                 }
             }

@@ -316,6 +316,10 @@
   --card-translate-y: 0px;
   --card-rotate: 0deg;
   --card-scale: 1;
+  --card-return-x: 0px;
+  --card-return-y: 0px;
+  --card-return-rotate: 0deg;
+  --card-return-scale: 1;
   --battlefield-settle-x: 0px;
   --battlefield-settle-y: 0px;
   --card-jolt-x: 0px;
@@ -339,12 +343,13 @@
     inset 0 0 0 1px rgba(255,255,255,0.05);
   transform:
     translate3d(
-      calc(var(--card-translate-x) + var(--battlefield-settle-x) + var(--card-jolt-x)),
-      calc(var(--card-translate-y) + var(--battlefield-settle-y) + var(--card-jolt-y)),
+      calc(var(--card-translate-x) + var(--battlefield-settle-x) + var(--card-return-x) + var(--card-jolt-x)),
+      calc(var(--card-translate-y) + var(--battlefield-settle-y) + var(--card-return-y) + var(--card-jolt-y)),
       0
     )
-    rotate(calc(var(--card-rotate) + var(--card-jolt-rotate)))
+    rotate(calc(var(--card-rotate) + var(--card-return-rotate) + var(--card-jolt-rotate)))
     scale(var(--card-scale))
+    scale(var(--card-return-scale))
     scale(var(--card-jolt-scale));
   filter: brightness(var(--card-flash-brightness)) saturate(var(--card-flash-saturate));
   /* Slight overshoot so tap/untap rotation lands with a snap. */
@@ -5267,12 +5272,13 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 .hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.hovered {
   transform:
     translate3d(
-      calc(var(--card-translate-x) + var(--card-jolt-x)),
-      calc(var(--card-translate-y) - 16px + var(--card-jolt-y)),
+      calc(var(--card-translate-x) + var(--card-return-x) + var(--card-jolt-x)),
+      calc(var(--card-translate-y) - 16px + var(--card-return-y) + var(--card-jolt-y)),
       0
     )
-    rotate(calc(var(--card-rotate) + var(--card-jolt-rotate)))
+    rotate(calc(var(--card-rotate) + var(--card-return-rotate) + var(--card-jolt-rotate)))
     scale(1.15)
+    scale(var(--card-return-scale))
     scale(var(--card-jolt-scale));
   z-index: 50 !important;
 }
@@ -11755,24 +11761,26 @@ select::-ms-expand {
   .mobile-battle-self-hand .game-card.hand-card.inspected {
     transform:
       translate3d(
-        calc(var(--card-translate-x) + var(--card-jolt-x)),
-        calc(var(--card-translate-y) - 10px + var(--card-jolt-y)),
+        calc(var(--card-translate-x) + var(--card-return-x) + var(--card-jolt-x)),
+        calc(var(--card-translate-y) - 10px + var(--card-return-y) + var(--card-jolt-y)),
         0
       )
-      rotate(calc(var(--card-rotate) + var(--card-jolt-rotate)))
+      rotate(calc(var(--card-rotate) + var(--card-return-rotate) + var(--card-jolt-rotate)))
       scale(calc(var(--card-scale) * 1.02))
+      scale(var(--card-return-scale))
       scale(var(--card-jolt-scale));
   }
 
   .mobile-battle-self-hand .game-card.hand-card.inspected {
     transform:
       translate3d(
-        calc(var(--card-translate-x) + var(--mobile-hand-selected-shift-x, 0px) + var(--card-jolt-x)),
-        calc(var(--card-translate-y) - var(--mobile-hand-selected-shift-y, 92px) + var(--card-jolt-y)),
+        calc(var(--card-translate-x) + var(--mobile-hand-selected-shift-x, 0px) + var(--card-return-x) + var(--card-jolt-x)),
+        calc(var(--card-translate-y) - var(--mobile-hand-selected-shift-y, 92px) + var(--card-return-y) + var(--card-jolt-y)),
         0
       )
-      rotate(var(--card-jolt-rotate))
+      rotate(calc(var(--card-return-rotate) + var(--card-jolt-rotate)))
       scale(calc(var(--card-scale) * 1.17))
+      scale(var(--card-return-scale))
       scale(var(--card-jolt-scale));
     z-index: 220 !important;
   }

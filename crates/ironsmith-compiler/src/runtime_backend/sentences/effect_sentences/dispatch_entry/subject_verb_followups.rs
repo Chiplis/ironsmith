@@ -931,6 +931,7 @@ fn pre_rule_token_followups(
             sentences[sentence_idx].lowered(),
             sentence_tokens,
             followup,
+            state.effects.is_empty(),
         )?);
         return Ok(Some(PreParseFollowupResult::Plan(plan)));
     }

@@ -8,7 +8,9 @@ use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
-use crate::filter::{FilterContext, ObjectFilter, PlayerFilter};
+use crate::filter::{
+    AlternativeCastKind, CounterConstraint, FilterContext, ObjectFilter, PlayerFilter,
+};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
@@ -34,9 +36,8 @@ pub(crate) fn valid_targets_with_tags(
         .with_source(source)
         .with_tagged_objects(tagged_objects);
 
-    game.battlefield
-        .iter()
-        .copied()
+    counter_removal_candidate_ids(&effect.filter, game)
+        .into_iter()
         .filter(|id| {
             let Some(obj) = game.object(*id) else {
                 return false;
@@ -134,6 +135,35 @@ pub fn cost_display(effect: &RemoveAnyCountersAmongEffect) -> String {
                 count, target_phrase_plural
             )
         }
+    }
+}
+
+fn counter_removal_candidate_ids(filter: &ObjectFilter, game: &GameState) -> Vec<ObjectId> {
+    let mut zones = Vec::new();
+    collect_counter_removal_candidate_zones(filter, &mut zones);
+    if zones.is_empty() {
+        zones.push(Zone::Battlefield);
+    }
+
+    let mut ids = Vec::new();
+    for zone in zones {
+        for id in game.objects_in_zone(zone) {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    ids
+}
+
+fn collect_counter_removal_candidate_zones(filter: &ObjectFilter, zones: &mut Vec<Zone>) {
+    if let Some(zone) = filter.zone
+        && !zones.contains(&zone)
+    {
+        zones.push(zone);
+    }
+    for arm in &filter.any_of {
+        collect_counter_removal_candidate_zones(arm, zones);
     }
 }
 
@@ -409,6 +439,14 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
         };
     }
 
+    if is_permanent_you_control_or_suspended_card_you_own_filter(filter) {
+        return if plural {
+            "permanents you control or suspended cards you own".to_string()
+        } else {
+            "a permanent you control or suspended card you own".to_string()
+        };
+    }
+
     if let Some(card_type) = simple_you_controlled_battlefield_card_type(filter) {
         let noun = if plural {
             card_type.plural_name()
@@ -458,6 +496,44 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
     }
 
     noun
+}
+
+fn is_permanent_you_control_or_suspended_card_you_own_filter(filter: &ObjectFilter) -> bool {
+    if filter.any_of.len() != 2 || filter.zone.is_some() {
+        return false;
+    }
+
+    let permanent = ObjectFilter::permanent().you_control();
+    let permanent_with_time = ObjectFilter::permanent()
+        .you_control()
+        .with_counter_type(CounterType::Time);
+    let suspended = ObjectFilter::default()
+        .in_zone(Zone::Exile)
+        .owned_by(PlayerFilter::You)
+        .with_alternative_cast(AlternativeCastKind::Suspend);
+    let suspended_with_time = ObjectFilter::default()
+        .in_zone(Zone::Exile)
+        .owned_by(PlayerFilter::You)
+        .with_alternative_cast(AlternativeCastKind::Suspend)
+        .with_counter_type(CounterType::Time);
+
+    filter.any_of.iter().any(|arm| {
+        arm == &permanent
+            || arm == &permanent_with_time
+            || same_filter_except_time_counter(arm, &permanent)
+    }) && filter.any_of.iter().any(|arm| {
+        arm == &suspended
+            || arm == &suspended_with_time
+            || same_filter_except_time_counter(arm, &suspended)
+    })
+}
+
+fn same_filter_except_time_counter(left: &ObjectFilter, right: &ObjectFilter) -> bool {
+    let mut normalized = left.clone();
+    if normalized.with_counter == Some(CounterConstraint::Typed(CounterType::Time)) {
+        normalized.with_counter = None;
+    }
+    &normalized == right
 }
 
 fn is_simple_permanent_you_control_filter(filter: &ObjectFilter) -> bool {
@@ -641,6 +717,66 @@ mod tests {
             cost_display(&effect),
             "Remove one or more +1/+1 counters from among creatures you control"
         );
+    }
+
+    #[test]
+    fn display_time_counter_from_permanent_or_suspended_card_cost() {
+        let mut filter = ObjectFilter::default();
+        filter.any_of = vec![
+            ObjectFilter::permanent().you_control(),
+            ObjectFilter::default()
+                .in_zone(Zone::Exile)
+                .owned_by(PlayerFilter::You)
+                .with_alternative_cast(AlternativeCastKind::Suspend),
+        ];
+        let effect =
+            RemoveAnyCountersAmongEffect::new(1, filter).with_counter_type(Some(CounterType::Time));
+
+        assert_eq!(
+            cost_display(&effect),
+            "Remove a time counter from a permanent you control or suspended card you own"
+        );
+    }
+
+    #[test]
+    fn time_counter_cost_can_remove_from_owned_suspended_card_in_exile() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_card = simple_card("Source", 1);
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let suspended_card = simple_card("Suspended", 2);
+        let suspended_id = game.create_object_from_card(&suspended_card, alice, Zone::Exile);
+        if let Some(obj) = game.object_mut(suspended_id) {
+            obj.alternative_casts.push(
+                crate::alternative_cast::AlternativeCastingMethod::Suspend {
+                    cost: ManaCost::default(),
+                    time: 1,
+                },
+            );
+            obj.counters.insert(CounterType::Time, 1);
+        }
+
+        let mut filter = ObjectFilter::default();
+        filter.any_of = vec![
+            ObjectFilter::permanent().you_control(),
+            ObjectFilter::default()
+                .in_zone(Zone::Exile)
+                .owned_by(PlayerFilter::You)
+                .with_alternative_cast(AlternativeCastKind::Suspend),
+        ];
+        let cost = Cost::effect(
+            RemoveAnyCountersAmongEffect::new(1, filter).with_counter_type(Some(CounterType::Time)),
+        );
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = CostContext::new(source_id, alice, &mut dm);
+
+        assert!(cost.can_pay(&game, &ctx).is_ok());
+        assert_eq!(
+            cost.pay(&mut game, &mut ctx),
+            Ok(crate::costs::CostPaymentResult::Paid)
+        );
+        assert_eq!(game.counter_count(suspended_id, CounterType::Time), 0);
     }
 
     #[test]

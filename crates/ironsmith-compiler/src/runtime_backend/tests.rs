@@ -1511,6 +1511,44 @@ fn rewrite_structure_triggered_conditional_clause_parser_keeps_count_based_battl
 }
 
 #[test]
+fn rewrite_structure_triggered_conditional_clause_parser_keeps_source_crew_count_gate() {
+    let tokens = lex_line(
+        "Whenever this Vehicle becomes crewed for the first time each turn, if it was crewed by exactly two creatures, it gains \"Whenever this creature deals combat damage to a player, draw two cards\" until end of turn.",
+        0,
+    )
+    .expect("rewrite lexer should classify crew-count conditional trigger");
+    let spec = super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
+        .expect("structure helper should detect crew-count conditional trigger");
+
+    assert_eq!(
+        spec.trigger_tokens
+            .iter()
+            .map(|token| token.slice.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "this", "Vehicle", "becomes", "crewed", "for", "the", "first", "time", "each", "turn"
+        ]
+    );
+    let predicate_debug = format!("{:?}", spec.predicate);
+    assert!(
+        predicate_debug.contains("SourceCrewedByExactly")
+            && predicate_debug.contains("count: 2")
+            && predicate_debug.contains("Creature"),
+        "expected crew-count gate to stay modeled as a source predicate, got {predicate_debug}"
+    );
+    assert_eq!(
+        spec.effects_tokens
+            .iter()
+            .filter_map(|token| token.as_word())
+            .collect::<Vec<_>>(),
+        vec![
+            "it", "gains", "Whenever", "this", "creature", "deals", "combat", "damage", "to", "a",
+            "player", "draw", "two", "cards", "until", "end", "of", "turn"
+        ]
+    );
+}
+
+#[test]
 fn rewrite_structure_triggered_conditional_clause_parser_keeps_counter_count_gate() {
     let tokens = lex_line(
         "At the beginning of your end step, if two or more permanents you don't control have an aim counter on them, destroy one of those permanents at random.",
@@ -3940,6 +3978,83 @@ fn rewrite_zone_handlers_keep_conditional_exile_clause_after_structure_cutover()
 }
 
 #[test]
+fn rewrite_zone_handlers_parse_mixed_target_and_all_exile_list() {
+    fn mana_value_lte_void_counters(filter: &crate::target::ObjectFilter) -> bool {
+        matches!(
+            filter.mana_value.as_ref(),
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
+                if value.as_ref() == &Value::CountersOnSource(CounterType::Void)
+        )
+    }
+
+    let tokens = lex_line(
+        "Exile this artifact, all creatures and planeswalkers with mana value less than or equal to the number of void counters on it, and all creature and planeswalker cards in graveyards with mana value less than or equal to the number of void counters on it.",
+        0,
+    )
+    .expect("rewrite lexer should classify mixed exile list");
+
+    let parsed = parse_effect_sentence_lexed(&tokens).expect("mixed exile list should parse");
+
+    let [crate::cards::builders::EffectAst::Sequence { effects }] = parsed.as_slice() else {
+        panic!("expected mixed exile list to parse as a sequence, got {parsed:#?}");
+    };
+    let [source_exile, battlefield_exile, graveyard_exile] = effects.as_slice() else {
+        panic!("expected source plus two exile-all effects, got {effects:#?}");
+    };
+    assert!(matches!(
+        source_exile,
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Exile { .. },
+                ..
+            }
+        )
+    ));
+    let battlefield_filter = match battlefield_exile {
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::ExileAll {
+                        filter,
+                        face_down: false,
+                    },
+                ..
+            },
+        ) => filter,
+        other => panic!("expected battlefield exile-all effect, got {other:#?}"),
+    };
+    assert!(battlefield_filter.card_types.contains(&CardType::Creature));
+    assert!(
+        battlefield_filter
+            .card_types
+            .contains(&CardType::Planeswalker)
+    );
+    assert!(mana_value_lte_void_counters(battlefield_filter));
+
+    let graveyard_filter = match graveyard_exile {
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::ExileAll {
+                        filter,
+                        face_down: false,
+                    },
+                ..
+            },
+        ) => filter,
+        other => panic!("expected graveyard exile-all effect, got {other:#?}"),
+    };
+    assert_eq!(graveyard_filter.zone, Some(Zone::Graveyard));
+    assert!(graveyard_filter.card_types.contains(&CardType::Creature));
+    assert!(
+        graveyard_filter
+            .card_types
+            .contains(&CardType::Planeswalker)
+    );
+    assert!(mana_value_lte_void_counters(graveyard_filter));
+}
+
+#[test]
 fn rewrite_zone_counter_helpers_parse_half_starting_life_total_variants() {
     let your_tokens = lex_line("half your starting life total", 0)
         .expect("rewrite lexer should classify half-life value");
@@ -4335,6 +4450,148 @@ fn rewrite_lexed_value_and_permission_helpers_match_existing_semantics() {
             lifetime: super::PermissionLifetime::ThisTurn,
             ..
         }))
+    ));
+}
+
+fn assert_source_counter_surface(value: &Value, expected_surface: &str) {
+    let Value::CountersOn(spec, Some(CounterType::Charge)) = value.unhinted() else {
+        panic!("expected charge counters on hinted source, got {value:?}");
+    };
+    let Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface)) =
+        spec.source_reference_surface()
+    else {
+        panic!("expected this-permanent source surface hint, got {value:?}");
+    };
+    assert_eq!(surface, expected_surface);
+}
+
+#[test]
+fn card_source_reference_context_registers_this_type_and_subtype_surfaces() {
+    super::util::with_card_source_reference_context(
+        "Opaline Bracers",
+        &[CardType::Artifact],
+        &[Subtype::Equipment],
+        || {
+            assert_eq!(
+                super::util::source_reference_surface_for_words(&["this", "artifact"]),
+                Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this artifact".to_string()
+                ))
+            );
+            assert_eq!(
+                super::util::source_reference_surface_for_words(&["this", "equipment"]),
+                Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this Equipment".to_string()
+                ))
+            );
+            assert_eq!(
+                super::util::source_reference_surface_for_words(&["this", "adventure"]),
+                None
+            );
+        },
+    );
+}
+
+#[test]
+fn object_filter_source_reference_preserves_this_subtype_surface_hint() {
+    super::util::with_card_source_reference_context(
+        "Opaline Bracers",
+        &[CardType::Artifact],
+        &[Subtype::Equipment],
+        || {
+            let tokens =
+                lex_line("this Equipment", 0).expect("source-reference fixture should lex");
+            let filter = super::parse_object_filter_lexed(&tokens, false)
+                .expect("source-reference object filter should parse");
+            assert!(filter.source, "expected source object filter: {filter:?}");
+            assert_eq!(
+                filter.source_surface,
+                Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this Equipment".to_string()
+                ))
+            );
+            assert_eq!(filter.description(), "this Equipment");
+        },
+    );
+}
+
+#[test]
+fn raw_this_source_surfaces_singularize_possessive_normalized_nouns() {
+    assert_eq!(
+        super::util::this_source_surface_for_words(&["this", "creatures"]),
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            "this creature".to_string()
+        ))
+    );
+    assert_eq!(
+        super::util::this_source_surface_for_words(&["thiss", "creatures"]),
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            "this creature".to_string()
+        ))
+    );
+}
+
+fn assert_source_counter_surface_in_card_context(
+    text: &str,
+    card_types: &[CardType],
+    subtypes: &[Subtype],
+    expected_surface: &str,
+) {
+    super::util::with_card_source_reference_context(
+        "Self Reference Fixture",
+        card_types,
+        subtypes,
+        || {
+            let tokens = lex_line(text, 0)
+                .expect("rewrite lexer should classify source counter reference value");
+            let parsed =
+                super::value_helpers::parse_equal_to_number_of_counters_on_reference_value(&tokens)
+                    .expect("source counter reference value should parse");
+            assert_source_counter_surface(&parsed, expected_surface);
+
+            let parsed_lexed =
+                super::value_helpers::parse_equal_to_number_of_counters_on_reference_value_lexed(
+                    &tokens,
+                )
+                .expect("lexed source counter reference value should parse");
+            assert_source_counter_surface(&parsed_lexed, expected_surface);
+        },
+    );
+}
+
+#[test]
+fn source_counter_reference_values_preserve_this_type_surface_hints() {
+    assert_source_counter_surface_in_card_context(
+        "equal to the number of charge counters on this artifact",
+        &[CardType::Artifact],
+        &[],
+        "this artifact",
+    );
+    assert_source_counter_surface_in_card_context(
+        "equal to the number of charge counters on this Equipment",
+        &[CardType::Artifact],
+        &[Subtype::Equipment],
+        "this Equipment",
+    );
+    assert_source_counter_surface_in_card_context(
+        "equal to the number of charge counters on this Aura",
+        &[CardType::Enchantment],
+        &[Subtype::Aura],
+        "this Aura",
+    );
+}
+
+#[test]
+fn source_counter_reference_values_allow_bare_it_without_surface_hint() {
+    let tokens = lex_line("equal to the number of charge counters on it", 0)
+        .expect("rewrite lexer should classify bare source counter reference value");
+
+    let parsed =
+        super::value_helpers::parse_equal_to_number_of_counters_on_reference_value(&tokens)
+            .expect("bare source counter reference value should parse");
+    assert!(matches!(
+        parsed.unhinted(),
+        Value::CountersOnSource(CounterType::Charge)
     ));
 }
 
@@ -11236,6 +11493,54 @@ fn rewrite_lexed_triggered_line_lifts_intervening_if_simple_clause_after_structu
 }
 
 #[test]
+fn rewrite_lexed_triggered_line_keeps_source_crew_count_intervening_if() {
+    let text = "Whenever this Vehicle becomes crewed for the first time each turn, if it was crewed by exactly two creatures, it gains \"Whenever this creature deals combat damage to a player, draw two cards\" until end of turn.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify crew-count trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("crew-count intervening-if line should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("KeywordActionTaggedObject") && debug.contains("Crew"),
+        "{debug}"
+    );
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("SourceCrewedByExactly"), "{debug}");
+    assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+    assert!(debug.contains("TagKey(\"__it__\")"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_keeps_source_or_another_turned_face_up_subject() {
+    let text = "Whenever this creature or another creature you control is turned face up, put +1/+1 counters on that creature equal to its power.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify turned-face-up trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("source-or-another turned-face-up trigger should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("TurnedFaceUp"), "{debug}");
+    assert!(debug.contains("any_of"), "{debug}");
+    assert!(debug.contains("source: true"), "{debug}");
+    assert!(debug.contains("other: true"), "{debug}");
+    assert!(debug.contains("controller: Some(You)"), "{debug}");
+}
+
+#[test]
+fn rewrite_effect_sentences_parse_pronoun_quoted_trigger_grant() {
+    let text = "it gains \"Whenever this creature deals combat damage to a player, draw two cards\" until end of turn.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify quoted trigger grant");
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("quoted trigger grant effect should parse from sentence dispatch");
+    let debug = format!("{effects:?}");
+
+    assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+    assert!(debug.contains("TagKey(\"__it__\")"), "{debug}");
+    assert!(debug.contains("ThisDealsCombatDamageToPlayer"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_triggered_line_lifts_intervening_if_with_multisentence_body() {
     let text = "At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.";
     let tokens =
@@ -11926,6 +12231,31 @@ fn rewrite_lexed_effect_sentence_keeps_when_you_do_result_prefix_after_structure
 }
 
 #[test]
+fn rewrite_lexed_gain_ability_sentence_keeps_if_you_do_result_prefix() {
+    let lexed = lex_line(
+        "If you do, this creature gains \"When this creature leaves the battlefield, target opponent draws a card.\"",
+        0,
+    )
+    .expect("rewrite lexer should classify if-you-do gain-ability sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed).expect("if-you-do gain ability should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        matches!(
+            parsed.as_slice(),
+            [crate::cards::builders::EffectAst::IfResult {
+                predicate: crate::cards::builders::IfResultPredicate::Did,
+                ..
+            }]
+        ),
+        "{debug}"
+    );
+    assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+    assert!(debug.contains("LeavesBattlefield"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_keeps_trailing_if_clause_after_structure_cutover() {
     let lexed = lex_line("Destroy target creature if it's white.", 0)
         .expect("rewrite lexer should classify trailing-if sentence");
@@ -12219,6 +12549,32 @@ fn rewrite_lexed_effect_sequence_preserves_reveal_top_counted_match_hand_rest_gr
     assert!(compact_debug.contains("max: Some(2)"), "{debug}");
     assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
     assert!(debug.contains("zone: Graveyard"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_splits_and_or_subtype_reveal_choices_from_looked_cards() {
+    let text = "Look at the top four cards of your library. You may reveal a Cleric card, a Rogue card, a Warrior card, and/or a Wizard card from among them and put those cards into your hand. Put the rest on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0)
+        .expect("rewrite lexer should classify repeated subtype looked-card bundle");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("repeated subtype looked-card hand/bottom sequence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(
+        debug.matches("ChooseObjects").count() >= 4,
+        "expected one choice per listed subtype, got {debug}"
+    );
+    for subtype in ["Cleric", "Rogue", "Warrior", "Wizard"] {
+        assert!(debug.contains(subtype), "missing {subtype} branch: {debug}");
+    }
+    assert!(debug.contains("RevealTagged"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
 }
 
 #[test]

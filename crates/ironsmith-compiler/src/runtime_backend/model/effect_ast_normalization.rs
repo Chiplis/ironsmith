@@ -179,6 +179,7 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         let SubjectVerbActionAst::BecomeAuraEnchantment {
             target,
             attachment_filter,
+            granted_abilities,
             ..
         } = &aura_subject_verb.action
         else {
@@ -209,6 +210,7 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
             *as_aura = Some(ReturnAsAuraAst {
                 attachment_filter: attachment_filter.clone(),
                 remove_all_abilities,
+                granted_abilities: granted_abilities.clone(),
             });
         }
         rewritten.push(combined);

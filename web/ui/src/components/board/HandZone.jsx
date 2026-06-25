@@ -20,6 +20,7 @@ const HAND_ROULETTE_CYCLE_COUNT = 3;
 const HAND_ROULETTE_CENTER_CYCLE = 1;
 const HAND_DRAG_START_DISTANCE_SQ = 14 * 14;
 const DRAW_TO_HAND_REVEAL_DELAY_MS = 1080;
+const HAND_ACTION_HOVER_EVENT = "ironsmith:hand-action-hover";
 
 /** Map card_types array to a glow kind for hand display. */
 function handGlowFromTypes(cardTypes) {
@@ -256,6 +257,7 @@ export default function HandZone({
   const handTransitionsHydratedRef = useRef(false);
   const [persistHiddenDrawCardIds, setPersistHiddenDrawCardIds] = useState(() => new Set());
   const [departingTuckCardIds, setDepartingTuckCardIds] = useState(() => new Set());
+  const [menuHoveredHandObjectId, setMenuHoveredHandObjectId] = useState(null);
   const rawHandCards = useMemo(
     () => (player?.can_view_hand && player?.hand_cards) || [],
     [player?.can_view_hand, player?.hand_cards]
@@ -497,6 +499,27 @@ export default function HandZone({
     for (const extra of extraCards) ids.add(String(extra.id));
     return ids;
   }, [extraCards, handCards]);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleHandActionHover = (event) => {
+      const rawObjectId = event?.detail?.objectId ?? null;
+      const normalizedObjectId = rawObjectId != null ? String(rawObjectId) : null;
+      setMenuHoveredHandObjectId(
+        normalizedObjectId && hoverableHandObjectIds.has(normalizedObjectId)
+          ? normalizedObjectId
+          : null
+      );
+    };
+    window.addEventListener(HAND_ACTION_HOVER_EVENT, handleHandActionHover);
+    return () => {
+      window.removeEventListener(HAND_ACTION_HOVER_EVENT, handleHandActionHover);
+    };
+  }, [hoverableHandObjectIds]);
+  const activeMenuHoveredHandObjectId = (
+    menuHoveredHandObjectId && hoverableHandObjectIds.has(menuHoveredHandObjectId)
+      ? menuHoveredHandObjectId
+      : null
+  );
   const handLayoutSignature = useMemo(
     () => [
       handCards.map((card) => card.id).join("|"),
@@ -877,7 +900,14 @@ export default function HandZone({
             && priorityActionObjectIds.has(String(card.id))
           )
         );
-        const glowKind = isActionLinkedHover ? "action-link" : baseGlowKind;
+        const isMenuActionPreview = activeMenuHoveredHandObjectId === String(card.id);
+        const glowKind = isMenuActionPreview
+          ? baseGlowKind
+          : isActionLinkedHover ? "action-link" : baseGlowKind;
+        const isInspected = (
+          (selectedObjectId != null && String(card.id) === String(selectedObjectId))
+          || isMenuActionPreview
+        );
         const isNew = newIds.has(card.id);
         const isBumped = bumpedIds.has(card.id);
         let bumpDir = 0;
@@ -897,7 +927,7 @@ export default function HandZone({
             bumpDirection={bumpDir}
             handCircuitMode="full"
             suppressTooltip={isMobileFan}
-            isInspected={selectedObjectId != null && String(card.id) === String(selectedObjectId)}
+            isInspected={isInspected}
             onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
             onPointerDown={isPlayable ? (event) => handlePointerDown(event, card, plays, glowKind) : undefined}
             onMouseEnter={() => handleHoverEnter(card.id)}
@@ -927,16 +957,24 @@ export default function HandZone({
           && priorityActionObjectIds.has(String(extra.id))
         )
       );
+      const isMenuActionPreview = activeMenuHoveredHandObjectId === String(extra.id);
+      const glowKind = isMenuActionPreview
+        ? baseGlowKind
+        : isActionLinkedHover ? "action-link" : baseGlowKind;
+      const isInspected = (
+        (selectedObjectId != null && String(extra.id) === String(selectedObjectId))
+        || isMenuActionPreview
+      );
       return (
         <GameCard
           key={entry.key}
           card={card}
           variant="hand"
           isPlayable={isPlayable}
-          glowKind={isActionLinkedHover ? "action-link" : baseGlowKind}
+          glowKind={glowKind}
           handCircuitMode="full"
           suppressTooltip={isMobileFan}
-          isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
+          isInspected={isInspected}
           onClick={plays.length === 0
             ? (event) => handleCardClick(event, card)
             : plays.length <= 1 ? undefined : (event) => handleCardClick(event, card)}
@@ -980,7 +1018,14 @@ export default function HandZone({
             && priorityActionObjectIds.has(String(card.id))
           )
         );
-        const glowKind = isActionLinkedHover ? "action-link" : baseGlowKind;
+        const isMenuActionPreview = activeMenuHoveredHandObjectId === String(card.id);
+        const glowKind = isMenuActionPreview
+          ? baseGlowKind
+          : isActionLinkedHover ? "action-link" : baseGlowKind;
+        const isInspected = (
+          (selectedObjectId != null && String(card.id) === String(selectedObjectId))
+          || isMenuActionPreview
+        );
         const isNew = isPrimaryCycle && newIds.has(card.id);
         const isBumped = isPrimaryCycle && bumpedIds.has(card.id);
         let bumpDir = 0;
@@ -1008,7 +1053,7 @@ export default function HandZone({
               bumpDirection={bumpDir}
               handCircuitMode={isExpanded ? "full" : "top"}
               suppressTooltip={isMobileFan}
-              isInspected={selectedObjectId != null && String(card.id) === String(selectedObjectId)}
+              isInspected={isInspected}
               onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
               onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
               onMouseEnter={() => handleHoverEnter(card.id)}
@@ -1033,6 +1078,14 @@ export default function HandZone({
           && priorityActionObjectIds.has(String(extra.id))
         )
       );
+      const isMenuActionPreview = activeMenuHoveredHandObjectId === String(extra.id);
+      const glowKind = isMenuActionPreview
+        ? baseGlowKind
+        : isActionLinkedHover ? "action-link" : baseGlowKind;
+      const isInspected = (
+        (selectedObjectId != null && String(extra.id) === String(selectedObjectId))
+        || isMenuActionPreview
+      );
       const { wrapperStyle, cardStyle } = splitHandCardRowStyle(
         buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
         { scrollSnapAlign: isRoulette ? "start" : undefined }
@@ -1047,11 +1100,11 @@ export default function HandZone({
             card={card}
             variant="hand"
             isPlayable={isPlayable}
-            glowKind={isActionLinkedHover ? "action-link" : baseGlowKind}
+            glowKind={glowKind}
             isNew={isPrimaryCycle}
             handCircuitMode={isExpanded ? "full" : "top"}
             suppressTooltip={isMobileFan}
-            isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
+            isInspected={isInspected}
             onClick={plays.length === 0
               ? (e) => handleCardClick(e, card)
               : plays.length <= 1 ? undefined : (e) => handleCardClick(e, card)}

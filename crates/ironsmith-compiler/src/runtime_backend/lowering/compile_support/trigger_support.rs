@@ -22,9 +22,11 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisAttacksWithNOthers {
             other_count,
             display_subject,
-        } => Trigger::this_attacks_with_n_others_display_subject(
+            other_filter,
+        } => Trigger::this_attacks_with_n_others_display_subject_and_filter(
             other_count as usize,
             display_subject,
+            other_filter,
         ),
         TriggerSpec::ThisAttacksWithExactlyNOthers(other_count) => {
             Trigger::this_attacks_with_exact_n_others(other_count as usize)
@@ -485,13 +487,26 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             source_filter,
             object_tag,
             object_filter,
-        } => Trigger::keyword_action_matching_source_and_tagged_object(
-            action,
-            player,
-            source_filter,
-            object_tag,
-            object_filter,
-        ),
+            during_your_main_phase,
+        } => {
+            if during_your_main_phase {
+                Trigger::keyword_action_matching_source_and_tagged_object_during_your_main_phase(
+                    action,
+                    player,
+                    source_filter,
+                    object_tag,
+                    object_filter,
+                )
+            } else {
+                Trigger::keyword_action_matching_source_and_tagged_object(
+                    action,
+                    player,
+                    source_filter,
+                    object_tag,
+                    object_filter,
+                )
+            }
+        }
         TriggerSpec::KeywordActionFromSource { action, player } => {
             Trigger::keyword_action_from_source(action, player)
         }

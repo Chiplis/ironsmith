@@ -9,6 +9,13 @@ function stripActionPrefix(label) {
   return label;
 }
 
+function dispatchHandActionHover(objectId = null) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("ironsmith:hand-action-hover", {
+    detail: { objectId: objectId != null ? String(objectId) : null },
+  }));
+}
+
 export default function ActionPopover({
   anchorRect,
   actions,
@@ -27,14 +34,20 @@ export default function ActionPopover({
   useEffect(() => {
     openedAtRef.current = Date.now();
     const raf = requestAnimationFrame(() => setPhase("open"));
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      dispatchHandActionHover(null);
+    };
   }, []);
 
   const handleClose = useCallback(() => {
     if (phase === "exiting") return;
+    setHoveredIdx(-1);
+    clearHover();
+    dispatchHandActionHover(null);
     setPhase("exiting");
     setTimeout(onClose, 250);
-  }, [onClose, phase]);
+  }, [clearHover, onClose, phase]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -167,28 +180,34 @@ export default function ActionPopover({
                 if ((Date.now() - openedAtRef.current) < 160) return;
                 e.preventDefault();
                 e.stopPropagation();
+                dispatchHandActionHover(null);
                 onAction(action);
               }}
               onMouseEnter={() => {
                 setHoveredIdx(i);
                 if (objId) hoverCard(objId);
+                dispatchHandActionHover(objId);
               }}
               onMouseLeave={() => {
                 setHoveredIdx(-1);
                 clearHover();
+                dispatchHandActionHover(null);
               }}
               onFocus={() => {
                 setHoveredIdx(i);
                 if (objId) hoverCard(objId);
+                dispatchHandActionHover(objId);
               }}
               onBlur={() => {
                 setHoveredIdx(-1);
                 clearHover();
+                dispatchHandActionHover(null);
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   if ((Date.now() - openedAtRef.current) < 160) return;
                   event.preventDefault();
+                  dispatchHandActionHover(null);
                   onAction(action);
                 }
               }}

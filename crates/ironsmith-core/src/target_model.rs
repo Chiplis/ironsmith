@@ -7,6 +7,16 @@ pub enum SourceReferenceSurface {
     ThisPermanentType(String),
 }
 
+impl SourceReferenceSurface {
+    pub fn display_text(&self) -> String {
+        match self {
+            Self::FullName(text) | Self::ShortName(text) | Self::ThisPermanentType(text) => {
+                text.clone()
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChooseSpecSurfaceHint {
     SourceReference(SourceReferenceSurface),

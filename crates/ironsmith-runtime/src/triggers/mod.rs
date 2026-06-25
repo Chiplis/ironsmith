@@ -489,9 +489,22 @@ impl Trigger {
         other_count: usize,
         display_subject: Option<String>,
     ) -> Self {
+        Self::this_attacks_with_n_others_display_subject_and_filter(
+            other_count,
+            display_subject,
+            None,
+        )
+    }
+
+    pub fn this_attacks_with_n_others_display_subject_and_filter(
+        other_count: usize,
+        display_subject: Option<String>,
+        other_filter: Option<ObjectFilter>,
+    ) -> Self {
         Self::new(ThisAttacksWithNOthersTrigger::with_display_subject(
             other_count,
             display_subject,
+            other_filter,
         ))
     }
 
@@ -1166,6 +1179,26 @@ impl Trigger {
             object_tag,
             object_filter,
         ))
+    }
+
+    /// Create a phase-qualified "whenever [matching source] [keyword action] [tagged matching object]" trigger.
+    pub fn keyword_action_matching_source_and_tagged_object_during_your_main_phase(
+        action: crate::events::KeywordActionKind,
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        object_tag: TagKey,
+        object_filter: ObjectFilter,
+    ) -> Self {
+        Self::new(
+            KeywordActionTrigger::matching_source_and_tagged_object(
+                action,
+                player,
+                source_filter,
+                object_tag,
+                object_filter,
+            )
+            .during_your_main_phase(),
+        )
     }
 
     /// Create a "whenever [player] [keyword action] this card" trigger.

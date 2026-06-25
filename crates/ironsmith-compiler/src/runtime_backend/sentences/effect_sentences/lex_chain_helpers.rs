@@ -44,6 +44,13 @@ const OR_WORD: &str = "or";
 const AND_WORD: &str = "and";
 const THEN_WORD: &str = "then";
 const TARGET_WORD: &str = "target";
+const EXILE_WORD: &str = "exile";
+const GRAVEYARD_WORDS: &[&str] = &["graveyard", "graveyards"];
+const THAT_PLAYER_POSSESSIVE_GRAVEYARD_PREFIXES: &[&[&str]] = &[
+    &["exile", "that", "player", "graveyard"],
+    &["exile", "that", "players", "graveyard"],
+    &["exile", "that", "player's", "graveyard"],
+];
 
 const ATTACK_OR_ATTACKS_WORDS: &[&str] = &["attack", "attacks"];
 const BLOCK_OR_BLOCKS_WORDS: &[&str] = &["block", "blocks"];
@@ -1310,6 +1317,13 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     && grammar::words_match_any_prefix(after_then, PUT_BACK_PREFIXES).is_some()
                     && grammar::contains_word(after_then, "any")
                     && grammar::contains_word(after_then, "order");
+                let allow_exile_that_player_graveyard_followup = has_back_ref
+                    && word_slice_first_is(&after_words, EXILE_WORD)
+                    && word_slice_contains_any_phrase(
+                        &after_words,
+                        THAT_PLAYER_POSSESSIVE_GRAVEYARD_PREFIXES,
+                    )
+                    && words_contain_any(&after_words, GRAVEYARD_WORDS);
                 let continues_inline_consult_bottom_remainder =
                     grammar::words_match_any_prefix(after_then, PUT_PREFIXES).is_some()
                         && word_slice_contains_word(&after_words, "rest")
@@ -1335,6 +1349,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     || has_effect_head && allow_put_battlefield_with_counter_followup
                     || has_effect_head && allow_put_into_hand_followup
                     || has_effect_head && allow_put_back_in_any_order_followup
+                    || has_effect_head && allow_exile_that_player_graveyard_followup
                 {
                     split_point = Some(i);
                     break;

@@ -7,7 +7,7 @@ use crate::triggers::{
     PlayerRelation, SpellCastTrigger, ThisAttacksTrigger, TransformsTrigger, Trigger, TriggerEvent,
     ZoneChangeTrigger, ZonePattern,
 };
-use crate::types::CardType;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 fn object_filter_is_your_commander(filter: &ObjectFilter, card_types: &[CardType]) -> bool {
@@ -32,6 +32,16 @@ fn object_filter_is_plain_card_type(filter: &ObjectFilter, card_type: CardType) 
     let mut normalized = filter.clone();
     normalized.zone = None;
     normalized.card_types.clear();
+    normalized == ObjectFilter::default()
+}
+
+fn object_filter_is_plain_subtype(filter: &ObjectFilter, subtype: Subtype) -> bool {
+    if filter.subtypes.len() != 1 || filter.subtypes[0] != subtype {
+        return false;
+    }
+    let mut normalized = filter.clone();
+    normalized.zone = None;
+    normalized.subtypes.clear();
     normalized == ObjectFilter::default()
 }
 
@@ -311,6 +321,45 @@ impl OrTrigger {
             )
         }
     }
+
+    fn source_saddles_mount_or_crews_vehicle_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let first = first.downcast_ref::<crate::triggers::KeywordActionTrigger>()?;
+        let second = second.downcast_ref::<crate::triggers::KeywordActionTrigger>()?;
+        let (saddle, crew) = match (first.action, second.action) {
+            (crate::events::KeywordActionKind::Saddle, crate::events::KeywordActionKind::Crew) => {
+                (first, second)
+            }
+            (crate::events::KeywordActionKind::Crew, crate::events::KeywordActionKind::Saddle) => {
+                (second, first)
+            }
+            _ => return None,
+        };
+        if saddle.player != crew.player
+            || saddle.source_filter != crew.source_filter
+            || saddle.during_your_main_phase != crew.during_your_main_phase
+        {
+            return None;
+        }
+        let (_, mount_filter) = saddle.tagged_object_filter.as_ref()?;
+        let (_, vehicle_filter) = crew.tagged_object_filter.as_ref()?;
+        if !object_filter_is_plain_subtype(mount_filter, Subtype::Mount)
+            || !object_filter_is_plain_subtype(vehicle_filter, Subtype::Vehicle)
+        {
+            return None;
+        }
+        let source = saddle.source_filter.as_ref()?.description();
+        let suffix = if saddle.during_your_main_phase {
+            " during your main phase"
+        } else {
+            ""
+        };
+        Some(format!(
+            "Whenever {source} saddles a Mount or crews a Vehicle{suffix}"
+        ))
+    }
 }
 
 impl TriggerMatcher for OrTrigger {
@@ -362,6 +411,9 @@ impl TriggerMatcher for OrTrigger {
             return display;
         }
         if let Some(display) = self.artifact_tapped_or_artifact_ability_without_tap_cost_display() {
+            return display;
+        }
+        if let Some(display) = self.source_saddles_mount_or_crews_vehicle_display() {
             return display;
         }
         let displays: Vec<String> = self.triggers.iter().map(|t| t.display()).collect();
@@ -463,6 +515,37 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever your commander enters or attacks"
+        );
+    }
+
+    #[test]
+    fn display_compacts_source_saddles_mount_or_crews_vehicle_during_main_phase() {
+        let source_filter = ObjectFilter::source_with_surface(
+            crate::target::SourceReferenceSurface::ThisPermanentType("this creature".to_string()),
+        );
+        let saddles_mount =
+            Trigger::keyword_action_matching_source_and_tagged_object_during_your_main_phase(
+                crate::events::KeywordActionKind::Saddle,
+                PlayerFilter::Any,
+                source_filter.clone(),
+                crate::tag::TagKey::from("__it__"),
+                ObjectFilter::default().with_subtype(Subtype::Mount),
+            );
+        let crews_vehicle =
+            Trigger::keyword_action_matching_source_and_tagged_object_during_your_main_phase(
+                crate::events::KeywordActionKind::Crew,
+                PlayerFilter::Any,
+                source_filter,
+                crate::tag::TagKey::from("__it__"),
+                ObjectFilter::default().with_subtype(Subtype::Vehicle),
+            );
+
+        let trigger = Trigger::or(vec![saddles_mount, crews_vehicle])
+            .with_intro_surface(crate::triggers::TriggerIntroSurface::Whenever);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever this creature saddles a Mount or crews a Vehicle during your main phase"
         );
     }
 

@@ -10,13 +10,16 @@ const NOT_ALL_COLORS_PREFIX: &[&str] = &["isnt", "all", "colors"];
 const NOT_EXACTLY_TWO_COLORS_WITH_THAT_PREFIX: &[&str] =
     &["that", "isnt", "exactly", "two", "colors"];
 const NOT_EXACTLY_TWO_COLORS_PREFIX: &[&str] = &["isnt", "exactly", "two", "colors"];
-const MANA_VALUE_EQUAL_COUNTERS_ON_SOURCE_PREFIX: &[&str] =
-    &["with", "mana", "value", "equal", "to", "number", "of"];
-const MANA_VALUE_EQUAL_THE_COUNTERS_ON_SOURCE_PREFIX: &[&str] = &[
-    "with", "mana", "value", "equal", "to", "the", "number", "of",
-];
+const MANA_VALUE_COUNTERS_ON_SOURCE_PREFIX: &[&str] = &["with", "mana", "value"];
+const MANA_VALUE_EQUAL_WORDS: &[&str] = &["equal", "to"];
+const MANA_VALUE_LT_WORDS: &[&str] = &["less", "than"];
+const MANA_VALUE_LTE_WORDS: &[&str] = &["less", "than", "or", "equal", "to"];
+const MANA_VALUE_GT_WORDS: &[&str] = &["greater", "than"];
+const MANA_VALUE_GTE_WORDS: &[&str] = &["greater", "than", "or", "equal", "to"];
+const NUMBER_OF_WORDS: &[&str] = &["number", "of"];
 const COUNTER_OR_COUNTERS_WORDS: &[&str] = &["counter", "counters"];
 const ON_THIS_ARTIFACT_TAIL: &[&str] = &["on", "this", "artifact"];
+const ON_IT_TAIL: &[&str] = &["on", "it"];
 const OTHER_THAN_PREFIX: &[&str] = &["other", "than"];
 const ONE_OF_PREFIX: &[&str] = &["one", "of"];
 const DIFFERENT_ONE_OF_PREFIX: &[&str] = &["different", "one", "of"];
@@ -494,40 +497,139 @@ pub(super) fn try_apply_not_exactly_two_colors_clause(
     true
 }
 
-pub(super) fn parse_mana_value_eq_counters_on_source_words(
+fn source_counter_tail_consumed(words: &[&str]) -> Option<usize> {
+    if word_slice_starts_with(words, ON_THIS_ARTIFACT_TAIL) {
+        Some(ON_THIS_ARTIFACT_TAIL.len())
+    } else if word_slice_starts_with(words, ON_IT_TAIL) {
+        Some(ON_IT_TAIL.len())
+    } else {
+        None
+    }
+}
+
+fn comparison_from_mana_value_counter_operator(
+    operator: crate::effect::ValueComparisonOperator,
+    counter_type: crate::object::CounterType,
+) -> crate::filter::Comparison {
+    let value = Box::new(crate::effect::Value::CountersOnSource(counter_type));
+    match operator {
+        crate::effect::ValueComparisonOperator::Equal => {
+            crate::filter::Comparison::EqualExpr(value)
+        }
+        crate::effect::ValueComparisonOperator::NotEqual => {
+            crate::filter::Comparison::NotEqualExpr(value)
+        }
+        crate::effect::ValueComparisonOperator::LessThan => {
+            crate::filter::Comparison::LessThanExpr(value)
+        }
+        crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+            crate::filter::Comparison::LessThanOrEqualExpr(value)
+        }
+        crate::effect::ValueComparisonOperator::GreaterThan => {
+            crate::filter::Comparison::GreaterThanExpr(value)
+        }
+        crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+            crate::filter::Comparison::GreaterThanOrEqualExpr(value)
+        }
+    }
+}
+
+pub(super) fn parse_mana_value_counters_on_source_words(
     words: &[&str],
-) -> Option<(crate::object::CounterType, usize)> {
-    if !word_slice_starts_with(words, MANA_VALUE_EQUAL_COUNTERS_ON_SOURCE_PREFIX)
-        || !words
-            .get(8)
-            .is_some_and(|word| word_is_any(word, COUNTER_OR_COUNTERS_WORDS))
-        || !word_slice_starts_with(&words[9..], ON_THIS_ARTIFACT_TAIL)
+) -> Option<(
+    crate::filter::Comparison,
+    Option<crate::object::CounterType>,
+    usize,
+)> {
+    if !word_slice_starts_with(words, MANA_VALUE_COUNTERS_ON_SOURCE_PREFIX) {
+        return None;
+    }
+    let after_axis = &words[MANA_VALUE_COUNTERS_ON_SOURCE_PREFIX.len()..];
+    let (operator, operator_len) = if word_slice_starts_with(after_axis, MANA_VALUE_LTE_WORDS) {
+        (
+            crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            MANA_VALUE_LTE_WORDS.len(),
+        )
+    } else if word_slice_starts_with(after_axis, MANA_VALUE_GTE_WORDS) {
+        (
+            crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            MANA_VALUE_GTE_WORDS.len(),
+        )
+    } else if word_slice_starts_with(after_axis, MANA_VALUE_EQUAL_WORDS) {
+        (
+            crate::effect::ValueComparisonOperator::Equal,
+            MANA_VALUE_EQUAL_WORDS.len(),
+        )
+    } else if word_slice_starts_with(after_axis, MANA_VALUE_LT_WORDS) {
+        (
+            crate::effect::ValueComparisonOperator::LessThan,
+            MANA_VALUE_LT_WORDS.len(),
+        )
+    } else if word_slice_starts_with(after_axis, MANA_VALUE_GT_WORDS) {
+        (
+            crate::effect::ValueComparisonOperator::GreaterThan,
+            MANA_VALUE_GT_WORDS.len(),
+        )
+    } else {
+        return None;
+    };
+    let mut after_operator = &after_axis[operator_len..];
+    let mut optional_article_len = 0usize;
+    if after_operator.first().copied() == Some("the") {
+        after_operator = &after_operator[1..];
+        optional_article_len = 1;
+    }
+    if !word_slice_starts_with(after_operator, NUMBER_OF_WORDS) {
+        return None;
+    }
+    let counter_idx = NUMBER_OF_WORDS.len();
+    let counter_type = parse_counter_type_word(*after_operator.get(counter_idx)?)?;
+    if !after_operator
+        .get(counter_idx + 1)
+        .is_some_and(|word| word_is_any(word, COUNTER_OR_COUNTERS_WORDS))
     {
         return None;
     }
-    let counter_type = parse_counter_type_word(*words.get(7)?)?;
-    Some((counter_type, 12))
+    let tail = &after_operator[counter_idx + 2..];
+    let tail_len = source_counter_tail_consumed(tail)?;
+    let consumed = MANA_VALUE_COUNTERS_ON_SOURCE_PREFIX.len()
+        + operator_len
+        + optional_article_len
+        + NUMBER_OF_WORDS.len()
+        + 2
+        + tail_len;
+    let equality_counter_type =
+        (operator == crate::effect::ValueComparisonOperator::Equal).then_some(counter_type);
+    Some((
+        comparison_from_mana_value_counter_operator(operator, counter_type),
+        equality_counter_type,
+        consumed,
+    ))
 }
 
-pub(super) fn try_apply_mana_value_eq_counters_on_source_clause(
+pub(super) fn try_apply_mana_value_counters_on_source_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,
 ) -> bool {
-    let Some((idx, (counter_type, consumed))) =
+    let Some((idx, (comparison, equality_counter_type, consumed))) =
         all_words.iter().enumerate().find_map(|(idx, _)| {
-            parse_mana_value_eq_counters_on_source_words(&all_words[idx..])
+            parse_mana_value_counters_on_source_words(&all_words[idx..])
                 .map(|matched| (idx, matched))
         })
     else {
         return false;
     };
-    filter.mana_value_eq_counters_on_source = Some(counter_type);
+    if let Some(counter_type) = equality_counter_type {
+        filter.mana_value_eq_counters_on_source = Some(counter_type);
+    } else {
+        filter.mana_value = Some(comparison);
+    }
     all_words.drain(idx..idx + consumed);
 
     let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
     let segment_words = segment_words_view.to_word_refs();
-    let segment_match = find_mana_value_equal_counter_phrase_bounds(&segment_words);
+    let segment_match = find_mana_value_counter_phrase_bounds(&segment_words);
     if let Some((start_word_idx, end_word_idx)) = segment_match
         && let Some(start_token_idx) = segment_words_view.token_index_for_word_index(start_word_idx)
     {
@@ -831,28 +933,10 @@ pub(super) fn find_any_filter_phrase_start(words: &[&str], phrases: &[&[&str]]) 
     find_any_phrase_start(words, phrases)
 }
 
-pub(super) fn find_mana_value_equal_counter_phrase_bounds(
-    words: &[&str],
-) -> Option<(usize, usize)> {
+pub(super) fn find_mana_value_counter_phrase_bounds(words: &[&str]) -> Option<(usize, usize)> {
     (0..words.len()).find_map(|idx| {
-        let tail = &words[idx..];
-        if tail.len() >= 13
-            && word_slice_starts_with(tail, MANA_VALUE_EQUAL_THE_COUNTERS_ON_SOURCE_PREFIX)
-            && parse_counter_type_word(tail[8]).is_some()
-            && word_is_any(tail[9], COUNTER_OR_COUNTERS_WORDS)
-            && word_slice_starts_with(&tail[10..], ON_THIS_ARTIFACT_TAIL)
-        {
-            return Some((idx, idx + 13));
-        }
-        if tail.len() >= 12
-            && word_slice_starts_with(tail, MANA_VALUE_EQUAL_COUNTERS_ON_SOURCE_PREFIX)
-            && parse_counter_type_word(tail[7]).is_some()
-            && word_is_any(tail[8], COUNTER_OR_COUNTERS_WORDS)
-            && word_slice_starts_with(&tail[9..], ON_THIS_ARTIFACT_TAIL)
-        {
-            return Some((idx, idx + 12));
-        }
-        None
+        let (_, _, consumed) = parse_mana_value_counters_on_source_words(&words[idx..])?;
+        Some((idx, idx + consumed))
     })
 }
 
@@ -908,6 +992,67 @@ fn find_blocking_or_blocked_by_source_phrase(words: &[&str]) -> Option<usize> {
     })
 }
 
+fn source_reference_prefix_surface(
+    words: &[&str],
+    segment_tokens: &[OwnedLexToken],
+) -> Option<(usize, crate::target::SourceReferenceSurface)> {
+    for prefix_len in (1..=words.len()).rev() {
+        if prefix_len == 1 && words.len() > 1 {
+            continue;
+        }
+        let prefix = &words[..prefix_len];
+        let Some(surface) = source_reference_surface_for_words(prefix)
+            .or_else(|| this_source_surface_for_words(prefix))
+        else {
+            continue;
+        };
+        if source_reference_prefix_is_unquoted(prefix, segment_tokens) {
+            return Some((prefix_len, surface));
+        }
+    }
+    None
+}
+
+fn source_reference_prefix_is_unquoted(
+    prefix_words: &[&str],
+    segment_tokens: &[OwnedLexToken],
+) -> bool {
+    if !segment_tokens.iter().any(OwnedLexToken::is_quote) {
+        return true;
+    }
+
+    let mut outside_tokens = Vec::new();
+    let mut inside_quotes = false;
+    for token in segment_tokens {
+        if token.is_quote() {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if !inside_quotes {
+            outside_tokens.push(token.clone());
+        }
+    }
+
+    let outside_view = GrammarFilterNormalizedWords::new(outside_tokens.as_slice());
+    let outside_words = outside_view.to_word_refs();
+    let outside_words = non_article_word_refs(&outside_words);
+    outside_words
+        .get(..prefix_words.len())
+        .is_some_and(|head| head.iter().copied().eq(prefix_words.iter().copied()))
+}
+
+fn drain_source_reference_prefix_tokens(
+    segment_tokens: &mut Vec<OwnedLexToken>,
+    prefix_word_len: usize,
+) {
+    let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
+    let Some(end_token_idx) = segment_words_view.token_index_for_word_or_end(prefix_word_len)
+    else {
+        return;
+    };
+    segment_tokens.drain(..end_token_idx);
+}
+
 pub(super) fn apply_reference_and_tag_stage(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
@@ -930,8 +1075,13 @@ pub(super) fn apply_reference_and_tag_stage(
         all_words.remove(0);
     }
 
-    if is_source_reference_words(all_words) {
+    if let Some((source_word_len, surface)) =
+        source_reference_prefix_surface(all_words, segment_tokens)
+    {
         filter.source = true;
+        filter.source_surface = Some(surface);
+        all_words.drain(..source_word_len);
+        drain_source_reference_prefix_tokens(segment_tokens, source_word_len);
     }
 
     if let Some(its_attached_idx) = find_phrase_start(all_words, ITS_ATTACHED_TO_PHRASE) {

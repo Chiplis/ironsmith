@@ -8,7 +8,7 @@ use crate::model::RedirectNextTimeDamageDestinationAst;
 use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -117,6 +117,7 @@ pub(crate) enum TriggerSpec {
     ThisAttacksWithNOthers {
         other_count: u32,
         display_subject: Option<String>,
+        other_filter: Option<ObjectFilter>,
     },
     ThisAttacksWithExactlyNOthers(u32),
     ThisAttacksAndIsntBlocked,
@@ -398,6 +399,7 @@ pub(crate) enum TriggerSpec {
         source_filter: ObjectFilter,
         object_tag: crate::tag::TagKey,
         object_filter: ObjectFilter,
+        during_your_main_phase: bool,
     },
     KeywordActionFromSource {
         action: crate::events::KeywordActionKind,
@@ -764,6 +766,7 @@ pub(crate) struct SubjectVerbSubjectAst {
 pub(crate) struct ReturnAsAuraAst {
     pub(crate) attachment_filter: ObjectFilter,
     pub(crate) remove_all_abilities: bool,
+    pub(crate) granted_abilities: Vec<GrantedAbilityAst>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -1031,6 +1034,8 @@ pub(crate) enum SubjectVerbActionAst {
     GainControl {
         target: TargetAst,
         duration: Until,
+        condition: Option<ConditionExpr>,
+        source_reference_surface: Option<SourceReferenceSurface>,
     },
     RevealTop,
     ExileTopOfLibrary {
@@ -1362,6 +1367,7 @@ pub(crate) enum SubjectVerbActionAst {
     BecomeAuraEnchantment {
         target: TargetAst,
         attachment_filter: ObjectFilter,
+        granted_abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
     BecomeBasicLandType {
@@ -2225,10 +2231,17 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("blockers", blockers)
                 .field("this_combat", this_combat)
                 .finish(),
-            Self::GainControl { target, duration } => f
+            Self::GainControl {
+                target,
+                duration,
+                condition,
+                source_reference_surface,
+            } => f
                 .debug_struct("GainControl")
                 .field("target", target)
                 .field("duration", duration)
+                .field("condition", condition)
+                .field("source_reference_surface", source_reference_surface)
                 .finish(),
             Self::RevealTop => f.write_str("RevealTop"),
             Self::ExileTopOfLibrary {
@@ -2797,11 +2810,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::BecomeAuraEnchantment {
                 target,
                 attachment_filter,
+                granted_abilities,
                 duration,
             } => f
                 .debug_struct("BecomeAuraEnchantment")
                 .field("target", target)
                 .field("attachment_filter", attachment_filter)
+                .field("granted_abilities", granted_abilities)
                 .field("duration", duration)
                 .finish(),
             Self::BecomeBasicLandType {
@@ -4808,12 +4823,27 @@ impl EffectAst {
         attachment_filter: ObjectFilter,
         duration: Until,
     ) -> Self {
+        Self::subject_verb_become_aura_enchantment_with_grants(
+            target,
+            attachment_filter,
+            Vec::new(),
+            duration,
+        )
+    }
+
+    pub(crate) fn subject_verb_become_aura_enchantment_with_grants(
+        target: TargetAst,
+        attachment_filter: ObjectFilter,
+        granted_abilities: Vec<GrantedAbilityAst>,
+        duration: Until,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::BecomeAuraEnchantment {
                 target,
                 attachment_filter,
+                granted_abilities,
                 duration,
             },
         )
@@ -6093,10 +6123,36 @@ impl EffectAst {
         target: TargetAst,
         duration: Until,
     ) -> Self {
+        Self::subject_verb_gain_control_with_condition(player, target, duration, None)
+    }
+
+    pub(crate) fn subject_verb_gain_control_with_condition(
+        player: PlayerAst,
+        target: TargetAst,
+        duration: Until,
+        condition: Option<ConditionExpr>,
+    ) -> Self {
+        Self::subject_verb_gain_control_with_condition_and_source_surface(
+            player, target, duration, condition, None,
+        )
+    }
+
+    pub(crate) fn subject_verb_gain_control_with_condition_and_source_surface(
+        player: PlayerAst,
+        target: TargetAst,
+        duration: Until,
+        condition: Option<ConditionExpr>,
+        source_reference_surface: Option<SourceReferenceSurface>,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::GainControl { target, duration },
+            SubjectVerbActionAst::GainControl {
+                target,
+                duration,
+                condition,
+                source_reference_surface,
+            },
         )
     }
 

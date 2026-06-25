@@ -11,17 +11,6 @@ pub(crate) enum ConditionAntecedentBinding {
     IncludeRandomWithCountObjects,
 }
 
-pub(crate) fn predicate_contains_source_match(predicate: &PredicateAst) -> bool {
-    match predicate {
-        PredicateAst::SourceMatches(_) => true,
-        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
-            predicate_contains_source_match(left) || predicate_contains_source_match(right)
-        }
-        PredicateAst::Not(inner) => predicate_contains_source_match(inner),
-        _ => false,
-    }
-}
-
 pub(crate) fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<ObjectFilter> {
     match predicate {
         PredicateAst::PlayerControls { filter, .. }

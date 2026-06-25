@@ -17,7 +17,9 @@ use super::super::lowering_support::{
     rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability as parsed_triggered_ability,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
-use super::super::token_primitives::{rfind_index_with, str_contains as string_contains};
+use super::super::token_primitives::{
+    rfind_index_with, str_contains as string_contains, strip_leading_if_you_do_lexed,
+};
 use super::super::util::{
     is_article, is_source_reference_words, parse_choice_count_word_prefix, parse_mana_symbol,
     parse_target_phrase, span_from_tokens, strip_leading_token_words_any,
@@ -32,9 +34,9 @@ use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 use super::{Verb, find_verb, parse_effect_chain, parse_effect_clause_with_trailing_if};
 use crate::ability::Ability;
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
-    PlayerAst, PredicateAst, ReferenceImports, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey,
-    TargetAst, TextSpan,
+    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate, KeywordAction, LineAst,
+    ParsedAbility, PlayerAst, PredicateAst, ReferenceImports, SubjectVerbActionAst,
+    SubjectVerbEffectAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{Until, Value};
 use crate::mana::ManaCost;
@@ -57,13 +59,13 @@ fn trim_edge_punctuation_and_quotes(tokens: &[OwnedLexToken]) -> Vec<OwnedLexTok
     let mut tokens = trim_edge_punctuation(tokens);
     while tokens
         .first()
-        .is_some_and(|token| token.kind == TokenKind::Quote)
+        .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
     {
         tokens = trim_edge_punctuation(&tokens[1..]);
     }
     while tokens
         .last()
-        .is_some_and(|token| token.kind == TokenKind::Quote)
+        .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
     {
         tokens = trim_edge_punctuation(&tokens[..tokens.len() - 1]);
     }
@@ -1404,6 +1406,18 @@ pub(crate) fn parse_simple_ability_modifier_clause(
 pub(crate) fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let stripped_if_you_do = trim_commas(strip_leading_if_you_do_lexed(tokens));
+    if stripped_if_you_do.len() < tokens.len() {
+        return Ok(
+            parse_gain_ability_sentence(&stripped_if_you_do)?.map(|effects| {
+                vec![EffectAst::IfResult {
+                    predicate: IfResultPredicate::Did,
+                    effects,
+                }]
+            }),
+        );
+    }
+
     let word_view = GainAbilityWordView::new(&tokens);
     let word_list = word_view.to_word_refs();
     if word_slice_contains_phrase(&word_list, CAN_ATTACK_PHRASE)

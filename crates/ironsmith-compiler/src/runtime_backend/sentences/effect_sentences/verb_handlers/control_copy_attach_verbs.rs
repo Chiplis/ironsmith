@@ -289,13 +289,6 @@ fn cca_tokens_contain_all(tokens: &[OwnedLexToken], required: &[&str]) -> bool {
     cca_words_contain_all(&words, required)
 }
 
-fn cca_tokens_contain_any_word(tokens: &[OwnedLexToken], choices: &[&str]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    choices
-        .iter()
-        .any(|word| cca_words_contain_word(&words, word))
-}
-
 fn cca_tokens_contain_phrase(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
     cca_words_contain_phrase(&words, phrase)
@@ -430,20 +423,75 @@ fn cca_battlefield_controller_tail(
 }
 
 fn cca_tokens_are_you_control_source_duration(tokens: &[OwnedLexToken]) -> bool {
-    if cca_tokens_contain_all(tokens, CCA_YOU_CONTROL_WORDS)
-        && cca_tokens_contain_any_word(tokens, CCA_SOURCE_REFERENCE_WORDS)
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    cca_words_are_you_control_source_duration(&words)
+}
+
+fn cca_words_source_reference_surface(
+    words: &[&str],
+) -> Option<crate::target::SourceReferenceSurface> {
+    if words.is_empty() {
+        return None;
+    }
+    source_reference_surface_for_words(words).or_else(|| this_source_surface_for_words(words))
+}
+
+fn cca_words_are_source_reference(words: &[&str]) -> bool {
+    cca_words_source_reference_surface(words).is_some()
+}
+
+fn cca_words_after_you_control_source<'a>(words: &'a [&'a str]) -> Option<&'a [&'a str]> {
+    let control_idx = words
+        .windows(2)
+        .position(|window| window == CCA_YOU_CONTROL_WORDS)?;
+    words.get(control_idx + CCA_YOU_CONTROL_WORDS.len()..)
+}
+
+fn cca_words_are_you_control_source_duration(words: &[&str]) -> bool {
+    if cca_words_contain_all(words, CCA_YOU_CONTROL_WORDS)
+        && CCA_SOURCE_REFERENCE_WORDS
+            .iter()
+            .any(|word| cca_words_contain_word(words, word))
     {
         return true;
     }
 
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(control_idx) = words.iter().position(|word| *word == "control") else {
+    let Some(source_words) = cca_words_after_you_control_source(words) else {
         return false;
     };
-    let source_words = &words[control_idx + 1..];
-    !source_words.is_empty()
-        && (this_source_surface_for_words(source_words).is_some()
-            || source_reference_surface_for_words(source_words).is_some())
+    let source_end = source_words
+        .iter()
+        .position(|word| *word == CCA_AND_WORD)
+        .unwrap_or(source_words.len());
+    cca_words_are_source_reference(&source_words[..source_end])
+}
+
+fn cca_words_you_control_source_and_source_remains_tapped_surface(
+    words: &[&str],
+) -> Option<crate::target::SourceReferenceSurface> {
+    let Some(source_words) = cca_words_after_you_control_source(words) else {
+        return None;
+    };
+    let Some(and_idx) = source_words.iter().position(|word| *word == CCA_AND_WORD) else {
+        return None;
+    };
+    let first_source = &source_words[..and_idx];
+    let first_surface = cca_words_source_reference_surface(first_source)?;
+
+    let tapped_tail = &source_words[and_idx + 1..];
+    let Some(remains_idx) = tapped_tail
+        .iter()
+        .position(|word| matches!(*word, "remain" | "remains"))
+    else {
+        return None;
+    };
+    let second_source = &tapped_tail[..remains_idx];
+    let after_remains = &tapped_tail[remains_idx + 1..];
+    if cca_words_are_source_reference(second_source) && after_remains.contains(&CCA_TAPPED_WORD) {
+        Some(first_surface)
+    } else {
+        None
+    }
 }
 
 fn parse_put_choice_count_prefix(
@@ -958,10 +1006,10 @@ pub(crate) fn parse_gain_control(
     let duration_tokens = duration_idx
         .map(|dur_idx| &tokens[dur_idx..])
         .unwrap_or(&[]);
-    let duration = parse_control_duration(duration_tokens)?;
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let base_effect = match target_ast {
         TargetAst::Player(filter, _) => {
+            let duration = parse_control_duration(duration_tokens)?;
             if matches!(duration, ControlDurationAst::UntilYourNextTurnEnd) {
                 return Err(CardTextError::ParseError(
                     "unsupported player-control duration until the end of your next turn"
@@ -975,18 +1023,15 @@ pub(crate) fn parse_gain_control(
             )
         }
         _ => {
-            let until = match duration {
-                ControlDurationAst::UntilEndOfTurn => Until::EndOfTurn,
-                ControlDurationAst::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
-                ControlDurationAst::Forever => Until::Forever,
-                ControlDurationAst::AsLongAsYouControlSource => Until::YouStopControllingThis,
-                ControlDurationAst::DuringNextTurn => {
-                    return Err(CardTextError::ParseError(
-                        "unsupported control duration for permanents".to_string(),
-                    ));
-                }
-            };
-            EffectAst::subject_verb_gain_control(player, target_ast, until)
+            let (until, condition, source_reference_surface) =
+                parse_permanent_gain_control_duration(duration_tokens)?;
+            EffectAst::subject_verb_gain_control_with_condition_and_source_surface(
+                player,
+                target_ast,
+                until,
+                condition,
+                source_reference_surface,
+            )
         }
     };
 
@@ -1053,6 +1098,42 @@ pub(crate) fn parse_control_duration(
     Err(CardTextError::ParseError(
         "unsupported control duration".to_string(),
     ))
+}
+
+fn parse_permanent_gain_control_duration(
+    tokens: &[OwnedLexToken],
+) -> Result<
+    (
+        Until,
+        Option<crate::ConditionExpr>,
+        Option<crate::target::SourceReferenceSurface>,
+    ),
+    CardTextError,
+> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if cca_words_contain_phrase(&words, CCA_FOR_AS_LONG_AS_PHRASE)
+        && let Some(surface) =
+            cca_words_you_control_source_and_source_remains_tapped_surface(&words)
+    {
+        return Ok((
+            Until::SourceUntaps,
+            Some(crate::ConditionExpr::SourceIsTapped),
+            Some(surface),
+        ));
+    }
+
+    let until = match parse_control_duration(tokens)? {
+        ControlDurationAst::UntilEndOfTurn => Until::EndOfTurn,
+        ControlDurationAst::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
+        ControlDurationAst::Forever => Until::Forever,
+        ControlDurationAst::AsLongAsYouControlSource => Until::YouStopControllingThis,
+        ControlDurationAst::DuringNextTurn => {
+            return Err(CardTextError::ParseError(
+                "unsupported control duration for permanents".to_string(),
+            ));
+        }
+    };
+    Ok((until, None, None))
 }
 
 pub(crate) fn parse_put_into_hand(

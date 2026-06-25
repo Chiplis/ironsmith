@@ -377,7 +377,11 @@ fn marker_keyword_set_contains(set: &[&str], keyword: &str) -> bool {
 
 pub(crate) fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
     match target {
-        TargetAst::Source(_) => Some(ObjectFilter::source()),
+        TargetAst::Source(span) => Some(
+            source_reference_surface_for_span(span)
+                .map(ObjectFilter::source_with_surface)
+                .unwrap_or_else(ObjectFilter::source),
+        ),
         TargetAst::Object(filter, _, _) => Some(filter),
         TargetAst::Spell(_) => Some(ObjectFilter::spell()),
         TargetAst::Tagged(tag, _) => Some(ObjectFilter::tagged(tag)),

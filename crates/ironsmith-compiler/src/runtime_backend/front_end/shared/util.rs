@@ -272,8 +272,34 @@ const RATHER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["rather
 const COST_OR_COSTS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["cost"], &["costs"]]);
 
+#[allow(dead_code)]
 pub(crate) fn with_source_reference_context<T>(card_name: &str, f: impl FnOnce() -> T) -> T {
-    let aliases = source_reference_aliases_for_name(card_name);
+    with_source_reference_context_aliases(card_name, Vec::new(), f)
+}
+
+pub(crate) fn with_card_source_reference_context<T>(
+    card_name: &str,
+    card_types: &[CardType],
+    subtypes: &[Subtype],
+    f: impl FnOnce() -> T,
+) -> T {
+    with_source_reference_context_aliases(
+        card_name,
+        source_reference_aliases_for_card_identity(card_types, subtypes),
+        f,
+    )
+}
+
+fn with_source_reference_context_aliases<T>(
+    card_name: &str,
+    extra_aliases: Vec<SourceReferenceAlias>,
+    f: impl FnOnce() -> T,
+) -> T {
+    let mut aliases = source_reference_aliases_for_name(card_name);
+    for alias in extra_aliases {
+        push_source_reference_alias_words(&mut aliases, alias.words, alias.surface);
+    }
+    aliases.sort_by_key(|alias| std::cmp::Reverse(alias.words.len()));
     SOURCE_REFERENCE_CONTEXT.with(|context| {
         let previous = context.replace(SourceReferenceContext {
             source_name: card_name.trim().to_string(),
@@ -314,20 +340,6 @@ pub(crate) fn record_source_reference_surface(
 
 fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
     let mut aliases = Vec::new();
-    let mut push_alias = |raw: &str, surface: SourceReferenceSurface| {
-        for words in source_reference_word_variants_from_text(raw) {
-            if !words.is_empty()
-                && !aliases
-                    .iter()
-                    .any(|alias: &SourceReferenceAlias| alias.words == words)
-            {
-                aliases.push(SourceReferenceAlias {
-                    words,
-                    surface: surface.clone(),
-                });
-            }
-        }
-    };
 
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -350,7 +362,8 @@ fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
     }
 
     for full_name in &full_names {
-        push_alias(
+        push_source_reference_alias(
+            &mut aliases,
             full_name,
             SourceReferenceSurface::FullName(full_name.to_string()),
         );
@@ -358,7 +371,8 @@ fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
             if let Some(rest) = str_strip_prefix(full_name.as_str(), article) {
                 let rest = rest.trim();
                 if !rest.is_empty() {
-                    push_alias(
+                    push_source_reference_alias(
+                        &mut aliases,
                         rest,
                         SourceReferenceSurface::FullName(full_name.to_string()),
                     );
@@ -370,17 +384,26 @@ fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
     for full_name in &full_names {
         if let Some((short_name, _)) = str_split_once_char(full_name.as_str(), ',') {
             let short_name = short_name.trim();
-            push_alias(
+            push_source_reference_alias(
+                &mut aliases,
                 short_name,
                 SourceReferenceSurface::ShortName(short_name.to_string()),
             );
             if let Some(rest) = strip_leading_digital_variant_marker(short_name) {
-                push_alias(rest, SourceReferenceSurface::ShortName(rest.to_string()));
+                push_source_reference_alias(
+                    &mut aliases,
+                    rest,
+                    SourceReferenceSurface::ShortName(rest.to_string()),
+                );
             }
         } else if let Some(rest) = strip_leading_digital_variant_marker(full_name) {
             let rest = rest.trim();
             if !rest.is_empty() {
-                push_alias(rest, SourceReferenceSurface::ShortName(rest.to_string()));
+                push_source_reference_alias(
+                    &mut aliases,
+                    rest,
+                    SourceReferenceSurface::ShortName(rest.to_string()),
+                );
             }
         } else if let Some((short_name, _)) = str_split_once_char(full_name.as_str(), ' ') {
             let short_name = short_name.trim();
@@ -389,7 +412,8 @@ fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
                 && parse_card_type(&lower_short_name).is_none()
                 && parse_subtype_word(&lower_short_name).is_none()
             {
-                push_alias(
+                push_source_reference_alias(
+                    &mut aliases,
                     short_name,
                     SourceReferenceSurface::ShortName(short_name.to_string()),
                 );
@@ -398,6 +422,84 @@ fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
     }
     aliases.sort_by_key(|alias| std::cmp::Reverse(alias.words.len()));
     aliases
+}
+
+fn source_reference_aliases_for_card_identity(
+    card_types: &[CardType],
+    subtypes: &[Subtype],
+) -> Vec<SourceReferenceAlias> {
+    let mut aliases = Vec::new();
+    for card_type in card_types {
+        if let Some(type_name) = source_reference_self_card_type_name(*card_type) {
+            push_this_source_reference_alias(&mut aliases, type_name);
+        }
+    }
+    for subtype in subtypes {
+        if is_permanent_source_reference_subtype(*subtype) {
+            push_this_source_reference_alias(&mut aliases, &subtype.display_name());
+        }
+    }
+    aliases
+}
+
+fn source_reference_self_card_type_name(card_type: CardType) -> Option<&'static str> {
+    match card_type {
+        CardType::Artifact
+        | CardType::Battle
+        | CardType::Creature
+        | CardType::Enchantment
+        | CardType::Land
+        | CardType::Planeswalker => Some(card_type.name()),
+        CardType::Instant | CardType::Kindred | CardType::Sorcery => None,
+    }
+}
+
+fn is_permanent_source_reference_subtype(subtype: Subtype) -> bool {
+    subtype.is_land_subtype()
+        || subtype.is_creature_type()
+        || subtype.is_artifact_subtype()
+        || subtype.is_enchantment_subtype()
+        || subtype.is_planeswalker_subtype()
+        || subtype.is_battle_subtype()
+}
+
+fn push_this_source_reference_alias(aliases: &mut Vec<SourceReferenceAlias>, permanent_type: &str) {
+    let permanent_type = permanent_type.trim();
+    if permanent_type.is_empty() {
+        return;
+    }
+    let lower = permanent_type.to_ascii_lowercase();
+    let surface_noun = if parse_card_type(&lower).is_some() {
+        lower
+    } else {
+        permanent_type.to_string()
+    };
+    let surface_text = format!("this {surface_noun}");
+    push_source_reference_alias(
+        aliases,
+        &surface_text,
+        SourceReferenceSurface::ThisPermanentType(surface_text.clone()),
+    );
+}
+
+fn push_source_reference_alias(
+    aliases: &mut Vec<SourceReferenceAlias>,
+    raw: &str,
+    surface: SourceReferenceSurface,
+) {
+    for words in source_reference_word_variants_from_text(raw) {
+        push_source_reference_alias_words(aliases, words, surface.clone());
+    }
+}
+
+fn push_source_reference_alias_words(
+    aliases: &mut Vec<SourceReferenceAlias>,
+    words: Vec<String>,
+    surface: SourceReferenceSurface,
+) {
+    if !words.is_empty() && !aliases.iter().any(|alias| alias.words == words) {
+        aliases.push(SourceReferenceAlias { words, surface });
+    }
 }
 
 fn push_unique_source_name_alias(aliases: &mut Vec<String>, raw: &str) {
@@ -558,11 +660,46 @@ pub(crate) fn source_choose_spec_for_surface(surface: SourceReferenceSurface) ->
     ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface))
 }
 
+fn canonical_this_source_surface_word(index: usize, word: &str) -> String {
+    if index == 0 && word == "thiss" {
+        return "this".to_string();
+    }
+
+    let stripped = strip_possessive_suffix(word);
+    if index == 1 {
+        if let Some(singular) = match stripped {
+            "cards" => Some("card"),
+            "creatures" => Some("creature"),
+            "permanents" => Some("permanent"),
+            "sources" => Some("source"),
+            "spells" => Some("spell"),
+            _ => str_strip_suffix(stripped, "s").filter(|singular| {
+                parse_card_type(singular).is_some() || parse_subtype_word(singular).is_some()
+            }),
+        } {
+            return singular.to_string();
+        }
+    }
+
+    stripped.to_string()
+}
+
+fn canonical_this_source_surface_text(words: &[&str]) -> String {
+    words
+        .iter()
+        .enumerate()
+        .map(|(idx, word)| canonical_this_source_surface_word(idx, word))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub(crate) fn this_source_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
     if !is_this_source_reference_words(words) {
         return None;
     }
-    Some(SourceReferenceSurface::ThisPermanentType(words.join(" ")))
+    Some(SourceReferenceSurface::ThisPermanentType(
+        canonical_this_source_surface_text(words),
+    ))
 }
 
 #[cfg(test)]

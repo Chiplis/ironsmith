@@ -703,6 +703,9 @@ pub(super) fn parse_object_filter_inner(
     if non_article_token_words_eq_any(&base_tokens, REST_REVEALED_OBJECT_PHRASES) {
         return Ok(ObjectFilter::tagged("rest"));
     }
+    if let Some(filter) = parse_permanent_or_suspended_card_disjunction(&base_tokens) {
+        return Ok(filter);
+    }
 
     try_apply_distinct_powers_clause(&mut filter, &mut all_words);
     try_apply_distinct_creature_types_clause(&mut filter, &mut all_words);
@@ -761,11 +764,11 @@ pub(super) fn parse_object_filter_inner(
         filter.blocked_by = Some(crate::filter::ObjectRef::Tagged(TagKey::from(IT_TAG)));
     }
 
-    // Avoid treating reference phrases like "... with mana value equal to the number of charge
-    // counters on this artifact" as additional type selectors on the filtered object.
+    // Avoid treating reference phrases like "... with mana value less than or equal to the number
+    // of charge counters on this artifact" as additional type selectors on the filtered object.
     // (Aether Vial: "put a creature card with mana value equal to the number of charge counters
     // on this artifact from your hand onto the battlefield.")
-    let _ = try_apply_mana_value_eq_counters_on_source_clause(
+    let _ = try_apply_mana_value_counters_on_source_clause(
         &mut filter,
         &mut all_words,
         &mut segment_tokens,
@@ -2160,6 +2163,109 @@ fn try_apply_could_be_targeted_by_that_spell_clause(
         return true;
     }
     false
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PermanentOrSuspendedCardArm {
+    Permanent,
+    SuspendedCard,
+}
+
+fn parse_permanent_or_suspended_card_disjunction(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let segments = split_lexed_slices_on_or(tokens);
+    if segments.len() != 2 {
+        return None;
+    }
+
+    let (left_kind, left_filter) = parse_permanent_or_suspended_card_arm(segments[0])?;
+    let (right_kind, right_filter) = parse_permanent_or_suspended_card_arm(segments[1])?;
+    if left_kind == right_kind {
+        return None;
+    }
+
+    Some(ObjectFilter {
+        any_of: vec![left_filter, right_filter],
+        ..ObjectFilter::default()
+    })
+}
+
+fn parse_permanent_or_suspended_card_arm(
+    tokens: &[OwnedLexToken],
+) -> Option<(PermanentOrSuspendedCardArm, ObjectFilter)> {
+    let words = non_article_parser_word_refs(tokens);
+    let words = if words
+        .first()
+        .is_some_and(|word| TARGET_OR_TARGETS_WORDS.contains(word))
+    {
+        &words[1..]
+    } else {
+        words.as_slice()
+    };
+
+    match words.first().copied() {
+        Some("permanent" | "permanents") => {
+            let mut filter = ObjectFilter::permanent();
+            consume_permanent_or_suspended_card_tail(words, 1, &mut filter, true, true)?;
+            Some((PermanentOrSuspendedCardArm::Permanent, filter))
+        }
+        Some("suspended") => {
+            let card_word = words.get(1).copied()?;
+            if !matches!(card_word, "card" | "cards") {
+                return None;
+            }
+            let mut filter = ObjectFilter::default()
+                .in_zone(Zone::Exile)
+                .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend);
+            consume_permanent_or_suspended_card_tail(words, 2, &mut filter, false, true)?;
+            Some((PermanentOrSuspendedCardArm::SuspendedCard, filter))
+        }
+        _ => None,
+    }
+}
+
+fn consume_permanent_or_suspended_card_tail(
+    words: &[&str],
+    mut idx: usize,
+    filter: &mut ObjectFilter,
+    allow_controller: bool,
+    allow_owner: bool,
+) -> Option<()> {
+    while idx < words.len() {
+        if allow_controller
+            && words.get(idx) == Some(&"you")
+            && words.get(idx + 1) == Some(&"control")
+        {
+            filter.controller = Some(PlayerFilter::You);
+            idx += 2;
+            continue;
+        }
+        if allow_owner && words.get(idx) == Some(&"you") && words.get(idx + 1) == Some(&"own") {
+            filter.owner = Some(PlayerFilter::You);
+            idx += 2;
+            continue;
+        }
+        if words.get(idx) == Some(&"with")
+            && words.get(idx + 1) == Some(&"time")
+            && words
+                .get(idx + 2)
+                .is_some_and(|word| matches!(*word, "counter" | "counters"))
+        {
+            filter.with_counter = Some(crate::filter::CounterConstraint::Typed(
+                crate::object::CounterType::Time,
+            ));
+            idx += 3;
+            if words.get(idx) == Some(&"on")
+                && words
+                    .get(idx + 1)
+                    .is_some_and(|word| matches!(*word, "it" | "them"))
+            {
+                idx += 2;
+            }
+            continue;
+        }
+        return None;
+    }
+    Some(())
 }
 
 fn try_apply_distinct_powers_clause(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) -> bool {

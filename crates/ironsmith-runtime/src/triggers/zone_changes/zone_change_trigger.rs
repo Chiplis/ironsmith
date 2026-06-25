@@ -650,9 +650,7 @@ impl ZoneChangeTrigger {
 
     pub(crate) fn this_subject_text(&self, fallback: &'static str) -> String {
         match &self.this_object_surface {
-            Some(crate::target::SourceReferenceSurface::FullName(text))
-            | Some(crate::target::SourceReferenceSurface::ShortName(text))
-            | Some(crate::target::SourceReferenceSurface::ThisPermanentType(text)) => text.clone(),
+            Some(surface) => surface.display_text(),
             None => format!("this {}", self.this_subject(fallback)),
         }
     }

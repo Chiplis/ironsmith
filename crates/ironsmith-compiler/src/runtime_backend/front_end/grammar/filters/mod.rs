@@ -34,7 +34,8 @@ use super::super::util::{
     parse_non_subtype, parse_non_supertype, parse_non_type, parse_number, parse_number_word_u32,
     parse_quantity_comparison_prefix, parse_subtype_flexible, parse_subtype_word,
     parse_supertype_word, parse_unsigned_pt_word, parse_zone_word, push_outlaw_subtypes,
-    strip_leading_article_word_refs, trim_commas, word_refs_except,
+    source_reference_surface_for_words, strip_leading_article_word_refs,
+    this_source_surface_for_words, trim_commas, word_refs_except,
 };
 use super::super::value_helpers::parse_filter_comparison_tokens;
 use super::primitives::{self, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or};

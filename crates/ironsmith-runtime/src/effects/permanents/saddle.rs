@@ -13,17 +13,23 @@
 //! - We record which creatures saddled the source this turn for filters like
 //!   "that saddled it this turn".
 
+use std::collections::HashMap;
+
 use crate::ability::AbilityKind;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::PermanentTappedEvent;
+use crate::events::{KeywordActionEvent, KeywordActionKind, PermanentTappedEvent};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbilityId;
+use crate::tag::TagKey;
 use crate::triggers::TriggerEvent;
+
+const SADDLED_MOUNT_TAG: &str = "__it__";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SaddleCostEffect {
@@ -123,6 +129,37 @@ impl SaddleCostEffect {
     }
 }
 
+fn keyword_saddle_event(
+    game: &GameState,
+    saddler: ObjectId,
+    mount: ObjectId,
+    controller: PlayerId,
+    saddle_count: usize,
+    provenance: crate::provenance::ProvNodeId,
+) -> TriggerEvent {
+    let saddler_snapshot = game
+        .object(saddler)
+        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+    let mut object_tags = HashMap::new();
+    if let Some(mount_snapshot) = game
+        .object(mount)
+        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+    {
+        object_tags.insert(TagKey::from(SADDLED_MOUNT_TAG), vec![mount_snapshot]);
+    }
+    TriggerEvent::new_with_provenance(
+        KeywordActionEvent::new(
+            KeywordActionKind::Saddle,
+            controller,
+            saddler,
+            saddle_count as u32,
+        )
+        .with_snapshot(saddler_snapshot)
+        .with_object_tags(object_tags),
+        provenance,
+    )
+}
+
 impl EffectExecutor for SaddleCostEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -188,11 +225,20 @@ impl EffectExecutor for SaddleCostEffect {
         }
 
         let mut events = Vec::new();
+        let saddle_count = chosen.len();
         for id in &chosen {
             if game.object(*id).is_some() && !game.is_tapped(*id) {
                 game.tap(*id);
                 events.push(TriggerEvent::new_with_provenance(
                     PermanentTappedEvent::new(*id),
+                    ctx.provenance,
+                ));
+                events.push(keyword_saddle_event(
+                    game,
+                    *id,
+                    source,
+                    controller,
+                    saddle_count,
                     ctx.provenance,
                 ));
             }

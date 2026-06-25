@@ -73,6 +73,10 @@ fn first_word_search(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "search")
 }
 
+fn first_word_sacrifice(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "sacrifice")
+}
+
 fn first_word_look_or_reveal(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_in(sentences, sentence_idx, &["look", "reveal"])
 }
@@ -198,6 +202,15 @@ fn for_each_tagged_copy_window(sentences: &[SentenceInput], sentence_idx: usize)
 }
 
 const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
+    SequenceRuleDef {
+        name: "sacrifice-reveal-top-choose-any-revealed-land-nonland-split-rest-bottom",
+        feature_tag: Some("sacrifice-revealed-land-nonland-bottom"),
+        priority: 433,
+        consumed_sentences: 4,
+        predicate: first_word_sacrifice,
+        parser:
+            generic_subject_verb_sequences::quads::parse_sacrifice_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom,
+    },
     SequenceRuleDef {
         name: "look-at-top-exile-counted-rest-bottom-play-while-exiled",
         feature_tag: Some("looked-cards-exile-play-while-exiled"),
@@ -517,6 +530,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_each,
         parser: generic_subject_verb_sequences::parse_each_player_shuffle_reveal_then_put_revealed_types_bottom,
+    },
+    SequenceRuleDef {
+        name: "top-cards-put-any-matching-to-zone-rest-bottom-same-sentence",
+        feature_tag: Some("looked-cards-any-matching-bottom"),
+        priority: 243,
+        consumed_sentences: 2,
+        predicate: first_word_look_or_reveal,
+        parser:
+            generic_subject_verb_sequences::pairs::parse_top_cards_put_any_matching_to_zone_rest_bottom_same_sentence,
     },
     SequenceRuleDef {
         name: "choose-phase-then-skip-chosen-this-turn",

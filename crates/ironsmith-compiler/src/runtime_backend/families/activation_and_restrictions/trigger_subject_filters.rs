@@ -850,6 +850,45 @@ pub(crate) fn parse_subtype_list_enters_trigger_filter_lexed(
     Some(filter)
 }
 
+fn parse_source_or_another_trigger_subject_filter_lexed(
+    subject_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let word_view = ActivationRestrictionCompatWords::new(subject_tokens);
+    let subject_words = word_view.to_word_refs();
+    let Some(or_word_idx) = subject_words
+        .iter()
+        .position(|word| trigger_subject_word_is_any(word, AND_OR_CONNECTOR_WORDS))
+    else {
+        return Ok(None);
+    };
+    let source_words = &subject_words[..or_word_idx];
+    if !is_source_reference_words(source_words) {
+        return Ok(None);
+    }
+    let other_word_idx = or_word_idx + 1;
+    if !subject_words
+        .get(other_word_idx)
+        .is_some_and(|word| trigger_subject_word_is_any(word, OTHER_OR_ANOTHER_WORDS))
+    {
+        return Ok(None);
+    }
+    let Some(other_token_idx) = word_view.token_index_for_word_index(other_word_idx) else {
+        return Ok(None);
+    };
+    let Some(other_filter) =
+        parse_trigger_subject_filter_lexed(&subject_tokens[other_token_idx..])?
+    else {
+        return Ok(None);
+    };
+
+    let source_filter = this_source_surface_for_words(source_words)
+        .map(ObjectFilter::source_with_surface)
+        .unwrap_or_else(ObjectFilter::source);
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![source_filter, other_filter];
+    Ok(Some(filter))
+}
+
 pub(crate) fn parse_trigger_subject_filter_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
@@ -883,6 +922,9 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
 
     let subject_words = ActivationRestrictionCompatWords::new(subject_tokens);
     let subject_words = subject_words.to_word_refs();
+    if let Some(filter) = parse_source_or_another_trigger_subject_filter_lexed(subject_tokens)? {
+        return Ok(Some(filter));
+    }
     if is_source_reference_words(&subject_words) {
         return Ok(None);
     }

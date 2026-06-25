@@ -106,9 +106,11 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisAttacksWithNOthers {
             count,
             display_subject,
-        } => crate::triggers::Trigger::this_attacks_with_n_others_display_subject(
+            other_filter,
+        } => crate::triggers::Trigger::this_attacks_with_n_others_display_subject_and_filter(
             count,
             display_subject,
+            other_filter,
         ),
         TriggerKind::ThisAttacksWithExactNOthers { count } => {
             crate::triggers::Trigger::this_attacks_with_exact_n_others(count)
@@ -479,13 +481,26 @@ pub(crate) fn interpret_trigger_model(
             source_filter,
             object_tag,
             object_filter,
-        } => crate::triggers::Trigger::keyword_action_matching_source_and_tagged_object(
-            action,
-            player,
-            source_filter,
-            object_tag,
-            object_filter,
-        ),
+            during_your_main_phase,
+        } => {
+            if during_your_main_phase {
+                crate::triggers::Trigger::keyword_action_matching_source_and_tagged_object_during_your_main_phase(
+                    action,
+                    player,
+                    source_filter,
+                    object_tag,
+                    object_filter,
+                )
+            } else {
+                crate::triggers::Trigger::keyword_action_matching_source_and_tagged_object(
+                    action,
+                    player,
+                    source_filter,
+                    object_tag,
+                    object_filter,
+                )
+            }
+        }
         TriggerKind::KeywordAction { action, player } => {
             crate::triggers::Trigger::keyword_action(action, player)
         }

@@ -4170,6 +4170,69 @@ fn parse_x_value_comparison_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
     })
 }
 
+fn parse_controlled_creatures_total_power_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let relation = parse_has_relation_clauses(tokens)?;
+    if !clause_matches_any_phrase(
+        relation.subject_clause,
+        &[
+            &["creature", "you", "control"],
+            &["creature", "you", "controls"],
+            &["creatures", "you", "control"],
+            &["creatures", "you", "controls"],
+        ],
+    ) {
+        return None;
+    }
+
+    let tail_words = relation.tail_clause.word_refs();
+    let comparison_words = tail_words.strip_prefix(&["total", "power"])?;
+    let clause_words = LexedClause::new(tokens).word_refs();
+    let Some((comparison, used)) =
+        parse_filter_comparison_tokens("power", comparison_words, &clause_words).ok()?
+    else {
+        return None;
+    };
+    if used != comparison_words.len() {
+        return None;
+    }
+    let (operator, amount) = match comparison {
+        crate::filter::Comparison::GreaterThan(amount) => {
+            (crate::effect::ValueComparisonOperator::GreaterThan, amount)
+        }
+        crate::filter::Comparison::GreaterThanOrEqual(amount) => (
+            crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            amount,
+        ),
+        crate::filter::Comparison::Equal(amount) => {
+            (crate::effect::ValueComparisonOperator::Equal, amount)
+        }
+        crate::filter::Comparison::LessThan(amount) => {
+            (crate::effect::ValueComparisonOperator::LessThan, amount)
+        }
+        crate::filter::Comparison::LessThanOrEqual(amount) => (
+            crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            amount,
+        ),
+        crate::filter::Comparison::NotEqual(amount) => {
+            (crate::effect::ValueComparisonOperator::NotEqual, amount)
+        }
+        crate::filter::Comparison::OneOf(_)
+        | crate::filter::Comparison::EqualExpr(_)
+        | crate::filter::Comparison::NotEqualExpr(_)
+        | crate::filter::Comparison::LessThanExpr(_)
+        | crate::filter::Comparison::LessThanOrEqualExpr(_)
+        | crate::filter::Comparison::GreaterThanExpr(_)
+        | crate::filter::Comparison::GreaterThanOrEqualExpr(_) => return None,
+    };
+    Some(PredicateAst::ValueComparison {
+        left: Value::TotalPower(ObjectFilter::creature().you_control()),
+        operator,
+        right: Value::Fixed(amount),
+    })
+}
+
 fn parse_value_reference_comparison_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     for comparison_start in 1..tokens.len() {
         let Some((left, left_used)) = parse_value(&tokens[..comparison_start]) else {
@@ -6923,6 +6986,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_controlled_creatures_total_power_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_half_starting_life_total_threshold_predicate(predicate_tokens) {
         return Ok(predicate);
     }
@@ -8004,6 +8071,25 @@ mod tests {
 
             assert_eq!(parsed, expected, "{text}");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_controlled_creatures_total_power_uses_shared_capture_parser()
+    -> Result<(), CardTextError> {
+        let tokens = lex_line("If creatures you control have total power 8 or greater", 0)?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::ValueComparison {
+                left: Value::TotalPower(ObjectFilter::creature().you_control()),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(8),
+            }
+        );
         Ok(())
     }
 

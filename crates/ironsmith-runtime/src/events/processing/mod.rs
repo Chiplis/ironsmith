@@ -594,6 +594,8 @@ fn process_event_direct(
             player: affected_player,
             applicable_effects: effect_ids,
             event: Box::new(event),
+            applied_effects: state.applied_effects.clone(),
+            applied_effect_keys: state.applied_effect_keys.clone(),
         };
     }
 
@@ -1421,6 +1423,8 @@ pub enum TraitEventResult {
         player: PlayerId,
         applicable_effects: Vec<crate::replacement::ReplacementEffectId>,
         event: Box<Event>,
+        applied_effects: std::collections::HashSet<crate::replacement::ReplacementEffectId>,
+        applied_effect_keys: std::collections::HashSet<crate::replacement::ReplacementEffectKey>,
     },
     /// An interactive replacement effect needs player input.
     ///
@@ -2137,6 +2141,7 @@ fn process_with_dm_and_additional_effects_and_applied(
                 player,
                 applicable_effects,
                 event: boxed_event,
+                ..
             } => {
                 // Determine which effect to apply
                 let chosen_index = {
@@ -2167,6 +2172,8 @@ fn process_with_dm_and_additional_effects_and_applied(
                         player,
                         applicable_effects,
                         event: boxed_event,
+                        applied_effects: state.applied_effects.clone(),
+                        applied_effect_keys: state.applied_effect_keys.clone(),
                     };
                 }
 
@@ -3235,6 +3242,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                 player,
                 applicable_effects,
                 event,
+                ..
             } => {
                 let options: Vec<ReplacementOption> = applicable_effects
                     .iter()
@@ -3630,6 +3638,8 @@ pub enum ZoneChangeResult {
         player: PlayerId,
         applicable_effects: Vec<ReplacementEffectId>,
         event: Box<Event>,
+        applied_effects: std::collections::HashSet<ReplacementEffectId>,
+        applied_effect_keys: std::collections::HashSet<ReplacementEffectKey>,
         default_zone: Zone,
     },
 }
@@ -3671,10 +3681,14 @@ pub fn process_zone_change_full(
             player,
             applicable_effects,
             event,
+            applied_effects,
+            applied_effect_keys,
         } => ZoneChangeResult::NeedsChoice {
             player,
             applicable_effects,
             event,
+            applied_effects,
+            applied_effect_keys,
             default_zone: to,
         },
         // Interactive replacements don't apply to zone change events directly
@@ -3696,6 +3710,8 @@ pub enum DrawResult {
         player: PlayerId,
         applicable_effects: Vec<ReplacementEffectId>,
         event: Box<Event>,
+        applied_effects: std::collections::HashSet<ReplacementEffectId>,
+        applied_effect_keys: std::collections::HashSet<ReplacementEffectKey>,
         default_count: u32,
     },
 }
@@ -3734,10 +3750,14 @@ pub fn process_draw_full(
             player,
             applicable_effects,
             event,
+            applied_effects,
+            applied_effect_keys,
         } => DrawResult::NeedsChoice {
             player,
             applicable_effects,
             event,
+            applied_effects,
+            applied_effect_keys,
             default_count: count,
         },
         // Interactive replacements don't apply to draw events
@@ -3754,7 +3774,36 @@ pub fn process_event_with_chosen_replacement_trait(
     event: Event,
     chosen_effect_id: ReplacementEffectId,
 ) -> TraitEventResult {
+    process_event_with_chosen_replacement_trait_and_applied_effects(
+        game,
+        event,
+        chosen_effect_id,
+        &std::collections::HashSet::new(),
+        &std::collections::HashSet::new(),
+    )
+}
+
+/// Process an event with a chosen replacement effect and prior applied state.
+///
+/// This is used when a replacement-choice prompt was deferred after one or more
+/// replacement effects had already modified the same event. CR 614.5 still
+/// prevents those prior effects from applying again after the player chooses.
+pub fn process_event_with_chosen_replacement_trait_and_applied_effects(
+    game: &mut GameState,
+    event: Event,
+    chosen_effect_id: ReplacementEffectId,
+    applied_effects: &std::collections::HashSet<ReplacementEffectId>,
+    applied_effect_keys: &std::collections::HashSet<ReplacementEffectKey>,
+) -> TraitEventResult {
     let event = game.ensure_event_provenance(event);
+    let mut state = TraitEventProcessingState::default();
+    state
+        .applied_effects
+        .extend(applied_effects.iter().copied());
+    state
+        .applied_effect_keys
+        .extend(applied_effect_keys.iter().cloned());
+
     // Get the chosen effect
     let Some(effect) = game
         .effect_store
@@ -3762,16 +3811,14 @@ pub fn process_event_with_chosen_replacement_trait(
         .get_effect(chosen_effect_id)
         .cloned()
     else {
-        // Effect no longer exists - just process normally
-        return process_trait_event(game, event);
+        // Effect no longer exists - continue while preserving prior applications.
+        return process_event_direct(game, event, &mut state, &[], None);
     };
 
     // Apply the chosen replacement effect
     let apply_result = apply_trait_replacement(game, event.clone(), &effect);
     consume_one_shot_if_applied(game, chosen_effect_id, &apply_result);
 
-    // Create state with the chosen effect marked as applied
-    let mut state = TraitEventProcessingState::default();
     state.mark_applied_effect(&effect);
 
     match apply_result {
@@ -3825,7 +3872,7 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::{CounterType, Object};
     use crate::prevention::{PreventionShield, PreventionTarget};
-    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
     use crate::static_abilities::{Anthem, StaticAbility};
     use crate::target::ChooseSpec;
     use crate::types::CardType;
@@ -3845,6 +3892,101 @@ mod tests {
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
         id
+    }
+
+    #[test]
+    fn deferred_replacement_choice_preserves_prior_applications_for_614_5() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let damage_source = create_creature(&mut game, "Sparkmage", alice);
+        let first_replacement_source = create_creature(&mut game, "First Replacement", alice);
+        let choice_a_source = create_creature(&mut game, "Choice A Replacement", alice);
+        let choice_b_source = create_creature(&mut game, "Choice B Replacement", alice);
+
+        let first_effect_id = game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                first_replacement_source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
+                ReplacementAction::Modify(EventModification::Add(1)),
+            )
+            .with_priority_override(crate::events::traits::ReplacementPriority::SelfReplacement),
+        );
+        let choice_a_effect_id = game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                choice_a_source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
+                ReplacementAction::Modify(EventModification::Add(10)),
+            ),
+        );
+        let choice_b_effect_id = game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                choice_b_source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
+                ReplacementAction::Modify(EventModification::Add(100)),
+            ),
+        );
+
+        let result = process_trait_event(
+            &mut game,
+            Event::damage(
+                damage_source,
+                DamageTarget::Player(bob),
+                1,
+                false,
+                EventCause::effect(),
+            ),
+        );
+
+        let TraitEventResult::NeedsChoice {
+            applicable_effects,
+            event,
+            applied_effects,
+            applied_effect_keys,
+            ..
+        } = result
+        else {
+            panic!("expected the two equal-priority replacements to require a choice");
+        };
+        assert!(
+            applicable_effects.contains(&choice_a_effect_id)
+                && applicable_effects.contains(&choice_b_effect_id),
+            "expected both equal-priority replacements in the deferred choice"
+        );
+        assert!(
+            applied_effects.contains(&first_effect_id),
+            "the earlier replacement effect must be carried into the deferred choice"
+        );
+        let pending_damage =
+            crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
+                .expect("pending choice should carry the modified damage event");
+        assert_eq!(
+            pending_damage.amount, 2,
+            "the first replacement should have already modified the event"
+        );
+
+        let resumed = process_event_with_chosen_replacement_trait_and_applied_effects(
+            &mut game,
+            (*event).clone(),
+            choice_a_effect_id,
+            &applied_effects,
+            &applied_effect_keys,
+        );
+        let final_event = match resumed {
+            TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => event,
+            other => panic!("expected resumed replacement processing to proceed, got {other:?}"),
+        };
+        let final_damage =
+            crate::events::downcast_event::<crate::events::DamageEvent>(final_event.inner())
+                .expect("resumed choice should still be a damage event");
+        assert_eq!(
+            final_damage.amount, 112,
+            "CR 614.5 should prevent the first replacement from applying again after the choice"
+        );
     }
 
     #[test]

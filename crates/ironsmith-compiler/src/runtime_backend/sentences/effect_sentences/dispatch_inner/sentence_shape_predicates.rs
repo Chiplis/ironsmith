@@ -67,7 +67,7 @@ const SENTENCE_ITS_AN_PREFIXES: &[&[&str]] =
     &[&["it's", "an"], &["it’s", "an"], &["its", "an"], &["it", "s", "an"]];
 const SENTENCE_IT_IS_AN_PREFIX: &[&str] = &["it", "is", "an"];
 const SENTENCE_AURA_ENCHANT_CREATURE_PREFIX: &[&str] =
-    &["aura", "enchantment", "with", "enchant", "creature"];
+    &["aura", "enchantment", "with", "enchant"];
 const SENTENCE_YOU_CONTROL_PREFIX: &[&str] = &["you", "control"];
 const SENTENCE_LOSES_ALL_ABILITIES_PHRASES: &[&[&str]] = &[
     &["loses", "all", "other", "abilities"],
@@ -632,33 +632,144 @@ fn sentence_has_unsupported_negated_untap_clause(_: &[&str], tokens: &[OwnedLexT
 
 
 
-fn parse_it_is_aura_enchantment_sentence_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+fn first_unquoted_and_token(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let mut in_double_quotes = false;
+    let mut in_apostrophes = false;
+    for (idx, token) in tokens.iter().enumerate() {
+        match token.kind {
+            TokenKind::Quote => {
+                in_double_quotes = !in_double_quotes;
+                continue;
+            }
+            TokenKind::Apostrophe => {
+                in_apostrophes = !in_apostrophes;
+                continue;
+            }
+            _ => {}
+        }
+        if !in_double_quotes && !in_apostrophes && token.is_word("and") {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+fn trim_aura_granted_ability_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut tokens = trim_edge_punctuation(tokens);
+    while tokens
+        .first()
+        .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
+    {
+        tokens = trim_edge_punctuation(&tokens[1..]);
+    }
+    while tokens
+        .last()
+        .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
+    {
+        tokens = trim_edge_punctuation(&tokens[..tokens.len() - 1]);
+    }
+    tokens
+}
+
+fn parse_aura_tail_granted_abilities(
+    tail_tokens: &[OwnedLexToken],
+) -> Result<Vec<GrantedAbilityAst>, CardTextError> {
+    let Some(has_idx) = tail_tokens.iter().position(|token| token.is_word("has")) else {
+        return Ok(Vec::new());
+    };
+    let clause_words = crate::runtime_backend::token_word_refs(tail_tokens);
+    let mut abilities = Vec::new();
+
+    let ability_tokens = &tail_tokens[has_idx + 1..];
+    let mut quote_start = None;
+    for (idx, token) in ability_tokens.iter().enumerate() {
+        if token.kind != TokenKind::Apostrophe {
+            continue;
+        }
+        if let Some(start) = quote_start.take() {
+            let segment = trim_aura_granted_ability_tokens(&ability_tokens[start..idx]);
+            if !segment.is_empty() {
+                let (mut parsed, _) = super::gain_ability::parse_granted_abilities_for_gain_clause(
+                    &segment,
+                    &clause_words,
+                    false,
+                )?;
+                abilities.append(&mut parsed);
+            }
+        } else {
+            quote_start = Some(idx + 1);
+        }
+    }
+    if !abilities.is_empty() {
+        return Ok(abilities);
+    }
+
+    let fallback = trim_aura_granted_ability_tokens(ability_tokens);
+    if fallback.is_empty() {
+        return Ok(Vec::new());
+    }
+    let (abilities, _) =
+        super::gain_ability::parse_granted_abilities_for_gain_clause(&fallback, &clause_words, false)?;
+    Ok(abilities)
+}
+
+fn parse_it_is_aura_enchantment_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let words = clause.word_refs();
     let tail = if let Some(prefix) =
         word_slice_matching_prefix(&words, SENTENCE_ITS_AN_PREFIXES)
     {
-        clause.after_words(prefix.len())?
+        let Some(tail) = clause.after_words(prefix.len()) else {
+            return Ok(None);
+        };
+        tail
     } else if word_slice_starts_with(&words, SENTENCE_IT_IS_AN_PREFIX) {
-        clause.after_words(3)?
+        let Some(tail) = clause.after_words(3) else {
+            return Ok(None);
+        };
+        tail
     } else {
-        return None;
+        return Ok(None);
     };
     if !word_slice_starts_with(&tail.word_refs(), SENTENCE_AURA_ENCHANT_CREATURE_PREFIX) {
-        return None;
+        return Ok(None);
     }
 
-    let attachment_filter = if word_slice_starts_with(
-        &tail.after_words(5)?.word_refs(),
+    let Some(after_enchant_clause) = tail.after_words(SENTENCE_AURA_ENCHANT_CREATURE_PREFIX.len())
+    else {
+        return Ok(None);
+    };
+    let after_enchant_tokens = after_enchant_clause.tokens();
+    let (attachment_tokens, tail_tokens) =
+        if let Some(and_idx) = first_unquoted_and_token(after_enchant_tokens) {
+            (
+                trim_edge_punctuation(&after_enchant_tokens[..and_idx]),
+                trim_edge_punctuation(&after_enchant_tokens[and_idx + 1..]),
+            )
+        } else {
+            (trim_edge_punctuation(after_enchant_tokens), Vec::new())
+        };
+    if attachment_tokens.is_empty() {
+        return Ok(None);
+    }
+    let attachment_filter = if let Ok(filter) = parse_object_filter_lexed(&attachment_tokens, false)
+    {
+        filter
+    } else if word_slice_starts_with(
+        &LexedClause::new(&attachment_tokens).word_refs(),
         SENTENCE_YOU_CONTROL_PREFIX,
     ) {
         ObjectFilter::creature().you_control()
     } else {
         ObjectFilter::creature()
     };
-    let mut effects = vec![EffectAst::subject_verb_become_aura_enchantment(
+    let granted_abilities = parse_aura_tail_granted_abilities(&tail_tokens)?;
+    let mut effects = vec![EffectAst::subject_verb_become_aura_enchantment_with_grants(
         TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic())),
         attachment_filter,
+        granted_abilities,
         Until::Forever,
     )];
 
@@ -669,7 +780,7 @@ fn parse_it_is_aura_enchantment_sentence_lexed(tokens: &[OwnedLexToken]) -> Opti
             Until::Forever,
         ));
     }
-    Some(effects)
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_effect_sentence_lexed(
@@ -764,7 +875,15 @@ fn parse_effect_sentence_lexed_inner(
             return Ok(effects);
         }
     }
-    if let Some(effects) = parse_it_is_aura_enchantment_sentence_lexed(tokens) {
+    if let Some(effects) = parse_it_is_aura_enchantment_sentence_lexed(tokens)? {
+        return Ok(effects);
+    }
+    if contains_token_kind(tokens, TokenKind::Quote)
+        && sentence_words
+            .iter()
+            .any(|word| matches!(*word, "gain" | "gains" | "has" | "have" | "lose" | "loses"))
+        && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
+    {
         return Ok(effects);
     }
     let sacrifice_counted_prefix =
@@ -988,47 +1107,28 @@ fn parse_effect_sentence_with_where_x_lexed(
             return None;
         }
 
-        let mut idx = SENTENCE_WHERE_X_IS_PREFIX.len();
-        if words.get(idx).is_some_and(|word| *word == SENTENCE_THE_WORD) {
-            idx += 1;
-        }
-        if !words
-            .get(idx..idx + SENTENCE_NUMBER_OF_PREFIX.len())
-            .is_some_and(|tail| tail == SENTENCE_NUMBER_OF_PREFIX)
-        {
-            return None;
-        }
-        idx += SENTENCE_NUMBER_OF_PREFIX.len();
+        let after_prefix = &words[SENTENCE_WHERE_X_IS_PREFIX.len()..];
+        let after_optional_the = after_prefix
+            .strip_prefix(&[SENTENCE_THE_WORD])
+            .unwrap_or(after_prefix);
+        let after_number = after_optional_the.strip_prefix(SENTENCE_NUMBER_OF_PREFIX)?;
+        let after_optional_article = match after_number.split_first() {
+            Some((word, rest)) if is_article(word) || *word == "one" => rest,
+            _ => after_number,
+        };
 
-        if words
-            .get(idx)
-            .is_some_and(|word| is_article(word) || *word == "one")
-        {
-            idx += 1;
-        }
+        let (counter_type, counter_tail) = match after_optional_article.split_first() {
+            Some((word, rest)) => parse_counter_type_word(word)
+                .map(|counter_type| (Some(counter_type), rest))
+                .unwrap_or((None, after_optional_article)),
+            None => return None,
+        };
 
-        let mut counter_type = None;
-        if let Some(word) = words.get(idx)
-            && let Some(parsed) = parse_counter_type_word(word)
-        {
-            counter_type = Some(parsed);
-            idx += 1;
-        }
-
-        if !words
-            .get(idx)
-            .is_some_and(|word| SENTENCE_COUNTER_WORDS.contains(word))
-        {
-            return None;
-        }
-        idx += 1;
-
-        if words.get(idx).is_none_or(|word| *word != "on") {
-            return None;
-        }
-        idx += 1;
-
-        let reference = words.get(idx..)?;
+        let after_counter_word = match counter_tail.split_first() {
+            Some((word, rest)) if SENTENCE_COUNTER_WORDS.contains(word) => rest,
+            _ => return None,
+        };
+        let reference = after_counter_word.strip_prefix(&["on"])?;
         if reference.is_empty() {
             return None;
         }

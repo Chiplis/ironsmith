@@ -3,6 +3,7 @@
 use crate::events::EventKind;
 use crate::events::other::{KeywordActionEvent, KeywordActionKind};
 use crate::filter::ObjectFilterExt as _;
+use crate::game_state::Phase;
 use crate::tag::{EXPLOITED_TAG, TagKey};
 use crate::target::ObjectFilter;
 use crate::target::PlayerFilter;
@@ -68,6 +69,7 @@ pub struct KeywordActionTrigger {
     pub source_must_match: bool,
     pub source_filter: Option<ObjectFilter>,
     pub tagged_object_filter: Option<(TagKey, ObjectFilter)>,
+    pub during_your_main_phase: bool,
 }
 
 impl KeywordActionTrigger {
@@ -78,6 +80,7 @@ impl KeywordActionTrigger {
             source_must_match: false,
             source_filter: None,
             tagged_object_filter: None,
+            during_your_main_phase: false,
         }
     }
 
@@ -88,6 +91,7 @@ impl KeywordActionTrigger {
             source_must_match: true,
             source_filter: None,
             tagged_object_filter: None,
+            during_your_main_phase: false,
         }
     }
 
@@ -102,6 +106,7 @@ impl KeywordActionTrigger {
             source_must_match: false,
             source_filter: Some(source_filter),
             tagged_object_filter: None,
+            during_your_main_phase: false,
         }
     }
 
@@ -118,6 +123,20 @@ impl KeywordActionTrigger {
             source_must_match: false,
             source_filter: Some(source_filter),
             tagged_object_filter: Some((object_tag, object_filter)),
+            during_your_main_phase: false,
+        }
+    }
+
+    pub fn during_your_main_phase(mut self) -> Self {
+        self.during_your_main_phase = true;
+        self
+    }
+
+    fn with_timing_suffix(&self, display: String) -> String {
+        if self.during_your_main_phase {
+            format!("{display} during your main phase")
+        } else {
+            display
         }
     }
 }
@@ -131,6 +150,12 @@ impl TriggerMatcher for KeywordActionTrigger {
             return false;
         };
         if e.action != self.action {
+            return false;
+        }
+        if self.during_your_main_phase
+            && (ctx.game.turn.active_player != ctx.controller
+                || !matches!(ctx.game.turn.phase, Phase::FirstMain | Phase::NextMain))
+        {
             return false;
         }
 
@@ -274,7 +299,7 @@ impl TriggerMatcher for KeywordActionTrigger {
                     .as_ref()
                     .map(|(_, object_filter)| object_filter.description())
                     .unwrap_or_else(|| "this Vehicle".to_string());
-                return format!("Whenever {object} becomes crewed");
+                return self.with_timing_suffix(format!("Whenever {object} becomes crewed"));
             }
             let object = self
                 .tagged_object_filter
@@ -283,7 +308,25 @@ impl TriggerMatcher for KeywordActionTrigger {
                     ensure_singular_noun_phrase_article(object_filter.description())
                 })
                 .unwrap_or_else(|| "a Vehicle".to_string());
-            return format!("Whenever {} crews {object}", source_filter.description());
+            return self.with_timing_suffix(format!(
+                "Whenever {} crews {object}",
+                source_filter.description()
+            ));
+        }
+        if self.action == KeywordActionKind::Saddle
+            && let Some(source_filter) = &self.source_filter
+        {
+            let object = self
+                .tagged_object_filter
+                .as_ref()
+                .map(|(_, object_filter)| {
+                    ensure_singular_noun_phrase_article(object_filter.description())
+                })
+                .unwrap_or_else(|| "a Mount".to_string());
+            return self.with_timing_suffix(format!(
+                "Whenever {} saddles {object}",
+                source_filter.description()
+            ));
         }
         if self.action == KeywordActionKind::Explore
             && let Some(source_filter) = &self.source_filter
@@ -677,6 +720,104 @@ mod tests {
             trigger.display(),
             "Whenever a creature you control exploits a nontoken creature"
         );
+    }
+
+    #[test]
+    fn keyword_action_saddle_matching_tagged_mount_uses_event_snapshot() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let saddler_card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(1), "Pilot")
+            .card_types(vec![crate::types::CardType::Creature])
+            .build();
+        let saddler_id =
+            game.create_object_from_card(&saddler_card, alice, crate::zone::Zone::Battlefield);
+        let mount_card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(2), "Mount")
+            .card_types(vec![crate::types::CardType::Creature])
+            .subtypes(vec![crate::types::Subtype::Mount])
+            .build();
+        let mount_id =
+            game.create_object_from_card(&mount_card, alice, crate::zone::Zone::Battlefield);
+        let mount_snapshot =
+            ObjectSnapshot::from_object(game.object(mount_id).expect("mount"), &game);
+        let vehicle_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(3), "Vehicle")
+                .card_types(vec![crate::types::CardType::Artifact])
+                .subtypes(vec![crate::types::Subtype::Vehicle])
+                .build();
+        let vehicle_id =
+            game.create_object_from_card(&vehicle_card, alice, crate::zone::Zone::Battlefield);
+        let vehicle_snapshot =
+            ObjectSnapshot::from_object(game.object(vehicle_id).expect("vehicle"), &game);
+
+        let trigger = KeywordActionTrigger::matching_source_and_tagged_object(
+            KeywordActionKind::Saddle,
+            PlayerFilter::Any,
+            ObjectFilter::source_with_surface(
+                crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this creature".to_string(),
+                ),
+            ),
+            TagKey::from("__it__"),
+            ObjectFilter::default().with_subtype(crate::types::Subtype::Mount),
+        );
+        let ctx = TriggerContext::for_source(saddler_id, alice, &game);
+        let event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Saddle, alice, saddler_id, 1)
+                .with_snapshot(Some(ObjectSnapshot::from_object(
+                    game.object(saddler_id).expect("saddler"),
+                    &game,
+                )))
+                .with_object_tags(std::collections::HashMap::from([(
+                    TagKey::from("__it__"),
+                    vec![mount_snapshot],
+                )])),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(trigger.matches(&event, &ctx));
+
+        let wrong_object_event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Saddle, alice, saddler_id, 1)
+                .with_snapshot(Some(ObjectSnapshot::from_object(
+                    game.object(saddler_id).expect("saddler"),
+                    &game,
+                )))
+                .with_object_tags(std::collections::HashMap::from([(
+                    TagKey::from("__it__"),
+                    vec![vehicle_snapshot],
+                )])),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&wrong_object_event, &ctx));
+    }
+
+    #[test]
+    fn keyword_action_during_your_main_phase_gates_keyword_events() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(1);
+        let trigger = KeywordActionTrigger::new(KeywordActionKind::Saddle, PlayerFilter::Any)
+            .during_your_main_phase();
+        let event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Saddle, alice, source_id, 1),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        game.turn.active_player = alice;
+        game.turn.phase = Phase::FirstMain;
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(trigger.matches(&event, &ctx));
+
+        game.turn.phase = Phase::Combat;
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(!trigger.matches(&event, &ctx));
+
+        game.turn.active_player = bob;
+        game.turn.phase = Phase::NextMain;
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(!trigger.matches(&event, &ctx));
     }
 
     #[test]

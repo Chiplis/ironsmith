@@ -2297,6 +2297,31 @@ fn clockspinning_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn rift_elemental_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Rift Elemental");
+
+    let def = parse_oracle_card_definition("Rift Elemental");
+    let activated_debug = format!("{:?}", def.abilities);
+    let activated_pretty = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        activated_debug.contains("RemoveAnyCountersAmongEffect")
+            && activated_debug.contains("alternative_cast: Some")
+            && activated_debug.contains("Suspend")
+            && activated_debug.contains("owner: Some(You)")
+            && activated_debug.contains("counter_type: Some(Time)"),
+        "Rift Elemental should preserve permanent-or-suspended-card time-counter cost model, got {activated_pretty}"
+    );
+    assert!(
+        rendered.contains(
+            "{1}{R}, Remove a time counter from a permanent you control or suspended card you own: This creature gets +2/+0 until end of turn."
+        ),
+        "Rift Elemental should render its full time-counter cost and self-reference, got {rendered}"
+    );
+}
+
+#[test]
 fn all_of_history_all_at_once_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("All of History, All at Once");
 
@@ -5401,7 +5426,7 @@ fn case_of_the_shattered_pact_strict_parser_and_compiled_text_regression() {
         "Case of the Shattered Pact should strictly parse its ETB search, solve trigger, and solved trigger labels, got {ability_debug}"
     );
     assert!(
-        rendered.contains("When this case enters, search your library for a basic land card, reveal it, put it into your hand, then shuffle.")
+        rendered.contains("When this Case enters, search your library for a basic land card, reveal it, put it into your hand, then shuffle.")
             && rendered.contains("To solve — There are five colors among permanents you control.")
             && rendered.contains("Solved — At the beginning of combat on your turn, target creature you control gains flying, double strike, and vigilance until end of turn."),
         "expected Case of the Shattered Pact compiled text to preserve its Case clauses, got {rendered}"
@@ -13140,6 +13165,32 @@ fn test_parse_double_target_creatures_power_and_toughness_until_end_of_turn() {
     assert!(
         debug.contains("PowerOf") && debug.contains("ToughnessOf"),
         "expected dynamic double P/T modifier, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_double_this_creatures_power_and_toughness_until_end_of_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Reckless Amplimancer Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("{4}{G}: Double this creature's power and toughness until end of turn.")
+        .expect("parse double-self-pt activation");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ModifyPowerToughness")
+            && debug.contains("PowerOf")
+            && debug.contains("ToughnessOf")
+            && debug.contains("source: true")
+            && debug.contains("this creature"),
+        "expected source-relative dynamic double P/T modifier, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("{4}{G}: Double this creature's power and toughness until end of turn"),
+        "expected compact double-self P/T rendering, got {rendered}"
     );
 }
 
@@ -32204,7 +32255,7 @@ fn fall_from_favor_strict_parser_and_compiled_text_regression() {
 
     assert_eq!(
         rendered,
-        "Enchant creature\nWhen this aura enters, tap enchanted creature and you become the monarch.\nEnchanted creature doesnt untap during its controllers untap step unless that player is the monarch.",
+        "Enchant creature\nWhen this Aura enters, tap enchanted creature and you become the monarch.\nEnchanted creature doesnt untap during its controllers untap step unless that player is the monarch.",
         "Fall from Favor should preserve its Aura target, ETB tap/monarch trigger, and monarch-gated untap restriction"
     );
 }
@@ -32466,6 +32517,39 @@ fn parse_choose_not_to_untap_line_and_activated_line_without_spurious_untap_effe
     assert!(
         !compiled.contains("spell effects: you may untap target artifact"),
         "unexpected untap-target spell effect leak in compiled output: {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_named_source_optional_untap_and_control_duration_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Rubinia Soulsinger")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "You may choose not to untap Rubinia Soulsinger during your untap step.\n{T}: Gain control of target creature for as long as you control Rubinia Soulsinger and Rubinia Soulsinger remains tapped.",
+        )
+        .expect("named source optional untap and control duration should parse");
+
+    let compiled = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        compiled.contains("You may choose not to untap Rubinia Soulsinger during your untap step"),
+        "expected named-source optional untap static line, got {compiled}"
+    );
+    assert!(
+        compiled.contains(
+            "{T}: Gain control of target creature for as long as you control Rubinia Soulsinger and Rubinia Soulsinger remains tapped"
+        ),
+        "expected named-source compound control duration, got {compiled}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("MayChooseNotToUntapDuringUntapStep")
+            && debug.contains("SourceUntaps")
+            && debug.contains("SourceIsTapped")
+            && debug.contains("Rubinia Soulsinger"),
+        "expected typed optional untap plus sourced control duration, got {debug}"
     );
 }
 
@@ -45908,6 +45992,30 @@ fn parse_comma_then_that_player_discards_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_comma_then_exile_that_players_graveyard_from_target_graveyard_card_owner() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nurgle Variant")
+        .parse_text(
+            "Put target creature card from an opponent's graveyard onto the battlefield tapped under your control, then exile that player's graveyard.",
+        )
+        .expect("target graveyard-card owner follow-up should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("onto the battlefield tapped under your control")
+            && rendered_lower.contains("exile that player's graveyard"),
+        "expected target graveyard-card owner follow-up text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("OwnerOf(Tagged"),
+        "expected graveyard exile to bind to the targeted card owner's graveyard, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_dinrova_horror_strict_oracle_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dinrova Horror")
         .mana_cost(ManaCost::from_pips(vec![
@@ -50642,6 +50750,26 @@ fn parse_paladin_elizabeth_taggerdy_battalion_puts_hand_creature_tapped_and_atta
             "mana value x or less from your hand onto the battlefield tapped and attacking"
         ) && rendered.contains("where x is paladin elizabeth taggerdy"),
         "expected tapped-and-attacking hand put with source-power X binding, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_paired_tactician_keeps_other_warrior_attack_subject() {
+    let def = parse_oracle_card_definition("Paired Tactician");
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("thisattackswithnotherstrigger")
+            && debug.contains("other_count: 1")
+            && debug.contains("warrior"),
+        "expected source-plus-one-other-Warrior trigger, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever this creature and at least one other Warrior attack"),
+        "expected Paired Tactician trigger subject to keep Warrior, got {rendered}"
     );
 }
 
@@ -69849,12 +69977,9 @@ fn parse_oracle_bounty_of_skemfar_split_reveal_selection_regression() {
     let rendered_lower = rendered.to_ascii_lowercase();
 
     assert!(
-        rendered_lower.contains("look at the top six cards of your library")
-            && rendered_lower.contains("up to one land card")
-            && rendered_lower.contains("onto the battlefield tapped")
-            && rendered_lower.contains("up to one other elf card")
-            && rendered_lower.contains("owner's hand")
-            && rendered_lower.contains("bottom of your library in a random order"),
+        rendered_lower.contains(
+            "reveal the top six cards of your library. you may put up to one land card from among them onto the battlefield tapped and up to one elf card from among them into your hand. put the rest on the bottom of your library in a random order"
+        ),
         "expected oracle-shaped bounty text, got {rendered}"
     );
 
@@ -69868,6 +69993,32 @@ fn parse_oracle_bounty_of_skemfar_split_reveal_selection_regression() {
             && debug.contains("IsTaggedObject")
             && debug.contains("IsNotTaggedObject"),
         "expected structured looked-card split-choice lowering, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_harper_recruiter_repeated_subtype_reveal_regression() {
+    let def = parse_oracle_card_definition("Harper Recruiter");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("look at the top four cards of your library")
+            && rendered_lower.contains(
+                "you may reveal a cleric card, a rogue card, a warrior card, and/or a wizard card from among them and put those cards into your hand"
+            )
+            && rendered_lower
+                .contains("put the rest on the bottom of your library in a random order"),
+        "expected oracle-shaped Harper Recruiter looked-card text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("LookAtTopCardsEffect")
+            && debug.matches("ChooseObjectsEffect").count() >= 4
+            && debug.contains("RevealTaggedEffect")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected structured repeated subtype looked-card lowering, got {debug}"
     );
 }
 
@@ -70194,6 +70345,26 @@ fn parse_oracle_creeping_renaissance_permanent_type_choice_regression() {
     assert!(
         debug.contains("chosen_creature_type: true"),
         "expected chosen-type graveyard filter, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_owlbear_shepherd_total_power_intervening_if_regression() {
+    let def = parse_oracle_card_definition("Owlbear Shepherd");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "at the beginning of your end step, if creatures you control have total power 8 or greater, draw a card"
+        ),
+        "expected total-power intervening-if trigger text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ControlCreaturesTotalPowerAtLeast(8)"),
+        "expected total-power condition lowering, got {debug}"
     );
 }
 

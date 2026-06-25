@@ -368,6 +368,15 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
     }
 }
 
+pub(super) fn describe_possessive_graveyard_owner_filter(filter: &PlayerFilter) -> String {
+    match filter {
+        PlayerFilter::OwnerOf(_)
+        | PlayerFilter::AliasedOwnerOf(_)
+        | PlayerFilter::AliasedControllerOf(_) => "that player's".to_string(),
+        _ => describe_possessive_player_filter(filter),
+    }
+}
+
 pub(super) fn describe_possessive_choose_spec(spec: &ChooseSpec) -> String {
     let subject = describe_choose_spec(spec);
     if subject == "you" || subject == "target you" {
@@ -392,7 +401,10 @@ fn describe_card_type_graveyard_scope(player: &PlayerFilter) -> String {
         PlayerFilter::Target(inner) if matches!(inner.as_ref(), PlayerFilter::You) => {
             "your graveyard".to_string()
         }
-        _ => format!("{} graveyard", describe_possessive_player_filter(player)),
+        _ => format!(
+            "{} graveyard",
+            describe_possessive_graveyard_owner_filter(player)
+        ),
     }
 }
 
@@ -3069,11 +3081,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "Whenever a spell or ability an opponent controls causes you to discard this card, return this card from your graveyard to the battlefield with a +1/+1 counter on it at the beginning of the next end step.".to_string();
     }
     if lower_compact
-        == "reveal the top six cards of your library. you may put up to one land card from among them onto the battlefield tapped and up to one elf card from among them into your hand. put the rest on the bottom of your library in a random order."
-    {
-        return "Look at the top six cards of your library. You may put up to one land card from among them onto the battlefield tapped and up to one other Elf card from among them into its owner's hand. Put the rest on the bottom of your library in a random order.".to_string();
-    }
-    if lower_compact
         == "magecraft — whenever you cast an instant or sorcery spell or you copy instant or sorcery spell, look at the top three cards of your library. you may reveal a land card from among them and put that card into your hand. put the rest on the bottom of your library."
         || (lower_compact.contains("look at the top three cards of your library")
             && lower_compact.contains("you may reveal a land card from among them")
@@ -5196,6 +5203,23 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Exile target player's graveyard".to_string();
     }
+    if lower_normalized == "exile all card in that player's graveyard"
+        || lower_normalized == "exile all card in that player's graveyard."
+        || lower_normalized == "exile all card in that player's graveyards"
+        || lower_normalized == "exile all card in that player's graveyards."
+        || lower_normalized == "exile all card from that player's graveyard"
+        || lower_normalized == "exile all card from that player's graveyard."
+        || lower_normalized == "exile all cards from that player's graveyard"
+        || lower_normalized == "exile all cards from that player's graveyard."
+        || lower_normalized == "exile all cards in that player's graveyard"
+        || lower_normalized == "exile all cards in that player's graveyard."
+        || lower_normalized == "exile all card from that player's graveyards"
+        || lower_normalized == "exile all card from that player's graveyards."
+        || lower_normalized == "exile all cards from that player's graveyards"
+        || lower_normalized == "exile all cards from that player's graveyards."
+    {
+        return "Exile that player's graveyard".to_string();
+    }
     if let Some(rest) = normalized.strip_prefix("Exile all card in target opponent's graveyard. ") {
         return format!("Exile target opponent's graveyard. {rest}");
     }
@@ -5242,6 +5266,27 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rest) = normalized.strip_prefix("Exile all cards from target player's graveyards. ")
     {
         return format!("Exile target player's graveyard. {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Exile all card in that player's graveyard. ") {
+        return format!("Exile that player's graveyard. {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Exile all card in that player's graveyards. ") {
+        return format!("Exile that player's graveyard. {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Exile all card from that player's graveyard. ") {
+        return format!("Exile that player's graveyard. {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Exile all cards from that player's graveyard. ") {
+        return format!("Exile that player's graveyard. {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Exile all cards in that player's graveyard. ") {
+        return format!("Exile that player's graveyard. {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Exile all card from that player's graveyards. ") {
+        return format!("Exile that player's graveyard. {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Exile all cards from that player's graveyards. ") {
+        return format!("Exile that player's graveyard. {rest}");
     }
     let preserves_target_graveyard_exception = normalized
         .contains("target opponent's graveyard other than")
@@ -7595,7 +7640,7 @@ fn describe_attached_tagged_object_filter(filter: &crate::filter::ObjectFilter) 
         .iter()
         .filter(|constraint| {
             constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                && constraint.tag.as_str() == "equipped"
+                && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
         })
         .collect::<Vec<_>>();
     if attached_constraints.len() != 1 {
@@ -7626,6 +7671,16 @@ fn describe_attached_tagged_object_filter(filter: &crate::filter::ObjectFilter) 
             describe_card_type_word_local(surface_base.card_types[0])
         ));
     }
+    if attached_tag == "enchanted"
+        && surface_base.card_types.is_empty()
+        && surface_base.all_card_types.is_empty()
+        && !surface_base.subtypes.is_empty()
+    {
+        return Some(format!(
+            "{attached_tag} {}",
+            strip_leading_article(&surface_base.description())
+        ));
+    }
     None
 }
 
@@ -7642,11 +7697,7 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             match hints.iter().find_map(|hint| match hint {
                 crate::target::ChooseSpecSurfaceHint::SourceReference(surface) => Some(surface),
             }) {
-                Some(crate::target::SourceReferenceSurface::FullName(text))
-                | Some(crate::target::SourceReferenceSurface::ShortName(text))
-                | Some(crate::target::SourceReferenceSurface::ThisPermanentType(text)) => {
-                    text.clone()
-                }
+                Some(surface) => surface.display_text(),
                 None => describe_choose_spec(spec),
             }
         }
@@ -7694,6 +7745,8 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::Object(filter) => {
             if let Some(exiled_card) = describe_simple_exiled_card_filter(filter) {
                 ensure_indefinite_article(&exiled_card)
+            } else if filter.source && filter.source_surface.is_some() {
+                filter.description()
             } else if let Some(tagged_text) = describe_demonstrative_tagged_object_filter(filter) {
                 tagged_text
             } else {
@@ -8168,7 +8221,10 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                 let text = filter.description();
                 let suffix = match &filter.owner {
                     Some(owner) => {
-                        format!(" in {} graveyard", describe_possessive_player_filter(owner))
+                        format!(
+                            " in {} graveyard",
+                            describe_possessive_graveyard_owner_filter(owner)
+                        )
                     }
                     None => {
                         if filter.single_graveyard {
@@ -8208,7 +8264,10 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                 let text = filter.description();
                 let suffix = match &filter.owner {
                     Some(owner) => {
-                        format!(" in {} graveyard", describe_possessive_player_filter(owner))
+                        format!(
+                            " in {} graveyard",
+                            describe_possessive_graveyard_owner_filter(owner)
+                        )
                     }
                     None => {
                         if filter.single_graveyard {
@@ -9716,6 +9775,81 @@ pub(super) fn describe_toughness_delta_with_power_context(
     }
 }
 
+fn possessive_runtime_pt_target(target: &str) -> String {
+    let target = lowercase_first(target.trim());
+    match target.as_str() {
+        "it" => "its".to_string(),
+        "they" | "them" => "their".to_string(),
+        _ if target.ends_with('s') => format!("{target}'"),
+        _ => format!("{target}'s"),
+    }
+}
+
+fn normalized_runtime_pt_subject(text: &str) -> String {
+    let lower = lowercase_first(text.trim());
+    let stripped = strip_leading_article(&lower).trim();
+    stripped
+        .trim_end_matches("'s")
+        .trim_end_matches('\'')
+        .to_ascii_lowercase()
+}
+
+fn runtime_pt_subjects_match(left: &str, right: &str) -> bool {
+    let left = normalized_runtime_pt_subject(left);
+    let right = normalized_runtime_pt_subject(right);
+    left == right || (left.starts_with("this ") && right.starts_with("this "))
+}
+
+fn dynamic_runtime_pt_axis_subject_multiplier(
+    value: &Value,
+    power_axis: bool,
+) -> Option<(String, i32)> {
+    match value.unhinted() {
+        Value::SourcePower if power_axis => Some(("this source".to_string(), 1)),
+        Value::SourceToughness if !power_axis => Some(("this source".to_string(), 1)),
+        Value::PowerOf(spec) if power_axis => Some((describe_choose_spec(spec), 1)),
+        Value::ToughnessOf(spec) if !power_axis => Some((describe_choose_spec(spec), 1)),
+        Value::Scaled(inner, multiplier) if *multiplier > 0 => {
+            dynamic_runtime_pt_axis_subject_multiplier(inner, power_axis)
+                .map(|(subject, base)| (subject, base * *multiplier))
+        }
+        _ => None,
+    }
+}
+
+fn describe_dynamic_runtime_pt_scale_action(
+    target: &str,
+    plural_target: bool,
+    power: &Value,
+    toughness: &Value,
+    until_text: &str,
+) -> Option<String> {
+    if plural_target {
+        return None;
+    }
+
+    let (power_subject, power_multiplier) =
+        dynamic_runtime_pt_axis_subject_multiplier(power, true)?;
+    let (toughness_subject, toughness_multiplier) =
+        dynamic_runtime_pt_axis_subject_multiplier(toughness, false)?;
+    if power_multiplier != toughness_multiplier
+        || !runtime_pt_subjects_match(&power_subject, &toughness_subject)
+        || !runtime_pt_subjects_match(&power_subject, target)
+    {
+        return None;
+    }
+
+    let verb = match power_multiplier + 1 {
+        2 => "Double",
+        3 => "Triple",
+        _ => return None,
+    };
+    Some(format!(
+        "{verb} {} power and toughness {until_text}",
+        possessive_runtime_pt_target(target)
+    ))
+}
+
 pub(super) fn describe_dynamic_runtime_pt_with_where_x(
     target: &str,
     plural_target: bool,
@@ -9729,6 +9863,16 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
     let until_text = describe_until(until);
     if until_text.is_empty() {
         return None;
+    }
+
+    if let Some(text) = describe_dynamic_runtime_pt_scale_action(
+        target,
+        plural_target,
+        power,
+        toughness,
+        &until_text,
+    ) {
+        return Some(text);
     }
 
     let power_text = describe_value(power);
@@ -9780,6 +9924,22 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
     None
 }
 
+fn describe_source_reference_surface_text(
+    surface: &crate::target::SourceReferenceSurface,
+) -> String {
+    surface.display_text()
+}
+
+fn apply_continuous_source_reference_text(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> String {
+    effect
+        .source_reference_surface
+        .as_ref()
+        .map(describe_source_reference_surface_text)
+        .unwrap_or_else(|| "this source".to_string())
+}
+
 pub(super) fn describe_basic_land_type_pt_for_each(
     power: &Value,
     toughness: &Value,
@@ -9826,6 +9986,7 @@ pub(super) fn choose_spec_is_plural(spec: &ChooseSpec) -> bool {
 
 pub(super) fn choose_spec_allows_multiple(spec: &ChooseSpec) -> bool {
     match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => choose_spec_allows_multiple(spec),
         ChooseSpec::Target(inner) => choose_spec_allows_multiple(inner),
         ChooseSpec::All(_) | ChooseSpec::EachPlayer(_) => true,
         ChooseSpec::WithCount(inner, count) => {
@@ -10121,11 +10282,7 @@ pub(super) fn describe_apply_continuous_clauses(
                         .replace("This spell", &capitalize_first(self_subject))
                         .replace("this spell", self_subject);
                 }
-                let grant_verb = if plural_target && effect.until == crate::effect::Until::Forever {
-                    has
-                } else {
-                    gains
-                };
+                let grant_verb = add_ability_verb;
                 clauses.push(format!("{grant_verb} \"{ability_text}\""));
             } else {
                 clauses.push(format!(
@@ -10693,7 +10850,14 @@ pub(super) fn describe_apply_continuous_effect(
             return Some(text);
         }
         let mut text = format!("Gain control of {target}");
-        if !matches!(effect.until, Until::Forever) {
+        if effect.condition == Some(Condition::SourceIsTapped)
+            && matches!(effect.until, Until::SourceUntaps)
+        {
+            let source = apply_continuous_source_reference_text(effect);
+            text.push_str(&format!(
+                " for as long as you control {source} and {source} remains tapped"
+            ));
+        } else if !matches!(effect.until, Until::Forever) {
             text.push(' ');
             text.push_str(&describe_until(&effect.until));
         }
@@ -13137,27 +13301,29 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             "the target spell's controller is poisoned".to_string()
         }
         Condition::TargetSpellManaSpentToCastAtLeast { amount, symbol } => {
+            let amount_text = small_number_word(*amount).unwrap_or_else(|| amount.to_string());
             if let Some(symbol) = symbol {
                 format!(
-                    "at least {amount} {} mana was spent to cast the target spell",
+                    "at least {amount_text} {} mana was spent to cast the target spell",
                     describe_mana_symbol(*symbol)
                 )
             } else {
-                format!("at least {amount} mana was spent to cast the target spell")
+                format!("at least {amount_text} mana was spent to cast the target spell")
             }
         }
         Condition::TriggeringSpellManaSpentToCastAtLeast { amount, symbol } => {
+            let amount_text = small_number_word(*amount).unwrap_or_else(|| amount.to_string());
             if let Some(symbol) = symbol {
                 if *amount == 1 {
                     format!("{} was spent to cast it", describe_mana_symbol(*symbol))
                 } else {
                     format!(
-                        "at least {amount} {} mana was spent to cast it",
+                        "at least {amount_text} {} mana was spent to cast it",
                         describe_mana_symbol(*symbol)
                     )
                 }
             } else {
-                format!("at least {amount} mana was spent to cast it")
+                format!("at least {amount_text} mana was spent to cast it")
             }
         }
         Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
@@ -13252,17 +13418,18 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::TargetIsAttacking => "the target is attacking".to_string(),
         Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
+            let amount_text = small_number_word(*amount).unwrap_or_else(|| amount.to_string());
             if let Some(symbol) = symbol {
                 if *amount == 1 {
                     format!("{} was spent to cast this spell", describe_mana_symbol(*symbol))
                 } else {
                     format!(
-                        "at least {amount} {} mana was spent to cast this spell",
+                        "at least {amount_text} {} mana was spent to cast this spell",
                         describe_mana_symbol(*symbol)
                     )
                 }
             } else {
-                format!("at least {amount} mana was spent to cast this spell")
+                format!("at least {amount_text} mana was spent to cast this spell")
             }
         }
         Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
@@ -13918,7 +14085,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     PlayerFilter::Opponent | PlayerFilter::Any | PlayerFilter::NotYou => {
                         "their graveyard".to_string()
                     }
-                    _ => format!("{} graveyard", describe_possessive_player_filter(player)),
+                    _ => format!(
+                        "{} graveyard",
+                        describe_possessive_graveyard_owner_filter(player)
+                    ),
                 };
                 return format!(
                     "{} {} {} or more cards in {}",

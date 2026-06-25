@@ -1,6 +1,6 @@
 use crate::{
     CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, EffectMetric, ObjectId,
-    PlayerId, StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone,
+    PlayerId, SourceReferenceSurface, StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone,
     effect_model::EventValueSpec,
 };
 
@@ -470,6 +470,7 @@ pub struct ObjectFilter {
     pub specific: Option<ObjectId>,
     pub any_of: Vec<ObjectFilter>,
     pub source: bool,
+    pub source_surface: Option<SourceReferenceSurface>,
 }
 
 impl ObjectFilter {
@@ -1152,6 +1153,16 @@ impl ObjectFilter {
         }
     }
 
+    pub fn source_with_surface(surface: SourceReferenceSurface) -> Self {
+        Self::source().with_source_surface(surface)
+    }
+
+    pub fn with_source_surface(mut self, surface: SourceReferenceSurface) -> Self {
+        self.source = true;
+        self.source_surface = Some(surface);
+        self
+    }
+
     pub fn description(&self) -> String {
         let any_of_keyword_clause = describe_simple_any_of_keyword_clause(&self.any_of);
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
@@ -1168,6 +1179,13 @@ impl ObjectFilter {
         let append_token_after_type = self.token;
         let mut controller_suffix: Option<String> = None;
         let mut owner_suffix: Option<String> = None;
+        let source_surface_text = if self.source {
+            self.source_surface
+                .as_ref()
+                .map(source_reference_surface_text)
+        } else {
+            None
+        };
 
         if self.other {
             parts.push("another".to_string());
@@ -1180,7 +1198,11 @@ impl ObjectFilter {
             parts.push("target".to_string());
         }
         if self.source {
-            parts.push("this".to_string());
+            parts.push(
+                source_surface_text
+                    .clone()
+                    .unwrap_or_else(|| "this".to_string()),
+            );
         }
         if self.modified {
             parts.push("modified".to_string());
@@ -1818,7 +1840,11 @@ impl ObjectFilter {
             && self.card_types.len() == 1
             && self.card_types[0] == CardType::Land
             && matches!(self.zone, None | Some(Zone::Battlefield));
-        if self.type_or_subtype_union {
+        let source_surface_replaces_noun = self.source && source_surface_text.is_some();
+        if source_surface_replaces_noun {
+            // The parsed oracle surface already contains the self-reference noun
+            // ("this Equipment", "this creature", a short card name, etc.).
+        } else if self.type_or_subtype_union {
             match (type_phrase, subtype_phrase) {
                 (Some((_, type_phrase)), Some(subtype_phrase)) => {
                     parts.push(format!("{type_phrase} or {subtype_phrase}"));
@@ -2285,6 +2311,10 @@ impl ObjectFilter {
     }
 }
 
+fn source_reference_surface_text(surface: &SourceReferenceSurface) -> String {
+    surface.display_text()
+}
+
 fn describe_simple_any_of_keyword_clause(any_of: &[ObjectFilter]) -> Option<String> {
     if any_of.len() < 2 {
         return None;
@@ -2614,7 +2644,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::CountersOnSource(counter_type) => {
                 format!(
-                    "the number of {} counters on this",
+                    "the number of {} counters on it",
                     counter_type.description()
                 )
             }
@@ -2700,15 +2730,21 @@ fn describe_comparison(cmp: &Comparison) -> String {
             format!("not equal to {}", describe_value_expr(value))
         }
         Comparison::LessThanExpr(value) => format!("less than {}", describe_value_expr(value)),
-        Comparison::LessThanOrEqualExpr(value) => {
-            format!("{} or less", describe_value_expr(value))
-        }
+        Comparison::LessThanOrEqualExpr(value) => match value.unhinted() {
+            Value::CountersOnSource(_) => {
+                format!("less than or equal to {}", describe_value_expr(value))
+            }
+            _ => format!("{} or less", describe_value_expr(value)),
+        },
         Comparison::GreaterThanExpr(value) => {
             format!("greater than {}", describe_value_expr(value))
         }
-        Comparison::GreaterThanOrEqualExpr(value) => {
-            format!("{} or greater", describe_value_expr(value))
-        }
+        Comparison::GreaterThanOrEqualExpr(value) => match value.unhinted() {
+            Value::CountersOnSource(_) => {
+                format!("greater than or equal to {}", describe_value_expr(value))
+            }
+            _ => format!("{} or greater", describe_value_expr(value)),
+        },
     }
 }
 

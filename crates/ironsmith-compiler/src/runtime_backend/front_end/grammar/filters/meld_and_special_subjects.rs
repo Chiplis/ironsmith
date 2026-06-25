@@ -584,6 +584,28 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_handles_mana_value_lte_counters_on_source_clause() {
+        let tokens = lex_line(
+            "creature card with mana value less than or equal to the number of void counters on it",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) = filter.mana_value else {
+            panic!(
+                "expected mana value <= source-counter expression, got {:?}",
+                filter.mana_value
+            );
+        };
+        assert_eq!(
+            *value,
+            crate::effect::Value::CountersOnSource(crate::object::CounterType::Void)
+        );
+    }
+
+    #[test]
     fn parse_object_filter_lexed_handles_attached_exclusion_phrase() {
         let tokens = lex_line("creatures other than enchanted creature", 0).unwrap();
 

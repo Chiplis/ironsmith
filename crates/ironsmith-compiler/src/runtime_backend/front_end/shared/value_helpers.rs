@@ -20,8 +20,8 @@ use super::object_filters::{
 };
 use super::util::{
     is_article, non_article_word_refs, parse_counter_type_word, parse_number,
-    parse_number_word_i32, parse_value, parse_value_expr_words, trim_commas,
-    trim_edge_punctuation_tokens,
+    parse_number_word_i32, parse_value, parse_value_expr_words, source_reference_surface_for_words,
+    this_source_surface_for_words, trim_commas, trim_edge_punctuation_tokens,
 };
 
 type ValueHelperCompatWords<'a> = TokenWordView<'a>;
@@ -147,6 +147,24 @@ const TAGGED_COUNTER_REFERENCE_PHRASES: &[&[&str]] = &[
     &["those", "creatures"],
     &["those", "permanents"],
 ];
+
+fn counters_on_source_reference_value(
+    reference: &[&str],
+    counter_type: Option<crate::CounterType>,
+) -> Value {
+    let surface = source_reference_surface_for_words(reference).or_else(|| {
+        (reference.len() > 1)
+            .then(|| this_source_surface_for_words(reference))
+            .flatten()
+    });
+    Value::counters_on_source_reference(counter_type, surface)
+}
+
+fn is_source_counter_reference(reference: &[&str]) -> bool {
+    value_helper_words_equal_any(reference, SOURCE_COUNTER_REFERENCE_PHRASES)
+        || source_reference_surface_for_words(reference).is_some()
+        || (reference.len() > 1 && this_source_surface_for_words(reference).is_some())
+}
 const COMMANDER_YOU_OWN_BATTLEFIELD_OR_COMMAND_ZONE_PHRASE: &[&str] = &[
     "commander",
     "you",
@@ -666,11 +684,8 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
         return None;
     }
 
-    if value_helper_words_equal_any(reference, SOURCE_COUNTER_REFERENCE_PHRASES) {
-        return Some(match counter_type {
-            Some(counter_type) => Value::CountersOnSource(counter_type),
-            None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
-        });
+    if is_source_counter_reference(reference) {
+        return Some(counters_on_source_reference_value(reference, counter_type));
     }
 
     if value_helper_words_equal_any(reference, TAGGED_COUNTER_REFERENCE_PHRASES) {
@@ -944,13 +959,10 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value_lexed(
         return None;
     }
 
-    if value_helper_words_equal_any(reference, SOURCE_COUNTER_REFERENCE_PHRASES) {
+    if is_source_counter_reference(reference) {
         return Some(
-            match counter_type {
-                Some(counter_type) => Value::CountersOnSource(counter_type),
-                None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
-            }
-            .with_surface_hint(ValueSurfaceHint::EqualTo),
+            counters_on_source_reference_value(reference, counter_type)
+                .with_surface_hint(ValueSurfaceHint::EqualTo),
         );
     }
 

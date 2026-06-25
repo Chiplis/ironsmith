@@ -1179,6 +1179,20 @@ pub(crate) fn parse_object_filter_lexed(
     let (trimmed_tokens, vote_winners_only) = trim_vote_winner_suffix(tokens);
     let (trimmed_tokens, distinct_names) =
         strip_object_filter_different_names_clause(&trimmed_tokens);
+    if tokens_contain_permanent_or_suspended_card_disjunction(&trimmed_tokens) {
+        let mut filter = super::grammar::filters::parse_object_filter_with_grammar_entrypoint(
+            &trimmed_tokens,
+            other,
+        )?;
+        filter.distinct_names |= distinct_names;
+        if vote_winners_only {
+            filter = filter.match_tagged(
+                TagKey::from(VOTE_WINNERS_TAG),
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
+        }
+        return Ok(filter);
+    }
     if let Some(mut filter) = parse_simple_object_filter_lexed(&trimmed_tokens, other) {
         filter.distinct_names |= distinct_names;
         if vote_winners_only {
@@ -1192,6 +1206,20 @@ pub(crate) fn parse_object_filter_lexed(
     let mut filter = parse_object_filter(&trimmed_tokens, other)?;
     filter.distinct_names |= distinct_names;
     Ok(filter)
+}
+
+fn tokens_contain_permanent_or_suspended_card_disjunction(tokens: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(tokens);
+    words.iter().enumerate().any(|(idx, word)| {
+        *word == "or"
+            && words[..idx]
+                .iter()
+                .any(|word| matches!(*word, "permanent" | "permanents"))
+            && matches!(
+                words.get(idx + 1..idx + 3),
+                Some(["suspended", "card"] | ["suspended", "cards"])
+            )
+    })
 }
 
 pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
@@ -1570,6 +1598,31 @@ mod tests {
 
         assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
         assert_eq!(filter.card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_parses_permanent_or_owned_suspended_card_disjunction() {
+        let tokens = tokenize_line("a permanent you control or suspended card you own", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.any_of.len(), 2, "{filter:?}");
+        assert!(
+            filter.any_of.iter().any(|arm| {
+                arm.zone == Some(Zone::Battlefield)
+                    && arm.controller == Some(PlayerFilter::You)
+                    && arm.alternative_cast.is_none()
+            }),
+            "{filter:?}"
+        );
+        assert!(
+            filter.any_of.iter().any(|arm| {
+                arm.zone == Some(Zone::Exile)
+                    && arm.owner == Some(PlayerFilter::You)
+                    && arm.alternative_cast == Some(crate::filter::AlternativeCastKind::Suspend)
+            }),
+            "{filter:?}"
+        );
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use crate::cards::builders::{CardTextError, IT_TAG, PlayerAst, TagKey, TargetAst};
 use crate::effect::{EventValueSpec, Restriction, Value};
 use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
-use crate::target::{ChooseSpec, ChooseSpecSurfaceHint};
+use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
 use crate::zone::Zone;
 
 use super::reference_model::ReferenceEnv;
@@ -806,18 +806,39 @@ pub(crate) fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
     )
 }
 
+fn source_reference_hinted_spec(
+    spec: ChooseSpec,
+    surface: Option<SourceReferenceSurface>,
+) -> ChooseSpec {
+    match surface {
+        Some(surface) => spec.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+        None => spec,
+    }
+}
+
+fn source_reference_surface_for_target_span(
+    span: Option<crate::cards::TextSpan>,
+) -> Option<SourceReferenceSurface> {
+    crate::runtime_backend::util::source_reference_surface_for_span(span)
+}
+
+fn implicit_it_reference_resolves_to_source(refs: &ReferenceEnv) -> bool {
+    refs.known_last_object_tag().is_none()
+        && (refs.has_source_object_antecedent() || refs.known_last_player_filter().is_none())
+}
+
+fn implicit_source_pronoun_surface(
+    span: Option<crate::cards::TextSpan>,
+) -> Option<SourceReferenceSurface> {
+    span.map(|_| SourceReferenceSurface::ThisPermanentType("it".to_string()))
+}
+
 pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
     match target {
-        TargetAst::Source(span) => {
-            let spec = ChooseSpec::Source;
-            if let Some(surface) =
-                crate::runtime_backend::util::source_reference_surface_for_span(*span)
-            {
-                spec.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface))
-            } else {
-                spec
-            }
-        }
+        TargetAst::Source(span) => source_reference_hinted_spec(
+            ChooseSpec::Source,
+            source_reference_surface_for_target_span(*span),
+        ),
         TargetAst::AnyTarget(_) => ChooseSpec::AnyTarget,
         TargetAst::AnyOtherTarget(_) => ChooseSpec::AnyOtherTarget,
         TargetAst::PlayerOrPlaneswalker(filter, _) => {
@@ -838,7 +859,10 @@ pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
         }
         TargetAst::Object(filter, explicit_target_span, _) => {
             if filter.source && filter.zone != Some(Zone::Exile) {
-                return ChooseSpec::Source;
+                return source_reference_hinted_spec(
+                    ChooseSpec::Source,
+                    filter.source_surface.clone(),
+                );
             }
             if explicit_target_span.is_some() {
                 ChooseSpec::target(ChooseSpec::Object(filter.clone()))
@@ -846,7 +870,14 @@ pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
                 ChooseSpec::Object(filter.clone())
             }
         }
-        TargetAst::Tagged(tag, _) => ChooseSpec::Tagged(tag.clone()),
+        TargetAst::Tagged(tag, span) => source_reference_hinted_spec(
+            ChooseSpec::Tagged(tag.clone()),
+            if tag.as_str() == IT_TAG {
+                source_reference_surface_for_target_span(*span)
+            } else {
+                None
+            },
+        ),
         TargetAst::WithCount(inner, count) => choose_spec_for_target(inner).with_count(*count),
         TargetAst::WithCountValue(inner, count, value) => {
             choose_spec_for_target(inner).with_count_value(*count, value.clone())
@@ -858,7 +889,18 @@ pub(crate) fn resolve_target_spec_with_choices(
     target: &TargetAst,
     refs: &ReferenceEnv,
 ) -> Result<(ChooseSpec, Vec<ChooseSpec>), CardTextError> {
-    let mut spec = choose_spec_for_target(target);
+    let mut spec = match target {
+        TargetAst::Tagged(tag, span)
+            if tag.as_str() == IT_TAG && implicit_it_reference_resolves_to_source(refs) =>
+        {
+            source_reference_hinted_spec(
+                ChooseSpec::Source,
+                source_reference_surface_for_target_span(*span)
+                    .or_else(|| implicit_source_pronoun_surface(*span)),
+            )
+        }
+        _ => choose_spec_for_target(target),
+    };
     if let TargetAst::Player(filter, explicit_target_span) = target
         && explicit_target_span.is_none()
         && matches!(filter, PlayerFilter::Target(_))

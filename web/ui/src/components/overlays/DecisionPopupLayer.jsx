@@ -415,6 +415,13 @@ function buildPriorityActionGroups(actions, families) {
   return groups;
 }
 
+function dispatchHandActionHover(objectId = null) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("ironsmith:hand-action-hover", {
+    detail: { objectId: objectId != null ? String(objectId) : null },
+  }));
+}
+
 function buildObjectFamilyIds(players, objectId) {
   const ids = new Set();
   if (objectId == null) return ids;
@@ -1817,6 +1824,7 @@ function MobileBattleDecisionLayer({
   const triggerPriorityAction = useCallback(
     (action) => {
       if (!canAct || !action) return;
+      dispatchHandActionHover(null);
       clearHoverLinkedObjects();
       clearHover();
       if (action.kind === "untap_land") {
@@ -1837,12 +1845,14 @@ function MobileBattleDecisionLayer({
       if (!canAct || !group) return;
       setHoverLinkedObjects(group.linkedObjectIds || []);
       if (group.hoverObjectId != null) hoverCard(group.hoverObjectId);
+      dispatchHandActionHover(group.hoverObjectId);
     },
     [canAct, hoverCard, setHoverLinkedObjects]
   );
   const handleActionHoverEnd = useCallback(() => {
     clearHoverLinkedObjects();
     clearHover();
+    dispatchHandActionHover(null);
   }, [clearHover, clearHoverLinkedObjects]);
   const handleViewedCardHoverStart = useCallback((card) => {
     if (!card?.id) return;
@@ -2567,6 +2577,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const triggerPriorityAction = useCallback(
     (action) => {
       if (peerWaitLocked || !canAct || !action) return;
+      dispatchHandActionHover(null);
       clearHover();
       if (action.kind === "untap_land") {
         cancelDecision();
@@ -2590,6 +2601,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const triggerPassActionFromClick = useCallback(
     (event) => {
       if (!canAct || !passAction || event.detail !== 0) return;
+      dispatchHandActionHover(null);
       triggerPriorityAction(passAction);
     },
     [canAct, passAction, triggerPriorityAction]
@@ -2599,13 +2611,18 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
       if (!canAct || !group) return;
       setHoverLinkedObjects(group.linkedObjectIds || []);
       if (group.hoverObjectId != null) hoverCard(group.hoverObjectId);
+      dispatchHandActionHover(group.hoverObjectId);
     },
     [canAct, setHoverLinkedObjects, hoverCard]
   );
   const handleActionHoverEnd = useCallback(() => {
-    if (!canAct) return;
+    if (!canAct) {
+      dispatchHandActionHover(null);
+      return;
+    }
     clearHoverLinkedObjects();
     clearHover();
+    dispatchHandActionHover(null);
   }, [canAct, clearHoverLinkedObjects, clearHover]);
   const handleViewedCardHoverStart = useCallback((card) => {
     if (!card?.id) return;

@@ -1577,6 +1577,7 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
                     | "return"
                     | "tap"
                     | "untap"
+                    | "control"
                     | "of"
                     | "to"
                     | "on"
@@ -1594,6 +1595,8 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
                     | "deals"
                     | "enter"
                     | "enters"
+                    | "remain"
+                    | "remains"
                     | "power"
                     | "toughness"
             )

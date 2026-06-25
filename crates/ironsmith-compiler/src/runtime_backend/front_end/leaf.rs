@@ -329,6 +329,21 @@ fn parse_filter_text(text: &str, other: bool) -> Result<ObjectFilter, CardTextEr
     parse_object_filter_lexed(&tokens, other)
 }
 
+fn apply_activation_cost_default_battlefield_scope(filter: &mut ObjectFilter) {
+    if !filter.any_of.is_empty() {
+        for arm in &mut filter.any_of {
+            apply_activation_cost_default_battlefield_scope(arm);
+        }
+        return;
+    }
+    if filter.controller.is_none() && filter.owner.is_none() {
+        filter.controller = Some(PlayerFilter::You);
+    }
+    if filter.zone.is_none() {
+        filter.zone = Some(crate::zone::Zone::Battlefield);
+    }
+}
+
 fn strip_single_choice_article_from_filter_text(text: &str) -> String {
     let trimmed = text.trim();
     let Ok(tokens) = lex_line(trimmed, 0) else {
@@ -2079,12 +2094,7 @@ pub(crate) fn lower_activation_cost_cst(
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = parse_filter_text(filter_text, *other)?;
-                if filter.controller.is_none() {
-                    filter.controller = Some(PlayerFilter::You);
-                }
-                if filter.zone.is_none() {
-                    filter.zone = Some(crate::zone::Zone::Battlefield);
-                }
+                apply_activation_cost_default_battlefield_scope(&mut filter);
                 filter.untapped = true;
                 let tag = format!("tap_cost_{tap_tag_id}");
                 tap_tag_id += 1;
@@ -2478,12 +2488,7 @@ pub(crate) fn lower_activation_cost_cst(
                     continue;
                 }
                 let mut filter = parse_filter_text(filter_text, false)?;
-                if filter.controller.is_none() {
-                    filter.controller = Some(PlayerFilter::You);
-                }
-                if filter.zone.is_none() {
-                    filter.zone = Some(crate::zone::Zone::Battlefield);
-                }
+                apply_activation_cost_default_battlefield_scope(&mut filter);
                 if filter.source {
                     costs.push(Cost::add_counters(*counter_type, *count));
                     continue;
@@ -2518,12 +2523,7 @@ pub(crate) fn lower_activation_cost_cst(
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = parse_filter_text(filter_text, false)?;
-                if filter.controller.is_none() {
-                    filter.controller = Some(PlayerFilter::You);
-                }
-                if filter.zone.is_none() {
-                    filter.zone = Some(crate::zone::Zone::Battlefield);
-                }
+                apply_activation_cost_default_battlefield_scope(&mut filter);
                 let effect = if *dynamic {
                     Effect::remove_dynamic_counters_among(
                         *count,

@@ -3,7 +3,7 @@ use crate::{
     ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, Subtype, TagKey,
     ValueComparisonOperator, Zone,
 };
-use crate::{ChooseSpec, Color, ColorSet};
+use crate::{ChooseSpec, ChooseSpecSurfaceHint, Color, ColorSet, SourceReferenceSurface};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectMetricSource {
@@ -186,6 +186,26 @@ impl Value {
 
     pub fn creatures_you_control() -> Self {
         Self::Count(ObjectFilter::creature().you_control())
+    }
+
+    pub fn counters_on_source_reference(
+        counter_type: Option<CounterType>,
+        surface: Option<SourceReferenceSurface>,
+    ) -> Self {
+        if let Some(surface) = surface {
+            return Self::CountersOn(
+                Box::new(
+                    ChooseSpec::Source
+                        .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+                ),
+                counter_type,
+            );
+        }
+
+        match counter_type {
+            Some(counter_type) => Self::CountersOnSource(counter_type),
+            None => Self::CountersOn(Box::new(ChooseSpec::Source), None),
+        }
     }
 
     pub fn with_surface_hint(self, hint: ValueSurfaceHint) -> Self {

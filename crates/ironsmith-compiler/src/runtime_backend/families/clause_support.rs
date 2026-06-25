@@ -946,6 +946,19 @@ pub(crate) fn parse_effect_sentences_lexed(
     super::effect_sentences::parse_effect_sentences_lexed(tokens)
 }
 
+fn parse_effect_sentences_or_single_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    parse_effect_sentences_lexed(tokens).or_else(|original_err| {
+        let sentences = split_lexed_sentences(tokens);
+        if sentences.len() == 1 {
+            super::effect_sentences::parse_effect_sentence_lexed(sentences[0])
+        } else {
+            Err(original_err)
+        }
+    })
+}
+
 pub(crate) fn parse_triggered_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -1148,26 +1161,36 @@ pub(crate) fn parse_triggered_line_lexed(
         }
     }
 
-    if let Some(spec) = split_triggered_conditional_clause_lexed(tokens, start_idx)
-        && let Ok(trigger) = parse_trigger_clause_lexed(spec.trigger_tokens)
-    {
-        let rewritten_effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
-            spec.trigger_tokens,
-            spec.effects_tokens,
-        );
-        if let Ok(mut effects) = parse_effect_sentences_lexed(&rewritten_effects_tokens) {
-            if predicate_counts_creatures_died_this_turn(&spec.predicate) {
-                bind_creatures_died_condition_amounts(&mut effects);
+    if let Some(spec) = split_triggered_conditional_clause_lexed(tokens, start_idx) {
+        let (trigger_tokens, max_triggers_from_trigger_clause) =
+            split_first_time_each_turn_trigger_suffix_lexed(spec.trigger_tokens);
+        if let Ok(trigger) = parse_trigger_clause_lexed(trigger_tokens) {
+            let rewritten_effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
+                trigger_tokens,
+                spec.effects_tokens,
+            );
+            if let Ok(mut effects) =
+                parse_effect_sentences_or_single_sentence_lexed(&rewritten_effects_tokens)
+            {
+                if predicate_counts_creatures_died_this_turn(&spec.predicate) {
+                    bind_creatures_died_condition_amounts(&mut effects);
+                }
+                let mut max_triggers_per_turn =
+                    parse_triggered_times_each_turn_lexed_from_sentences(&rewritten_effects_tokens);
+                if let Some(max) = max_triggers_from_trigger_clause {
+                    max_triggers_per_turn =
+                        Some(max_triggers_per_turn.map_or(max, |existing| existing.min(max)));
+                }
+                return Ok(LineAst::Triggered {
+                    trigger,
+                    effects: vec![EffectAst::Conditional {
+                        predicate: spec.predicate,
+                        if_true: effects,
+                        if_false: Vec::new(),
+                    }],
+                    max_triggers_per_turn,
+                });
             }
-            return Ok(LineAst::Triggered {
-                trigger,
-                effects: vec![EffectAst::Conditional {
-                    predicate: spec.predicate,
-                    if_true: effects,
-                    if_false: Vec::new(),
-                }],
-                max_triggers_per_turn: None,
-            });
         }
     }
 

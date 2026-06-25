@@ -11392,6 +11392,14 @@ fn shared_value_helpers_shape_gates_use_word_ref_matching() {
         "{relative} should route shared value-helper shape gates through direct word-ref/phrase helpers"
     );
     assert!(
+        content.contains("Value::counters_on_source_reference(counter_type, surface)"),
+        "{relative} should preserve source-reference surfaces through the core source-counter value constructor"
+    );
+    assert!(
+        !content.contains("Value::CountersOnSource(counter_type)"),
+        "{relative} should not collapse source counter references directly to plain CountersOnSource; use Value::counters_on_source_reference so this-type surfaces survive"
+    );
+    assert!(
         !content.contains("ClauseShape")
             && !content.contains("clause_shape")
             && !content.contains(".matches_words(")

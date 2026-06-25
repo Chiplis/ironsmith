@@ -553,6 +553,7 @@ fn replace_names_with_map(
                         | b"return"
                         | b"tap"
                         | b"untap"
+                        | b"control"
                         | b"of"
                         | b"to"
                         | b"on"
@@ -570,6 +571,8 @@ fn replace_names_with_map(
                         | b"enters"
                         | b"leave"
                         | b"leaves"
+                        | b"remain"
+                        | b"remains"
                         | b"power"
                         | b"toughness"
                 )

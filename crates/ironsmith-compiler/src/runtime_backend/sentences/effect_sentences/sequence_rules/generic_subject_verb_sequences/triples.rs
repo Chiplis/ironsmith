@@ -148,7 +148,11 @@ const IF_CAST_NON_HAND_PUT_EACH_LOOKED_INTO_HAND_INSTEAD_WORDS: &[&str] = &[
     "put", "each", "of", "those", "cards", "into", "your", "hand", "instead",
 ];
 const WITHOUT_PAYING_ITS_MANA_COST_PREFIX: &[&str] = &["without", "paying", "its", "mana", "cost"];
-const REVEALED_CARDS_INTO_HAND_TAIL_PREFIX: &[&str] = &["and", "put", "the", "revealed"];
+const REVEALED_CARDS_INTO_HAND_TAIL_PREFIXES: &[&[&str]] = &[
+    &["and", "put", "the", "revealed"],
+    &["and", "put", "those", "cards"],
+    &["and", "put", "them"],
+];
 const PUT_ALL_WITH_CHOSEN_NAME_INTO_HAND_PREFIXES: &[&[&str]] = &[
     &[
         "and", "put", "all", "of", "them", "with", "that", "name", "into",
@@ -1461,7 +1465,8 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
         return Ok(None);
     }
 
-    if filter.card_types.len() > 1
+    if choice_count == ChoiceCount::up_to(1)
+        && filter.card_types.len() > 1
         && filter_words.iter().any(|word| *word == AND_OR_WORD)
         && filter.all_card_types.is_empty()
         && filter.subtypes.is_empty()
@@ -1719,6 +1724,14 @@ fn chosen_land_nonland_split_bottom_sentence(tokens: &[OwnedLexToken]) -> bool {
             == Some(crate::cards::builders::LibraryBottomOrderAst::Random)
 }
 
+fn looked_choice_filter_can_include_card_type(filter: &ObjectFilter, card_type: CardType) -> bool {
+    filter.card_types.contains(&card_type)
+        || filter
+            .any_of
+            .iter()
+            .any(|branch| looked_choice_filter_can_include_card_type(branch, card_type))
+}
+
 pub(crate) fn parse_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -1733,7 +1746,7 @@ pub(crate) fn parse_reveal_top_choose_any_revealed_land_nonland_split_rest_botto
     else {
         return Ok(None);
     };
-    if !filter.card_types.contains(&CardType::Land) {
+    if !looked_choice_filter_can_include_card_type(&filter, CardType::Land) {
         return Ok(None);
     }
     if !chosen_land_nonland_split_bottom_sentence(sentences[sentence_idx + 2].lowered()) {
@@ -1980,7 +1993,7 @@ fn compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
     effects
 }
 
-fn parse_any_number_from_looked_cards_action(
+pub(crate) fn parse_any_number_from_looked_cards_action(
     tokens: &[OwnedLexToken],
 ) -> Option<(ObjectFilter, Zone, bool)> {
     let action_tokens = trim_commas(tokens);
@@ -2317,13 +2330,45 @@ fn parse_reveal_matching_from_looked_cards_into_hand_action(
 
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
     let puts_revealed_into_hand =
-        word_slice_starts_with(after_from_words, REVEALED_CARDS_INTO_HAND_TAIL_PREFIX)
-            && word_slice_contains_all_words(after_from_words, &["cards", "hand"]);
+        word_slice_starts_with_any(after_from_words, REVEALED_CARDS_INTO_HAND_TAIL_PREFIXES)
+            && word_slice_find_word(after_from_words, "hand").is_some();
     if !puts_revealed_into_hand {
         return Ok(None);
     }
     let filter_uses_and_or = filter_words.iter().any(|word| *word == AND_OR_WORD);
     Ok(Some((chooser, choice_count, filter, filter_uses_and_or)))
+}
+
+fn looked_card_choice_filter_branches(filter: &ObjectFilter) -> Option<Vec<ObjectFilter>> {
+    if filter.card_types.len() > 1
+        && filter.all_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.static_abilities.is_empty()
+        && filter.any_of.is_empty()
+    {
+        return Some(
+            filter
+                .card_types
+                .iter()
+                .map(|card_type| {
+                    let mut branch = filter.clone();
+                    branch.card_types = vec![*card_type];
+                    branch
+                })
+                .collect(),
+        );
+    }
+
+    if filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.static_abilities.is_empty()
+        && !filter.any_of.is_empty()
+    {
+        return Some(filter.any_of.clone());
+    }
+
+    None
 }
 
 pub(crate) fn parse_top_cards_reveal_any_matching_to_hand_rest_bottom(
@@ -2376,15 +2421,10 @@ pub(crate) fn parse_top_cards_reveal_any_matching_to_hand_rest_bottom(
 
     if choice_count == ChoiceCount::up_to(1)
         && filter_uses_and_or
-        && filter.card_types.len() > 1
-        && filter.all_card_types.is_empty()
-        && filter.subtypes.is_empty()
-        && filter.static_abilities.is_empty()
-        && filter.any_of.is_empty()
+        && let Some(choice_filters) = looked_card_choice_filter_branches(&filter)
     {
-        for card_type in &filter.card_types {
-            let mut choice_filter = filter.clone();
-            choice_filter.card_types = vec![*card_type];
+        for mut choice_filter in choice_filters {
+            choice_filter.zone = Some(Zone::Library);
             choice_filter
                 .tagged_constraints
                 .push(TaggedObjectConstraint {

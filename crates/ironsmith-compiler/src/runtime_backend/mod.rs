@@ -228,7 +228,9 @@ pub(crate) fn compile_card_text(
     stacker::grow(16 * 1024 * 1024, || {
         let text = text.into();
         let card_name = builder.card_builder.name_ref().to_string();
-        util::with_source_reference_context(card_name.as_str(), || {
+        let card_types = builder.card_builder.card_types_ref().to_vec();
+        let subtypes = builder.card_builder.subtypes_ref().to_vec();
+        util::with_card_source_reference_context(card_name.as_str(), &card_types, &subtypes, || {
             let mut compiled = CardTextCompiler::compile(
                 builder,
                 text.clone(),

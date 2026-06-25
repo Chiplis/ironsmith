@@ -74,6 +74,7 @@ const LOOKED_REST_BOTTOM_LIBRARY_REQUIRED_WORDS: &[&str] = &["rest", "bottom", "
 const LOOKED_PUT_OR_PUTS_WORDS: &[&str] = &["put", "puts"];
 const LOOKED_OR_WORD: &str = "or";
 const LOOKED_AND_WORD: &str = "and";
+const LOOKED_AND_OR_WORD: &str = "and/or";
 const LOOKED_WITH_THE_CHOSEN_NAME_SUFFIX: &[&str] = &["with", "the", "chosen", "name"];
 const LOOKED_SAME_NAME_SUFFIXES: &[&[&str]] = &[
     &["with", "that", "name"],
@@ -473,16 +474,23 @@ fn parse_named_card_filter_segment(tokens: &[OwnedLexToken]) -> Option<ObjectFil
     Some(filter)
 }
 
+fn token_is_reveal_filter_disjunction(tokens: &[OwnedLexToken], idx: usize) -> bool {
+    tokens.get(idx).is_some_and(|token| {
+        token_is_word(token, LOOKED_AND_OR_WORD)
+            || (token_is_word(token, LOOKED_OR_WORD) && !is_comparison_or_delimiter(tokens, idx))
+    })
+}
+
 fn split_reveal_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
     let mut segments = Vec::new();
     let mut current: Vec<OwnedLexToken> = Vec::new();
-    let has_noncomparison_or = tokens.iter().enumerate().any(|(idx, token)| {
-        token_is_word(token, LOOKED_OR_WORD) && !is_comparison_or_delimiter(tokens, idx)
-    });
+    let has_disjunction = tokens
+        .iter()
+        .enumerate()
+        .any(|(idx, _)| token_is_reveal_filter_disjunction(tokens, idx));
     for (idx, token) in tokens.iter().enumerate() {
-        let is_separator = (token_is_word(token, LOOKED_OR_WORD)
-            && !is_comparison_or_delimiter(tokens, idx))
-            || (has_noncomparison_or && token.is_comma());
+        let is_separator = token_is_reveal_filter_disjunction(tokens, idx)
+            || (has_disjunction && token.is_comma());
         if is_separator {
             while current
                 .last()
@@ -673,10 +681,11 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
         }
     }
 
-    let has_noncomparison_or = filter_tokens.iter().enumerate().any(|(idx, token)| {
-        token_is_word(token, LOOKED_OR_WORD) && !is_comparison_or_delimiter(&filter_tokens, idx)
-    });
-    if has_noncomparison_or {
+    let has_disjunction = filter_tokens
+        .iter()
+        .enumerate()
+        .any(|(idx, _)| token_is_reveal_filter_disjunction(&filter_tokens, idx));
+    if has_disjunction {
         let shared_card_suffix = words_all_refs
             .last()
             .is_some_and(|word| LOOKED_CARD_WORDS.contains(word));
@@ -706,6 +715,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
             }
             let mut filter = ObjectFilter::default();
             filter.any_of = branches;
+            apply_shared_looked_card_disjunction_qualifiers(&mut filter, &non_article_words);
             if same_name_suffix {
                 filter = filter.match_tagged(
                     TagKey::from(CHOSEN_NAME_TAG),
@@ -725,4 +735,31 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
         );
     }
     Some(filter)
+}
+
+fn apply_shared_looked_card_disjunction_qualifiers(filter: &mut ObjectFilter, words: &[&str]) {
+    if filter.any_of.len() < 2 {
+        return;
+    }
+
+    if word_slice_contains_phrase(words, &["with", "different", "names"]) {
+        filter.distinct_names = true;
+        for branch in &mut filter.any_of {
+            branch.distinct_names = false;
+        }
+    }
+
+    if word_slice_contains_phrase(words, &["with", "different", "powers"]) {
+        filter.distinct_powers = true;
+        for branch in &mut filter.any_of {
+            branch.distinct_powers = false;
+        }
+    }
+
+    if word_slice_contains_phrase(words, &["that", "share", "no", "creature", "types"]) {
+        filter.distinct_creature_types = true;
+        for branch in &mut filter.any_of {
+            branch.distinct_creature_types = false;
+        }
+    }
 }

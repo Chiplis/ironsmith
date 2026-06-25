@@ -73,7 +73,8 @@ use crate::filter::Comparison;
 use crate::mana::ManaSymbol;
 use crate::parse_trace;
 use crate::target::{
-    ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
+    ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface, TaggedObjectConstraint,
+    TaggedOpbjectRelation,
 };
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
@@ -3706,19 +3707,46 @@ pub(crate) fn parse_token_granted_ability_followup_sentence_lexed(
 
 fn apply_unapplied_token_copy_followup(
     sentence: &[OwnedLexToken],
-    _sentence_tokens: &[OwnedLexToken],
+    sentence_tokens: &[OwnedLexToken],
     followup: TokenCopyFollowup,
+    bind_leading_it_to_source: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let span = span_from_tokens(sentence);
+    let leading_it_span = || {
+        let tokens = trim_edge_punctuation(sentence_tokens);
+        let first = tokens.first()?;
+        if first.as_word()? != "it" {
+            return None;
+        }
+        Some(first.span)
+    };
+    let fallback_target = || {
+        let leading_it_span = leading_it_span();
+        if let Some(it_span) = leading_it_span {
+            let it_span = Some(it_span);
+            crate::runtime_backend::util::record_source_reference_surface(
+                it_span,
+                SourceReferenceSurface::ThisPermanentType("it".to_string()),
+            );
+            crate::runtime_backend::util::record_source_reference_surface(
+                span,
+                SourceReferenceSurface::ThisPermanentType("it".to_string()),
+            );
+            if bind_leading_it_to_source {
+                return TargetAst::Source(it_span);
+            }
+        }
+        TargetAst::Tagged(TagKey::from(IT_TAG), span)
+    };
     let effects = match followup {
         TokenCopyFollowup::HasHaste => vec![EffectAst::subject_verb_grant_abilities_to_target(
-            TargetAst::Tagged(TagKey::from(IT_TAG), span),
+            fallback_target(),
             vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
             Until::Forever,
         )],
         TokenCopyFollowup::GainHasteUntilEndOfTurn => {
             vec![EffectAst::subject_verb_grant_abilities_to_target(
-                TargetAst::Tagged(TagKey::from(IT_TAG), span),
+                fallback_target(),
                 vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
                 Until::EndOfTurn,
             )]

@@ -32,9 +32,7 @@ impl TransformsTrigger {
 
     pub(crate) fn this_subject_text(&self) -> String {
         match &self.this_object_surface {
-            Some(SourceReferenceSurface::FullName(text))
-            | Some(SourceReferenceSurface::ShortName(text))
-            | Some(SourceReferenceSurface::ThisPermanentType(text)) => text.clone(),
+            Some(surface) => surface.display_text(),
             None => "this creature".to_string(),
         }
     }

@@ -178,8 +178,9 @@ fn keyword_crew_event(
     is_first_crewed_this_turn: bool,
     provenance: crate::provenance::ProvNodeId,
 ) -> TriggerEvent {
-    let crewer_snapshot = game
-        .object(crewer)
+    let event_source = if is_activation_event { vehicle } else { crewer };
+    let event_snapshot = game
+        .object(event_source)
         .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
     let mut object_tags = HashMap::new();
     let vehicle_snapshot = game
@@ -220,10 +221,10 @@ fn keyword_crew_event(
         KeywordActionEvent::new(
             KeywordActionKind::Crew,
             controller,
-            crewer,
+            event_source,
             crew_count as u32,
         )
-        .with_snapshot(crewer_snapshot)
+        .with_snapshot(event_snapshot)
         .with_object_tags(object_tags),
         provenance,
     )
@@ -308,25 +309,40 @@ impl EffectExecutor for CrewCostEffect {
             .crewed_this_turn
             .get(&ctx.source)
             .is_none_or(|crewers| crewers.is_empty());
-        for (idx, id) in chosen.iter().enumerate() {
+        for id in chosen.iter() {
             if game.object(*id).is_some() && !game.is_tapped(*id) {
                 game.tap(*id);
                 events.push(TriggerEvent::new_with_provenance(
                     PermanentTappedEvent::new(*id),
                     ctx.provenance,
                 ));
-                events.push(keyword_crew_event(
-                    game,
-                    *id,
-                    ctx.source,
-                    controller,
-                    crew_count,
-                    &chosen,
-                    idx == 0,
-                    is_first_crewed_this_turn,
-                    ctx.provenance,
-                ));
             }
+        }
+        if let Some(first_crewer) = chosen.first().copied() {
+            events.push(keyword_crew_event(
+                game,
+                first_crewer,
+                ctx.source,
+                controller,
+                crew_count,
+                &chosen,
+                true,
+                is_first_crewed_this_turn,
+                ctx.provenance,
+            ));
+        }
+        for id in chosen.iter() {
+            events.push(keyword_crew_event(
+                game,
+                *id,
+                ctx.source,
+                controller,
+                crew_count,
+                &chosen,
+                false,
+                false,
+                ctx.provenance,
+            ));
         }
 
         // Record crew contributors for "crewed it this turn" references.

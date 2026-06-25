@@ -750,6 +750,15 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 && *amount >= 0
             {
                 Condition::XValueAtLeast(*amount as u32)
+            } else if let (
+                Value::TotalPower(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(amount),
+            ) = (left, operator, right)
+                && *amount >= 0
+                && *filter == ObjectFilter::creature().you_control()
+            {
+                Condition::ControlCreaturesTotalPowerAtLeast(*amount as u32)
             } else {
                 Condition::ValueComparison {
                     left: resolve_value_it_tag(left, &refs)?,
@@ -4746,6 +4755,69 @@ mod parse_compile_tests {
         assert!(
             choices.is_empty(),
             "self-targeted object filters should not create extra target choices"
+        );
+    }
+
+    #[test]
+    fn resolve_target_spec_preserves_source_surface_when_collapsing_to_source() {
+        let target = TargetAst::Object(
+            ObjectFilter::source().with_source_surface(
+                crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this enchantment".to_string(),
+                ),
+            ),
+            None,
+            None,
+        );
+        let (spec, choices) = resolve_target_spec_with_choices(&target, &ReferenceEnv::default())
+            .expect("source object target should resolve cleanly");
+
+        assert_eq!(
+            spec,
+            ChooseSpec::Source.with_surface_hint(
+                crate::target::ChooseSpecSurfaceHint::SourceReference(
+                    crate::target::SourceReferenceSurface::ThisPermanentType(
+                        "this enchantment".to_string(),
+                    ),
+                ),
+            ),
+            "source object filters should keep their captured source surface"
+        );
+        assert!(
+            choices.is_empty(),
+            "self-targeted object filters should not create extra target choices"
+        );
+    }
+
+    #[test]
+    fn resolve_target_spec_preserves_implicit_it_when_it_resolves_to_source() {
+        let target = TargetAst::Tagged(
+            TagKey::from(IT_TAG),
+            Some(TextSpan {
+                line: 0,
+                start: 42,
+                end: 44,
+            }),
+        );
+        let refs = ReferenceEnv {
+            source_object_antecedent: true,
+            ..ReferenceEnv::default()
+        };
+        let (spec, choices) = resolve_target_spec_with_choices(&target, &refs)
+            .expect("implicit it target should resolve cleanly");
+
+        assert_eq!(
+            spec,
+            ChooseSpec::Source.with_surface_hint(
+                crate::target::ChooseSpecSurfaceHint::SourceReference(
+                    crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                ),
+            ),
+            "implicit it should keep its surface when reference resolution maps it to source"
+        );
+        assert!(
+            choices.is_empty(),
+            "self-targeted implicit references should not create extra target choices"
         );
     }
 

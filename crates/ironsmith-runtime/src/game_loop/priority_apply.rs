@@ -1243,7 +1243,7 @@ pub(super) fn apply_replacement_choice_response(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     use crate::events::processing::{
-        TraitEventResult, process_event_with_chosen_replacement_trait,
+        TraitEventResult, process_event_with_chosen_replacement_trait_and_applied_effects,
     };
 
     // Take the pending choice
@@ -1265,8 +1265,23 @@ pub(super) fn apply_replacement_choice_response(
             ))
         })?;
 
-    // Process the event with the chosen replacement effect
-    let result = process_event_with_chosen_replacement_trait(game, pending.event, chosen_id);
+    let crate::game_state::PendingReplacementChoice {
+        event,
+        applicable_effects: _,
+        applied_effects,
+        applied_effect_keys,
+        player: _,
+    } = pending;
+
+    // Process the event with the chosen replacement effect, preserving any
+    // replacement effects that already affected this event before the prompt.
+    let result = process_event_with_chosen_replacement_trait_and_applied_effects(
+        game,
+        event,
+        chosen_id,
+        &applied_effects,
+        &applied_effect_keys,
+    );
 
     // Handle the result
     match result {
@@ -1304,6 +1319,8 @@ pub(super) fn apply_replacement_choice_response(
             player,
             applicable_effects,
             event,
+            applied_effects,
+            applied_effect_keys,
         } => {
             // Build options first (before moving applicable_effects)
             let options: Vec<_> = applicable_effects
@@ -1328,6 +1345,8 @@ pub(super) fn apply_replacement_choice_response(
                 Some(crate::game_state::PendingReplacementChoice {
                     event: *event,
                     applicable_effects,
+                    applied_effects,
+                    applied_effect_keys,
                     player,
                 });
 

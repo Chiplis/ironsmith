@@ -28,7 +28,7 @@ use crate::object::{AttachmentTarget, AuraAttachmentFilter, Object};
 use crate::player::{ManaPool, Player};
 use crate::prevention::PreventionEffectManager;
 use crate::provenance::{ProvNodeId, ProvenanceGraph, ProvenanceNodeKind};
-use crate::replacement::{ReplacementEffectId, ReplacementEffectManager};
+use crate::replacement::{ReplacementEffectId, ReplacementEffectKey, ReplacementEffectManager};
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbility;
 use crate::target::ChooseSpec;
@@ -61,6 +61,10 @@ pub struct PendingReplacementChoice {
     pub event: Event,
     /// IDs of the applicable replacement effects
     pub applicable_effects: Vec<ReplacementEffectId>,
+    /// Replacement effects that already affected this event before the choice.
+    pub applied_effects: HashSet<ReplacementEffectId>,
+    /// Stable replacement identities that already affected this event before the choice.
+    pub applied_effect_keys: HashSet<ReplacementEffectKey>,
     /// The player who must choose which effect to apply
     pub player: PlayerId,
 }

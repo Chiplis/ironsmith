@@ -50,6 +50,7 @@ pub fn is_implicit_reference_tag(tag: &str) -> bool {
 
 pub fn choose_spec_is_plural(spec: &ChooseSpec) -> bool {
     match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => choose_spec_is_plural(spec),
         ChooseSpec::Target(inner) => choose_spec_is_plural(inner),
         ChooseSpec::All(_) | ChooseSpec::EachPlayer(_) => true,
         ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
@@ -94,6 +95,10 @@ fn demonstrative_reference_plurality(text: &str) -> Option<bool> {
     }
 }
 
+fn attached_reference_surface_is_singular(text: &str) -> bool {
+    text.starts_with("enchanted ") || text.starts_with("equipped ")
+}
+
 pub fn describe_apply_continuous_target<FChooseSpec, FPluralizeFilter>(
     effect: &ApplyContinuousEffect,
     describe_choose_spec: FChooseSpec,
@@ -111,6 +116,9 @@ where
         let described = describe_choose_spec(spec);
         if let Some(is_plural) = demonstrative_reference_plurality(&described) {
             return (described, is_plural);
+        }
+        if attached_reference_surface_is_singular(&described) {
+            return (described, false);
         }
         if filter.other {
             return describe_each_other_filter(filter);
@@ -131,6 +139,9 @@ where
         let described = describe_choose_spec(spec);
         if let Some(is_plural) = demonstrative_reference_plurality(&described) {
             return (described, is_plural);
+        }
+        if attached_reference_surface_is_singular(&described) {
+            return (described, false);
         }
         if filter.other {
             return describe_each_other_filter(filter);

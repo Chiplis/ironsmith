@@ -49,6 +49,66 @@ fn look_at_top_cards_player_count_reveal(
     Some((*player, count.clone(), *reveal))
 }
 
+fn effect_ast_contains_sacrifice(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Sacrifice { .. } | SubjectVerbActionAst::SacrificeAll { .. },
+            ..
+        }) => true,
+        EffectAst::Sequence { effects }
+        | EffectAst::May { effects }
+        | EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEachTagged { effects, .. } => {
+            effects.iter().any(effect_ast_contains_sacrifice)
+        }
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        }
+        | EffectAst::SelfReplacement {
+            if_true, if_false, ..
+        } => {
+            if_true.iter().any(effect_ast_contains_sacrifice)
+                || if_false.iter().any(effect_ast_contains_sacrifice)
+        }
+        EffectAst::UnlessAction {
+            effects,
+            alternative,
+            ..
+        } => {
+            effects.iter().any(effect_ast_contains_sacrifice)
+                || alternative.iter().any(effect_ast_contains_sacrifice)
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn parse_sacrifice_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Ok(mut sacrifice_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    if !sacrifice_effects.iter().any(effect_ast_contains_sacrifice) {
+        return Ok(None);
+    }
+
+    let Some(mut reveal_effects) =
+        super::triples::parse_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom(
+            sentences,
+            sentence_idx + 1,
+        )?
+    else {
+        return Ok(None);
+    };
+
+    sacrifice_effects.append(&mut reveal_effects);
+    Ok(Some(sacrifice_effects))
+}
+
 fn title_case_card_name(words: &[&str]) -> String {
     const LOWERCASE_WORDS: &[&str] = &[
         "a", "an", "the", "and", "or", "but", "nor", "for", "so", "yet", "of", "in", "on", "at",
