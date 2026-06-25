@@ -1,8 +1,10 @@
+export const DEFAULT_PLAYER_ACCENT = { hex: "#731bde", rgb: "115, 27, 222" };
+
 const PLAYER_ACCENT_PALETTE = [
-  { hex: "#f28c28", rgb: "242, 140, 40" },
+  DEFAULT_PLAYER_ACCENT,
   { hex: "#ff3b30", rgb: "255, 59, 48" },
   { hex: "#22c55e", rgb: "34, 197, 94" },
-  { hex: "#731bde", rgb: "115, 27, 222" },
+  { hex: "#f28c28", rgb: "242, 140, 40" },
 ];
 
 function normalizeHexColor(color) {

@@ -1839,7 +1839,35 @@ fn normalize_chosen_creature_type_surface(line: &str) -> String {
     else {
         return line.to_string();
     };
+    if let Some(effect) = rest.strip_prefix("draw a card for each ") {
+        let effect = effect
+            .replace(
+                " of the chosen type you control",
+                " you control of that type",
+            )
+            .replace(
+                " you control of the chosen type",
+                " you control of that type",
+            );
+        return format!("Choose a creature type. Draw a card for each {effect}");
+    }
+    if let Some(effect) = rest.strip_prefix("gain ") {
+        let effect = effect
+            .replace(
+                " of the chosen type you control",
+                " you control of that type",
+            )
+            .replace(
+                " you control of the chosen type",
+                " you control of that type",
+            );
+        return format!("Choose a creature type. You gain {effect}");
+    }
     if let Some(effect) = rest.strip_prefix("creatures of the chosen type ") {
+        let effect_body = effect.trim_end_matches('.');
+        if effect_body == "get -1/-1 until end of turn" {
+            return format!("Choose a creature type. All creatures of that type {effect_body}");
+        }
         return format!("Creatures of the creature type of your choice {effect}");
     }
     if let Some(effect) = rest.strip_prefix("return ") {
@@ -2400,10 +2428,31 @@ mod tests {
         );
         assert_eq!(
             finalize_ast_surface_line(
+                "Choose a creature type, then creatures of the chosen type get -3/-3 until end of turn"
+                    .to_string()
+            ),
+            "Creatures of the creature type of your choice get -3/-3 until end of turn."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
                 "Choose a creature type, then creatures of the chosen type get +0/+4 until end of turn"
                     .to_string()
             ),
             "Creatures of the creature type of your choice get +0/+4 until end of turn."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Choose a creature type, then creatures of the chosen type get -1/-1 until end of turn"
+                    .to_string()
+            ),
+            "Choose a creature type. All creatures of that type get -1/-1 until end of turn."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "You choose a creature type, then creatures of the chosen type get -1/-1 until end of turn."
+                    .to_string()
+            ),
+            "Choose a creature type. All creatures of that type get -1/-1 until end of turn."
         );
         assert_eq!(
             finalize_ast_surface_line(

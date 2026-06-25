@@ -14,6 +14,7 @@ pub struct AbilityActivatedTrigger {
     pub filter: ObjectFilter,
     pub non_mana_only: bool,
     pub loyalty_only: bool,
+    pub activation_cost_has_tap: Option<bool>,
 }
 
 impl AbilityActivatedTrigger {
@@ -23,11 +24,17 @@ impl AbilityActivatedTrigger {
             filter,
             non_mana_only,
             loyalty_only: false,
+            activation_cost_has_tap: None,
         }
     }
 
     pub fn loyalty_only(mut self, loyalty_only: bool) -> Self {
         self.loyalty_only = loyalty_only;
+        self
+    }
+
+    pub fn activation_cost_has_tap(mut self, activation_cost_has_tap: Option<bool>) -> Self {
+        self.activation_cost_has_tap = activation_cost_has_tap;
         self
     }
 }
@@ -80,6 +87,11 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         if self.filter.has_x_in_cost && !e.activation_cost_has_x {
             return false;
         }
+        if let Some(required) = self.activation_cost_has_tap
+            && e.activation_cost_has_tap != required
+        {
+            return false;
+        }
         if !self.activator.matches_player(e.activator, &ctx.filter_ctx) {
             return false;
         }
@@ -103,7 +115,7 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         } else {
             "an ability"
         };
-        if self.filter.has_x_in_cost {
+        let mut text = if self.filter.has_x_in_cost {
             format!(
                 "Whenever {subject} {verb} {ability} with an activation cost that contains {{X}}"
             )
@@ -122,7 +134,13 @@ impl TriggerMatcher for AbilityActivatedTrigger {
                 text.push_str(" that isn't a mana ability");
             }
             text
+        };
+        match self.activation_cost_has_tap {
+            Some(true) => text.push_str(" with {T} in its activation cost"),
+            Some(false) => text.push_str(" without {T} in its activation cost"),
+            None => {}
         }
+        text
     }
 }
 

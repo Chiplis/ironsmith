@@ -438,14 +438,21 @@ function buildObjectFamilyIds(players, objectId) {
   return ids;
 }
 
-function resolveObjectAccent(players, perspective, controllerById, objectId, explicitControllerId = null) {
+function resolveObjectAccent(
+  players,
+  perspective,
+  controllerById,
+  objectId,
+  explicitControllerId = null,
+  accentOverrides = null
+) {
   const controllerId = explicitControllerId != null
     ? Number(explicitControllerId)
     : controllerById.get(String(objectId));
   if (controllerId == null || Number(controllerId) === Number(perspective)) {
     return null;
   }
-  return getPlayerAccent(players || [], controllerId, perspective);
+  return getPlayerAccent(players || [], controllerId, perspective, accentOverrides);
 }
 
 function PriorityActionPillLabel({
@@ -644,7 +651,10 @@ function PriorityActionStrip({
   onActionClick,
   onActionHoverStart,
   onActionHoverEnd,
+  accentOverrides = null,
 }) {
+  const { playerAccentOverrides: contextAccentOverrides } = useGame();
+  const effectiveAccentOverrides = accentOverrides || contextAccentOverrides;
   const viewportRef = useRef(null);
   const groupNodeRefs = useRef(new Map());
   const displayNodeRefs = useRef(new Map());
@@ -883,7 +893,9 @@ function PriorityActionStrip({
             players,
             perspective,
             objectControllerById,
-            group.hoverObjectId
+            group.hoverObjectId,
+            null,
+            effectiveAccentOverrides
           );
           const setNodeRef = (node) => {
             const existing = groupNodeRefs.current.get(group.key) || [];
@@ -1135,6 +1147,7 @@ function ViewedCardsStrip({
   cards = [],
   players = [],
   perspective = null,
+  accentOverrides = null,
   className = "",
   objectControllerById = new Map(),
   hoveredObjectId = null,
@@ -1144,6 +1157,8 @@ function ViewedCardsStrip({
   compact = false,
   wrap = false,
 }) {
+  const { playerAccentOverrides: contextAccentOverrides } = useGame();
+  const effectiveAccentOverrides = accentOverrides || contextAccentOverrides;
   const { attachScrollableRef, hoverSuppressed } = useHoverSuppressedWhileScrolling({
     onScrollStart: onCardHoverEnd,
   });
@@ -1188,7 +1203,7 @@ function ViewedCardsStrip({
         {cards.length > 0 ? cards.map((card, index) => {
           const cardAccent = card.controller == null
             ? null
-            : getPlayerAccent(players || [], card.controller, perspective);
+            : getPlayerAccent(players || [], card.controller, perspective, effectiveAccentOverrides);
           const cardAccentStyle = cardAccent
             ? {
               "--decision-main-accent": cardAccent.hex,
@@ -1225,7 +1240,8 @@ function ViewedCardsStrip({
                       perspective,
                       objectControllerById,
                       card.id,
-                      card.controller
+                      card.controller,
+                      effectiveAccentOverrides
                     )?.hex
                     || null
                   }
@@ -2757,6 +2773,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   cards={viewedCardEntries}
                   players={state?.players || []}
                   perspective={state?.perspective}
+                  accentOverrides={playerAccentOverrides}
                   className="action-strip-options-region self-stretch"
                   objectControllerById={objectControllerById}
                   hoveredObjectId={hoveredObjectId}

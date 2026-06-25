@@ -159,6 +159,7 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::blocks_one_or_more(filter)
         }
         TriggerKind::ThisBecomesBlocked => crate::triggers::Trigger::this_becomes_blocked(),
+        TriggerKind::BecomesBlocked { filter } => crate::triggers::Trigger::becomes_blocked(filter),
         TriggerKind::ThisBecomesBlockedByObject { filter } => {
             crate::triggers::Trigger::this_becomes_blocked_by_object(filter)
         }
@@ -275,11 +276,13 @@ pub(crate) fn interpret_trigger_model(
             filter,
             non_mana_only,
             loyalty_only,
-        } => crate::triggers::Trigger::ability_activated_qualified(
+            activation_cost_has_tap,
+        } => crate::triggers::Trigger::ability_activated_qualified_with_activation_cost_tap(
             activator,
             filter,
             non_mana_only,
             loyalty_only,
+            activation_cost_has_tap,
         ),
         TriggerKind::IsDealtDamage {
             target,
@@ -559,6 +562,9 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::Blocks(filter) => Self::blocks(filter),
             ironsmith_core::DelayedTriggerSpec::BlocksOneOrMore(filter) => {
                 Self::blocks_one_or_more(filter)
+            }
+            ironsmith_core::DelayedTriggerSpec::BecomesBlocked(filter) => {
+                Self::becomes_blocked(filter)
             }
             ironsmith_core::DelayedTriggerSpec::LeavesBattlefield(filter) => {
                 Self::leaves_battlefield(filter)

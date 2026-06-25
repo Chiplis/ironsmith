@@ -2858,7 +2858,8 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         if matches!(
             method,
             AlternativeCastingMethod::FlashWithAdditionalCost { .. }
-        ) {
+        ) || line.contains("rather than pay this spell's mana cost")
+        {
             leading_alternative_cast_lines.push(line);
         } else {
             alternative_cast_lines.push(line);

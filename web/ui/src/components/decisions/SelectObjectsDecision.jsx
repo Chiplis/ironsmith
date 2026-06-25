@@ -21,7 +21,7 @@ export default function SelectObjectsDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch, state } = useGame();
+  const { dispatch, state, playerAccentOverrides } = useGame();
   const { hoveredObjectId, hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const candidates = useMemo(() => decision.candidates || [], [decision.candidates]);
@@ -188,7 +188,7 @@ export default function SelectObjectsDecision({
                 : objectControllerById.get(String(c.id));
               const accent = controllerId == null
                 ? null
-                : getPlayerAccent(state?.players || [], controllerId, state?.perspective);
+                : getPlayerAccent(state?.players || [], controllerId, state?.perspective, playerAccentOverrides);
               return (
                 <Button
                   key={c.id}

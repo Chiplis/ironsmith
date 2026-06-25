@@ -793,9 +793,26 @@ impl Trigger {
         non_mana_only: bool,
         loyalty_only: bool,
     ) -> Self {
+        Self::ability_activated_qualified_with_activation_cost_tap(
+            activator,
+            filter,
+            non_mana_only,
+            loyalty_only,
+            None,
+        )
+    }
+
+    pub fn ability_activated_qualified_with_activation_cost_tap(
+        activator: PlayerFilter,
+        filter: ObjectFilter,
+        non_mana_only: bool,
+        loyalty_only: bool,
+        activation_cost_has_tap: Option<bool>,
+    ) -> Self {
         Self::new(
             AbilityActivatedTrigger::new(activator, filter, non_mana_only)
-                .loyalty_only(loyalty_only),
+                .loyalty_only(loyalty_only)
+                .activation_cost_has_tap(activation_cost_has_tap),
         )
     }
 

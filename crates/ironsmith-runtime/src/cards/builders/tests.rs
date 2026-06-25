@@ -6398,6 +6398,87 @@ Whenever you cast an instant or sorcery spell or activate an ability, if that sp
     assert!(debug.contains("has_x_in_cost: true"), "{debug}");
 }
 
+#[test]
+fn haunting_wind_or_trigger_preserves_without_tap_cost_condition() {
+    let oracle = "Whenever an artifact becomes tapped or a player activates an artifact's ability without {T} in its activation cost, this enchantment deals 1 damage to that artifact's controller.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Haunting Wind")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("Haunting Wind trigger should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(rendered, oracle);
+
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("OrTrigger"), "{debug}");
+    assert!(debug.contains("PermanentBecomesTappedTrigger"), "{debug}");
+    assert!(debug.contains("AbilityActivatedTrigger"), "{debug}");
+    let compact_debug: String = debug.chars().filter(|ch| !ch.is_whitespace()).collect();
+    assert!(
+        compact_debug.contains("activation_cost_has_tap:Some(false"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn haunting_wind_runtime_trigger_matches_tapped_artifact_or_no_tap_cost_ability_only() {
+    let oracle = "Whenever an artifact becomes tapped or a player activates an artifact's ability without {T} in its activation cost, this enchantment deals 1 damage to that artifact's controller.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Haunting Wind")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("Haunting Wind trigger should parse");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let haunting_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let artifact_card = CardBuilder::new(CardId::new(), "Artifact Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_id = game.create_object_from_card(&artifact_card, bob, Zone::Battlefield);
+
+    let no_tap_cost_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::AbilityActivatedEvent::new(artifact_id, bob, false)
+            .with_activation_cost_has_tap(false),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let no_tap_matches = crate::triggers::check_triggers(&game, &no_tap_cost_event)
+        .into_iter()
+        .filter(|entry| entry.source == haunting_id)
+        .count();
+    assert_eq!(
+        no_tap_matches, 1,
+        "expected no-tap-cost artifact ability to trigger"
+    );
+
+    let tap_cost_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::AbilityActivatedEvent::new(artifact_id, bob, false)
+            .with_activation_cost_has_tap(true),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let tap_cost_matches = crate::triggers::check_triggers(&game, &tap_cost_event)
+        .into_iter()
+        .filter(|entry| entry.source == haunting_id)
+        .count();
+    assert_eq!(
+        tap_cost_matches, 0,
+        "artifact abilities with {{T}} in their activation cost should not satisfy the ability branch"
+    );
+
+    let tapped_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::PermanentTappedEvent::new(artifact_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let tapped_matches = crate::triggers::check_triggers(&game, &tapped_event)
+        .into_iter()
+        .filter(|entry| entry.source == haunting_id)
+        .count();
+    assert_eq!(
+        tapped_matches, 1,
+        "expected artifact tapped branch to trigger"
+    );
+}
+
 struct OrdealTargetBob {
     bob: PlayerId,
 }
@@ -35496,6 +35577,33 @@ fn render_return_from_graveyard_uses_from_your_graveyard() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_return_from_graveyard_attached_followup_targets_returned_creature() {
+    let text = "Return target creature card from your graveyard to the battlefield, then return up to two target Aura and/or Equipment cards from your graveyard to the battlefield attached to that creature.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Unfinished Business Variant")
+        .parse_text(text)
+        .expect("return-attached followup should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ReturnFromGraveyardToBattlefieldEffect")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("AttachObjectsEffect")
+            && debug.contains("Aura")
+            && debug.contains("Equipment")
+            && debug.contains("max: Some(2)")
+            && debug.contains("TagKey(\"returned_"),
+        "expected returned creature tag plus counted Aura/Equipment move+attach, got {debug}"
+    );
+
+    let joined = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        joined.contains(text.trim_end_matches('.')),
+        "expected compact return-attached wording, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_return_to_hand_from_your_graveyard_uses_oracle_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Raise Dead Variant")
         .parse_text("Return target creature card from your graveyard to your hand.")
@@ -40623,6 +40731,34 @@ fn parse_where_x_fixed_plus_counters_on_source() {
             && debug.contains("countersonsource")
             && debug.contains("charge"),
         "expected X to bind to 3 plus charge counters on source, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_where_x_number_of_counters_on_that_creature() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Parting Thoughts Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Destroy target creature. You draw X cards and you lose X life, where X is the number of counters on that creature.",
+        )
+        .expect("where-X counters on that creature clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "destroy target creature. you draw x cards and you lose x life, where x is the number of counters on it"
+        ) && !rendered.contains("number of creatures"),
+        "expected rendered where-X clause to count counters on that creature once, got {rendered}"
+    );
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("CountersOn")
+            && (debug.contains("destroyed_0") || debug.contains("__it__"))
+            && !debug.contains("Count(\n                                        ObjectFilter"),
+        "expected X to bind to counters on the destroyed creature, got {debug}"
     );
 }
 
@@ -72831,14 +72967,11 @@ fn coax_from_the_blind_eternities_lowers_to_face_up_exile_choice_bundle() {
         "expected Coax to lower into a may/choose-across-zones/reveal/move bundle, got {debug}"
     );
 
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
-    assert!(
-        rendered.contains("outside the game")
-            && rendered.contains("in exile")
-            && rendered.contains("put that card into your hand"),
-        "expected Coax to render both outside-game and exile choice surfaces, got {rendered}"
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "You may reveal an Eldrazi card you own from outside the game or choose a face-up Eldrazi card you own in exile. Put that card into your hand.",
+        "expected Coax to render both outside-game and exile choice surfaces"
     );
 }
 
@@ -73102,6 +73235,42 @@ fn parse_return_x_target_creatures_of_creature_type_of_choice_targets_not_all() 
         rendered.contains("creature type")
             && (rendered.contains("x target") || rendered.contains("of your choice")),
         "expected rendered text to mention X targeting and creature type, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_each_player_choose_type_return_cards_of_that_type() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Grave Sifter Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental, Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(5, 7))
+        .parse_text(
+            "When this creature enters, each player chooses a creature type and returns any number of cards of that type from their graveyard to their hand.",
+        )
+        .expect("Grave Sifter-style chosen-type return should parse");
+
+    let debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    let debug_compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        debug.contains("choosecreaturetypeeffect")
+            && debug.contains("chosen_creature_type: true")
+            && debug_compact.contains("owner:some(iteratedplayer"),
+        "expected return filter to use the per-player chosen creature type, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "when this creature enters, each player chooses a creature type and returns any number of cards of that type from their graveyard to their hand"
+        ),
+        "expected compact each-player chosen-type return surface, got {rendered}"
     );
 }
 

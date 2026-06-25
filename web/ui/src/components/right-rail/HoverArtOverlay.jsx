@@ -618,7 +618,7 @@ export default function HoverArtOverlay({
   onPreferredInspectorWidthChange = null,
   onInspectorAccentChange = null,
 }) {
-  const { state, game, uiFont } = useGame();
+  const { state, game, uiFont, playerAccentOverrides } = useGame();
   const { locale, t } = useI18n();
   const debugInspector = inspectorVariant === "debug";
   const compactTopbarLayout = compact && compactLayout === "topbar";
@@ -835,13 +835,16 @@ export default function HoverArtOverlay({
       ?? previewCard?.controller
       ?? hoveredStackObject?.controller
       ?? null;
-    return ownerId == null ? null : getPlayerAccent(state?.players || [], ownerId, state?.perspective);
+    return ownerId == null
+      ? null
+      : getPlayerAccent(state?.players || [], ownerId, state?.perspective, playerAccentOverrides);
   }, [
     details?.controller,
     details?.owner,
     hoveredStackObject?.controller,
     hoveredStackObject?.owner,
     hoveredStackObject?.source_owner,
+    playerAccentOverrides,
     previewCard?.controller,
     previewCard?.owner,
     state?.perspective,

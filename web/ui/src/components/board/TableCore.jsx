@@ -10,16 +10,17 @@ import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
 import MobileBattleScene from "./MobileBattleScene";
 import ManaPool from "@/components/left-rail/ManaPool";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
-import { getPlayerAccent } from "@/lib/player-colors";
+import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
 function playerAccentStyle(accent) {
+  const resolvedAccent = accent || DEFAULT_PLAYER_ACCENT;
   return {
-    "--player-accent": accent?.hex || "#d8bf6a",
-    "--panel-accent": accent?.hex || "#b98946",
-    "--player-accent-rgb": accent?.rgb || "216, 191, 106",
+    "--player-accent": resolvedAccent.hex,
+    "--panel-accent": resolvedAccent.hex,
+    "--player-accent-rgb": resolvedAccent.rgb,
   };
 }
 
@@ -88,7 +89,7 @@ export default function TableCore({
   const compactDecisionBarHeight = portraitCompactViewport
     ? 236
     : (landscapeMobileViewport ? 92 : 112);
-  const desktopPriorityBarHeight = largeDesktopViewport ? 54 : (smallDesktopViewport ? 48 : 50);
+  const desktopPriorityBarHeight = largeDesktopViewport ? 60 : (smallDesktopViewport ? 54 : 56);
   const desktopDecisionBarHeight = largeDesktopViewport ? 138 : (smallDesktopViewport ? 112 : 128);
   const actionBarHeight = expandedActionBar
     ? (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactDecisionBarHeight : desktopDecisionBarHeight)
@@ -241,20 +242,20 @@ export default function TableCore({
       style={playerAccentStyle(playerAccent)}
     >
       <div className="table-shared-control-stack relative z-[1] grid min-h-0 gap-0 overflow-visible">
-        <div className="table-shared-action-slot relative overflow-visible" style={{ height: `${actionBarHeight}px` }}>
-          {actionBarElement}
-        </div>
         <div className="table-shared-toolbar-slot relative overflow-visible">
           {middleToolbarElement}
         </div>
         <div className="table-shared-player-slot relative overflow-visible">
           {middlePlayerHeaderElement}
         </div>
+        <div className="table-shared-action-slot relative overflow-visible" style={{ height: `${actionBarHeight}px` }}>
+          {actionBarElement}
+        </div>
       </div>
       {middleInspectorDock ? (
         <div
-          className="table-shared-inspector-dock pointer-events-none absolute bottom-0 right-2 z-[110] flex items-start justify-end overflow-visible"
-          style={{ top: `${actionBarHeight}px`, width: "40vw" }}
+          className="table-shared-inspector-dock pointer-events-none absolute right-2 z-[110] flex items-start justify-end overflow-visible"
+          style={{ top: 0, bottom: `${actionBarHeight}px`, width: "40vw" }}
           data-inspector-dock="middle"
         >
           {middleInspectorDock}
@@ -296,7 +297,7 @@ export default function TableCore({
             : "minmax(0,1fr) minmax(0,1fr)")
           : sharedMiddleElement
             ? "minmax(0,1.09fr) auto minmax(0,1fr)"
-            : `minmax(0,1fr) ${actionBarHeight}px minmax(0,1fr)`,
+            : "minmax(0,1fr) minmax(0,1fr)",
       }}
     >
       <OpponentZone
@@ -312,11 +313,6 @@ export default function TableCore({
         activeOpponentIndex={mobileOpponentIndex}
         setActiveOpponentIndex={setMobileOpponentIndex}
       />
-      {!mergeActionBarIntoMyZone && !sharedMiddleElement && (
-        <div className="relative z-20 flex items-center">
-          {actionBarElement}
-        </div>
-      )}
       {!mergeActionBarIntoMyZone && sharedMiddleElement}
       {!mergeActionBarIntoMyZone && !sharedMiddleElement && middleToolbarElement}
       <MyZone
@@ -330,6 +326,7 @@ export default function TableCore({
         legalTargetObjectIds={legalTargetObjectIds}
         headerControls={myZoneHeaderControls}
         headerInspectorDock={!mergeActionBarIntoMyZone && !sharedMiddleElement ? middleInspectorDock : null}
+        headerActionBar={!mergeActionBarIntoMyZone && !sharedMiddleElement ? actionBarElement : null}
         embeddedActionBar={mergeActionBarIntoMyZone ? actionBarElement : null}
         zoneActionControls={!mergeActionBarIntoMyZone ? zoneActionControls : null}
         hideHeader={Boolean(sharedMiddleElement)}

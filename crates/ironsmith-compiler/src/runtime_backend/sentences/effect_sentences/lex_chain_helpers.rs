@@ -71,6 +71,18 @@ const TURN_OR_COMBAT_WORDS: &[&str] = &["turn", "combat"];
 const COUNTER_OR_COUNTERS_WORDS: &[&str] = &["counter", "counters"];
 const COUNTER_NOUN_CONTEXT_WORDS: &[&str] = &["on", "from", "among"];
 const BACKREF_COUNTER_TARGET_PHRASES: &[&[&str]] = &[&["on", "it"], &["on", "them"]];
+const RETURN_BATTLEFIELD_ATTACHED_BACKREF_PHRASES: &[&[&str]] = &[
+    &["attached", "to", "it"],
+    &["attached", "to", "them"],
+    &["attached", "to", "that", "card"],
+    &["attached", "to", "that", "creature"],
+    &["attached", "to", "that", "object"],
+    &["attached", "to", "that", "permanent"],
+    &["attached", "to", "those", "cards"],
+    &["attached", "to", "those", "creatures"],
+    &["attached", "to", "those", "objects"],
+    &["attached", "to", "those", "permanents"],
+];
 const AT_THE_PHRASE: &[&str] = &["at", "the"];
 const VERB_SHAPES: &[VerbShapeEntry] = &[
     VerbShapeEntry {
@@ -441,6 +453,7 @@ const DEAL_DAMAGE_EQUAL_TOTAL_MANA_VALUE_REQUIRED: &[&str] =
     &["damage", "equal", "total", "mana", "value"];
 const DEAL_DAMAGE_FOLLOWUP_REQUIRED: &[&str] = &["damage"];
 const RETURN_WITH_COUNTER_FOLLOWUP_PREFIX: &[&str] = &["return"];
+const THAT_PLAYER_CONTROLS_PHRASE: &[&str] = &["that", "player", "controls"];
 
 fn token_word_is(token: &OwnedLexToken, expected: &str) -> bool {
     token.as_word().is_some_and(|word| word == expected)
@@ -1205,6 +1218,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     i + 1
                 };
                 let before_then = trim_lexed_commas(&segment[..i]);
+                let before_words = token_word_refs(before_then);
                 let starts_with_clash =
                     grammar::words_match_any_prefix(before_then, CLASH_PREFIXES).is_some();
                 let after_then = trim_lexed_commas(&segment[then_idx + 1..]);
@@ -1253,11 +1267,29 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                         .is_some()
                     && words_contain_any(&after_words, DEAL_OR_DEALS_WORDS)
                     && words_contain_all(&after_words, DEAL_DAMAGE_FOLLOWUP_REQUIRED);
+                let allow_target_pump_for_each_that_player_followup = has_back_ref
+                    && !starts_with_for_each_player_or_opponent
+                    && (word_slice_first_is(&after_words, TARGET_WORD)
+                        || word_slice_starts_with(&after_words, &["up", "to"]))
+                    && words_contain_any(&after_words, SHARED_SUBJECT_MODIFIER_WORDS)
+                    && word_slice_contains_phrase(&after_words, THAT_PLAYER_CONTROLS_PHRASE);
                 let allow_return_with_counter_followup = !starts_with_for_each_player_or_opponent
                     && has_back_ref
                     && word_slice_starts_with(&after_words, RETURN_WITH_COUNTER_FOLLOWUP_PREFIX)
                     && words_contain_any(&after_words, COUNTER_OR_COUNTERS_WORDS)
                     && word_slice_contains_any_phrase(&after_words, BACKREF_COUNTER_TARGET_PHRASES);
+                let allow_return_battlefield_attached_followup =
+                    !starts_with_for_each_player_or_opponent
+                        && has_back_ref
+                        && word_slice_starts_with(
+                            &after_words,
+                            RETURN_WITH_COUNTER_FOLLOWUP_PREFIX,
+                        )
+                        && word_slice_contains_word(&after_words, "battlefield")
+                        && word_slice_contains_any_phrase(
+                            &after_words,
+                            RETURN_BATTLEFIELD_ATTACHED_BACKREF_PHRASES,
+                        );
                 let allow_put_battlefield_with_counter_followup =
                     !starts_with_for_each_player_or_opponent
                         && has_back_ref
@@ -1278,8 +1310,18 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     && grammar::words_match_any_prefix(after_then, PUT_BACK_PREFIXES).is_some()
                     && grammar::contains_word(after_then, "any")
                     && grammar::contains_word(after_then, "order");
+                let continues_inline_consult_bottom_remainder =
+                    grammar::words_match_any_prefix(after_then, PUT_PREFIXES).is_some()
+                        && word_slice_contains_word(&after_words, "rest")
+                        && word_slice_contains_word(&after_words, "bottom")
+                        && word_slice_contains_word(&after_words, "library")
+                        && word_slice_contains_word(&before_words, "reveal")
+                        && word_slice_contains_word(&before_words, "top")
+                        && word_slice_contains_word(&before_words, "library");
                 let allow_clash_followup = starts_with_clash;
-                if has_effect_head && (!has_back_ref || allow_backref_split)
+                if has_effect_head
+                    && !continues_inline_consult_bottom_remainder
+                    && (!has_back_ref || allow_backref_split)
                     || has_effect_head && allow_clash_followup
                     || has_effect_head && allow_attach_followup
                     || has_effect_head && allow_that_many_followup
@@ -1287,7 +1329,9 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     || has_effect_head && allow_deal_damage_equal_power_followup
                     || has_effect_head && allow_deal_damage_equal_total_mana_value_followup
                     || has_effect_head && allow_for_each_damage_followup
+                    || has_effect_head && allow_target_pump_for_each_that_player_followup
                     || has_effect_head && allow_return_with_counter_followup
+                    || has_effect_head && allow_return_battlefield_attached_followup
                     || has_effect_head && allow_put_battlefield_with_counter_followup
                     || has_effect_head && allow_put_into_hand_followup
                     || has_effect_head && allow_put_back_in_any_order_followup

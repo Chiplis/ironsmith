@@ -32,8 +32,6 @@ export default function AddCardBar({
     setUiFont,
     playerAccentOverrides,
     setPlayerAccentOverride,
-    phaseAccent,
-    setPhaseAccent,
   } = useGame();
   const { t } = useI18n();
 
@@ -49,7 +47,6 @@ export default function AddCardBar({
     && (!priorityPlayer || !samePlayerId(decisionPlayer.id, priorityPlayer.id));
   const perspectiveAccent = getPlayerAccent(players, perspective, perspective, playerAccentOverrides);
   const translatedPhaseSummary = `${formatPhase(state?.phase, t)}${state?.step ? ` - ${formatStep(state?.step, t)}` : ""}`;
-  const phaseSummary = `${formatPhase(state?.phase)}${state?.step ? ` • ${formatStep(state?.step)}` : ""}`;
 
   return (
     <div className={`add-card-toolbar table-toolbar table-toolbar--secondary rounded-none px-3 py-2${compact ? " add-card-toolbar--compact" : ""}`}>
@@ -153,20 +150,11 @@ export default function AddCardBar({
         <div className="add-card-toolbar-accent add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap uppercase">
           <span>{t("action.accent")}</span>
           <div
-            className="add-card-toolbar-accent-split"
+            className="add-card-toolbar-accent-swatch"
             style={{
-              "--toolbar-phase-accent": phaseAccent || "#876221",
               "--toolbar-player-accent": perspectiveAccent?.hex || "#731bde",
             }}
           >
-            <input
-              className="add-card-toolbar-accent-input add-card-toolbar-accent-input--phase"
-              type="color"
-              value={phaseAccent || "#876221"}
-              onChange={(event) => setPhaseAccent(event.target.value)}
-              aria-label={t("action.accent")}
-              title={t("action.accent")}
-            />
             <input
               className="add-card-toolbar-accent-input add-card-toolbar-accent-input--player"
               type="color"

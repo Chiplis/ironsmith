@@ -4178,7 +4178,9 @@ pub(crate) fn parse_token_pt(word: &str) -> Option<(i32, i32)> {
 pub(crate) fn target_mentions_graveyard(target: &TargetAst) -> bool {
     match target {
         TargetAst::Object(filter, _, _) => filter.zone == Some(Zone::Graveyard),
-        TargetAst::WithCount(inner, _) => target_mentions_graveyard(inner),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_mentions_graveyard(inner)
+        }
         _ => false,
     }
 }
@@ -4740,6 +4742,23 @@ mod parse_compile_tests {
             spec,
             ChooseSpec::Source,
             "source object filters should resolve to the source choose spec"
+        );
+        assert!(
+            choices.is_empty(),
+            "self-targeted object filters should not create extra target choices"
+        );
+    }
+
+    #[test]
+    fn resolve_target_spec_preserves_source_object_filters_from_exile() {
+        let target = TargetAst::Object(ObjectFilter::source().in_zone(Zone::Exile), None, None);
+        let (spec, choices) = resolve_target_spec_with_choices(&target, &ReferenceEnv::default())
+            .expect("source object target from exile should resolve cleanly");
+
+        assert_eq!(
+            spec,
+            ChooseSpec::Object(ObjectFilter::source().in_zone(Zone::Exile)),
+            "source object filters from exile should keep their zone"
         );
         assert!(
             choices.is_empty(),

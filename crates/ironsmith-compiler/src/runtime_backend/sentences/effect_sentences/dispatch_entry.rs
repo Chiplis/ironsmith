@@ -1744,7 +1744,8 @@ fn parse_effect_sentences_lexed_inner(
         return Ok(effects);
     }
 
-    let sentences = split_lexed_sentences(tokens)
+    let sentence_segments = split_leading_amass_comma_then_sentences(split_lexed_sentences(tokens));
+    let sentences = sentence_segments
         .into_iter()
         .map(SentenceInput::from_lexed)
         .collect::<Vec<_>>();
@@ -1753,6 +1754,27 @@ fn parse_effect_sentences_lexed_inner(
     apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
     Ok(effects)
+}
+
+fn split_leading_amass_comma_then_sentences<'a>(
+    segments: Vec<&'a [OwnedLexToken]>,
+) -> Vec<&'a [OwnedLexToken]> {
+    let mut result = Vec::new();
+    for segment in segments {
+        if segment
+            .iter()
+            .find_map(OwnedLexToken::as_word)
+            .is_some_and(|word| word.eq_ignore_ascii_case("amass"))
+        {
+            let split = super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![segment]);
+            if split.len() > 1 {
+                result.extend(split);
+                continue;
+            }
+        }
+        result.push(segment);
+    }
+    result
 }
 
 fn is_copy_reference_effect(effect: &EffectAst) -> bool {

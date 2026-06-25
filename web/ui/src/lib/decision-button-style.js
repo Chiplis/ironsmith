@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getPlayerAccent, hexToRgbString } from "./player-colors.js";
-
-const LOCAL_DECISION_ACCENT = "#731bde";
+import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "./player-colors.js";
 
 // How long a new accent must stay put before the button adopts it. Multiplayer
 // echoes can bounce the pending decision across players several times within a
@@ -20,18 +18,15 @@ export function decisionButtonPlayerId(state, decision = state?.decision) {
 
 export function decisionButtonAccentVars(state, decision = state?.decision, accentOverrides = null) {
   const playerId = decisionButtonPlayerId(state, decision);
-  if (Number(playerId) === Number(state?.perspective)) {
-    return {
-      "--decision-main-accent": LOCAL_DECISION_ACCENT,
-      "--decision-main-rgb": hexToRgbString(LOCAL_DECISION_ACCENT),
-    };
-  }
   const accent = getPlayerAccent(state?.players || [], playerId, state?.perspective, accentOverrides);
-  if (!accent) return undefined;
+  const resolvedAccent = accent || DEFAULT_PLAYER_ACCENT;
 
   return {
-    "--decision-main-accent": accent.hex,
-    "--decision-main-rgb": accent.rgb,
+    "--decision-main-accent": resolvedAccent.hex,
+    "--decision-main-rgb": resolvedAccent.rgb,
+    "--player-accent": resolvedAccent.hex,
+    "--panel-accent": resolvedAccent.hex,
+    "--player-accent-rgb": resolvedAccent.rgb,
   };
 }
 

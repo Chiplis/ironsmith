@@ -1,12 +1,17 @@
 import { useGame } from "@/context/GameContext";
-import { getPlayerAccent } from "@/lib/player-colors";
+import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { playerDisplayName } from "@/lib/player-display";
 import ManaPool from "./ManaPool";
 
 export default function PlayerCard({ player, isActive, isPerspective }) {
-  const { state } = useGame();
-  const playerAccent = getPlayerAccent(state?.players || [], player?.id, state?.perspective);
+  const { state, playerAccentOverrides } = useGame();
+  const playerAccent = getPlayerAccent(
+    state?.players || [],
+    player?.id,
+    state?.perspective,
+    playerAccentOverrides
+  ) || DEFAULT_PLAYER_ACCENT;
   const exileCards = Array.isArray(player.exile_cards) ? player.exile_cards : [];
   const commandCards = Array.isArray(player.command_cards) ? player.command_cards : [];
   const sideboardCards = Array.isArray(player.sideboard_cards) ? player.sideboard_cards : [];
@@ -22,12 +27,21 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
         "p-2 grid gap-2 rounded border border-transparent",
         "bg-gradient-to-b from-secondary to-card",
         isActive && "shadow-[0_0_8px_rgba(127,184,106,0.30),0_0_0_1px_rgba(127,184,106,0.45)_inset]",
-        isPerspective && "border-[#f28c28] shadow-[inset_0_0_10px_rgba(242,140,40,0.34)]",
       )}
       data-player-id={player.id}
+      style={{
+        "--player-accent": playerAccent.hex,
+        "--player-accent-rgb": playerAccent.rgb,
+        ...(isPerspective
+          ? {
+            borderColor: playerAccent.hex,
+            boxShadow: `inset 0 0 10px rgba(${playerAccent.rgb}, 0.34)`,
+          }
+          : null),
+      }}
     >
       <div className="flex items-center gap-2 min-w-0">
-        <h2 className="text-[15px] font-bold m-0 truncate" style={{ color: playerAccent?.hex }}>
+        <h2 className="text-[15px] font-bold m-0 truncate" style={{ color: playerAccent.hex }}>
           {playerDisplayName(state?.players || [], player)}
         </h2>
         <ManaPool

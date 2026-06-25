@@ -2015,6 +2015,21 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(value);
     }
 
+    // where X is the number of counters on that creature
+    if let Some(tail) = clause.after_words(3) {
+        let mut equal_prefixed = Vec::with_capacity(tail.tokens().len() + 2);
+        equal_prefixed.push(OwnedLexToken::word(
+            "equal".to_string(),
+            TextSpan::synthetic(),
+        ));
+        equal_prefixed.push(OwnedLexToken::word("to".to_string(), TextSpan::synthetic()));
+        equal_prefixed.extend(tail.tokens().iter().cloned());
+        if let Some(value) = parse_equal_to_number_of_counters_on_reference_value(&equal_prefixed)
+        {
+            return Some(value);
+        }
+    }
+
     // where X is the number of <objects>
     if let Some(value) = parse_where_x_is_number_of_filter_value(tokens) {
         return Some(value);

@@ -13813,6 +13813,7 @@ fn test_triggered_mana_ability_resolves_immediately_without_stack() {
         alice,
         true,
         None,
+        true,
     );
 
     assert!(
@@ -14104,6 +14105,7 @@ fn test_non_mana_tap_for_mana_trigger_still_uses_stack() {
         alice,
         true,
         None,
+        true,
     );
 
     assert!(

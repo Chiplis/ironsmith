@@ -62,6 +62,9 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::BlocksOneOrMore(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::BlocksOneOrMore(filter.clone()),
         ),
+        TriggerSpec::BecomesBlocked(filter) => Ok(
+            ironsmith_core::DelayedTriggerSpec::BecomesBlocked(filter.clone()),
+        ),
         TriggerSpec::LeavesBattlefield(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::LeavesBattlefield(filter.clone()),
         ),

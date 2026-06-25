@@ -312,6 +312,52 @@ const ACTIVATED_ABILITY_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
         ]
 );
 const MANA_ABILITY_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["mana"]);
+
+fn trigger_clause_word_is_tap_symbol(word: &str) -> bool {
+    matches!(word, "{t}" | "t")
+}
+
+fn activation_cost_tap_condition_start(words: &[&str]) -> Option<(usize, bool)> {
+    words.iter().enumerate().find_map(|(idx, word)| {
+        let required = match *word {
+            "with" => true,
+            "without" => false,
+            _ => return None,
+        };
+        if words
+            .get(idx + 1)
+            .is_some_and(|word| trigger_clause_word_is_tap_symbol(word))
+            && words.get(idx + 2) == Some(&"in")
+            && words.get(idx + 3) == Some(&"its")
+            && words.get(idx + 4) == Some(&"activation")
+            && words.get(idx + 5) == Some(&"cost")
+        {
+            Some((idx, required))
+        } else {
+            None
+        }
+    })
+}
+
+fn split_activation_cost_tap_condition_tail_lexed<'a, 'w>(
+    tail_tokens: &'a [OwnedLexToken],
+    tail_words: &'w [&'w str],
+) -> (Option<bool>, Vec<OwnedLexToken>, Vec<&'w str>) {
+    let Some((condition_word_idx, required)) = activation_cost_tap_condition_start(tail_words)
+    else {
+        return (None, tail_tokens.to_vec(), tail_words.to_vec());
+    };
+    let tail_word_view = ActivationRestrictionCompatWords::new(tail_tokens);
+    let Some(condition_token_idx) = tail_word_view.token_index_for_word_index(condition_word_idx)
+    else {
+        return (None, tail_tokens.to_vec(), tail_words.to_vec());
+    };
+    (
+        Some(required),
+        trim_commas(&tail_tokens[..condition_token_idx]),
+        tail_words[..condition_word_idx].to_vec(),
+    )
+}
 const COMBAT_DAMAGE_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["combat", "damage"]);
 const THIS_LEAVES_BATTLEFIELD_TRIGGER_PATTERN: ClauseShape<'static> =
@@ -2212,19 +2258,25 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject_words = subject_word_view.to_word_refs();
         if let Some(activator) = parse_trigger_subject_player_filter(&subject_words) {
             let tail_words = &words[activate_idx + 1..];
+            let tail_tokens = &tokens[activate_idx + 1..];
+            let (activation_cost_has_tap, ability_tail_tokens, ability_tail_words) =
+                split_activation_cost_tap_condition_tail_lexed(tail_tokens, tail_words);
+            let ability_tail_tokens = ability_tail_tokens.as_slice();
+            let ability_tail_words = ability_tail_words.as_slice();
             if let Some(filter) =
-                parse_loyalty_ability_trigger_tail_lexed(&tokens[activate_idx + 1..], tail_words)?
+                parse_loyalty_ability_trigger_tail_lexed(ability_tail_tokens, ability_tail_words)?
             {
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter,
                     non_mana_only: false,
                     loyalty_only: true,
+                    activation_cost_has_tap,
                 });
             }
             if let Some((owner_filter, marker)) = parse_possessive_ability_trigger_tail_lexed(
-                &tokens[activate_idx + 1..],
-                tail_words,
+                ability_tail_tokens,
+                ability_tail_words,
             )? {
                 let filter = match marker {
                     Some(marker) => owner_filter.with_ability_marker(marker),
@@ -2235,27 +2287,33 @@ pub(crate) fn parse_trigger_clause_lexed(
                     filter,
                     non_mana_only: false,
                     loyalty_only: false,
+                    activation_cost_has_tap,
                 });
             }
             if let Some((filter, non_mana_only)) =
-                parse_ability_of_object_trigger_tail_lexed(&tokens[activate_idx + 1..], tail_words)?
+                parse_ability_of_object_trigger_tail_lexed(ability_tail_tokens, ability_tail_words)?
             {
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter,
                     non_mana_only,
                     loyalty_only: false,
+                    activation_cost_has_tap,
                 });
             }
-            if trigger_clause_shape_matches_words(tail_words, ACTIVATED_ABILITY_TAIL_PATTERN) {
+            if trigger_clause_shape_matches_words(
+                ability_tail_words,
+                ACTIVATED_ABILITY_TAIL_PATTERN,
+            ) {
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter: ObjectFilter::default(),
                     non_mana_only: trigger_clause_shape_matches_words(
-                        tail_words,
+                        ability_tail_words,
                         MANA_ABILITY_TAIL_PATTERN,
                     ),
                     loyalty_only: false,
+                    activation_cost_has_tap,
                 });
             }
         }
@@ -4388,6 +4446,20 @@ pub(crate) fn parse_trigger_clause_lexed(
         if let Some(player_filter) = parse_trigger_subject_player_filter(&attacked_player_words) {
             return Ok(TriggerSpec::PlayersAttackedOneOrMore(player_filter));
         }
+    }
+
+    if last == "blocked" && words.len() >= 2 && words[words.len().saturating_sub(2)] == "becomes" {
+        let becomes_word_idx = words.len().saturating_sub(2);
+        let becomes_token_idx = ActivationRestrictionCompatWords::new(tokens)
+            .token_index_for_word_index(becomes_word_idx)
+            .unwrap_or(tokens.len());
+        let subject_tokens = &tokens[..becomes_token_idx];
+        return Ok(
+            match parse_attack_trigger_subject_filter_lexed(subject_tokens)? {
+                Some(filter) => TriggerSpec::BecomesBlocked(filter),
+                None => TriggerSpec::ThisBecomesBlocked,
+            },
+        );
     }
 
     match last {

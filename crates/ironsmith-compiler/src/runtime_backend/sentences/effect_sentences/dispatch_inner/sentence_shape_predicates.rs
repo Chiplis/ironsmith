@@ -961,6 +961,107 @@ fn parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence(
 fn parse_effect_sentence_with_where_x_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    fn colors_that_referenced_object_was_value(words: &[&str]) -> Option<Value> {
+        let ["the", "number", "of", color_word, reference_word, object_kind, be_word] = words
+        else {
+            return None;
+        };
+        if !matches!(*color_word, "color" | "colors")
+            || !matches!(*reference_word, "that" | "the")
+            || !matches!(*be_word, "was" | "were")
+        {
+            return None;
+        }
+
+        let object_kind = object_kind.trim_end_matches('s');
+        let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&[object_kind]);
+        let mut filter = parse_object_filter(&object_tokens, false).ok()?;
+        filter = filter.match_tagged(
+            TagKey::from("sacrificed_0"),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+        Some(Value::ColorsAmong(filter))
+    }
+
+    fn counters_on_reference_where_x_value(words: &[&str]) -> Option<Value> {
+        if !word_slice_starts_with(words, SENTENCE_WHERE_X_IS_PREFIX) {
+            return None;
+        }
+
+        let mut idx = SENTENCE_WHERE_X_IS_PREFIX.len();
+        if words.get(idx).is_some_and(|word| *word == SENTENCE_THE_WORD) {
+            idx += 1;
+        }
+        if !words
+            .get(idx..idx + SENTENCE_NUMBER_OF_PREFIX.len())
+            .is_some_and(|tail| tail == SENTENCE_NUMBER_OF_PREFIX)
+        {
+            return None;
+        }
+        idx += SENTENCE_NUMBER_OF_PREFIX.len();
+
+        if words
+            .get(idx)
+            .is_some_and(|word| is_article(word) || *word == "one")
+        {
+            idx += 1;
+        }
+
+        let mut counter_type = None;
+        if let Some(word) = words.get(idx)
+            && let Some(parsed) = parse_counter_type_word(word)
+        {
+            counter_type = Some(parsed);
+            idx += 1;
+        }
+
+        if !words
+            .get(idx)
+            .is_some_and(|word| SENTENCE_COUNTER_WORDS.contains(word))
+        {
+            return None;
+        }
+        idx += 1;
+
+        if words.get(idx).is_none_or(|word| *word != "on") {
+            return None;
+        }
+        idx += 1;
+
+        let reference = words.get(idx..)?;
+        if reference.is_empty() {
+            return None;
+        }
+
+        if is_source_reference_words(reference) {
+            return Some(match counter_type {
+                Some(counter_type) => Value::CountersOnSource(counter_type),
+                None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+            });
+        }
+
+        if matches!(
+            reference,
+            ["that"]
+                | ["that", "card"]
+                | ["that", "creature"]
+                | ["that", "object"]
+                | ["that", "permanent"]
+                | ["those"]
+                | ["those", "cards"]
+                | ["those", "creatures"]
+                | ["those", "objects"]
+                | ["those", "permanents"]
+        ) {
+            return Some(Value::CountersOn(
+                Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                counter_type,
+            ));
+        }
+
+        None
+    }
+
     fn replace_search_filter_x(effect: &mut EffectAst, replacement: &Value) {
         let (filter, count, count_value) = match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1042,6 +1143,7 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::ExchangeTextBoxes { target }
             | SubjectVerbActionAst::Attach { target, .. }
             | SubjectVerbActionAst::Unattach { object: target }
+            | SubjectVerbActionAst::ReturnToHand { target, .. }
             | SubjectVerbActionAst::MayMoveToZone { target, .. }
             | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
@@ -1339,6 +1441,10 @@ fn parse_effect_sentence_with_where_x_lexed(
                         )),
                 ))
             }
+            Some(words) if colors_that_referenced_object_was_value(words).is_some() => {
+                colors_that_referenced_object_was_value(words)
+                    .expect("where-X colors value checked in guard")
+            }
             Some(
                 [
                     "2",
@@ -1424,7 +1530,10 @@ fn parse_effect_sentence_with_where_x_lexed(
                             primary_where_tokens,
                         )
                     });
-                let number_of_filter_value = specific_where_value.or_else(|| {
+                let primary_where_words = TokenWordView::new(primary_where_tokens).word_refs();
+                let counter_reference_value =
+                    counters_on_reference_where_x_value(&primary_where_words);
+                let number_of_filter_value = specific_where_value.or(counter_reference_value).or_else(|| {
                     crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
                         primary_where_tokens,
                     )

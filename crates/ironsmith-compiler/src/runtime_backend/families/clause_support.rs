@@ -1035,6 +1035,7 @@ pub(crate) fn parse_triggered_line_lexed(
                     filter: ability_filter,
                     non_mana_only: false,
                     loyalty_only: false,
+                    activation_cost_has_tap: None,
                 }),
             ),
             effects: parse_effect_sentences_lexed(&tokens[effect_start..])?,

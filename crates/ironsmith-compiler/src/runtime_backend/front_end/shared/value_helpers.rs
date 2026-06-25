@@ -623,7 +623,7 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
 ) -> Option<Value> {
     let clause_words = ValueHelperCompatWords::new(tokens);
     let clause_refs = clause_words.to_word_refs();
-    if clause_refs.as_slice() != EQUAL_TO_PHRASE {
+    if !value_helper_find_exact_phrase(&clause_refs, EQUAL_TO_PHRASE).is_some_and(|idx| idx == 0) {
         return None;
     }
 

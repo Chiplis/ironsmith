@@ -133,15 +133,15 @@ function resolveTargetDecisionSourceId(state, decision) {
   return decisionSourceId;
 }
 
-function resolveTargetDecisionColor(state, decision) {
+function resolveTargetDecisionColor(state, decision, accentOverrides = null) {
   const matchingStackObject = findMatchingVisibleStackSource(state, decision);
   const controllerId = matchingStackObject
     ? normalizeNumericId(matchingStackObject?.controller)
     : null;
   const fallbackControllerId = normalizeNumericId(decision?.player);
-  const accent = getPlayerAccent(state?.players || [], controllerId, state?.perspective);
+  const accent = getPlayerAccent(state?.players || [], controllerId, state?.perspective, accentOverrides);
   if (accent?.hex) return accent.hex;
-  return getPlayerAccent(state?.players || [], fallbackControllerId, state?.perspective)?.hex || "#ff3b30";
+  return getPlayerAccent(state?.players || [], fallbackControllerId, state?.perspective, accentOverrides)?.hex || "#ff3b30";
 }
 
 function isGenericObjectName(name, objectId = null) {
@@ -435,7 +435,7 @@ export default function TargetsDecision({
   layout = "panel",
   showStripSummary = true,
 }) {
-  const { dispatch, state } = useGame();
+  const { dispatch, state, playerAccentOverrides } = useGame();
   const {
     updateArrows,
     clearArrows,
@@ -469,8 +469,8 @@ export default function TargetsDecision({
     [state, decision]
   );
   const liveTargetColor = useMemo(
-    () => resolveTargetDecisionColor(state, decision),
-    [state, decision]
+    () => resolveTargetDecisionColor(state, decision, playerAccentOverrides),
+    [state, decision, playerAccentOverrides]
   );
 
   const currentReq = requirements[currentReqIdx];

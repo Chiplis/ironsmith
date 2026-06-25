@@ -35,8 +35,15 @@ const RETURN_AND_WORD: &str = "and";
 const RETURN_AND_OR_WORDS: &[&str] = &["and", "or"];
 const RETURN_TARGET_WORD: &str = "target";
 const RETURN_ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
-const RETURN_FROM_YOUR_GRAVEYARD_TAIL: &[&str] = &["from", "your", "graveyard"];
+const RETURN_FROM_SOURCE_GRAVEYARD_TAILS: &[&[&str]] = &[
+    &["from", "your", "graveyard"],
+    &["from", "its", "owner", "graveyard"],
+    &["from", "its", "owners", "graveyard"],
+    &["from", "its", "owner's", "graveyard"],
+    &["from", "its", "owners'", "graveyard"],
+];
 const RETURN_THAT_MANY_PREFIX: &[&str] = &["that", "many"];
+const RETURN_ATTACHED_TO_PREFIX: &[&str] = &["attached", "to"];
 const RETURN_CHOSEN_CREATURE_TYPE_INCLUDED_TAILS: &[&[&str]] = &[
     &["of", "the", "chosen", "type"],
     &["that", "are", "of", "the", "chosen", "type"],
@@ -112,6 +119,58 @@ fn split_chosen_creature_type_tail(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexTok
     };
 
     (trim_commas(filter_tokens).to_vec(), included, excluded)
+}
+
+fn parse_return_back_reference_target(
+    tokens: &[OwnedLexToken],
+) -> Result<TargetAst, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        ["it"]
+            | ["them"]
+            | ["that", "card"]
+            | ["that", "creature"]
+            | ["that", "object"]
+            | ["that", "permanent"]
+            | ["those", "cards"]
+            | ["those", "creatures"]
+            | ["those", "objects"]
+            | ["those", "permanents"]
+    ) {
+        Ok(TargetAst::Tagged(
+            TagKey::from(IT_TAG),
+            span_from_tokens(tokens),
+        ))
+    } else {
+        parse_target_phrase(tokens)
+    }
+}
+
+fn split_return_attached_to_tail(
+    destination_tokens: &[OwnedLexToken],
+) -> Result<(Vec<OwnedLexToken>, Option<TargetAst>), CardTextError> {
+    let destination_words = crate::runtime_backend::token_word_refs(destination_tokens);
+    let Some(attached_word_idx) =
+        return_find_prefix_start(&destination_words, RETURN_ATTACHED_TO_PREFIX)
+    else {
+        return Ok((destination_tokens.to_vec(), None));
+    };
+    let attached_token_idx = token_index_for_word_index(destination_tokens, attached_word_idx)
+        .unwrap_or(destination_tokens.len());
+    let target_word_idx = attached_word_idx + RETURN_ATTACHED_TO_PREFIX.len();
+    let target_token_idx = token_index_for_word_index(destination_tokens, target_word_idx)
+        .unwrap_or(destination_tokens.len());
+    let destination_head = trim_commas(&destination_tokens[..attached_token_idx]);
+    let attachment_target_tokens = trim_commas(&destination_tokens[target_token_idx..]);
+    if destination_head.is_empty() || attachment_target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing return attachment destination or target (clause: '{}')",
+            crate::runtime_backend::token_word_refs(destination_tokens).join(" ")
+        )));
+    }
+    let attachment_target = parse_return_back_reference_target(&attachment_target_tokens)?;
+    Ok((destination_head, Some(attachment_target)))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -324,7 +383,9 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         destination_tokens_full
     };
 
-    let mut destination_words = crate::runtime_backend::token_word_refs(destination_tokens);
+    let (destination_tokens, attached_to_target) =
+        split_return_attached_to_tail(destination_tokens)?;
+    let mut destination_words = crate::runtime_backend::token_word_refs(&destination_tokens);
     let mut destination_excluded_subtypes: Vec<Subtype> = Vec::new();
     if let Some(except_idx) = return_find_prefix_start(&destination_words, RETURN_EXCEPT_FOR_PREFIX)
     {
@@ -606,12 +667,11 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
 
     let source_from_graveyard_target = if is_battlefield
-        && target_words.len() > 3
-        && word_slice_eq(
-            &target_words[target_words.len() - 3..],
-            RETURN_FROM_YOUR_GRAVEYARD_TAIL,
-        ) {
-        let prefix_word_len = target_words.len() - 3;
+        && let Some(tail) = RETURN_FROM_SOURCE_GRAVEYARD_TAILS.iter().find(|tail| {
+            target_words.len() > tail.len()
+                && word_slice_eq(&target_words[target_words.len() - tail.len()..], tail)
+        }) {
+        let prefix_word_len = target_words.len() - tail.len();
         let prefix_token_len = token_index_for_word_index(target_tokens, prefix_word_len)
             .unwrap_or(target_tokens.len());
         let prefix_tokens = trim_commas(&target_tokens[..prefix_token_len]);
@@ -645,35 +705,38 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         };
     let mut target = if let Some(target) = source_from_graveyard_target {
         target
-    } else if matches!(
-        target_words.as_slice(),
-        ["it"]
-            | ["them"]
-            | ["that", "card"]
-            | ["that", "creature"]
-            | ["that", "object"]
-            | ["that", "permanent"]
-            | ["those", "cards"]
-            | ["those", "creatures"]
-            | ["those", "objects"]
-            | ["those", "permanents"]
-    ) {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens))
     } else {
-        parse_target_phrase(target_tokens)?
+        parse_return_back_reference_target(target_tokens)?
     };
     if dynamic_count {
         target = TargetAst::WithCount(Box::new(target), crate::effect::ChoiceCount::dynamic_x());
     }
     let effect = if is_battlefield {
-        EffectAst::subject_verb_return_to_battlefield(
-            target,
-            tapped,
-            transformed,
-            converted,
-            return_controller,
-            count_value,
-        )
+        if let Some(attached_to) = attached_to_target {
+            if transformed || converted || count_value.is_some() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported transformed/converted/dynamic return attached clause (clause: '{}')",
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
+                )));
+            }
+            EffectAst::subject_verb_move_to_zone(
+                target,
+                Zone::Battlefield,
+                false,
+                return_controller,
+                tapped,
+                Some(attached_to),
+            )
+        } else {
+            EffectAst::subject_verb_return_to_battlefield(
+                target,
+                tapped,
+                transformed,
+                converted,
+                return_controller,
+                count_value,
+            )
+        }
     } else if is_graveyard {
         EffectAst::subject_verb_move_to_zone(
             target,

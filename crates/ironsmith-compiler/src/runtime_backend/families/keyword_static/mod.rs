@@ -6657,10 +6657,10 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
 
     parse_equal_to_aggregate_filter_value(&equal_prefixed)
         .or_else(|| parse_add_mana_equal_amount_value(&equal_prefixed))
+        .or_else(|| parse_equal_to_number_of_counters_on_reference_value(&equal_prefixed))
         .or_else(|| parse_equal_to_number_of_filter_plus_or_minus_fixed_value(&equal_prefixed))
         .or_else(|| parse_equal_to_number_of_filter_value(&equal_prefixed))
         .or_else(|| parse_equal_to_number_of_opponents_you_have_value(&equal_prefixed))
-        .or_else(|| parse_equal_to_number_of_counters_on_reference_value(&equal_prefixed))
         .or_else(|| parse_characteristic_defining_pt_value(trimmed))
 }
 
@@ -8656,6 +8656,24 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
                 Some(counter_type) => Value::CountersOnSource(counter_type),
                 None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
             }));
+        }
+        if matches!(
+            tail,
+            ["that"]
+                | ["that", "card"]
+                | ["that", "creature"]
+                | ["that", "object"]
+                | ["that", "permanent"]
+                | ["those"]
+                | ["those", "cards"]
+                | ["those", "creatures"]
+                | ["those", "objects"]
+                | ["those", "permanents"]
+        ) {
+            return Ok(Some(Value::CountersOn(
+                Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                counter_type,
+            )));
         }
         if let Some(surface) = source_reference_surface_for_words(tail) {
             return Ok(Some(Value::CountersOn(

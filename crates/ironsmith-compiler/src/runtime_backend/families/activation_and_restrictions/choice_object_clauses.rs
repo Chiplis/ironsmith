@@ -522,6 +522,17 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
         }
         idx += 1;
     }
+    for suffix in [
+        &["this", "aura", "can", "enchant"][..],
+        &["this", "aura", "could", "enchant"][..],
+        &["that", "aura", "can", "enchant"][..],
+        &["that", "aura", "could", "enchant"][..],
+    ] {
+        if choose_words.ends_with(suffix) {
+            choose_words.truncate(choose_words.len().saturating_sub(suffix.len()));
+            break;
+        }
+    }
     if count_value.is_some() {
         count = ChoiceCount::dynamic_x();
     }

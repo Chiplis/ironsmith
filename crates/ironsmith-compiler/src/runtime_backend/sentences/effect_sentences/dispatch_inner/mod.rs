@@ -36,8 +36,9 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     is_article, is_source_reference_words, parse_card_type,
-    parse_choice_count_before_target_prefix, parse_color, parse_filter_counter_constraint_words,
-    parse_subject, parse_target_phrase, parse_value, token_index_for_word_index, words,
+    parse_choice_count_before_target_prefix, parse_color, parse_counter_type_word,
+    parse_filter_counter_constraint_words, parse_subject, parse_target_phrase, parse_value,
+    token_index_for_word_index, words,
 };
 pub(crate) use super::super::util::{strip_leading_articles, trim_commas, trim_edge_punctuation};
 use super::sentence_helpers::*;

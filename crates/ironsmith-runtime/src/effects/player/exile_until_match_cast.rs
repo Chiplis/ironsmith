@@ -115,6 +115,7 @@ impl EffectExecutor for ExileUntilMatchCastEffect {
                         target_assignments: vec![],
                         x_value,
                         activation_cost_has_x: false,
+                        activation_cost_has_tap: false,
                         ability_effects: None,
                         mana_usage_restrictions: Vec::new(),
                         mana_source_chosen_creature_type: None,

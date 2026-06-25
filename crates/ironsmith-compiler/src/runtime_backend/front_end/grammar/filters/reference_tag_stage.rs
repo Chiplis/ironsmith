@@ -1336,6 +1336,13 @@ pub(super) fn parse_object_filter_inner(
                     filter.chosen_creature_type = true;
                 }
             }
+            word if word == THAT_WORD
+                && all_words
+                    .get(idx + 1)
+                    .is_some_and(|next| *next == TYPE_WORD) =>
+            {
+                filter.chosen_creature_type = true;
+            }
             word if word == NONCHOSEN_WORD
                 && all_words
                     .get(idx + 1)

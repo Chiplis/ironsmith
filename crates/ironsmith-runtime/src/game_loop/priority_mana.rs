@@ -2066,6 +2066,7 @@ pub(super) fn apply_mana_payment_response(
     if choice < mana_abilities.len() {
         // Player chose to activate a mana ability
         let (perm_id, ability_index, _) = mana_abilities[choice];
+        let activation_cost_has_tap = activated_ability_has_tap_cost(game, perm_id, ability_index);
 
         let action = SpecialAction::ActivateManaAbility {
             permanent_id: perm_id,
@@ -2088,6 +2089,7 @@ pub(super) fn apply_mana_payment_response(
             pending.caster,
             true,
             None,
+            activation_cost_has_tap,
         );
 
         pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
@@ -2158,6 +2160,7 @@ pub(super) fn apply_mana_payment_response_mana_ability(
     if choice < mana_abilities.len() {
         // Player chose to activate a mana ability to generate mana
         let (perm_id, ability_index, _) = mana_abilities[choice].clone();
+        let activation_cost_has_tap = activated_ability_has_tap_cost(game, perm_id, ability_index);
 
         let action = SpecialAction::ActivateManaAbility {
             permanent_id: perm_id,
@@ -2180,6 +2183,7 @@ pub(super) fn apply_mana_payment_response_mana_ability(
             pending.activator,
             true,
             None,
+            activation_cost_has_tap,
         );
 
         pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
@@ -2353,6 +2357,8 @@ pub(super) fn execute_pending_mana_ability(
     }
 
     game.record_ability_activation(pending.source, pending.ability_index);
+    let activation_cost_has_tap =
+        activated_ability_has_tap_cost(game, pending.source, pending.ability_index);
 
     queue_ability_activated_event(
         game,
@@ -2362,6 +2368,7 @@ pub(super) fn execute_pending_mana_ability(
         pending.activator,
         true,
         None,
+        activation_cost_has_tap,
     );
 
     Ok(())
@@ -2386,6 +2393,7 @@ pub(super) fn apply_mana_payment_response_activation(
     if choice < mana_abilities.len() {
         // Player chose to activate a mana ability
         let (perm_id, ability_index, _) = mana_abilities[choice];
+        let activation_cost_has_tap = activated_ability_has_tap_cost(game, perm_id, ability_index);
 
         let action = SpecialAction::ActivateManaAbility {
             permanent_id: perm_id,
@@ -2408,6 +2416,7 @@ pub(super) fn apply_mana_payment_response_activation(
             pending.activator,
             true,
             None,
+            activation_cost_has_tap,
         );
 
         pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);

@@ -793,6 +793,7 @@ pub fn apply_priority_response_with_dm(
             let cost = crate::decision::calculate_effective_activation_total_cost(
                 game, player, *source, &base_cost,
             );
+            let activation_cost_has_tap = cost.costs().iter().any(|cost| cost.requires_tap());
             let payment_reason = crate::costs::PaymentReason::ActivateAbility;
             let activation_provenance =
                 game.provenance_graph_mut()
@@ -904,6 +905,7 @@ pub fn apply_priority_response_with_dm(
                     source_name,
                     None,
                     activation_cost_has_x,
+                    activation_cost_has_tap,
                     mana_usage_restrictions,
                     mana_source_chosen_creature_type,
                     pips_to_announce,
@@ -919,6 +921,7 @@ pub fn apply_priority_response_with_dm(
                 let entry = StackEntry::ability(*source, player, effects.to_vec())
                     .with_ability_index(*ability_index)
                     .with_activation_cost_has_x(activation_cost_has_x)
+                    .with_activation_cost_has_tap(activation_cost_has_tap)
                     .with_source_info(source_stable_id, source_name)
                     .with_source_snapshot(source_snapshot)
                     .with_mana_usage_restrictions(
@@ -935,6 +938,7 @@ pub fn apply_priority_response_with_dm(
                     player,
                     false,
                     Some(source_stable_id),
+                    activation_cost_has_tap,
                 );
 
                 priority_after_player_action(game, &mut state.tracker, player);
@@ -964,6 +968,7 @@ pub fn apply_priority_response_with_dm(
                 let cost = crate::decision::calculate_effective_activation_total_cost(
                     game, player, *source, &base_cost,
                 );
+                let activation_cost_has_tap = cost.costs().iter().any(|cost| cost.requires_tap());
                 let mana_production_provenance =
                     crate::special_actions::mana_production_provenance_for_activation_cost(&cost);
 
@@ -1095,6 +1100,7 @@ pub fn apply_priority_response_with_dm(
                         player,
                         true,
                         None,
+                        activation_cost_has_tap,
                     );
 
                     // Player retains priority after activating mana ability
@@ -1202,9 +1208,11 @@ pub fn apply_priority_response_with_dm(
                 .map_err(|e| GameLoopError::InvalidState(format!("Failed special action: {e}")))?;
                 if let crate::special_actions::SpecialAction::ActivateManaAbility {
                     permanent_id,
-                    ..
+                    ability_index,
                 } = special
                 {
+                    let activation_cost_has_tap =
+                        activated_ability_has_tap_cost(game, *permanent_id, *ability_index);
                     queue_ability_activated_event(
                         game,
                         trigger_queue,
@@ -1213,6 +1221,7 @@ pub fn apply_priority_response_with_dm(
                         player,
                         true,
                         None,
+                        activation_cost_has_tap,
                     );
                 }
             }

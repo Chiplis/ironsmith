@@ -56,6 +56,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::Blocks(filter) => Trigger::blocks(filter),
         TriggerSpec::BlocksOneOrMore(filter) => Trigger::blocks_one_or_more(filter),
         TriggerSpec::ThisBecomesBlocked => Trigger::this_becomes_blocked(),
+        TriggerSpec::BecomesBlocked(filter) => Trigger::becomes_blocked(filter),
         TriggerSpec::ThisBecomesBlockedByObject(filter) => {
             Trigger::this_becomes_blocked_by_object(filter)
         }
@@ -161,7 +162,14 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             filter,
             non_mana_only,
             loyalty_only,
-        } => Trigger::ability_activated_qualified(activator, filter, non_mana_only, loyalty_only),
+            activation_cost_has_tap,
+        } => Trigger::ability_activated_qualified_with_activation_cost_tap(
+            activator,
+            filter,
+            non_mana_only,
+            loyalty_only,
+            activation_cost_has_tap,
+        ),
         TriggerSpec::ThisIsDealtDamage => Trigger::is_dealt_damage(ChooseSpec::Source),
         TriggerSpec::ThisIsDealtCombatDamage => Trigger::is_dealt_combat_damage(ChooseSpec::Source),
         TriggerSpec::IsDealtDamage(filter) => Trigger::is_dealt_damage(ChooseSpec::Object(filter)),
@@ -636,7 +644,9 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
-        TriggerSpec::ThisAttacks | TriggerSpec::ThisBecomesBlocked => Some(PlayerFilter::Defending),
+        TriggerSpec::ThisAttacks
+        | TriggerSpec::ThisBecomesBlocked
+        | TriggerSpec::BecomesBlocked(_) => Some(PlayerFilter::Defending),
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
             if filter
                 .attacking_player_or_planeswalker_controlled_by

@@ -6976,6 +6976,82 @@ fn where_x_life_total_can_drive_create_count() {
 }
 
 #[test]
+fn where_x_named_graveyard_count_binds_return_to_hand_target_count() {
+    let text = "Return up to X target creatures to their owners' hands, where X is one plus the number of cards named Aether Burst in all graveyards as you cast this spell.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify return where-X sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("return-to-hand where-X target count should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        debug.contains("ReturnToHand")
+            && debug.contains("WithCountValue")
+            && debug.contains("WhereXIs")
+            && debug.contains("aether burst"),
+        "expected return target count to bind to named-card graveyard where-X value, got {debug}"
+    );
+}
+
+#[test]
+fn where_x_colors_that_creature_was_binds_return_to_hand_target_count() {
+    let text = "Return up to X cards from your graveyard to your hand, where X is the number of colors that creature was.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify return where-X sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("return-to-hand color-count where-X target count should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        debug.contains("ReturnToHand")
+            && debug.contains("WithCountValue")
+            && debug.contains("ColorsAmong")
+            && debug.contains("sacrificed_0"),
+        "expected return target count to bind to sacrificed-creature color count, got {debug}"
+    );
+}
+
+#[test]
+fn comma_then_keyword_action_splits_before_subject_verb_followup() {
+    let text = "Amass Orcs X, then Goblins and Orcs you control gain double strike and haste until end of turn.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify amass comma-then line");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("amass comma-then sentence should split into sibling effects");
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        debug.contains("Amass")
+            && debug.contains("DoubleStrike")
+            && debug.contains("Haste")
+            && debug.contains("Goblin")
+            && debug.contains("Orc"),
+        "expected amass effect plus Goblin/Orc ability grant, got {debug}"
+    );
+}
+
+#[test]
+fn comma_then_target_player_create_carries_that_player_count_to_pump() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dark Salvation Variant")
+        .mana_cost(super::util::parse_scryfall_mana_cost("{X}{X}{B}").unwrap())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target player creates X 2/2 black Zombie creature tokens, then up to one target creature gets -1/-1 until end of turn for each Zombie that player controls.",
+        )
+        .expect("target-player create then that-player pump should lower");
+
+    let debug = format!("{def:#?}");
+    let compact_debug = format!("{def:?}");
+    assert!(
+        debug.contains("CreateTokenEffect")
+            && debug.contains("ModifyPowerToughnessForEachEffect")
+            && compact_debug.contains("Target(Any)")
+            && !compact_debug.contains("IteratedPlayer"),
+        "expected pump count to bind that-player reference to prior target player, got {debug}"
+    );
+}
+
+#[test]
 fn where_x_half_life_create_token_keeps_rounded_up_tail() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rounded Life Token Variant")
         .card_types(vec![CardType::Sorcery])
@@ -13003,6 +13079,43 @@ fn rewrite_lowered_becomes_blocked_by_color_with_regeneration_followup_keeps_blo
         "{:#?}",
         definition.abilities
     );
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_generic_becomes_blocked_trigger_keeps_damage_effect() -> Result<(), CardTextError>
+{
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Close Quarters")
+        .card_types(vec![CardType::Enchantment]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever a creature you control becomes blocked, this enchantment deals 1 damage to any target."
+            .to_string(),
+        false,
+    )?;
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let TriggerKind::BecomesBlocked { filter } = &triggered.trigger.kind else {
+        panic!(
+            "expected generic becomes-blocked trigger: {:#?}",
+            triggered.trigger
+        );
+    };
+
+    assert_eq!(filter.card_types, vec![CardType::Creature], "{filter:#?}");
+    assert_eq!(
+        filter.controller,
+        Some(crate::target::PlayerFilter::You),
+        "{filter:#?}"
+    );
+    let effects_debug = format!("{:#?}", triggered.effects);
+    assert!(
+        effects_debug.contains("DealDamageEffect"),
+        "{effects_debug}"
+    );
+    assert!(effects_debug.contains("Fixed"), "{effects_debug}");
+    assert!(effects_debug.contains("AnyTarget"), "{effects_debug}");
     Ok(())
 }
 

@@ -39,8 +39,6 @@ const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
 const AUDIT_REPLAY_GATE_WAIT_ATTEMPTS = 8;
 const UI_FONT_STORAGE_KEY = "ironsmith.uiFont";
 const PLAYER_ACCENTS_STORAGE_KEY = "ironsmith.playerAccentOverrides";
-const DEFAULT_PHASE_ACCENT = "#876221";
-const PHASE_ACCENT_STORAGE_KEY = "ironsmith.phaseAccent";
 
 const emptyAuditReplayState = {
   available: false,
@@ -137,11 +135,6 @@ function readStoredPlayerAccentOverrides() {
   } catch {
     return {};
   }
-}
-
-function readStoredPhaseAccent() {
-  if (typeof window === "undefined") return DEFAULT_PHASE_ACCENT;
-  return normalizeHexColor(window.localStorage.getItem(PHASE_ACCENT_STORAGE_KEY)) || DEFAULT_PHASE_ACCENT;
 }
 
 function decodeAttackTargetChoice(choice) {
@@ -740,7 +733,6 @@ export function GameProvider({ children }) {
     return window.localStorage.getItem(UI_FONT_STORAGE_KEY) || DEFAULT_UI_FONT;
   });
   const [playerAccentOverrides, setPlayerAccentOverrides] = useState(readStoredPlayerAccentOverrides);
-  const [phaseAccent, setPhaseAccentRaw] = useState(readStoredPhaseAccent);
   const [inspectorDebug, setInspectorDebug] = useState(false);
   const [triggerOrderingState, setTriggerOrderingState] = useState({ key: "", order: [] });
   const [semanticThreshold, setSemanticThresholdRaw] = useState(96);
@@ -784,20 +776,6 @@ export function GameProvider({ children }) {
   useEffect(() => {
     window.localStorage.setItem(PLAYER_ACCENTS_STORAGE_KEY, JSON.stringify(playerAccentOverrides));
   }, [playerAccentOverrides]);
-
-  useEffect(() => {
-    const normalizedColor = normalizeHexColor(phaseAccent) || DEFAULT_PHASE_ACCENT;
-    const rgb = hexToRgbString(normalizedColor) || "135, 98, 33";
-    document.documentElement.style.setProperty("--ironsmith-phase-accent", normalizedColor);
-    document.documentElement.style.setProperty("--ironsmith-phase-accent-rgb", rgb);
-    window.localStorage.setItem(PHASE_ACCENT_STORAGE_KEY, normalizedColor);
-  }, [phaseAccent]);
-
-  const setPhaseAccent = useCallback((color) => {
-    const normalizedColor = normalizeHexColor(color);
-    if (!normalizedColor) return;
-    setPhaseAccentRaw(normalizedColor);
-  }, []);
 
   const setPlayerAccentOverride = useCallback((playerId, color) => {
     const numericPlayerId = Number(playerId);
@@ -2521,8 +2499,6 @@ export function GameProvider({ children }) {
       setUiFont,
       playerAccentOverrides,
       setPlayerAccentOverride,
-      phaseAccent,
-      setPhaseAccent,
       inspectorDebug,
       setInspectorDebug,
       triggerOrderingState: activeTriggerOrderingState,
@@ -2566,7 +2542,7 @@ export function GameProvider({ children }) {
       setStatus,
       runWasmInteraction,
       dispatch, cancelDecision, refresh, autoPassEnabled, holdRule, uiFont,
-      playerAccentOverrides, setPlayerAccentOverride, phaseAccent, setPhaseAccent, inspectorDebug,
+      playerAccentOverrides, setPlayerAccentOverride, inspectorDebug,
       activeTriggerOrderingState, moveTriggerOrderingItem,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
       logEntries, pushLog,

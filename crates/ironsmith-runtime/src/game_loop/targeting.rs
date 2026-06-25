@@ -194,6 +194,7 @@ pub(super) fn queue_ability_activated_event(
     activator: PlayerId,
     is_mana_ability: bool,
     source_stable_id: Option<StableId>,
+    activation_cost_has_tap: bool,
 ) {
     let snapshot = if let Some(obj) = game.object(source) {
         Some(ObjectSnapshot::from_object(obj, game))
@@ -248,6 +249,7 @@ pub(super) fn queue_ability_activated_event(
         AbilityActivatedEvent::new(source, activator, is_mana_ability)
             .with_loyalty_ability(is_loyalty_ability)
             .with_activation_cost_has_x(activation_cost_has_x)
+            .with_activation_cost_has_tap(activation_cost_has_tap)
             .with_x_value(x_value)
             .with_snapshot(snapshot),
         event_provenance,
@@ -265,7 +267,11 @@ pub(super) fn queue_mana_ability_event_for_action(
     action: &ManaPipPaymentAction,
     activator: PlayerId,
 ) {
-    if let ManaPipPaymentAction::ActivateManaAbility { source_id, .. } = action {
+    if let ManaPipPaymentAction::ActivateManaAbility {
+        source_id,
+        ability_index,
+    } = action
+    {
         queue_ability_activated_event(
             game,
             trigger_queue,
@@ -274,8 +280,21 @@ pub(super) fn queue_mana_ability_event_for_action(
             activator,
             true,
             None,
+            activated_ability_has_tap_cost(game, *source_id, *ability_index),
         );
     }
+}
+
+pub(super) fn activated_ability_has_tap_cost(
+    game: &GameState,
+    source: ObjectId,
+    ability_index: usize,
+) -> bool {
+    game.current_ability(source, ability_index)
+        .is_some_and(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(activated) => activated.has_tap_cost(),
+            _ => false,
+        })
 }
 
 pub(super) fn tap_permanent_with_trigger(

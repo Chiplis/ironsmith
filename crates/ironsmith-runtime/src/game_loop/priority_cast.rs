@@ -3458,6 +3458,7 @@ pub(super) fn continue_activation(
                 StackEntry::ability(pending.source, pending.activator, pending.effects.clone())
                     .with_ability_index(pending.ability_index)
                     .with_activation_cost_has_x(pending.activation_cost_has_x)
+                    .with_activation_cost_has_tap(pending.activation_cost_has_tap)
                     .with_provenance(pending.provenance)
                     .with_source_info(pending.source_stable_id, pending.source_name.clone())
                     .with_source_snapshot(pending.source_snapshot.clone())
@@ -3493,6 +3494,7 @@ pub(super) fn continue_activation(
                 pending.activator,
                 false,
                 Some(pending.source_stable_id),
+                pending.activation_cost_has_tap,
             );
 
             // Clear pending state and checkpoint - action completed successfully

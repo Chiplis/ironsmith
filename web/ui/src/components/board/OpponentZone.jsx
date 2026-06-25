@@ -3,7 +3,7 @@ import BattlefieldRow from "./BattlefieldRow";
 import ManaPool from "@/components/left-rail/ManaPool";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { useGame } from "@/context/GameContext";
-import { getPlayerAccent } from "@/lib/player-colors";
+import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
@@ -515,9 +515,9 @@ function OpponentSlot({
         gridTemplateRows: mobileViewport ? "auto minmax(0,1fr)" : "auto minmax(0,1fr) auto",
         alignContent: "stretch",
         cursor: attackerArrowActive ? "crosshair" : undefined,
-        "--player-accent": playerAccent?.hex || "#d8bf6a",
-        "--panel-accent": playerAccent?.hex || "#d8bf6a",
-        "--player-accent-rgb": playerAccent?.rgb || "216, 191, 106",
+        "--player-accent": (playerAccent || DEFAULT_PLAYER_ACCENT).hex,
+        "--panel-accent": (playerAccent || DEFAULT_PLAYER_ACCENT).hex,
+        "--player-accent-rgb": (playerAccent || DEFAULT_PLAYER_ACCENT).rgb,
       }}
       data-opponent-zone={playerIdx}
       onClickCapture={handleClickCapture}

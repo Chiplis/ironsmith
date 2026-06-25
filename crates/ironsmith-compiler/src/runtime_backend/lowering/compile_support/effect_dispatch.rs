@@ -3251,7 +3251,15 @@ fn compile_subject_verb_effect(
             count,
             duration,
         } => {
-            let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
+            let mut resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
+            if !ctx.iterated_player
+                && let Some(last_player_filter) = ctx.last_player_filter.as_ref()
+            {
+                bind_relative_iterated_player_in_value_to_player_filter(
+                    &mut resolved_count,
+                    last_player_filter,
+                );
+            }
             compile_tagged_effect_for_target(target, ctx, "pumped", |spec| {
                 Effect::pump_for_each(
                     spec,

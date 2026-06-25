@@ -402,6 +402,7 @@ pub(super) fn cast_effect_driven_spell_with_payment(
         target_assignments,
         x_value,
         activation_cost_has_x: false,
+        activation_cost_has_tap: false,
         ability_effects: None,
         mana_usage_restrictions: Vec::new(),
         mana_source_chosen_creature_type: None,

@@ -167,7 +167,7 @@ function optionsSignature(options) {
     .join("|");
 }
 
-function optionAccent(state, objectControllerById, opt) {
+function optionAccent(state, objectControllerById, opt, accentOverrides = null) {
   const objectId = opt?.object_id;
   if (objectId == null) return null;
   const controllerId =
@@ -180,16 +180,16 @@ function optionAccent(state, objectControllerById, opt) {
   ) {
     return null;
   }
-  return getPlayerAccent(state?.players || [], controllerId, state?.perspective);
+  return getPlayerAccent(state?.players || [], controllerId, state?.perspective, accentOverrides);
 }
 
-function optionLabelContent(state, objectNameById, objectControllerById, opt) {
+function optionLabelContent(state, objectNameById, objectControllerById, opt, accentOverrides = null) {
   const normalizedText = normalizeDecisionText(opt.description);
   const objectName =
     opt?.object_id != null
       ? objectNameById.get(String(opt.object_id)) || ""
       : "";
-  const accent = optionAccent(state, objectControllerById, opt);
+  const accent = optionAccent(state, objectControllerById, opt, accentOverrides);
   const relatedObjectIds = Array.isArray(opt?.related_object_ids)
     ? opt.related_object_ids
     : null;
@@ -525,7 +525,7 @@ function SingleSelectDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch, state } = useGame();
+  const { dispatch, state, playerAccentOverrides } = useGame();
   const { hoveredObjectId, hoverCard, clearHover } = useHover();
   const { attachScrollableRef, hoverSuppressed } =
     useHoverSuppressedWhileScrolling({
@@ -808,6 +808,7 @@ function SingleSelectDecision({
                     objectNameById,
                     objectControllerById,
                     opt,
+                    playerAccentOverrides,
                   )}
                   canAct={canAct}
                   isHighlighted={
@@ -858,7 +859,7 @@ function MultiSelectDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch, state } = useGame();
+  const { dispatch, state, playerAccentOverrides } = useGame();
   const { hoveredObjectId, hoverCard, clearHover } = useHover();
   const { attachScrollableRef, hoverSuppressed } =
     useHoverSuppressedWhileScrolling({
@@ -1043,6 +1044,7 @@ function MultiSelectDecision({
                     objectNameById,
                     objectControllerById,
                     opt,
+                    playerAccentOverrides,
                   )}
                   canAct={canAct}
                   isHighlighted={isHighlighted}

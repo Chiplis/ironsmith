@@ -1436,6 +1436,7 @@ fn lower_spell_or_activated_ability_x_cost_trigger(
                 filter: ability_filter,
                 non_mana_only: false,
                 loyalty_only: false,
+                activation_cost_has_tap: None,
             }),
         ),
         effects: parse_effect_sentences_lexed(effect_parse_tokens)?,

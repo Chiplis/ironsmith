@@ -31,9 +31,9 @@ export default function MobileSelfHud({
   manaPool = null,
   className,
 }) {
-  const { state } = useGame();
+  const { state, playerAccentOverrides } = useGame();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
-  const accent = getPlayerAccent(state?.players || [], me?.id, state?.perspective);
+  const accent = getPlayerAccent(state?.players || [], me?.id, state?.perspective, playerAccentOverrides);
   const isActiveTurn = me?.id === state?.active_player;
 
   const handleLongPress = useCallback(() => {

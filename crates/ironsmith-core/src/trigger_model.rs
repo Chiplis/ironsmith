@@ -76,6 +76,9 @@ pub enum TriggerKind {
         filter: ObjectFilter,
     },
     ThisBecomesBlocked,
+    BecomesBlocked {
+        filter: ObjectFilter,
+    },
     ThisBecomesBlockedByObject {
         filter: ObjectFilter,
     },
@@ -191,6 +194,7 @@ pub enum TriggerKind {
         filter: ObjectFilter,
         non_mana_only: bool,
         loyalty_only: bool,
+        activation_cost_has_tap: Option<bool>,
     },
     IsDealtDamage {
         target: ChooseSpec,
@@ -543,6 +547,9 @@ impl Trigger {
     pub fn this_becomes_blocked() -> Self {
         Self::typed("this_becomes_blocked", TriggerKind::ThisBecomesBlocked)
     }
+    pub fn becomes_blocked(filter: ObjectFilter) -> Self {
+        Self::typed("becomes_blocked", TriggerKind::BecomesBlocked { filter })
+    }
     pub fn this_becomes_blocked_by_object(filter: ObjectFilter) -> Self {
         Self::typed(
             "this_becomes_blocked_by_object",
@@ -794,6 +801,22 @@ impl Trigger {
         non_mana_only: bool,
         loyalty_only: bool,
     ) -> Self {
+        Self::ability_activated_qualified_with_activation_cost_tap(
+            activator,
+            filter,
+            non_mana_only,
+            loyalty_only,
+            None,
+        )
+    }
+
+    pub fn ability_activated_qualified_with_activation_cost_tap(
+        activator: PlayerFilter,
+        filter: ObjectFilter,
+        non_mana_only: bool,
+        loyalty_only: bool,
+        activation_cost_has_tap: Option<bool>,
+    ) -> Self {
         Self::typed(
             "ability_activated_qualified",
             TriggerKind::AbilityActivatedQualified {
@@ -801,6 +824,7 @@ impl Trigger {
                 filter,
                 non_mana_only,
                 loyalty_only,
+                activation_cost_has_tap,
             },
         )
     }

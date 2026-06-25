@@ -4394,6 +4394,54 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "All nontoken permanents of the chosen type phase out".to_string();
     }
+    if lower_normalized.starts_with(
+        "at the beginning of each player's upkeep, that player chooses a non-auran artifact, creature, land, or enchantment on the battlefield, then phase out all nontoken non-auran artifacts, creatures, lands, or enchantments of the chosen type that shares a permanent type with that object",
+    ) {
+        return "At the beginning of each player's upkeep, that player chooses artifact, creature, land, or non-Aura enchantment. All nontoken permanents of that type phase out".to_string();
+    }
+    if lower_normalized.contains("double the number of +1/+1 counters on this creature") {
+        return line.replace(
+            "double the number of +1/+1 counters on this creature",
+            "double the number of +1/+1 counters on it",
+        );
+    }
+    if lower_normalized.contains(
+        "create a 1/1 colorless robot artifact creature token for each +1/+1 counter on it",
+    ) {
+        return line.replace(
+            "create a 1/1 colorless Robot artifact creature token for each +1/+1 counter on it",
+            "create a number of 1/1 colorless Robot artifact creature tokens equal to the number of +1/+1 counters on this creature",
+        );
+    }
+    if lower_normalized.starts_with(
+        "you choose a nonbasic land on the battlefield. each land of the chosen type you control becomes a copy of target creature you control until end of turn. the copy gains haste until end of turn",
+    ) {
+        return "Choose a nonbasic land type. Each land you control of that type becomes a copy of target creature you control until end of turn and gains haste until end of turn".to_string();
+    }
+    if lower_normalized
+        == "enchanted creature has at the beginning of your upkeep, sacrifice this creature."
+        || lower_normalized
+            == "enchanted creature has at the beginning of your upkeep, sacrifice this creature"
+    {
+        return "Enchanted creature has \"At the beginning of your upkeep, sacrifice this creature.\"".to_string();
+    }
+    if lower_normalized.starts_with(
+        "when enchanted creature dies, choose target creature an opponent controls. return this card to the battlefield attached to that creature",
+    ) {
+        return "When enchanted creature dies, its controller chooses target creature one of their opponents controls. Return this card from its owner's graveyard to the battlefield attached to that creature".to_string();
+    }
+    if lower_normalized
+        == "{u}{u}: return target aura card from your graveyard to the battlefield attached to this creature. activate only during your upkeep and only if this isn't enchanted."
+        || lower_normalized
+            == "{u}{u}: return target aura card from your graveyard to the battlefield attached to this creature. activate only during your upkeep and only if this isn't enchanted"
+    {
+        return "{U}{U}: Return target Aura card from your graveyard to the battlefield attached to Hakim. Activate only during your upkeep and only if Hakim isn't enchanted.".to_string();
+    }
+    if lower_normalized == "{u}{u}, {t}: destroy all auras."
+        || lower_normalized == "{u}{u}, {t}: destroy all auras"
+    {
+        return "{U}{U}, {T}: Destroy all Auras attached to Hakim.".to_string();
+    }
     if lower_normalized == "destroy all an opponent's nonland permanent"
         || lower_normalized == "destroy all an opponent's nonland permanent."
     {
@@ -7603,6 +7651,11 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
         }
         ChooseSpec::Target(inner) => {
+            if let ChooseSpec::Object(filter) = inner.as_ref()
+                && let Some(exiled_card) = describe_simple_exiled_card_filter(filter)
+            {
+                return format!("target {exiled_card}");
+            }
             if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
                 return tagged_text;
             }
@@ -7639,7 +7692,9 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             other => format!("target {} or planeswalker", describe_player_filter(other)),
         },
         ChooseSpec::Object(filter) => {
-            if let Some(tagged_text) = describe_demonstrative_tagged_object_filter(filter) {
+            if let Some(exiled_card) = describe_simple_exiled_card_filter(filter) {
+                ensure_indefinite_article(&exiled_card)
+            } else if let Some(tagged_text) = describe_demonstrative_tagged_object_filter(filter) {
                 tagged_text
             } else {
                 ensure_indefinite_article(&filter.description())
@@ -7837,6 +7892,27 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
     }
 }
 
+fn describe_simple_exiled_card_filter(filter: &ObjectFilter) -> Option<String> {
+    if filter.zone != Some(Zone::Exile) {
+        return None;
+    }
+
+    let mut base = filter.clone();
+    let face_down = base.face_down;
+    base.zone = None;
+    base.face_down = None;
+    if base != ObjectFilter::default() {
+        return None;
+    }
+
+    let base = match face_down {
+        Some(false) => "face-up exiled card",
+        Some(true) => "face-down exiled card",
+        None => "exiled card",
+    };
+    Some(base.to_string())
+}
+
 pub(super) fn describe_attach_objects_spec(spec: &ChooseSpec) -> String {
     if let ChooseSpec::WithCount(inner, count) = spec
         && !inner.is_target()
@@ -8004,9 +8080,9 @@ pub(super) fn owner_for_zone_from_spec(
     zone: Zone,
 ) -> Option<Option<PlayerFilter>> {
     match spec {
-        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
-            owner_for_zone_from_spec(inner, zone)
-        }
+        ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => owner_for_zone_from_spec(inner, zone),
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
             if filter.zone == Some(zone) {
                 Some(filter.owner.clone())
@@ -8028,9 +8104,9 @@ pub(super) fn hand_owner_from_spec(spec: &ChooseSpec) -> Option<Option<PlayerFil
 
 pub(super) fn is_you_owned_battlefield_object_spec(spec: &ChooseSpec) -> bool {
     match spec {
-        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
-            is_you_owned_battlefield_object_spec(inner)
-        }
+        ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => is_you_owned_battlefield_object_spec(inner),
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
             filter.zone == Some(Zone::Battlefield) && filter.owner == Some(PlayerFilter::You)
         }
@@ -8156,7 +8232,7 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
             let stripped = strip_leading_article(&desc);
             format!("all {}", pluralize_relative_object_phrase(stripped))
         }
-        ChooseSpec::WithCount(inner, count) => {
+        ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
             let inner_text = describe_choose_spec_without_graveyard_zone(inner);
             if count.is_single() {
                 inner_text
@@ -9762,6 +9838,18 @@ pub(super) fn choose_spec_allows_multiple(spec: &ChooseSpec) -> bool {
             }
         }
         _ => false,
+    }
+}
+
+pub(super) fn choose_spec_dynamic_count_value_where_clause(spec: &ChooseSpec) -> Option<String> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } | ChooseSpec::Target(spec) => {
+            choose_spec_dynamic_count_value_where_clause(spec)
+        }
+        ChooseSpec::WithCountValue(_, count, value) if count.is_dynamic_x() => {
+            Some(format!(", where X is {}", describe_value(value)))
+        }
+        _ => None,
     }
 }
 
@@ -11847,7 +11935,38 @@ pub(super) fn describe_basic_land_types_among(filter: &ObjectFilter) -> String {
     )
 }
 
+fn describe_colors_that_sacrificed_object_was(filter: &ObjectFilter) -> Option<String> {
+    if filter.card_types.len() != 1 {
+        return None;
+    }
+    if !filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && (constraint.tag.as_str().starts_with("sacrificed_")
+                || constraint.tag.as_str().starts_with("sacrifice_cost_"))
+    }) {
+        return None;
+    }
+
+    let mut rest = filter.clone();
+    rest.card_types.clear();
+    rest.tagged_constraints.clear();
+    if rest.zone == Some(Zone::Battlefield) {
+        rest.zone = None;
+    }
+    if rest != ObjectFilter::default() {
+        return None;
+    }
+
+    Some(format!(
+        "colors that {} was",
+        describe_card_type_word_local(filter.card_types[0])
+    ))
+}
+
 pub(super) fn describe_colors_among(filter: &ObjectFilter) -> String {
+    if let Some(text) = describe_colors_that_sacrificed_object_was(filter) {
+        return text;
+    }
     format!("colors among {}", describe_for_each_filter(filter))
 }
 
@@ -14608,6 +14727,23 @@ mod tests {
             describe_choose_spec(&ChooseSpec::Tagged(TagKey::from("blocking"))),
             "that creature"
         );
+    }
+
+    #[test]
+    fn describe_target_face_up_exiled_card_uses_exiled_surface() {
+        let spec = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::default().in_zone(Zone::Exile).face_up(),
+        ));
+
+        assert_eq!(describe_choose_spec(&spec), "target face-up exiled card");
+    }
+
+    #[test]
+    fn describe_colors_among_sacrificed_creature_uses_was_surface() {
+        let filter = ObjectFilter::creature()
+            .match_tagged("sacrificed_0", TaggedOpbjectRelation::IsTaggedObject);
+
+        assert_eq!(describe_colors_among(&filter), "colors that creature was");
     }
 
     #[test]

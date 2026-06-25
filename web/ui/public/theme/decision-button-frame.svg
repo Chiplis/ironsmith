@@ -13,7 +13,7 @@
     </linearGradient>
     <linearGradient id="outer" x1="75" y1="0" x2="75" y2="42" gradientUnits="userSpaceOnUse">
       <stop stop-color="#ffd18b"/>
-      <stop offset=".5" stop-color="#f28c28"/>
+      <stop offset=".5" stop-color="#731bde"/>
       <stop offset="1" stop-color="#9b450c"/>
     </linearGradient>
     <linearGradient id="inner" x1="75" y1="4" x2="75" y2="38" gradientUnits="userSpaceOnUse">

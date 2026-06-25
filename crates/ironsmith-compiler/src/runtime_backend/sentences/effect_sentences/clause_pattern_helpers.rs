@@ -937,6 +937,17 @@ pub(crate) fn parse_double_counters_clause(
         )));
     }
 
+    let filter_words = crate::runtime_backend::token_word_refs(filter_clause.tokens());
+    if matches!(
+        filter_words.as_slice(),
+        ["it"] | ["this"] | ["this", "creature"] | ["this", "permanent"]
+    ) {
+        return Ok(Some(EffectAst::subject_verb_double_counters_on_target(
+            counter_type,
+            TargetAst::Source(span_from_tokens(filter_clause.tokens())),
+        )));
+    }
+
     if crate::runtime_backend::token_word_refs(filter_clause.tokens())
         .iter()
         .any(|word| *word == "target" || *word == "targets")

@@ -1189,6 +1189,11 @@ const SOURCE_FROM_YOUR_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> = clause_s
     contains_words & ["from", "your", "graveyard"];
     contains_any_words & [&["card", "creature", "permanent"]]
 );
+const SOURCE_FROM_EXILE_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any & [&["this"], &["thiss"]];
+    contains_words & ["from", "exile"];
+    contains_any_words & [&["card", "creature", "permanent", "source"]]
+);
 const SOURCE_FROM_YOUR_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -1225,6 +1230,9 @@ const EXILE_DELAY_REFERENCE_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_words & [&["token", "tokens", "permanent", "permanents", "it", "them"]]
 );
 const X_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x"]);
+fn shared_util_word_is_x(word: &str) -> bool {
+    shared_util_shape_matches_word(word.to_ascii_lowercase().as_str(), X_WORD_PATTERN)
+}
 const VALUE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["value"]);
 const EVENT_AMOUNT_VALUE_PATTERNS: &[(ClauseShape<'static>, usize)] = &[
     (
@@ -1635,10 +1643,7 @@ pub(crate) fn parse_choice_count_word_prefix(words: &[&str]) -> Option<(ChoiceCo
         return Some((ChoiceCount::any_number(), used));
     }
     if shared_util_shape_matches_words(words, UP_TO_PREFIX_PATTERN) {
-        if words
-            .get(2)
-            .is_some_and(|word| shared_util_shape_matches_word(word, X_WORD_PATTERN))
-        {
+        if words.get(2).is_some_and(|word| shared_util_word_is_x(word)) {
             return Some((ChoiceCount::up_to_dynamic_x(), 3));
         }
         if let Some((value, used)) = parse_number_word_refs(words.get(2..).unwrap_or_default()) {
@@ -1656,7 +1661,7 @@ pub(crate) fn parse_choice_count_word_prefix(words: &[&str]) -> Option<(ChoiceCo
     }
     if words
         .first()
-        .is_some_and(|word| shared_util_shape_matches_word(word, X_WORD_PATTERN))
+        .is_some_and(|word| shared_util_word_is_x(word))
     {
         return Some((ChoiceCount::dynamic_x(), 1));
     }
@@ -4076,7 +4081,7 @@ pub(crate) fn parse_choice_count_token_prefix_consumed(
         if tokens
             .get(2)
             .and_then(OwnedLexToken::as_word)
-            .is_some_and(|word| shared_util_shape_matches_word(word, X_WORD_PATTERN))
+            .is_some_and(shared_util_word_is_x)
         {
             return Some((ChoiceCount::up_to_dynamic_x(), 3));
         }
@@ -4096,7 +4101,7 @@ pub(crate) fn parse_choice_count_token_prefix_consumed(
     if tokens
         .first()
         .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| shared_util_shape_matches_word(word, X_WORD_PATTERN))
+        .is_some_and(shared_util_word_is_x)
     {
         return Some((ChoiceCount::dynamic_x(), 1));
     }
@@ -4219,6 +4224,39 @@ mod tests {
             filter.nonblocking,
             "expected nonblocking filter: {filter:?}"
         );
+    }
+
+    #[test]
+    fn parse_target_phrase_exiled_card_target_is_not_source_linked() {
+        let tokens = lex_line("target face-up exiled card", 0).unwrap();
+        let target = parse_target_phrase(&tokens).expect("target face-up exiled card should parse");
+
+        let TargetAst::Object(filter, target_span, _) = target else {
+            panic!("expected target object, got {target:?}");
+        };
+        assert!(target_span.is_some(), "expected explicit target span");
+        assert_eq!(filter.zone, Some(Zone::Exile));
+        assert_eq!(filter.face_down, Some(false));
+        assert!(
+            !filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            }),
+            "explicit exiled-card target should not be source-linked: {filter:?}"
+        );
+    }
+
+    #[test]
+    fn parse_target_phrase_this_card_from_exile_keeps_source_filter() {
+        let tokens = lex_line("this card from exile", 0).unwrap();
+        let target = parse_target_phrase(&tokens).expect("this card from exile should parse");
+
+        let TargetAst::Object(filter, target_span, _) = target else {
+            panic!("expected source object filter, got {target:?}");
+        };
+        assert!(target_span.is_none(), "expected no explicit target span");
+        assert_eq!(filter.zone, Some(Zone::Exile));
+        assert!(filter.source, "expected source filter: {filter:?}");
     }
 
     #[test]
@@ -4423,6 +4461,10 @@ pub(crate) fn is_source_from_your_graveyard_words(words: &[&str]) -> bool {
         && shared_util_shape_matches_words(words, SOURCE_FROM_YOUR_GRAVEYARD_MARKER_PATTERN)
 }
 
+pub(crate) fn is_source_from_exile_words(words: &[&str]) -> bool {
+    words.len() >= 3 && shared_util_shape_matches_words(words, SOURCE_FROM_EXILE_MARKER_PATTERN)
+}
+
 pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     let all_words = crate::runtime_backend::token_word_refs(tokens);
     let count_prefix_tokens = if all_words.len() >= 2
@@ -4495,6 +4537,27 @@ pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
             Err(err)
         }
     }
+}
+
+fn clear_source_linked_exile_for_explicit_target(
+    filter: &mut ObjectFilter,
+    explicit_target: bool,
+    words: &[&str],
+) {
+    if !explicit_target
+        || !word_slice_contains_word(words, "exiled")
+        || !word_slice_contains_word(words, "card")
+        || word_slice_contains_phrase(words, &["exiled", "with"])
+        || word_slice_contains_phrase(words, &["used", "to", "craft"])
+    {
+        return;
+    }
+
+    filter.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    });
+    filter.zone.get_or_insert(Zone::Exile);
 }
 
 fn tagged_it_owner_or_controller_player_filter(word: &str) -> PlayerFilter {
@@ -5145,6 +5208,13 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
             target_count,
         ));
     }
+    if is_source_from_exile_words(&remaining_words) {
+        let source_filter = ObjectFilter::source().in_zone(Zone::Exile);
+        return Ok(wrap_target_count(
+            TargetAst::Object(source_filter, target_span, None),
+            target_count,
+        ));
+    }
     if shared_util_shape_matches_words(&remaining_words, SOURCE_PT_REFERENCE_PREFIX_PATTERN)
         || shared_util_shape_matches_words(&remaining_words, SOURCE_PT_REFERENCE_TARGET_PATTERN)
     {
@@ -5408,6 +5478,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     }
 
     let mut filter = parse_object_filter(remaining, other)?;
+    clear_source_linked_exile_for_explicit_target(&mut filter, explicit_target, &remaining_words);
     filter.target_set_same_controller = target_set_same_controller;
     filter.target_set_different_controllers = target_set_different_controllers;
     if filter.with_counter.is_none()

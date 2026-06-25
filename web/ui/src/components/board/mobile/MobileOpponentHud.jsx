@@ -37,9 +37,9 @@ export default function MobileOpponentHud({
   trailing = null,
   className,
 }) {
-  const { state } = useGame();
+  const { state, playerAccentOverrides } = useGame();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
-  const accent = getPlayerAccent(state?.players || [], opponent?.id, state?.perspective);
+  const accent = getPlayerAccent(state?.players || [], opponent?.id, state?.perspective, playerAccentOverrides);
   const isActiveTurn = opponent?.id === state?.active_player;
 
   const handleLongPress = useCallback(() => {

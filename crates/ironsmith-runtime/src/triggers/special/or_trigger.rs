@@ -3,8 +3,9 @@
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::triggers::{
-    AbilityActivatedTrigger, AttacksTrigger, CountMode, PlayerRelation, SpellCastTrigger,
-    ThisAttacksTrigger, TransformsTrigger, Trigger, TriggerEvent, ZoneChangeTrigger, ZonePattern,
+    AbilityActivatedTrigger, AttacksTrigger, CountMode, PermanentBecomesTappedTrigger,
+    PlayerRelation, SpellCastTrigger, ThisAttacksTrigger, TransformsTrigger, Trigger, TriggerEvent,
+    ZoneChangeTrigger, ZonePattern,
 };
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -22,6 +23,16 @@ fn object_filter_is_your_commander(filter: &ObjectFilter, card_types: &[CardType
             is_commander: true,
             ..Default::default()
         }
+}
+
+fn object_filter_is_plain_card_type(filter: &ObjectFilter, card_type: CardType) -> bool {
+    if filter.card_types.len() != 1 || filter.card_types[0] != card_type {
+        return false;
+    }
+    let mut normalized = filter.clone();
+    normalized.zone = None;
+    normalized.card_types.clear();
+    normalized == ObjectFilter::default()
 }
 
 /// A trigger that matches if any of the inner triggers match.
@@ -259,6 +270,47 @@ impl OrTrigger {
         }
         None
     }
+
+    fn artifact_tapped_or_artifact_ability_without_tap_cost_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let (tapped, ability, tapped_first) = if let (Some(tapped), Some(ability)) = (
+            first.downcast_ref::<PermanentBecomesTappedTrigger>(),
+            second.downcast_ref::<AbilityActivatedTrigger>(),
+        ) {
+            (tapped, ability, true)
+        } else if let (Some(ability), Some(tapped)) = (
+            first.downcast_ref::<AbilityActivatedTrigger>(),
+            second.downcast_ref::<PermanentBecomesTappedTrigger>(),
+        ) {
+            (tapped, ability, false)
+        } else {
+            return None;
+        };
+
+        if !object_filter_is_plain_card_type(&tapped.filter, CardType::Artifact)
+            || ability.activator != PlayerFilter::Any
+            || !object_filter_is_plain_card_type(&ability.filter, CardType::Artifact)
+            || ability.non_mana_only
+            || ability.loyalty_only
+            || ability.activation_cost_has_tap != Some(false)
+        {
+            return None;
+        }
+
+        if tapped_first {
+            Some(
+                "Whenever an artifact becomes tapped or a player activates an artifact's ability without {T} in its activation cost"
+                    .to_string(),
+            )
+        } else {
+            Some(
+                "Whenever a player activates an artifact's ability without {T} in its activation cost or an artifact becomes tapped"
+                    .to_string(),
+            )
+        }
+    }
 }
 
 impl TriggerMatcher for OrTrigger {
@@ -307,6 +359,9 @@ impl TriggerMatcher for OrTrigger {
             return display;
         }
         if let Some(display) = self.spell_or_activated_ability_x_cost_display() {
+            return display;
+        }
+        if let Some(display) = self.artifact_tapped_or_artifact_ability_without_tap_cost_display() {
             return display;
         }
         let displays: Vec<String> = self.triggers.iter().map(|t| t.display()).collect();

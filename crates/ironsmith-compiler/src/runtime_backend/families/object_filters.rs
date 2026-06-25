@@ -230,6 +230,8 @@ fn parse_named_object_filter_word_atom(
         Some((NamedObjectFilterWordAtom::ChosenColor, 2))
     } else if word_slice_starts_with(words, &["chosen", "type"]) {
         Some((NamedObjectFilterWordAtom::ChosenType, 2))
+    } else if word_slice_starts_with(words, &["that", "type"]) {
+        Some((NamedObjectFilterWordAtom::ChosenType, 2))
     } else if word_slice_starts_with(words, &["nonchosen", "type"]) {
         Some((NamedObjectFilterWordAtom::NonChosenType, 2))
     } else {
@@ -1517,6 +1519,14 @@ mod tests {
         assert!(type_filter.chosen_creature_type);
         assert_eq!(type_filter.controller, Some(PlayerFilter::You));
         assert_eq!(type_filter.card_types, vec![CardType::Creature]);
+
+        let that_type_tokens = tokenize_line("cards of that type from their graveyard", 0);
+        let that_type_filter = parse_object_filter_lexed(&that_type_tokens, false)
+            .expect("that-type graveyard filter should parse");
+
+        assert!(that_type_filter.chosen_creature_type);
+        assert_eq!(that_type_filter.zone, Some(Zone::Graveyard));
+        assert_eq!(that_type_filter.owner, Some(PlayerFilter::IteratedPlayer));
     }
 
     #[test]
