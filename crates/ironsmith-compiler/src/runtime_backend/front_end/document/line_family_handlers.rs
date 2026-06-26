@@ -784,7 +784,7 @@ pub(super) fn run_champion_line_family(
     }
 
     let triggered_text = format!(
-        "When this creature enters, exile another {filter_text} you control until this creature leaves the battlefield."
+        "When this permanent enters, sacrifice it unless you exile another {filter_text} you control until this permanent leaves the battlefield."
     );
     let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
     let triggered = parse_triggered_line_cst(&triggered_line)?;

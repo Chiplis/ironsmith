@@ -220,6 +220,16 @@ fn ability_with_inherent_functional_zones(ability: Ability) -> Ability {
             Zone::Exile,
             Zone::Command,
         ]),
+        crate::static_abilities::StaticAbilityId::Grants => {
+            if let Some(spec) = static_ability.grant_spec()
+                && spec.filter.source
+                && spec.zone != Zone::Battlefield
+            {
+                ability.in_zones(vec![spec.zone])
+            } else {
+                ability
+            }
+        }
         _ => ability,
     }
 }
@@ -11533,7 +11543,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             displays
                 .iter()
-                .any(|display| display.contains("has Deathtouch")
+                .any(|display| display.contains("has deathtouch")
                     && display.contains("as long as you control an artifact")),
             "expected conditional grant ability, got: {displays:?}"
         );
@@ -11729,7 +11739,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             displays.iter().any(|display| {
-                (display.contains("has Trample") || display.contains("have Trample"))
+                (display.contains("has trample") || display.contains("have trample"))
                     && display.contains("as long as enchanted permanent is an equipment")
             }),
             "expected conditional granted trample static, got: {displays:?}"
@@ -11816,7 +11826,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             displays.iter().any(|display| {
                 display.contains("as long as this creature is equipped")
-                    && display.contains("has Trample")
+                    && display.contains("has trample")
             }),
             "expected equipped-gated trample grant, got: {displays:?}"
         );
@@ -12034,14 +12044,14 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .collect();
         assert!(
             displays.iter().any(|display| {
-                display.contains("has Trample")
+                display.contains("has trample")
                     && display.contains("as long as you control an artifact")
             }),
             "expected conditional trample ability, got: {displays:?}"
         );
         assert!(
             displays.iter().any(|display| {
-                display.contains("has Indestructible")
+                display.contains("has indestructible")
                     && display.contains("as long as you control an artifact")
             }),
             "expected conditional indestructible ability, got: {displays:?}"

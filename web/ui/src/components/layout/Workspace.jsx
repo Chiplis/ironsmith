@@ -21,6 +21,8 @@ import {
   buildStackTargetPresentation,
   getVisibleStackObjects,
   normalizeZoneViews,
+  stackInspectObjectId,
+  stackSelectionKeys,
 } from "@/lib/stack-targets";
 import { samePlayerId } from "@/lib/player-display";
 import { sameActionRef } from "@/lib/sync-commands";
@@ -116,13 +118,6 @@ function getMobileDragPreviewRect(dragState) {
     top: y - 84,
     bottom: y + 56,
   };
-}
-
-function stackSelectionKeys(entry) {
-  const keys = [entry?.id, entry?.inspect_object_id]
-    .filter((value) => value != null)
-    .map((value) => String(value));
-  return Array.from(new Set(keys));
 }
 
 function getTrackedZoneCards(player, zone) {
@@ -946,18 +941,22 @@ export default function Workspace({
     const previousStackIds = previousStackIdsRef.current;
     const removedIds = previousStackIds.filter((id) => !currentStackIds.includes(id));
 
+    const selectedStackEntryStillVisible =
+      selectedObjectId != null && currentStackIds.includes(String(selectedObjectId));
+
     if (
       removedIds.length > 0
       && selectedObjectId != null
       && !combatDeclarationActive
       && previousStackIds.includes(String(selectedObjectId))
+      && !selectedStackEntryStillVisible
     ) {
-      const nextTopId = stackObjects[0]?.id ?? null;
+      const nextTopId = stackInspectObjectId(stackObjects[0]);
       const selectedSnapshot = String(selectedObjectId);
       queueMicrotask(() => {
         setSelectedObjectId((currentSelection) => {
           if (String(currentSelection) !== selectedSnapshot) return currentSelection;
-          return nextTopId;
+          return nextTopId != null ? String(nextTopId) : null;
         });
         setPinnedInspectorObjectId(null);
       });
@@ -1277,11 +1276,13 @@ export default function Workspace({
       }
       clearTransientInspectorPreviews();
       if (stackEntry) {
+        const stackObjectId = stackEntry.id != null ? String(stackEntry.id) : null;
+        const inspectorObjectId = stackInspectObjectId(stackEntry);
         clearHover();
-        setSelectedObjectId(null);
+        setSelectedObjectId(inspectorObjectId != null ? String(inspectorObjectId) : null);
         setPinnedInspectorObjectId(null);
         setSuppressFallbackInspector(false);
-        setFocusedStackObjectId(stackEntry.id != null ? String(stackEntry.id) : null);
+        setFocusedStackObjectId(stackObjectId);
         return;
       }
       setSelectedObjectId(objectId);

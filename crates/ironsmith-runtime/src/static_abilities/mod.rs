@@ -3031,13 +3031,34 @@ impl StaticAbility {
         delta: i32,
         display: String,
     ) -> Self {
-        Self::new(ModifyDamageAmountReplacement::new(
+        Self::modify_damage_amount_replacement_with_noncombat_only(
             source_filter,
             target_player_filter,
             target_object_filter,
             delta,
+            false,
             display,
-        ))
+        )
+    }
+
+    pub fn modify_damage_amount_replacement_with_noncombat_only(
+        source_filter: crate::target::ObjectFilter,
+        target_player_filter: Option<crate::target::PlayerFilter>,
+        target_object_filter: Option<crate::target::ObjectFilter>,
+        delta: i32,
+        noncombat_only: bool,
+        display: String,
+    ) -> Self {
+        Self::new(
+            ModifyDamageAmountReplacement::new(
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                delta,
+                display,
+            )
+            .with_noncombat_only(noncombat_only),
+        )
     }
 
     pub fn minimum_damage_amount_replacement(

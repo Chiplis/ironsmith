@@ -12,12 +12,17 @@ use crate::effect::{EventValueSpec, Value};
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
+use crate::runtime_backend::effect_sentences::dispatch_entry::parse_consult_traversal_sentence;
 use crate::runtime_backend::front_end::lexer::{
     LexedClause, word_slice_contains_all_words, word_slice_contains_any_word,
-    word_slice_contains_phrase, word_slice_eq, word_slice_eq_any, word_slice_starts_with,
+    word_slice_contains_phrase, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
+    word_slice_starts_with,
 };
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
-use crate::runtime_backend::util::{mana_pips_from_token, non_article_token_word_refs};
+use crate::runtime_backend::util::{
+    helper_tag_for_tokens, mana_pips_from_token, non_article_token_word_refs,
+    token_index_for_word_index, trim_commas,
+};
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
@@ -169,6 +174,129 @@ fn words_contain_all_phrases(words: &[&str], phrases: &[&[&str]]) -> bool {
     phrases
         .iter()
         .all(|phrase| word_slice_contains_phrase(words, phrase))
+}
+
+fn effect_ast_is_destroy(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Destroy { .. } | SubjectVerbActionAst::DestroyAll { .. },
+            ..
+        })
+    )
+}
+
+fn strip_and_exiles_that_card_tail(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let tail_start = word_slice_find_phrase_start(&words, &["and", "exiles", "that", "card"])
+        .or_else(|| word_slice_find_phrase_start(&words, &["and", "exile", "that", "card"]))?;
+    let token_idx = token_index_for_word_index(tokens, tail_start)?;
+    Some(trim_commas(&tokens[..token_idx]).to_vec())
+}
+
+fn sentence_puts_exiled_cards_to_battlefield_then_shuffle(tokens: &[OwnedLexToken]) -> bool {
+    let words = non_article_token_word_refs(tokens);
+    word_slice_contains_all_words(
+        &words,
+        &[
+            "players",
+            "put",
+            "exiled",
+            "cards",
+            "battlefield",
+            "shuffle",
+        ],
+    ) || word_slice_contains_all_words(
+        &words,
+        &[
+            "player",
+            "puts",
+            "exiled",
+            "cards",
+            "battlefield",
+            "shuffle",
+        ],
+    )
+}
+
+pub(crate) fn parse_destroy_for_each_destroyed_consult_exile_put_shuffle(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = sentences[sentence_idx].lowered();
+    let Ok(first_effects) = effect_sentences::parse_effect_sentence_lexed(first_tokens)
+        .or_else(|_| effect_sentences::parse_effect_chain(first_tokens))
+    else {
+        return Ok(None);
+    };
+    let [destroy_effect] = first_effects.as_slice() else {
+        return Ok(None);
+    };
+    if !effect_ast_is_destroy(destroy_effect) {
+        return Ok(None);
+    }
+
+    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    let Some((prefix_clause, consult_clause)) = second_clause.split_once_on_comma() else {
+        return Ok(None);
+    };
+    let prefix_words = non_article_token_word_refs(prefix_clause.tokens());
+    if !word_slice_starts_with(&prefix_words, &["for", "each"])
+        || !word_slice_contains_phrase(&prefix_words, &["destroyed", "this", "way"])
+    {
+        return Ok(None);
+    }
+    let Some(consult_tokens) = strip_and_exiles_that_card_tail(consult_clause.tokens()) else {
+        return Ok(None);
+    };
+    let Some(parts) = parse_consult_traversal_sentence(&consult_tokens)? else {
+        return Ok(None);
+    };
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
+            ..
+        }))
+    ) {
+        return Ok(None);
+    }
+
+    let third_tokens = sentences[sentence_idx + 2].lowered();
+    if !sentence_puts_exiled_cards_to_battlefield_then_shuffle(third_tokens) {
+        return Ok(None);
+    }
+
+    let destroyed_tag = helper_tag_for_tokens(first_tokens, "destroyed");
+    let mut loop_effects = parts.effects;
+    loop_effects.push(EffectAst::subject_verb_exile(
+        TargetAst::Tagged(parts.match_tag.clone(), None),
+        false,
+    ));
+    loop_effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(parts.match_tag, None),
+        Zone::Battlefield,
+        false,
+        ReturnControllerAst::Preserve,
+        false,
+        None,
+    ));
+    loop_effects.push(EffectAst::subject_verb(
+        SubjectVerbRoleAst::LibraryOwner,
+        PlayerAst::ItsController,
+        SubjectVerbActionAst::ShuffleLibrary,
+    ));
+
+    Ok(Some(vec![
+        EffectAst::TagAffected {
+            effect: Box::new(destroy_effect.clone()),
+            tag: destroyed_tag.clone(),
+        },
+        EffectAst::ForEachTagged {
+            tag: destroyed_tag,
+            effects: loop_effects,
+        },
+    ]))
 }
 
 pub(crate) fn parse_parameterized_flashback_grant_sequence(
@@ -343,6 +471,7 @@ pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
                     sacrifice_at_end_of_combat: false,
                     sacrifice_at_next_end_step: false,
                     exile_at_next_end_step: false,
+                    next_end_step_player: PlayerFilter::Any,
                     granted_abilities: Vec::new(),
                 },
             )],

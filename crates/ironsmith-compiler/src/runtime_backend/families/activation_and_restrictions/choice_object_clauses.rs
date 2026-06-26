@@ -548,7 +548,6 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
     }
     if choice_object_shape_matches_words(&choose_words, OF_TAGGED_CHOICE_PATTERN) {
         references_it = true;
-        references_container_it = true;
         choose_words = vec!["card"];
     } else if choose_words.len() > 2
         && choice_object_shape_matches_words(&choose_words, OF_TAGGED_REFERENCE_PREFIX_PATTERN)
@@ -981,6 +980,7 @@ mod tests {
                 .any(|constraint| constraint.tag.as_str() == IT_TAG),
             "expected one-of-them choice to reference the previous object set, got {filter:?}"
         );
+        assert_eq!(filter.zone, None);
         assert!(
             filter.controller.is_none() && filter.owner.is_none(),
             "expected referenced choice not to default to your permanent, got {filter:?}"

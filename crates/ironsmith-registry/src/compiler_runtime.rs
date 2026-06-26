@@ -447,6 +447,16 @@ fn runtime_ability_with_inherent_functional_zones(
                 ironsmith::zone::Zone::Command,
             ])
         }
+        ironsmith::static_abilities::StaticAbilityId::Grants => {
+            if let Some(spec) = static_ability.grant_spec()
+                && spec.filter.source
+                && spec.zone != ironsmith::zone::Zone::Battlefield
+            {
+                ability.in_zones(vec![spec.zone])
+            } else {
+                ability
+            }
+        }
         _ => ability,
     }
 }

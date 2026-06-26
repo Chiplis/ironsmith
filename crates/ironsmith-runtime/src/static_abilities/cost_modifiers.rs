@@ -9,7 +9,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::filter::{AlternativeCastKind, Comparison, PlayerFilterExt};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
-use crate::types::CardType;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 fn describe_comparison(cmp: &Comparison) -> String {
@@ -282,6 +282,22 @@ fn describe_cost_count_filter(filter: &ObjectFilter) -> String {
     description
 }
 
+fn describe_dynamic_count_cost_tail(filter: &ObjectFilter) -> Option<String> {
+    if matches!(filter.zone, Some(Zone::Graveyard))
+        && filter.owner == Some(PlayerFilter::You)
+        && filter.card_types.as_slice() == [CardType::Instant, CardType::Sorcery]
+        && filter.subtypes.as_slice() == [Subtype::Adventure]
+        && filter.type_or_subtype_union
+    {
+        return Some(
+            "where X is the number of cards in your graveyard that are instant cards, sorcery cards, and/or have an Adventure"
+                .to_string(),
+        );
+    }
+
+    None
+}
+
 fn describe_spell_cast_count_tail(
     player: &PlayerFilter,
     filter: &ObjectFilter,
@@ -335,14 +351,20 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
         }
         Value::Fixed(n) => (format!("{{{n}}}"), None),
         Value::X => ("{X}".to_string(), None),
-        Value::Count(filter) => (
-            "{1}".to_string(),
-            Some(if is_source_exiled_count_filter(filter) {
-                "for each card exiled this way".to_string()
+        Value::Count(filter) => {
+            if let Some(tail) = describe_dynamic_count_cost_tail(filter) {
+                ("{X}".to_string(), Some(tail))
             } else {
-                format!("for each {}", describe_cost_count_filter(filter))
-            }),
-        ),
+                (
+                    "{1}".to_string(),
+                    Some(if is_source_exiled_count_filter(filter) {
+                        "for each card exiled this way".to_string()
+                    } else {
+                        format!("for each {}", describe_cost_count_filter(filter))
+                    }),
+                )
+            }
+        }
         Value::CountScaled(filter, multiplier) => (
             format!("{{{multiplier}}}"),
             Some(if is_source_exiled_count_filter(filter) {
@@ -645,6 +667,9 @@ fn describe_cost_modifier_condition_prefix(condition: &crate::ConditionExpr) -> 
             } else {
                 "has"
             };
+            if *count == 0 {
+                return format!("As long as {subject} {verb} no cards in hand");
+            }
             format!("As long as {subject} {verb} {count} or fewer cards in hand")
         }
         _ => "As long as the stated condition is true".to_string(),
@@ -2425,6 +2450,21 @@ mod tests {
         assert_eq!(
             reduction.display(),
             "This spell costs {1} less to cast for each instant and sorcery card in your graveyard"
+        );
+    }
+
+    #[test]
+    fn this_spell_cost_reduction_display_uses_dynamic_adventure_tail() {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+        filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+        filter.subtypes = vec![Subtype::Adventure];
+        filter.type_or_subtype_union = true;
+        let reduction = ThisSpellCostReduction::new(Value::Count(filter), Always);
+
+        assert_eq!(
+            reduction.display(),
+            "This spell costs {X} less to cast, where X is the number of cards in your graveyard that are instant cards, sorcery cards, and/or have an Adventure"
         );
     }
 }

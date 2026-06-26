@@ -87,6 +87,7 @@ impl EffectExecutor for CreateTokenEffect {
             self.sacrifice_at_end_of_combat,
             self.sacrifice_at_next_end_step,
             self.exile_at_next_end_step,
+            self.next_end_step_player.clone(),
         );
         let entry_options = TokenEntryOptions::new(self.enters_tapped, self.enters_attacking);
 
@@ -140,7 +141,13 @@ impl EffectExecutor for CreateTokenEffect {
                     &mut events,
                 )?;
 
-                schedule_token_cleanup(game, ctx, entered_id, controller_id, cleanup_options)?;
+                schedule_token_cleanup(
+                    game,
+                    ctx,
+                    entered_id,
+                    controller_id,
+                    cleanup_options.clone(),
+                )?;
             }
         }
 

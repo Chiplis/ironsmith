@@ -1,6 +1,8 @@
 //! Put counters effect implementation.
 
-use crate::effect::{ChoiceCount, EffectOutcome, Value};
+use crate::decision::FallbackStrategy;
+use crate::decisions::{NumberSpec, make_decision_with_fallback};
+use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, Value};
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -55,9 +57,38 @@ impl EffectExecutor for PutCountersEffect {
             },
         };
 
-        let count = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+        let max_count = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+        let amount_is_up_to = self
+            .amount
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::UpTo);
+        let count = if amount_is_up_to {
+            let description = format!(
+                "Choose how many {} counters to put",
+                self.counter_type.description()
+            );
+            let spec = NumberSpec::up_to(ctx.source, max_count, description);
+            let chosen = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                spec,
+                FallbackStrategy::Maximum,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            chosen.min(max_count)
+        } else {
+            max_count
+        };
         if count == 0 {
-            return Ok(EffectOutcome::count(0));
+            let outcome = EffectOutcome::count(0);
+            return Ok(if amount_is_up_to {
+                outcome.with_execution_fact(ExecutionFact::ChosenNumber(0))
+            } else {
+                outcome
+            });
         }
 
         let distributed_counts: Option<HashMap<ObjectId, u32>> = if self.distributed {
@@ -210,6 +241,30 @@ mod tests {
         assert_eq!(memory[0].object_id, target);
         assert_eq!(game.counter_count(target, CounterType::PlusOnePlusOne), 2);
         assert_eq!(result.events.len(), 1);
+    }
+
+    #[test]
+    fn put_up_to_counters_uses_chosen_amount() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let target = create_creature_on_battlefield(&mut game, "Saga Token", alice);
+
+        let mut dm = crate::decision::NumericInputDecisionMaker::from_strs(&["1"]);
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(target)];
+
+        let effect = PutCountersEffect::new(
+            CounterType::Lore,
+            Value::Fixed(3).with_surface_hint(ironsmith_core::ValueSurfaceHint::UpTo),
+            ChooseSpec::target_creature(),
+        );
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("up-to counter amount should resolve");
+
+        assert_eq!(result.as_count(), Some(1));
+        assert_eq!(game.counter_count(target, CounterType::Lore), 1);
     }
 }
 

@@ -12204,6 +12204,59 @@ export function usePeerLobby({
     });
   }
 
+  function latestMatchClockAuditFromActions(actions = []) {
+    for (let index = (actions || []).length - 1; index >= 0; index -= 1) {
+      const entry = actions[index] || {};
+      const clock = entry.clock || entry.audit?.clock || null;
+      if (clock && typeof clock === "object") return clock;
+    }
+    return null;
+  }
+
+  function restoreMatchClockRuntimeFromActionTranscript(actions = [], uiState, matchPayload = null) {
+    const clock = latestMatchClockAuditFromActions(actions);
+    const finalSequence = Number(actions.at(-1)?.seq || 0);
+    if (!clock) {
+      const policy = matchClockPolicyFromPayload(matchPayload, matchClockConfigRef.current);
+      const playerCount = Math.max(
+        Array.isArray(matchPayload?.players) ? matchPayload.players.length : 0,
+        playerCountForClock(uiState)
+      );
+      matchClockConfigRef.current = policy;
+      matchClockRef.current = {
+        policy,
+        playerCount,
+        baseRemainingMsByPlayer: normalizeMatchClockRemaining([], playerCount, policy.initialMs),
+        activePlayerIndex: null,
+        epochStartedAtMs: null,
+        clockHash: INITIAL_MATCH_CLOCK_HASH,
+        lastSequence: finalSequence,
+      };
+      return updateMatchClockForState(uiState, { policy });
+    }
+
+    const policy = normalizeMatchClockPolicy(clock.policy || matchClockConfigRef.current);
+    const playerCount = Math.max(
+      playerCountForClock(uiState),
+      Array.isArray(clock.remainingMsByPlayer) ? clock.remainingMsByPlayer.length : 0
+    );
+    matchClockConfigRef.current = policy;
+    matchClockRef.current = {
+      policy,
+      playerCount,
+      baseRemainingMsByPlayer: normalizeMatchClockRemaining(
+        clock.remainingMsByPlayer,
+        playerCount,
+        policy.initialMs
+      ),
+      activePlayerIndex: null,
+      epochStartedAtMs: null,
+      clockHash: String(clock.clockHash || INITIAL_MATCH_CLOCK_HASH),
+      lastSequence: Number(clock.seq || finalSequence),
+    };
+    return updateMatchClockForState(uiState, { policy });
+  }
+
   function alignMatchClockObservationFromHostSnapshot(hostSnapshot, uiState) {
     if (!hostSnapshot || typeof hostSnapshot !== "object") {
       return updateMatchClockForState(uiState);
@@ -14478,15 +14531,27 @@ export function usePeerLobby({
 	        return;
 	      }
 	      if (rejectedActionCheat) {
-        if (throwOnFailure) {
-          throw err;
-        }
-        const actorName = playerNameForIndex(multiplayerRef.current.players, message.actorIndex);
-        const status = `Cheat detected from ${actorName}: ${failureReason}`;
-        emitSyncFailureNotice("Cheat detected", status);
-        setStatus(status, true);
-        return;
-      }
+	        if (throwOnFailure) {
+	          throw err;
+	        }
+	        const actorName = playerNameForIndex(multiplayerRef.current.players, message.actorIndex);
+	        if (isTrustedMultiplayerSecurityMode(sequencedActionSecurityMode(message, multiplayerRef.current))) {
+	          const status = `Trusted action rejected from ${actorName}: ${failureReason}`;
+	          const resynced = reportSyncFailure(
+	            status,
+	            options.failureResyncReason || "Trusted action mismatch. Resyncing with host...",
+	            status
+	          );
+	          if (!resynced) {
+	            setStatus(status, true);
+	          }
+	          return;
+	        }
+	        const status = `Cheat detected from ${actorName}: ${failureReason}`;
+	        emitSyncFailureNotice("Cheat detected", status);
+	        setStatus(status, true);
+	        return;
+	      }
       if (throwOnFailure) {
         throw err;
       }
@@ -18217,10 +18282,12 @@ export function usePeerLobby({
           : stateRef.current;
         stateRef.current = nextState;
         setState(nextState);
+        restoreMatchClockRuntimeFromActionTranscript(actionEntries, nextState, matchPayload);
         const matchClock = alignMatchClockObservationFromHostSnapshot(
           matchPayload.currentMatchClock,
           nextState
         );
+        matchClockObservationExemptSequenceRef.current = messageLastSequence + 1;
         const acceptedMatchPayload = {
           ...cloneMultiplayerPayload(matchPayload),
           securityMode: MULTIPLAYER_SECURITY_TRUSTED,

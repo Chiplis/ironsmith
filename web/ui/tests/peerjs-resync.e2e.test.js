@@ -2789,6 +2789,17 @@ test("PeerJS Trusted peers import host checkpoints after guest reconnect and hos
       checkpointImportEvents(guestResync).length >= 1,
       "trusted reconnect should import the host checkpoint instead of replaying signed actions",
     );
+    const hostAfterGuestResync = await snapshot(hostPage);
+    assert.equal(
+      guestResync.multiplayer.matchClock?.clockHash,
+      hostAfterGuestResync.multiplayer.matchClock?.clockHash,
+      "trusted checkpoint import should adopt the host clock hash head",
+    );
+    assert.equal(
+      guestResync.multiplayer.matchClock?.lastSequence,
+      hostAfterGuestResync.multiplayer.matchClock?.lastSequence,
+      "trusted checkpoint import should adopt the host clock sequence",
+    );
 
     await hostPage.close();
     hostPage = null;
@@ -2831,6 +2842,17 @@ test("PeerJS Trusted peers import host checkpoints after guest reconnect and hos
     assert.ok(
       checkpointImportEvents(hostResync).length >= 1,
       "trusted host takeover resync should import the promoted host checkpoint",
+    );
+    const promotedGuestAfterHostResync = await snapshot(guestPage);
+    assert.equal(
+      hostResync.multiplayer.matchClock?.clockHash,
+      promotedGuestAfterHostResync.multiplayer.matchClock?.clockHash,
+      "trusted host-takeover resync should adopt the promoted host clock hash head",
+    );
+    assert.equal(
+      hostResync.multiplayer.matchClock?.lastSequence,
+      promotedGuestAfterHostResync.multiplayer.matchClock?.lastSequence,
+      "trusted host-takeover resync should adopt the promoted host clock sequence",
     );
 
     await waitForSnapshot(

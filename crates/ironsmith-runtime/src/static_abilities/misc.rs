@@ -3606,6 +3606,7 @@ pub struct ModifyDamageAmountReplacement {
     pub target_player_filter: Option<PlayerFilter>,
     pub target_object_filter: Option<ObjectFilter>,
     pub delta: i32,
+    pub noncombat_only: bool,
     pub display: String,
     pub condition: Option<crate::ConditionExpr>,
 }
@@ -3623,9 +3624,15 @@ impl ModifyDamageAmountReplacement {
             target_player_filter,
             target_object_filter,
             delta,
+            noncombat_only: false,
             display: display.into(),
             condition: None,
         }
+    }
+
+    pub fn with_noncombat_only(mut self, noncombat_only: bool) -> Self {
+        self.noncombat_only = noncombat_only;
+        self
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
@@ -3856,7 +3863,7 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
                 target_object_filter: self.target_object_filter.clone(),
                 condition: self.condition.clone(),
                 combat_only: false,
-                noncombat_only: false,
+                noncombat_only: self.noncombat_only,
                 amount_less_than: None,
             },
             ReplacementAction::Modify(EventModification::Add(self.delta)),
@@ -4317,8 +4324,12 @@ impl StaticAbilityKind for Grants {
     fn display(&self) -> String {
         let mut text = self.spec.display();
         if let Some(condition) = &self.condition {
+            let condition_text = super::describe_static_condition(condition);
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
             text.push(' ');
-            text.push_str(&super::describe_static_condition(condition));
+            text.push_str(&condition_text);
         }
         text
     }
@@ -4345,6 +4356,13 @@ impl StaticAbilityKind for Grants {
     fn grant_spec(&self) -> Option<GrantSpec> {
         Some(self.spec.clone())
     }
+}
+
+fn static_condition_is_during_your_turn(condition: &crate::ConditionExpr) -> bool {
+    matches!(
+        condition,
+        crate::ConditionExpr::ActivationTiming(crate::ability::ActivationTiming::DuringYourTurn)
+    )
 }
 
 /// Level abilities for level-up creatures.

@@ -817,6 +817,7 @@ impl EffectExecutor for PopulateEffect {
                     .haste(self.has_haste)
                     .sacrifice_at_next_end_step(self.sacrifice_at_next_end_step)
                     .exile_at_next_end_step(self.exile_at_next_end_step)
+                    .next_end_step_player(self.next_end_step_player.clone())
                     .exile_at_eoc(self.exile_at_end_of_combat)
                     .execute(game, ctx)?;
             if let OutcomeValue::Objects(ids) = outcome.value {

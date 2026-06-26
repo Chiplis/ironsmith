@@ -73,6 +73,10 @@ fn first_word_search(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "search")
 }
 
+fn first_word_destroy(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "destroy")
+}
+
 fn first_word_sacrifice(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "sacrifice")
 }
@@ -242,6 +246,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 4,
         predicate: first_word_look,
         parser: generic_subject_verb_sequences::quads::parse_look_at_top_exile_one_rest_bottom_cast_else_hand,
+    },
+    SequenceRuleDef {
+        name: "destroy-for-each-destroyed-consult-exile-put-shuffle",
+        feature_tag: Some("destroyed-consult-exile-put"),
+        priority: 429,
+        consumed_sentences: 3,
+        predicate: first_word_destroy,
+        parser:
+            generic_subject_verb_sequences::parse_destroy_for_each_destroyed_consult_exile_put_shuffle,
     },
     SequenceRuleDef {
         name: "look-at-top-may-put-match-onto-battlefield-if-not-put-into-hand-rest-bottom",

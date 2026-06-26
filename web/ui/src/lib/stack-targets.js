@@ -37,6 +37,17 @@ export function getVisibleTopStackObject(state) {
   return getVisibleStackObjects(state)[0] || null;
 }
 
+export function stackInspectObjectId(entry) {
+  return entry?.inspect_object_id ?? entry?.id ?? null;
+}
+
+export function stackSelectionKeys(entry) {
+  const keys = [entry?.id, entry?.inspect_object_id]
+    .filter((value) => value != null)
+    .map((value) => String(value));
+  return Array.from(new Set(keys));
+}
+
 function indexObject(map, objectId, renderedId, zone, playerId) {
   const numericObjectId = Number(objectId);
   if (!Number.isFinite(numericObjectId)) return;
@@ -87,7 +98,7 @@ function resolveActiveStackObject(stackObjects = [], selectedObjectId = null) {
   const selectedKey = selectedObjectId == null ? null : String(selectedObjectId);
   if (selectedKey != null) {
     const selectedEntry = stackObjects.find((entry) => (
-      String(entry?.inspect_object_id ?? entry?.id) === selectedKey
+      String(stackInspectObjectId(entry)) === selectedKey
       || String(entry?.id) === selectedKey
     ));
     if (selectedEntry) return selectedEntry;

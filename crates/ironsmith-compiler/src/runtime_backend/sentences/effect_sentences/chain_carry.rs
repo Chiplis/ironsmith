@@ -137,6 +137,7 @@ const CHAIN_ROUNDED_UP_WORDS: &[&str] = &["rounded", "up"];
 const CHAIN_WHERE_X_IS_HALF_PHRASE: &[&str] = &["where", "x", "is", "half"];
 const CHAIN_END_OF_COMBAT_PHRASE: &[&str] = &["end", "of", "combat"];
 const CHAIN_BEGINNING_END_STEP_PHRASES: &[&[&str]] = &[
+    &["beginning", "of", "your", "next", "end", "step"],
     &["beginning", "of", "the", "end", "step"],
     &["beginning", "of", "next", "end", "step"],
     &["beginning", "of", "the", "next", "end", "step"],
@@ -1861,6 +1862,14 @@ pub(crate) fn collapse_token_copy_next_end_step_exile_followup_lexed(
     {
         return;
     }
+    let next_end_step_player = if word_slice_contains_phrase(
+        &chain_words,
+        &["beginning", "of", "your", "next", "end", "step"],
+    ) {
+        PlayerFilter::You
+    } else {
+        PlayerFilter::Any
+    };
 
     let mut idx = 0usize;
     while idx + 1 < effects.len() {
@@ -1897,15 +1906,18 @@ pub(crate) fn collapse_token_copy_next_end_step_exile_followup_lexed(
                 action:
                     SubjectVerbActionAst::CreateTokenCopy {
                         exile_at_next_end_step,
+                        next_end_step_player: effect_next_end_step_player,
                         ..
                     }
                     | SubjectVerbActionAst::CreateTokenCopyFromSource {
                         exile_at_next_end_step,
+                        next_end_step_player: effect_next_end_step_player,
                         ..
                     },
                 ..
             }) => {
                 *exile_at_next_end_step = true;
+                *effect_next_end_step_player = next_end_step_player.clone();
             }
             _ => {}
         }
@@ -1925,6 +1937,14 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
     {
         return;
     }
+    let next_end_step_player = if word_slice_contains_phrase(
+        &chain_words,
+        &["beginning", "of", "your", "next", "end", "step"],
+    ) {
+        PlayerFilter::You
+    } else {
+        PlayerFilter::Any
+    };
 
     let mut idx = 0usize;
     while idx + 1 < effects.len() {
@@ -1954,15 +1974,18 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
                 action:
                     SubjectVerbActionAst::CreateTokenCopy {
                         sacrifice_at_next_end_step,
+                        next_end_step_player: effect_next_end_step_player,
                         ..
                     }
                     | SubjectVerbActionAst::CreateTokenCopyFromSource {
                         sacrifice_at_next_end_step,
+                        next_end_step_player: effect_next_end_step_player,
                         ..
                     },
                 ..
             }) => {
                 *sacrifice_at_next_end_step = true;
+                *effect_next_end_step_player = next_end_step_player.clone();
             }
             _ => {}
         }

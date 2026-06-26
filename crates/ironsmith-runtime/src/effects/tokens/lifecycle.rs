@@ -167,12 +167,13 @@ pub(crate) fn grant_token_static_abilities(
 }
 
 /// Delayed-cleanup scheduling options for newly created tokens.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct TokenCleanupOptions {
     pub exile_at_end_of_combat: bool,
     pub sacrifice_at_end_of_combat: bool,
     pub sacrifice_at_next_end_step: bool,
     pub exile_at_next_end_step: bool,
+    pub next_end_step_player: PlayerFilter,
 }
 
 impl TokenCleanupOptions {
@@ -181,12 +182,14 @@ impl TokenCleanupOptions {
         sacrifice_at_end_of_combat: bool,
         sacrifice_at_next_end_step: bool,
         exile_at_next_end_step: bool,
+        next_end_step_player: PlayerFilter,
     ) -> Self {
         Self {
             exile_at_end_of_combat,
             sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
+            next_end_step_player,
         }
     }
 }
@@ -229,7 +232,7 @@ pub(crate) fn schedule_token_cleanup(
             ctx,
             token_id,
             controller_id,
-            Trigger::beginning_of_end_step(PlayerFilter::Any),
+            Trigger::beginning_of_end_step(options.next_end_step_player.clone()),
             vec![Effect::new(SacrificeTargetEffect::new(
                 ChooseSpec::SpecificObject(token_id),
             ))],
@@ -242,7 +245,7 @@ pub(crate) fn schedule_token_cleanup(
             ctx,
             token_id,
             controller_id,
-            Trigger::beginning_of_end_step(PlayerFilter::Any),
+            Trigger::beginning_of_end_step(options.next_end_step_player.clone()),
             vec![Effect::exile(ChooseSpec::SpecificObject(token_id))],
         )?;
     }
@@ -319,7 +322,7 @@ mod tests {
             &mut ctx,
             token_id,
             bob,
-            TokenCleanupOptions::new(true, false, false, false),
+            TokenCleanupOptions::new(true, false, false, false, PlayerFilter::Any),
         )
         .unwrap();
 
@@ -347,7 +350,7 @@ mod tests {
             &mut ctx,
             token_id,
             alice,
-            TokenCleanupOptions::new(true, true, true, true),
+            TokenCleanupOptions::new(true, true, true, true, PlayerFilter::Any),
         )
         .unwrap();
 
@@ -373,6 +376,31 @@ mod tests {
             assert_eq!(delayed.target_objects, vec![token_id]);
             assert_eq!(delayed.controller, alice);
         }
+    }
+
+    #[test]
+    fn test_schedule_token_cleanup_uses_your_next_end_step_filter() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let token_id = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        schedule_token_cleanup(
+            &mut game,
+            &mut ctx,
+            token_id,
+            alice,
+            TokenCleanupOptions::new(false, false, true, false, PlayerFilter::You),
+        )
+        .unwrap();
+
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+        let delayed = &game.effect_store.delayed_triggers[0];
+        assert_eq!(
+            delayed.trigger,
+            Trigger::beginning_of_end_step(PlayerFilter::You)
+        );
     }
 
     #[test]

@@ -311,6 +311,7 @@ where
         if payload.exile_at_next_end_step {
             converted = converted.exile_at_next_end_step();
         }
+        converted = converted.next_end_step_player(payload.next_end_step_player.clone());
         return Ok(Effect::new(converted));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::TapEffect>(&effect) {
@@ -418,6 +419,7 @@ where
             exile_at_end_of_combat: payload.exile_at_end_of_combat,
             sacrifice_at_next_end_step: payload.sacrifice_at_next_end_step,
             exile_at_next_end_step: payload.exile_at_next_end_step,
+            next_end_step_player: payload.next_end_step_player.clone(),
             pt_adjustment: payload.pt_adjustment.clone(),
             clear_mana_cost: payload.clear_mana_cost,
             added_card_types: payload.added_card_types.clone(),

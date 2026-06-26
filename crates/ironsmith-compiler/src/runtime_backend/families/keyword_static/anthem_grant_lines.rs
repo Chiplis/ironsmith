@@ -3907,7 +3907,12 @@ pub(crate) fn parse_anthem_prefix_condition(
             .map(|idx| idx + 1)
             .or_else(|| find_source_reference_start(&tokens[..get_idx]))
             .unwrap_or(3);
-        return Ok((Some(crate::ConditionExpr::YourTurn), subject_start));
+        return Ok((
+            Some(crate::ConditionExpr::ActivationTiming(
+                crate::ability::ActivationTiming::DuringYourTurn,
+            )),
+            subject_start,
+        ));
     }
 
     if token_slice_starts_with(tokens, &["as", "long", "as"]) {

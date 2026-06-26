@@ -474,6 +474,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         delta: i32,
+        noncombat_only: bool,
         display: String,
     },
     MinimumDamageAmountReplacement {
@@ -1446,12 +1447,14 @@ where
                 target_player_filter,
                 target_object_filter,
                 delta,
+                noncombat_only,
                 display,
             } => StaticAbilityPayload::ModifyDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
                 target_object_filter,
                 delta,
+                noncombat_only,
                 display,
             },
             StaticAbilityPayload::MinimumDamageAmountReplacement {
@@ -4047,6 +4050,24 @@ impl<
         delta: i32,
         display: impl Into<String>,
     ) -> Self {
+        Self::modify_damage_amount_replacement_with_noncombat_only(
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            delta,
+            false,
+            display,
+        )
+    }
+
+    pub fn modify_damage_amount_replacement_with_noncombat_only(
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        delta: i32,
+        noncombat_only: bool,
+        display: impl Into<String>,
+    ) -> Self {
         let display = display.into();
         Self {
             id: Some(StaticAbilityId::ModifyDamageAmountReplacement),
@@ -4056,6 +4077,7 @@ impl<
                 target_player_filter,
                 target_object_filter,
                 delta,
+                noncombat_only,
                 display,
             },
         }

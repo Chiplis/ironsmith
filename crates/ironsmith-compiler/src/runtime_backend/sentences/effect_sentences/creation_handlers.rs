@@ -110,6 +110,7 @@ const CREATE_NOT_LEGENDARY_PHRASES: &[&[&str]] = &[
 ];
 const CREATE_GRANT_VERB_WORDS: &[&str] = &["has", "have", "gain", "gains"];
 const CREATE_BEGINNING_NEXT_END_STEP_PHRASES: &[&[&str]] = &[
+    &["beginning", "of", "your", "next", "end", "step"],
     &["beginning", "of", "the", "next", "end", "step"],
     &["beginning", "of", "next", "end", "step"],
     &["beginning", "of", "the", "end", "step"],
@@ -536,9 +537,11 @@ pub(crate) fn parse_copy_modifiers_from_tail(
     ))
 }
 
-pub(crate) fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (bool, bool) {
+pub(crate) fn parse_next_end_step_token_delay_flags(
+    tail_words: &[&str],
+) -> (bool, bool, PlayerFilter) {
     if !create_words_contains_any_phrase(tail_words, CREATE_BEGINNING_NEXT_END_STEP_PHRASES) {
-        return (false, false);
+        return (false, false, PlayerFilter::Any);
     }
 
     let has_delay_reference =
@@ -547,8 +550,20 @@ pub(crate) fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (boo
         create_words_contains_word(tail_words, CREATE_SACRIFICE_WORD) && has_delay_reference;
     let has_exile_reference =
         create_words_contains_word(tail_words, CREATE_EXILE_WORD) && has_delay_reference;
+    let next_end_step_player = if create_words_contains_phrase(
+        tail_words,
+        &["beginning", "of", "your", "next", "end", "step"],
+    ) {
+        PlayerFilter::You
+    } else {
+        PlayerFilter::Any
+    };
 
-    (has_sacrifice_reference, has_exile_reference)
+    (
+        has_sacrifice_reference,
+        has_exile_reference,
+        next_end_step_player,
+    )
 }
 
 pub(crate) fn trailing_create_at_next_end_step_clause(
@@ -1066,7 +1081,7 @@ pub(crate) fn parse_create(
             if player == PlayerAst::Implicit {
                 player = PlayerAst::You;
             }
-            let (sacrifice_at_next_end_step, exile_at_next_end_step) =
+            let (sacrifice_at_next_end_step, exile_at_next_end_step, next_end_step_player) =
                 parse_next_end_step_token_delay_flags(&tail_words);
             if let Some(of_idx) = find_token_index(&tail_tokens, |token| {
                 create_token_is_word(token, CREATE_OF_WORD)
@@ -1122,6 +1137,7 @@ pub(crate) fn parse_create(
                             exile_at_end_of_combat: false,
                             sacrifice_at_next_end_step,
                             exile_at_next_end_step,
+                            next_end_step_player: next_end_step_player.clone(),
                             set_colors,
                             set_card_types,
                             set_subtypes,
@@ -1153,6 +1169,7 @@ pub(crate) fn parse_create(
                     exile_at_end_of_combat: false,
                     sacrifice_at_next_end_step,
                     exile_at_next_end_step,
+                    next_end_step_player,
                     set_colors,
                     set_card_types,
                     set_subtypes,
@@ -1297,7 +1314,7 @@ pub(crate) fn parse_create(
     {
         player = PlayerAst::You;
     }
-    let (sacrifice_at_next_end_step, exile_at_next_end_step) =
+    let (sacrifice_at_next_end_step, exile_at_next_end_step, next_end_step_player) =
         parse_next_end_step_token_delay_flags(&modifier_tail_words);
     let mut granted_abilities = Vec::new();
     if create_words_contains_word(&modifier_tail_words, CREATE_DECAYED_WORD) {
@@ -1327,6 +1344,7 @@ pub(crate) fn parse_create(
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
+            next_end_step_player,
             granted_abilities,
         },
     );

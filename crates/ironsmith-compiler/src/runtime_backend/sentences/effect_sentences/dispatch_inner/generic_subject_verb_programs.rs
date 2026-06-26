@@ -2192,6 +2192,58 @@ fn split_vote_option_clause_on_commas<'a>(clause: LexedClause<'a>) -> Vec<LexedC
     clauses
 }
 
+fn vote_options_clause_looks_like_target_choice(clause: LexedClause<'_>) -> bool {
+    let words = clause.word_refs();
+    if words.is_empty() {
+        return false;
+    }
+    if matches!(
+        words.as_slice(),
+        ["up", "to", ..] | ["target", ..] | ["another", ..] | ["other", ..]
+    ) || words
+        .first()
+        .is_some_and(|word| matches!(*word, "a" | "an"))
+    {
+        return true;
+    }
+    words.iter().any(|word| {
+        matches!(
+            *word,
+            "artifact"
+                | "artifacts"
+                | "battle"
+                | "battles"
+                | "card"
+                | "cards"
+                | "creature"
+                | "creatures"
+                | "enchantment"
+                | "enchantments"
+                | "land"
+                | "lands"
+                | "permanent"
+                | "permanents"
+                | "planeswalker"
+                | "planeswalkers"
+                | "player"
+                | "players"
+                | "spell"
+                | "spells"
+        )
+    })
+}
+
+fn named_vote_options_from_clause(option_clause: LexedClause<'_>) -> Option<Vec<String>> {
+    if vote_options_clause_looks_like_target_choice(option_clause) {
+        return None;
+    }
+    let options = split_vote_option_clauses(option_clause)
+        .into_iter()
+        .filter_map(captured_non_article_label)
+        .collect::<Vec<_>>();
+    (options.len() >= 2).then_some(options)
+}
+
 fn parse_vote_reveal_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     if VOTE_REVEAL_PATTERN
         .match_clause(LexedClause::new(tokens).trimmed())
@@ -2260,6 +2312,10 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
     let secret = SECRET_VOTER_PATTERN.find_in_clause(voters_clause).is_some();
 
     let option_clause = vote_options_clause_before_reveal_tail(options_clause);
+    if let Some(options) = named_vote_options_from_clause(option_clause) {
+        return Ok(Some(EffectAst::VoteStart { options, secret }));
+    }
+
     let option_tokens = option_clause.tokens().to_vec();
     if let Ok(target) = parse_target_phrase(&option_tokens) {
         match target {
@@ -2307,15 +2363,11 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
         }));
     }
 
-    let options = split_vote_option_clauses(option_clause)
-        .into_iter()
-        .filter_map(captured_non_article_label)
-        .collect::<Vec<_>>();
-    if options.len() < 2 {
+    let Some(options) = named_vote_options_from_clause(option_clause) else {
         return Err(CardTextError::ParseError(
             "vote clause requires at least two options".to_string(),
         ));
-    }
+    };
 
     Ok(Some(EffectAst::VoteStart { options, secret }))
 }
@@ -2738,6 +2790,27 @@ mod generic_subject_verb_program_tests {
         assert!(debug.contains("VoteStart"), "{debug}");
         assert!(debug.contains("death"), "{debug}");
         assert!(debug.contains("torture"), "{debug}");
+    }
+
+    #[test]
+    fn generic_vote_start_prefers_named_options_over_source_name_alias() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Each player secretly votes for truth or consequences, then those votes are revealed.",
+            0,
+        )
+        .expect("source-name vote text should lex");
+        let effect =
+            crate::runtime_backend::util::with_source_reference_context("Truth or Consequences", || {
+                parse_generic_vote_start(&tokens)
+                    .expect("generic vote-start parser should not error")
+                    .expect("generic vote-start parser should match")
+            });
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("VoteStart"), "{debug}");
+        assert!(debug.contains("truth"), "{debug}");
+        assert!(debug.contains("consequences"), "{debug}");
+        assert!(!debug.contains("VoteStartObjects"), "{debug}");
     }
 
     #[test]

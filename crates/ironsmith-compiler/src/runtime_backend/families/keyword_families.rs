@@ -64,6 +64,7 @@ pub(super) enum KeywordDispatchHint {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum KeywordFallbackKind {
+    Aftermath,
     BasicLandcycling,
     Encore,
     JumpStart,
@@ -74,6 +75,7 @@ fn keyword_fallback_kind(tokens: &[OwnedLexToken]) -> Option<KeywordFallbackKind
         LexPattern::new(&[LexPattern::action(
             "keyword",
             LexCaptureKind::OneOfPhrase(&[
+                &["aftermath"],
                 &["basic", "landcycling"],
                 &["encore"],
                 &["jumpstart"],
@@ -86,6 +88,7 @@ fn keyword_fallback_kind(tokens: &[OwnedLexToken]) -> Option<KeywordFallbackKind
     let matched = KEYWORD_FALLBACK_PREFIX_PATTERN.match_prefix(clause)?;
     let keyword_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
     match keyword_clause.word_refs().as_slice() {
+        ["aftermath"] => Some(KeywordFallbackKind::Aftermath),
         ["basic", "landcycling"] => Some(KeywordFallbackKind::BasicLandcycling),
         ["encore"] => Some(KeywordFallbackKind::Encore),
         ["jumpstart"] | ["jump-start"] | ["jump", "start"] => Some(KeywordFallbackKind::JumpStart),
@@ -424,7 +427,11 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
     }
     if matches!(
         fallback_kind,
-        Some(KeywordFallbackKind::Encore | KeywordFallbackKind::JumpStart)
+        Some(
+            KeywordFallbackKind::Aftermath
+                | KeywordFallbackKind::Encore
+                | KeywordFallbackKind::JumpStart
+        )
     ) {
         return Some(KeywordDispatchHint::AlternativeOrExertFamily);
     }

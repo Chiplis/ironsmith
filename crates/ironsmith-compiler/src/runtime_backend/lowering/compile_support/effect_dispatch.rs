@@ -635,6 +635,7 @@ fn compile_subject_verb_effect(
             has_haste,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
+            next_end_step_player,
             exile_at_end_of_combat,
             sacrifice_at_end_of_combat,
         } => {
@@ -646,6 +647,7 @@ fn compile_subject_verb_effect(
                     .haste(*has_haste)
                     .sacrifice_at_next_end_step(*sacrifice_at_next_end_step)
                     .exile_at_next_end_step(*exile_at_next_end_step)
+                    .next_end_step_player(next_end_step_player.clone())
                     .exile_at_end_of_combat(*exile_at_end_of_combat)
                     .sacrifice_at_end_of_combat(*sacrifice_at_end_of_combat),
             );
@@ -4015,6 +4017,7 @@ fn compile_subject_verb_effect(
             sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
+            next_end_step_player,
             granted_abilities,
         } => {
             let mut token = token_definition_for(name.as_str())
@@ -4057,6 +4060,7 @@ fn compile_subject_verb_effect(
             if *exile_at_next_end_step {
                 effect = effect.exile_at_next_end_step();
             }
+            effect = effect.next_end_step_player(next_end_step_player.clone());
             if attached_to.is_some() {
                 effect = effect.suppress_aura_attachment_choice();
             }
@@ -4141,6 +4145,7 @@ fn compile_subject_verb_effect(
             exile_at_end_of_combat,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
+            next_end_step_player,
             set_colors,
             set_card_types,
             set_subtypes,
@@ -4188,6 +4193,7 @@ fn compile_subject_verb_effect(
             if *exile_at_next_end_step {
                 effect = effect.exile_at_next_end_step(true);
             }
+            effect = effect.next_end_step_player(next_end_step_player.clone());
             if let Some(colors) = set_colors {
                 effect = effect.set_colors(*colors);
             }
@@ -4232,6 +4238,7 @@ fn compile_subject_verb_effect(
             exile_at_end_of_combat,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
+            next_end_step_player,
             set_colors,
             set_card_types,
             set_subtypes,
@@ -4290,6 +4297,7 @@ fn compile_subject_verb_effect(
             if *exile_at_next_end_step {
                 effect = effect.exile_at_next_end_step(true);
             }
+            effect = effect.next_end_step_player(next_end_step_player.clone());
             if let Some(colors) = set_colors {
                 effect = effect.set_colors(*colors);
             }

@@ -3040,6 +3040,23 @@ fn the_aesir_escape_valhalla_lowers_source_exiled_counter_and_return_pair() {
 }
 
 #[test]
+fn saga_source_exile_then_return_uses_battlefield_move_not_graveyard_return() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Source Blink Saga")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .parse_text("I — Exile this Saga, then return it to the battlefield.")
+        .expect("source-exile return should parse strictly");
+
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+    assert!(
+        !debug.contains("ReturnFromGraveyardToBattlefieldEffect"),
+        "source-exiled return should not lower as a graveyard return: {debug}"
+    );
+}
+
+#[test]
 fn rewrite_triggered_it_damage_source_binds_to_triggering_object() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Warstorm Surge Probe")
         .card_types(vec![CardType::Enchantment])
@@ -7100,8 +7117,14 @@ fn bare_exiled_cards_in_sequence_bind_to_recent_exiled_result() {
 
     let rendered = format!("{def:#?}");
     assert!(
-        rendered.contains("__sentence_helper_revealed") && !rendered.contains("__source_exiled__"),
-        "expected bare exiled cards to bind to the recent reveal/exile result set, got {rendered}"
+        rendered.contains("ForEachTaggedEffect")
+            && rendered.contains("ConsultTopOfLibraryEffect")
+            && rendered.contains("Artifact")
+            && rendered.contains("Creature")
+            && rendered.contains("zone: Exile")
+            && rendered.contains("zone: Battlefield")
+            && !rendered.contains("__source_exiled__"),
+        "expected destroyed permanents to drive per-object reveal/exile/put sequence, got {rendered}"
     );
 }
 
@@ -11233,6 +11256,32 @@ fn rewrite_document_lowering_resolves_double_slash_source_name_etb() -> Result<(
 }
 
 #[test]
+fn rewrite_exile_multi_target_preserves_short_source_surface() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Mangara of Corondor")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = super::util::with_card_source_reference_context(
+        "Mangara of Corondor",
+        &[CardType::Creature],
+        &[],
+        || {
+            parse_text_with_annotations_lowered(
+                builder,
+                "{T}: Exile Mangara and target permanent.".to_string(),
+                false,
+            )
+        },
+    )?;
+    let debug = format!("{definition:?}");
+
+    assert!(
+        debug.contains("SourceReference(ShortName(\"Mangara\"))"),
+        "expected short-name source surface on source exile, got {debug}"
+    );
+    Ok(())
+}
+
+#[test]
 fn rewrite_lexed_triggered_line_parses_player_contraction_dealt_damage_trigger() {
     let text = "Whenever you're dealt damage, put that many vitality counters on this Aura.";
     let tokens =
@@ -13659,6 +13708,54 @@ fn rewrite_lexed_effect_sequence_parses_divvy_choose_one_of_them_bundle() {
     assert!(debug.contains("ChooseObjectsAcrossZones"), "{debug}");
     assert!(debug.contains("zone: Hand"), "{debug}");
     assert!(debug.contains("ShuffleLibrary"), "{debug}");
+}
+
+#[test]
+fn choose_one_of_exiled_top_cards_lowers_choice_from_exiled_collection() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Exiled Choice Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile the top two cards of your library. Choose one of them. Until end of turn, you may play that card.",
+        )
+        .expect("exile-top choose-one play sequence should lower");
+    let effects = &def
+        .spell_effect
+        .as_ref()
+        .expect("spell should lower")
+        .segments[0]
+        .default_effects;
+    let exile = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>())
+        .expect("exile-top effect should be present");
+    let exiled_tag = exile
+        .moved_tags
+        .first()
+        .expect("exile-top effect should tag the exiled collection");
+    let choose = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .expect("choose-one effect should be present");
+    assert_eq!(choose.zone, Some(Zone::Exile));
+    assert_eq!(choose.filter.zone, Some(Zone::Exile));
+    assert_eq!(choose.filter.owner, None);
+    assert!(
+        choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == *exiled_tag
+        }),
+        "choose filter should reference the exiled collection tag: {choose:#?}"
+    );
+
+    let grant = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>())
+        .expect("grant-play effect should be present");
+    assert_eq!(grant.tag, choose.tag);
+    assert_eq!(
+        grant.duration,
+        crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+    );
 }
 
 #[test]

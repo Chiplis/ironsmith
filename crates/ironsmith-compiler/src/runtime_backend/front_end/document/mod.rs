@@ -1558,10 +1558,18 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
         .checked_sub(1)
         .and_then(|idx| pieces.get(idx))
         .map(|piece| piece.text);
+    let previous_previous_word = start_word
+        .checked_sub(2)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
     let next_word = pieces.get(end_word).map(|piece| piece.text);
 
     if previous_word == Some("as") {
         return false;
+    }
+
+    if previous_word == Some("for") && matches!(previous_previous_word, Some("vote" | "votes")) {
+        return true;
     }
 
     next_word == Some(TOKEN_NAME_SUFFIX_WORD)
@@ -1571,6 +1579,7 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
                 word,
                 "attach"
                     | "destroy"
+                    | "exile"
                     | "transform"
                     | "convert"
                     | "regenerate"
@@ -1745,7 +1754,8 @@ mod tests {
         is_opening_hand_begin_game_static_line_lexed, is_ward_or_echo_static_prefix_line_lexed,
         lex_line, looks_like_statement_line, looks_like_statement_line_lexed,
         looks_like_static_line, looks_like_static_line_lexed,
-        normalize_named_source_trigger_for_builder, normalize_statement_parse_groups_lexed,
+        normalize_named_source_sentence_for_builder, normalize_named_source_trigger_for_builder,
+        normalize_statement_parse_groups_lexed,
         normalize_trailing_keyword_activation_sentence_lexed,
         parse_colon_nonactivation_statement_fallback, parse_keyword_line_cst, parse_level_item_cst,
         parse_statement_line_cst, parse_static_line_cst, parse_text_to_semantic_document,
@@ -2783,6 +2793,27 @@ mod tests {
                 "whenever this permanent enters the battlefield or deals combat damage to a player,"
             ),
             "expected short source name to normalize, got {rewritten}"
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_vote_option_alias() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Truth or Consequences")
+            .card_types(vec![CardType::Sorcery]);
+
+        let rewritten = normalize_named_source_sentence_for_builder(
+            &builder,
+            "Each player secretly votes for truth or consequences, then those votes are revealed. Truth or Consequences can't be countered.",
+        )
+        .expect("expected source name to normalize outside the vote option");
+
+        assert!(
+            rewritten.contains("votes for truth or consequences"),
+            "expected vote option alias to remain named, got {rewritten}"
+        );
+        assert!(
+            rewritten.contains("this permanent can't be countered"),
+            "expected non-option source alias to normalize, got {rewritten}"
         );
     }
 

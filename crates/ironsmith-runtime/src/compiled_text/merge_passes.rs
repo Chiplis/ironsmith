@@ -624,6 +624,9 @@ fn conditioned_subjects_equivalent(left: &str, right: &str) -> bool {
 
 fn conditioned_subject_key(subject: &str) -> String {
     let lower = subject.trim().to_ascii_lowercase();
+    if lower == "this source" {
+        return "this creature".to_string();
+    }
     if let Some(rest) = lower.strip_prefix("each creature ") {
         return format!("creatures {rest}");
     }
@@ -668,10 +671,26 @@ fn format_conditioned_subject_predicate_merge(
         .trim_start_matches("As long as ")
         .trim_start_matches("as long as ")
         .trim();
+    let ability_word = if condition.eq_ignore_ascii_case("you have no cards in hand") {
+        "Hellbent \u{2014} "
+    } else {
+        ""
+    };
+    let is_get = |verb: &str| matches!(verb, "gets" | "get");
     let is_trait = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain");
+    if is_get(&left.verb) && is_trait(right_verb) {
+        return format!(
+            "{ability_word}As long as {condition}, {} {} {} and {} {}",
+            lowercase_first(&left.subject),
+            left.verb,
+            left_predicate,
+            have_verb_for_subject(&left.subject),
+            right_predicate
+        );
+    }
     if is_trait(&left.verb) && is_trait(right_verb) {
         return format!(
-            "As long as {condition}, {} {} {} and {}",
+            "{ability_word}As long as {condition}, {} {} {} and {}",
             lowercase_first(&left.subject),
             have_verb_for_subject(&left.subject),
             left_predicate,
@@ -1846,6 +1865,12 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
     let mut idx = 0usize;
 
     while idx < lines.len() {
+        if let Some(line) = compact_single_line_plural_animation_bundle(&lines[idx]) {
+            merged.push(line);
+            idx += 1;
+            continue;
+        }
+
         if idx + 1 < lines.len()
             && let Some(line) =
                 merge_animation_with_granted_trigger_line(&lines[idx], &lines[idx + 1])
@@ -2037,6 +2062,25 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
     merged
 }
 
+fn compact_single_line_plural_animation_bundle(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (condition, body) = trimmed.split_once(", ")?;
+    let condition = condition.trim();
+    if !condition.eq_ignore_ascii_case("During your turn")
+        && !condition.to_ascii_lowercase().starts_with("as long as ")
+    {
+        return None;
+    }
+
+    let (subject, payload) = body.split_once(" are ")?;
+    let payload = parse_plural_animation_payload(payload.trim())?;
+    let subject = singularize_filter_subject(subject.trim());
+    Some(format!(
+        "{condition}, each {} is {payload}",
+        lowercase_first(&subject)
+    ))
+}
+
 fn merge_animation_with_granted_trigger_line(animation: &str, granted: &str) -> Option<String> {
     let animation = animation.trim().trim_end_matches('.');
     let granted = granted.trim().trim_end_matches('.');
@@ -2086,9 +2130,10 @@ fn parse_animation_payload(animated_body: &str) -> Option<(String, String)> {
 }
 
 fn parse_plural_animation_payload(payload: &str) -> Option<String> {
-    let rest = payload.strip_prefix(
-        "creatures in addition to their other types and have base power and toughness ",
-    )?;
+    let rest = payload.strip_prefix("creatures in addition to their other types and have ")?;
+    let rest = rest
+        .strip_prefix("base power and toughness ")
+        .or_else(|| rest.strip_prefix("base power and base toughness "))?;
     let (pt, rest) = rest.split_once(" and are ")?;
     let (subtypes, rest) = rest.split_once(" in addition to their other types")?;
 
@@ -2113,11 +2158,35 @@ fn normalize_animation_payload(payload: String) -> String {
 }
 
 fn normalize_animation_grants(grants: &str) -> String {
-    grants
+    let normalized = grants
         .trim()
         .replace("have ", "")
         .replace("has ", "")
-        .replace(" and ", ", ")
+        .replace(" and ", ", ");
+    let normalized = capitalize_quoted_ability_starts(&normalized);
+    if let Some(idx) = normalized.rfind(", \"") {
+        let (head, tail) = normalized.split_at(idx);
+        return format!("{head}, and {}", tail.trim_start_matches(", "));
+    }
+    normalized
+}
+
+fn capitalize_quoted_ability_starts(text: &str) -> String {
+    let mut normalized = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(ch) = chars.next() {
+        normalized.push(ch);
+        if ch == '"'
+            && let Some(next) = chars.next()
+        {
+            if next.is_ascii_lowercase() {
+                normalized.push(next.to_ascii_uppercase());
+            } else {
+                normalized.push(next);
+            }
+        }
+    }
+    normalized
 }
 
 fn animation_subjects_equivalent(animated_subject: &str, granted_subject: &str) -> bool {
@@ -2366,7 +2435,15 @@ fn parse_same_true_keyword_grant_line(line: &str) -> Option<SameTrueKeywordGrant
 
 fn parse_source_exiled_keyword_grant_line(line: &str) -> Option<SameTrueKeywordGrant> {
     let trimmed = line.trim().trim_end_matches('.');
-    let (effect, condition) = trimmed.split_once(" as long as ")?;
+    let (effect, condition) = if let Some(rest) = trimmed
+        .strip_prefix("As long as ")
+        .or_else(|| trimmed.strip_prefix("as long as "))
+    {
+        let (condition, effect) = rest.split_once(", ")?;
+        (effect, condition)
+    } else {
+        trimmed.split_once(" as long as ")?
+    };
     let (subject, verb, predicate) = split_subject_predicate_clause(effect)?;
     if !matches!(verb, "has" | "have") {
         return None;
@@ -2504,6 +2581,20 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merge_conditional_self_buff_and_granted_ability_keeps_hellbent_surface() {
+        let merged = merge_subject_has_keyword_lines(vec![
+            "This creature gets +1/+0 as long as you have no cards in hand.".to_string(),
+            "As long as you have no cards in hand, this source has \"{B}: Regenerate this creature.\"".to_string(),
+        ]);
+        assert_eq!(
+            merged,
+            vec![
+                "Hellbent \u{2014} As long as you have no cards in hand, this creature gets +1/+0 and has \"{B}: Regenerate this creature.\"".to_string()
+            ]
+        );
+    }
 
     #[test]
     fn merge_lose_all_transform_lines_classifies_colors_subtypes_names_and_base_pt() {

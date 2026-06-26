@@ -546,6 +546,9 @@ fn normalize_debug_compiled_line(line: String) -> String {
 fn finalize_ast_surface_line(line: String) -> String {
     let mut line = line;
     let lower = line.to_ascii_lowercase();
+    if let Some(normalized) = normalize_gain_control_untap_pump_haste_surface(&line) {
+        return normalized;
+    }
     if line.contains("If you dealt combat damage to a player this turn with a assassin or commander, you may pay {2}{R} rather than pay this spell's mana cost.")
     {
         line = line.replace(
@@ -1394,6 +1397,15 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
                 continue;
             }
             if left_lower
+                == "when this creature enters, you may put a +1/+1 counter on this creature"
+                && right_lower
+                    == "this creature can't block as long as it has a +1/+1 counter on it"
+            {
+                merged.push("Unleash".to_string());
+                idx += 2;
+                continue;
+            }
+            if left_lower
                 .ends_with("tap each creature that was blocked by one of those creatures this turn")
                 && right_lower == "it doesn't untap during its controller's next untap step"
             {
@@ -1870,6 +1882,9 @@ fn normalize_chosen_creature_type_surface(line: &str) -> String {
         }
         return format!("Creatures of the creature type of your choice {effect}");
     }
+    if rest.trim_end_matches('.') == "destroy all creatures of the chosen type" {
+        return "Destroy all creatures of the creature type of your choice".to_string();
+    }
     if let Some(effect) = rest.strip_prefix("return ") {
         if !effect.contains("target ") {
             return line.to_string();
@@ -1883,6 +1898,19 @@ fn normalize_chosen_creature_type_surface(line: &str) -> String {
         );
     }
     line.to_string()
+}
+
+fn normalize_gain_control_untap_pump_haste_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let prefix = "Gain control of target creature until end of turn, untap it, it gets ";
+    let suffix = " until end of turn, then it gains haste until end of turn";
+    let pump = trimmed.strip_prefix(prefix)?.strip_suffix(suffix)?;
+    (!pump.trim().is_empty()).then(|| {
+        format!(
+            "Gain control of target creature until end of turn. Untap that creature. Until end of turn, it gets {} and gains haste.",
+            pump.trim()
+        )
+    })
 }
 
 fn expand_finalized_ast_surface_line(line: String) -> Vec<String> {
@@ -2027,6 +2055,83 @@ mod tests {
         assert_eq!(
             compile_effect_list(&[Effect::create_tokens(token, Value::Fixed(1))]),
             "Create a 2/2 black Zombie Employee creature token"
+        );
+    }
+
+    #[test]
+    fn instant_spell_damage_after_counter_keeps_spell_as_source() {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Test Blast")
+            .card_types(vec![CardType::Instant])
+            .with_spell_effect(vec![
+                Effect::counter(crate::ChooseSpec::target_spell()),
+                Effect::deal_damage(3, crate::ChooseSpec::target_creature()),
+            ])
+            .build();
+
+        assert_eq!(
+            compiled_text_lines(&definition),
+            vec!["Counter target spell and Test Blast deals 3 damage to target creature."]
+        );
+    }
+
+    #[test]
+    fn put_counter_then_add_mana_uses_and_surface() {
+        assert_eq!(
+            compile_effect_list(&[
+                Effect::plus_one_counters(1, crate::ChooseSpec::Source),
+                Effect::add_mana(vec![ManaSymbol::Red]),
+            ]),
+            "Put a +1/+1 counter on this source and add {R}"
+        );
+    }
+
+    #[test]
+    fn dynamic_token_pt_setter_compacts_into_creation_text() {
+        let token = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ooze")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Ooze])
+            .color_indicator(crate::color::ColorSet::GREEN)
+            .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+            .build();
+        let created = crate::TagKey::from("created_0");
+
+        assert_eq!(
+            compile_effect_list(&[
+                Effect::create_tokens(token, crate::Value::X).tag(created.clone()),
+                Effect::set_base_power_toughness(
+                    crate::Value::X,
+                    crate::Value::X,
+                    crate::ChooseSpec::Tagged(created),
+                    crate::Until::Forever,
+                ),
+            ]),
+            "Create X X/X green Ooze creature tokens"
+        );
+    }
+
+    #[test]
+    fn destroy_all_groups_then_draw_uses_destroyed_this_way_surface() {
+        let effects = vec![
+            Effect::new(crate::effects::DestroyEffect::with_spec(
+                crate::ChooseSpec::all(crate::ObjectFilter::creature()),
+            )),
+            Effect::new(crate::effects::DestroyEffect::with_spec(
+                crate::ChooseSpec::all(crate::ObjectFilter::enchantment()),
+            )),
+            Effect::new(crate::effects::DrawCardsEffect::you(
+                crate::Value::PendingEffectMetric {
+                    source: crate::effect::EffectMetricSource::AffectedObjects,
+                    metric: crate::effect::EffectMetric::AffectedCount,
+                },
+            )),
+        ];
+        let expected = "Destroy all creatures and enchantments. Draw a card for each permanent destroyed this way";
+
+        assert_eq!(compile_effect_list(&effects), expected);
+        assert_eq!(
+            crate::compiled_text::render_effects::describe_effect_clause_list(&effects).as_deref(),
+            Some(expected)
         );
     }
 
@@ -2463,6 +2568,12 @@ mod tests {
         );
         assert_eq!(
             finalize_ast_surface_line(
+                "Choose a creature type, then destroy all creatures of the chosen type".to_string()
+            ),
+            "Destroy all creatures of the creature type of your choice."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
                 "You choose a creature type, then return all creatures that aren't of the chosen type to their owners' hands"
                     .to_string()
             ),
@@ -2539,6 +2650,19 @@ mod tests {
     }
 
     #[test]
+    fn unleash_scaffolding_compacts_to_keyword_surface() {
+        assert_eq!(
+            merge_ast_surface_lines(vec![
+                "First strike, haste".to_string(),
+                "When this creature enters, you may put a +1/+1 counter on this creature."
+                    .to_string(),
+                "This creature can't block as long as it has a +1/+1 counter on it.".to_string(),
+            ]),
+            vec!["First strike, haste".to_string(), "Unleash".to_string()]
+        );
+    }
+
+    #[test]
     fn plural_turn_animation_and_granted_trigger_merge_to_bello_surface() {
         let lines = merge_ast_surface_lines(vec![
             "During your turn, non-Equipment artifacts with mana value 4 or greater you control or non-Aura enchantments with mana value 4 or greater you control are creatures in addition to their other types and have base power and toughness 4/4 and are Elementals in addition to their other types and have indestructible and have haste.".to_string(),
@@ -2547,6 +2671,18 @@ mod tests {
 
         assert_eq!(
             lines,
+            vec![
+                "During your turn, each non-Equipment artifact and non-Aura enchantment you control with mana value 4 or greater is a 4/4 Elemental creature in addition to its other types and has indestructible, haste, and \"Whenever this creature deals combat damage to a player, draw a card.\""
+                    .to_string()
+            ]
+        );
+
+        let folded_lines = merge_ast_surface_lines(vec![
+            "During your turn, non-Equipment artifacts with mana value 4 or greater you control or non-Aura enchantments with mana value 4 or greater you control are creatures in addition to their other types and have base power and base toughness 4/4 and are Elementals in addition to their other types and have indestructible and haste and have \"whenever this creature deals combat damage to a player, draw a card.\".".to_string(),
+        ]);
+
+        assert_eq!(
+            folded_lines,
             vec![
                 "During your turn, each non-Equipment artifact and non-Aura enchantment you control with mana value 4 or greater is a 4/4 Elemental creature in addition to its other types and has indestructible, haste, and \"Whenever this creature deals combat damage to a player, draw a card.\""
                     .to_string()
@@ -2634,6 +2770,17 @@ mod tests {
                     .to_string()
             ),
             "During your turn, prevent all damage that would be dealt to this creature."
+        );
+    }
+
+    #[test]
+    fn gain_control_untap_fixed_pump_haste_uses_oracle_sentence_shape() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Gain control of target creature until end of turn, untap it, it gets +2/+0 until end of turn, then it gains haste until end of turn"
+                    .to_string()
+            ),
+            "Gain control of target creature until end of turn. Untap that creature. Until end of turn, it gets +2/+0 and gains haste."
         );
     }
 

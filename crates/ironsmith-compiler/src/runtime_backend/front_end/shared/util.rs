@@ -1352,6 +1352,7 @@ const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
 const BEGINNING_OF_END_STEP_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_phrases
         & [&[
+            &["beginning", "of", "your", "next", "end", "step"],
             &["beginning", "of", "the", "next", "end", "step"],
             &["beginning", "of", "next", "end", "step"],
             &["beginning", "of", "the", "end", "step"],
@@ -2171,19 +2172,33 @@ pub(crate) fn split_cost_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexT
     segments
 }
 
-pub(crate) fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (bool, bool) {
+pub(crate) fn parse_next_end_step_token_delay_flags(
+    tail_words: &[&str],
+) -> (bool, bool, PlayerFilter) {
     let has_beginning_of_end_step =
         shared_util_shape_matches_words(tail_words, BEGINNING_OF_END_STEP_PATTERN);
     if !has_beginning_of_end_step {
-        return (false, false);
+        return (false, false, PlayerFilter::Any);
     }
 
     let has_sacrifice_reference =
         shared_util_shape_matches_words(tail_words, SACRIFICE_DELAY_REFERENCE_PATTERN);
     let has_exile_reference =
         shared_util_shape_matches_words(tail_words, EXILE_DELAY_REFERENCE_PATTERN);
+    let next_end_step_player = if tail_words
+        .windows(6)
+        .any(|window| window == ["beginning", "of", "your", "next", "end", "step"])
+    {
+        PlayerFilter::You
+    } else {
+        PlayerFilter::Any
+    };
 
-    (has_sacrifice_reference, has_exile_reference)
+    (
+        has_sacrifice_reference,
+        has_exile_reference,
+        next_end_step_player,
+    )
 }
 
 pub(crate) fn token_index_for_word_index(

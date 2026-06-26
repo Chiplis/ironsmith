@@ -1,5 +1,6 @@
 use super::*;
 use crate::ZoneReplacementDurationAst;
+use crate::color::{Color, ColorSet};
 use crate::runtime_backend::GrantedAbilityAst;
 use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
 use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
@@ -630,6 +631,227 @@ fn sentences_have_temporary_static_followup_after_first<S: AsRef<[OwnedLexToken]
     })
 }
 
+fn returned_object_static_followup_start<S: AsRef<[OwnedLexToken]>>(
+    sentences: &[S],
+) -> Option<usize> {
+    let first_sentence = sentences.first()?;
+    let first_words = token_word_refs(first_sentence.as_ref());
+    let moves_to_battlefield = (word_slice_contains_word(&first_words, "return")
+        || word_slice_contains_word(&first_words, "put"))
+        && word_slice_contains_word(&first_words, "battlefield");
+    if !moves_to_battlefield {
+        return None;
+    }
+
+    sentences
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(idx, sentence)| {
+            let sentence = sentence.as_ref();
+            let words = token_word_refs(sentence);
+            let pronoun_static_followup = matches!(
+                words.as_slice(),
+                ["it", "has", ..]
+                    | ["it", "is", ..]
+                    | ["that", "card", "has", ..]
+                    | ["that", "card", "is", ..]
+                    | ["that", "creature", "has", ..]
+                    | ["that", "creature", "is", ..]
+            );
+            (pronoun_static_followup
+                && (matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_)))
+                    || returned_object_static_followup_colors(sentence).is_some()
+                    || returned_object_static_followup_subtypes(sentence).is_some()))
+            .then_some(idx)
+        })
+}
+
+fn returned_object_static_followup_descriptor_words(
+    sentence: &[OwnedLexToken],
+) -> Option<Vec<&str>> {
+    let words = token_word_refs(sentence);
+    let subject_len = match words.as_slice() {
+        ["it", ..] => 1,
+        ["that", "card", ..] | ["that", "creature", ..] => 2,
+        _ => return None,
+    };
+    let be_idx = words[subject_len..]
+        .iter()
+        .position(|word| matches!(*word, "is" | "are"))
+        .map(|idx| idx + subject_len)?;
+    let addition_idx = words
+        .windows(3)
+        .position(|window| window == ["in", "addition", "to"])?;
+    if addition_idx <= be_idx + 1 {
+        return None;
+    }
+
+    Some(
+        words[be_idx + 1..addition_idx]
+            .iter()
+            .copied()
+            .filter(|word| !matches!(*word, "a" | "an" | "the"))
+            .collect(),
+    )
+}
+
+fn returned_object_static_followup_colors(sentence: &[OwnedLexToken]) -> Option<ColorSet> {
+    let mut colors = ColorSet::new();
+    for word in returned_object_static_followup_descriptor_words(sentence)? {
+        if let Some(color) = Color::from_name(word) {
+            colors = colors.union(ColorSet::from_color(color));
+        }
+    }
+    (!colors.is_empty()).then_some(colors)
+}
+
+fn returned_object_static_followup_subtypes(sentence: &[OwnedLexToken]) -> Option<Vec<Subtype>> {
+    let mut subtypes = Vec::new();
+    for word in returned_object_static_followup_descriptor_words(sentence)? {
+        if let Some(subtype) =
+            crate::runtime_backend::front_end::shared::util::parse_subtype_flexible(word)
+            && !subtypes.contains(&subtype)
+        {
+            subtypes.push(subtype);
+        }
+    }
+    (!subtypes.is_empty()).then_some(subtypes)
+}
+
+fn returned_object_static_followup_keyword_actions(
+    sentence: &[OwnedLexToken],
+) -> Option<Vec<KeywordAction>> {
+    let words = token_word_refs(sentence);
+    let subject_len = match words.as_slice() {
+        ["it", ..] => 1,
+        ["that", "card", ..] | ["that", "creature", ..] => 2,
+        _ => return None,
+    };
+    let has_idx = words[subject_len..]
+        .iter()
+        .position(|word| matches!(*word, "has" | "have"))
+        .map(|idx| idx + subject_len)?;
+    let ability_start_word = has_idx + 1;
+    let ability_end_word = words
+        .windows(2)
+        .enumerate()
+        .skip(ability_start_word)
+        .find_map(|(idx, window)| {
+            (window[0] == "and" && matches!(window[1], "is" | "are")).then_some(idx)
+        })
+        .unwrap_or(words.len());
+    if ability_end_word <= ability_start_word {
+        return None;
+    }
+
+    let word_view = TokenWordView::new(sentence);
+    let ability_start = word_view.token_index_for_word_index(ability_start_word)?;
+    let ability_end = word_view
+        .token_index_for_word_index(ability_end_word)
+        .unwrap_or(sentence.len());
+    parse_ability_line_lexed(&sentence[ability_start..ability_end])
+        .filter(|actions| !actions.is_empty())
+}
+
+fn filter_is_exact_tagged_it(filter: &ObjectFilter) -> bool {
+    filter == &ObjectFilter::tagged(TagKey::from(IT_TAG))
+}
+
+fn push_returned_object_keyword_grant_effect(
+    effects: &mut Vec<EffectAst>,
+    action: KeywordAction,
+    condition: Option<crate::ConditionExpr>,
+) {
+    let target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+    let ability = GrantedAbilityAst::KeywordAction(action);
+    let effect = if let Some(condition) = condition {
+        EffectAst::subject_verb_grant_abilities_to_target_with_condition(
+            target,
+            vec![ability],
+            Until::Forever,
+            condition,
+        )
+    } else {
+        EffectAst::subject_verb_grant_abilities_to_target(target, vec![ability], Until::Forever)
+    };
+    effects.push(effect);
+}
+
+fn returned_object_static_ability_effects(
+    ability: crate::cards::builders::StaticAbilityAst,
+    effects: &mut Vec<EffectAst>,
+) -> bool {
+    match ability {
+        crate::cards::builders::StaticAbilityAst::KeywordAction(action) => {
+            push_returned_object_keyword_grant_effect(effects, action, None);
+            true
+        }
+        crate::cards::builders::StaticAbilityAst::ConditionalKeywordAction {
+            action,
+            condition,
+        } => {
+            push_returned_object_keyword_grant_effect(effects, action, Some(condition));
+            true
+        }
+        crate::cards::builders::StaticAbilityAst::GrantKeywordAction {
+            filter,
+            action,
+            condition,
+        } if filter_is_exact_tagged_it(&filter) => {
+            push_returned_object_keyword_grant_effect(effects, action, condition);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn returned_object_static_followup_effects<S: AsRef<[OwnedLexToken]>>(
+    sentences: &[S],
+) -> Result<Option<(usize, Vec<EffectAst>)>, CardTextError> {
+    let Some(first_followup_idx) = returned_object_static_followup_start(sentences) else {
+        return Ok(None);
+    };
+
+    let mut effects = Vec::new();
+    for sentence in sentences.iter().skip(first_followup_idx) {
+        let sentence = sentence.as_ref();
+        let before_len = effects.len();
+        let before_keyword_len = effects.len();
+        if let Some(abilities) = parse_static_ability_ast_line_lexed(sentence)? {
+            for ability in abilities {
+                returned_object_static_ability_effects(ability, &mut effects);
+            }
+        }
+        if effects.len() == before_keyword_len
+            && let Some(actions) = returned_object_static_followup_keyword_actions(sentence)
+        {
+            for action in actions {
+                push_returned_object_keyword_grant_effect(&mut effects, action, None);
+            }
+        }
+        if let Some(colors) = returned_object_static_followup_colors(sentence) {
+            effects.push(EffectAst::subject_verb_add_colors(
+                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                colors,
+                Until::Forever,
+            ));
+        }
+        if let Some(subtypes) = returned_object_static_followup_subtypes(sentence) {
+            effects.push(EffectAst::subject_verb_add_subtypes(
+                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                subtypes,
+                Until::Forever,
+            ));
+        }
+        if effects.len() == before_len {
+            return Ok(None);
+        }
+    }
+
+    Ok(Some((first_followup_idx, effects)))
+}
+
 fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
     let line_family = classify_statement_line_family_lexed(tokens);
     if matches!(
@@ -1185,6 +1407,38 @@ fn lower_rewrite_triggered_to_chunk_impl(
         sentences_have_token_creation_followup_after_first(&selected_effect_sentences);
     let selected_effect_has_temporary_static_followup_after_first =
         sentences_have_temporary_static_followup_after_first(&selected_effect_sentences);
+    if let Some((first_followup_idx, mut followup_effects)) =
+        returned_object_static_followup_effects(&selected_effect_sentences)?
+        && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
+    {
+        let trigger_effect_sentences = selected_effect_sentences[..first_followup_idx]
+            .iter()
+            .map(|sentence| sentence.to_vec())
+            .collect::<Vec<_>>();
+        let trigger_effect_tokens = join_sentences_with_period(&trigger_effect_sentences);
+        if let Ok(parsed_effects) = parse_effect_sentences_lexed(&trigger_effect_tokens) {
+            let mut effects =
+                wrap_future_draw_replacement_effects(full_parse_tokens, parsed_effects);
+            if !effects.is_empty() {
+                effects.append(&mut followup_effects);
+                return apply_chosen_option_to_triggered_chunk(
+                    apply_explicit_intervening_if_to_triggered_chunk(
+                        LineAst::Triggered {
+                            trigger,
+                            effects,
+                            max_triggers_per_turn: inferred_max_triggers_per_turn,
+                        },
+                        line.intervening_if.clone(),
+                    )?,
+                    trigger_surface_text,
+                    &trigger_surface_tokens,
+                    inferred_max_triggers_per_turn,
+                    chosen_option_label,
+                    presentation_label,
+                );
+            }
+        }
+    }
     let selected_split_has_trailing_static_after_first = selected_effect_sentences.len() > 1
         && !selected_effect_has_token_creation_followup_after_first
         && !selected_effect_has_temporary_static_followup_after_first
@@ -2620,6 +2874,7 @@ fn standard_gift_create_token_effect(name: &str, tapped: bool) -> EffectAst {
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,
             exile_at_next_end_step: false,
+            next_end_step_player: PlayerFilter::Any,
             granted_abilities: Vec::new(),
         },
     )

@@ -325,7 +325,29 @@ fn simple_pluralize(word: &str) -> String {
             "dwarves".to_string()
         };
     }
-    if lower == "myr" {
+    if lower == "wolf" {
+        return if word
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase())
+        {
+            "Wolves".to_string()
+        } else {
+            "wolves".to_string()
+        };
+    }
+    if lower == "werewolf" {
+        return if word
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase())
+        {
+            "Werewolves".to_string()
+        } else {
+            "werewolves".to_string()
+        };
+    }
+    if lower == "myr" || lower == "merfolk" || lower == "equipment" {
         return word.to_string();
     }
     if lower == "mouse" {
@@ -1197,7 +1219,10 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         }
         crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let subject = describe_static_player(player);
-            let count_text = number_word_u32(*count).unwrap_or_else(|| count.to_string());
+            let count_text = u32::try_from(*count)
+                .ok()
+                .and_then(number_word_u32)
+                .unwrap_or_else(|| count.to_string());
             let verb = if matches!(player, crate::target::PlayerFilter::You) {
                 "have"
             } else {
@@ -1222,6 +1247,24 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 "as long as there are {count} or more card types among cards in {graveyard_owner} graveyard"
             )
         }
+        crate::ConditionExpr::PlayerCardsInHandOrMore { player, count } => {
+            let subject = match player {
+                crate::target::PlayerFilter::You => "you",
+                crate::target::PlayerFilter::Opponent => "an opponent",
+                crate::target::PlayerFilter::Any => "a player",
+                _ => "that player",
+            };
+            let verb = if *player == crate::target::PlayerFilter::You {
+                "have"
+            } else {
+                "has"
+            };
+            let count_text = u32::try_from(*count)
+                .ok()
+                .and_then(number_word_u32)
+                .unwrap_or_else(|| count.to_string());
+            format!("as long as {subject} {verb} {count_text} or more cards in hand")
+        }
         crate::ConditionExpr::PlayerCardsInHandOrFewer { player, count } => {
             let subject = match player {
                 crate::target::PlayerFilter::You => "you",
@@ -1239,6 +1282,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 1 => "one".to_string(),
                 _ => count.to_string(),
             };
+            if *count == 0 {
+                return format!("as long as {subject} {verb} no cards in hand");
+            }
             format!("as long as {subject} {verb} {count_text} or fewer cards in hand")
         }
         crate::ConditionExpr::PlayerHasAtLeast {
@@ -1502,6 +1548,12 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::You => "as long as you have the initiative".to_string(),
             _ => "as long as that player has the initiative".to_string(),
         },
+        crate::ConditionExpr::ActivationTiming(
+            crate::ability::ActivationTiming::DuringYourTurn,
+        ) => "during your turn".to_string(),
+        crate::ConditionExpr::ActivationTiming(
+            crate::ability::ActivationTiming::DuringOpponentsTurn,
+        ) => "during opponents' turns".to_string(),
         crate::ConditionExpr::OwnsCardExiledWithCounter(counter) => {
             let counter_name = format!("{counter:?}").to_ascii_lowercase();
             format!("as long as you own a card exiled with a {counter_name} counter")
@@ -2249,6 +2301,9 @@ impl StaticAbilityKind for Anthem {
 
         if let Some(condition) = &self.condition {
             let condition_text = describe_static_condition(condition);
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
             // Only the "different kinds of counters among ..." count condition reads
             // naturally in the leading form (e.g. Hundred-Battle Veteran). All other
             // source-only pump conditions keep the trailing "... as long as ..." form.
@@ -2471,6 +2526,9 @@ impl StaticAbilityKind for GrantAbility {
         }
         let raw_ability_text = self.ability.display();
         let mut ability_text = raw_ability_text.clone();
+        if self.ability.is_keyword() {
+            ability_text = lowercase_first_ascii(&ability_text);
+        }
         if matches!(
             ability_text.split_whitespace().next(),
             Some("If" | "When" | "Whenever" | "At")
@@ -2558,8 +2616,15 @@ impl StaticAbilityKind for GrantAbility {
                     return format!("as long as {rest}, {subject} has {raw_ability_text}");
                 }
             }
+            let condition_text = describe_static_condition(condition);
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
+            if let Some(rest) = condition_text.strip_prefix("as long as ") {
+                return format!("as long as {rest}, {text}");
+            }
             text.push(' ');
-            text.push_str(&describe_static_condition(condition));
+            text.push_str(&condition_text);
         }
         text
     }
@@ -2648,6 +2713,13 @@ fn leading_source_keyword_condition(condition: &crate::ConditionExpr) -> bool {
         }
         _ => false,
     }
+}
+
+fn static_condition_is_during_your_turn(condition: &crate::ConditionExpr) -> bool {
+    matches!(
+        condition,
+        crate::ConditionExpr::ActivationTiming(crate::ability::ActivationTiming::DuringYourTurn)
+    )
 }
 
 fn normalize_source_counter_condition_text(condition_text: &str) -> String {
@@ -2990,6 +3062,9 @@ impl StaticAbilityKind for SetBasePowerToughnessForFilter {
             self.power, self.toughness
         );
         if let Some(condition) = &self.condition {
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
             text.push(' ');
             text.push_str(&describe_static_condition(condition));
         }
@@ -3371,6 +3446,9 @@ impl StaticAbilityKind for SetColorsForFilter {
                 ));
                 let mut text = format!("Each {each_subject} is all colors");
                 if let Some(condition) = &self.condition {
+                    if static_condition_is_during_your_turn(condition) {
+                        return format!("During your turn, {text}");
+                    }
                     text.push(' ');
                     text.push_str(&describe_static_condition(condition));
                 }
@@ -3378,6 +3456,9 @@ impl StaticAbilityKind for SetColorsForFilter {
             }
             let mut text = format!("{subject} {verb} all colors");
             if let Some(condition) = &self.condition {
+                if static_condition_is_during_your_turn(condition) {
+                    return format!("During your turn, {text}");
+                }
                 text.push(' ');
                 text.push_str(&describe_static_condition(condition));
             }
@@ -3386,6 +3467,9 @@ impl StaticAbilityKind for SetColorsForFilter {
         let colors = join_with_and(&color_list(self.colors));
         let mut text = format!("{subject} {verb} {colors}");
         if let Some(condition) = &self.condition {
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
             text.push(' ');
             text.push_str(&describe_static_condition(condition));
         }
@@ -3562,6 +3646,9 @@ impl StaticAbilityKind for AddCardTypesForFilter {
             join_with_and(&types)
         );
         if let Some(condition) = &self.condition {
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
             text.push(' ');
             text.push_str(&describe_static_condition(condition));
         }
@@ -3631,6 +3718,9 @@ impl StaticAbilityKind for RemoveCardTypesForFilter {
         if self.filter.source && self.card_types == [CardType::Creature] {
             let mut text = "this card isn't a creature".to_string();
             if let Some(condition) = &self.condition {
+                if static_condition_is_during_your_turn(condition) {
+                    return format!("During your turn, {text}");
+                }
                 text.push(' ');
                 text.push_str(&describe_static_condition(condition));
             }
@@ -3652,6 +3742,9 @@ impl StaticAbilityKind for RemoveCardTypesForFilter {
             .collect::<Vec<_>>();
         let mut text = format!("{subject} {verb} no longer {}", join_with_and(&types));
         if let Some(condition) = &self.condition {
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
             text.push(' ');
             text.push_str(&describe_static_condition(condition));
         }
@@ -3791,6 +3884,9 @@ impl StaticAbilityKind for AddSubtypesForFilter {
             if let Some(condition) = &self.condition {
                 let condition_text =
                     normalize_source_counter_condition_text(&describe_static_condition(condition));
+                if static_condition_is_during_your_turn(condition) {
+                    return format!("During your turn, {text}");
+                }
                 if condition_text.starts_with("as long as ") {
                     return format!("{condition_text}, {text}");
                 }
@@ -3831,6 +3927,9 @@ impl StaticAbilityKind for AddSubtypesForFilter {
         if let Some(condition) = &self.condition {
             let condition_text =
                 normalize_source_counter_condition_text(&describe_static_condition(condition));
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
             if condition_text.starts_with("as long as ") {
                 return format!("{condition_text}, {text}");
             }
@@ -4990,8 +5089,15 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         };
         let mut text = format!("{subject} {verb} {rendered_ability}");
         if let Some(condition) = &self.condition {
+            let condition_text = describe_static_condition(condition);
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
+            if let Some(rest) = condition_text.strip_prefix("as long as ") {
+                return format!("as long as {rest}, {text}");
+            }
             text.push(' ');
-            text.push_str(&describe_static_condition(condition));
+            text.push_str(&condition_text);
         }
         text
     }
@@ -5725,7 +5831,7 @@ mod tests {
         );
         assert_eq!(grant.id(), StaticAbilityId::GrantAbility);
         assert!(grant.grants_abilities());
-        assert_eq!(grant.display(), "creatures you control have Flying");
+        assert_eq!(grant.display(), "creatures you control have flying");
     }
 
     #[test]
@@ -5768,7 +5874,7 @@ mod tests {
 
         assert_eq!(
             grant.display(),
-            "enchantment spells you cast from your hand have Cascade"
+            "enchantment spells you cast from your hand have cascade"
         );
     }
 
@@ -5782,7 +5888,7 @@ mod tests {
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             });
         let grant = GrantAbility::new(filter, StaticAbility::trample());
-        assert_eq!(grant.display(), "equipped creature has Trample");
+        assert_eq!(grant.display(), "equipped creature has trample");
 
         let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let source = ObjectId::from_raw(1);

@@ -197,6 +197,7 @@ fn rewrite_prior_token_placeholder_effect_from_template(
         sacrifice_at_end_of_combat: template_sacrifice_at_end_of_combat,
         sacrifice_at_next_end_step: template_sacrifice_at_next_end_step,
         exile_at_next_end_step: template_exile_at_next_end_step,
+        next_end_step_player: template_next_end_step_player,
         granted_abilities: template_granted_abilities,
         ..
     } = template_action
@@ -215,6 +216,7 @@ fn rewrite_prior_token_placeholder_effect_from_template(
             sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step,
             exile_at_next_end_step,
+            next_end_step_player,
             granted_abilities,
             ..
         } = &mut subject_verb.action
@@ -230,6 +232,7 @@ fn rewrite_prior_token_placeholder_effect_from_template(
         *sacrifice_at_end_of_combat = *template_sacrifice_at_end_of_combat;
         *sacrifice_at_next_end_step = *template_sacrifice_at_next_end_step;
         *exile_at_next_end_step = *template_exile_at_next_end_step;
+        *next_end_step_player = template_next_end_step_player.clone();
         *granted_abilities = template_granted_abilities.clone();
         subject_verb.subject.player = *template_player;
     }

@@ -1892,7 +1892,7 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // "sacrifice <object> at the beginning of [the] next end step"
-    let optional_the = [LexPattern::word("the")];
+    let optional_owner = [LexPattern::any_phrase(&[&["the"], &["your"]])];
     let atoms = [
         LexPattern::word("sacrifice"),
         LexPattern::role_capture(
@@ -1901,7 +1901,7 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
             LexCaptureKind::UntilPhrase(&["at", "the", "beginning", "of"]),
         ),
         LexPattern::phrase(&["at", "the", "beginning", "of"]),
-        LexPattern::optional(&optional_the),
+        LexPattern::optional(&optional_owner),
         LexPattern::phrase(&["next", "end", "step"]),
         LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
     ];
@@ -1945,9 +1945,15 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step_matched(
     } else {
         parse_object_filter(object_clause.tokens(), false)?
     };
+    let player =
+        if word_slice_contains_phrase(&clause.word_refs(), &["your", "next", "end", "step"]) {
+            PlayerFilter::You
+        } else {
+            PlayerFilter::Any
+        };
 
     Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
-        player: PlayerFilter::Any,
+        player,
         effects: vec![EffectAst::subject_verb_sacrifice(
             PlayerAst::Implicit,
             filter,

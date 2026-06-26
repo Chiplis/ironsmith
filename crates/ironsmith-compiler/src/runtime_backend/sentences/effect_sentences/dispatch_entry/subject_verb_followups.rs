@@ -1002,6 +1002,7 @@ fn parse_create_more_of_prior_tokens(
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,
             exile_at_next_end_step: false,
+            next_end_step_player: PlayerFilter::Any,
             granted_abilities: Vec::new(),
         },
     );

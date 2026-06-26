@@ -332,6 +332,20 @@ pub(super) fn lower_alternative_cast(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    if token_slice_first_is(tokens, "aftermath") {
+        let mut ability =
+            crate::static_abilities::StaticAbility::grants(crate::grant::GrantSpec::new(
+                crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(
+                    Vec::<crate::costs::Cost>::new(),
+                    true,
+                ),
+                crate::target::ObjectFilter::source(),
+                crate::zone::Zone::Graveyard,
+            ));
+        ability.label = "Aftermath".to_string();
+        return Ok(LineAst::StaticAbility(ability.into()));
+    }
+
     if token_slice_first_is(tokens, "encore") {
         let (cost, _) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
             .ok_or_else(|| {
@@ -1116,7 +1130,8 @@ fn parse_additional_cost_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardText
 
 fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let rendered = render_token_slice(tokens).trim().to_ascii_lowercase();
-    Ok(token_slice_first_is(tokens, "encore")
+    Ok(token_slice_first_is(tokens, "aftermath")
+        || token_slice_first_is(tokens, "encore")
         || keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Surge)
         || keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Freerunning)
         || keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Sneak)

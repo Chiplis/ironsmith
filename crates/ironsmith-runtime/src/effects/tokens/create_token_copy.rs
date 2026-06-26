@@ -233,6 +233,7 @@ impl EffectExecutor for CreateTokenCopyEffect {
             false,
             self.sacrifice_at_next_end_step,
             self.exile_at_next_end_step,
+            self.next_end_step_player.clone(),
         );
         let entry_options = TokenEntryOptions::new(
             self.enters_tapped,
@@ -347,7 +348,13 @@ impl EffectExecutor for CreateTokenCopyEffect {
                     }
                 }
 
-                schedule_token_cleanup(game, ctx, entered_id, controller_id, cleanup_options)?;
+                schedule_token_cleanup(
+                    game,
+                    ctx,
+                    entered_id,
+                    controller_id,
+                    cleanup_options.clone(),
+                )?;
             }
         }
 

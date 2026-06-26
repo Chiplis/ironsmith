@@ -1885,6 +1885,14 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             );
         }
     }
+    for marker in [", it gets ", ", It gets "] {
+        if let Some((left, right)) = normalized.split_once(marker)
+            && left.eq_ignore_ascii_case("Untap target creature")
+        {
+            normalized = format!("{left}. It gets {right}");
+            break;
+        }
+    }
     if let Some((left, right)) = normalized.split_once(". it gets ") {
         let left_trimmed = left.trim_end_matches('.').trim();
         let left_lower = left_trimmed.to_ascii_lowercase();
@@ -1943,6 +1951,20 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             left.trim_end_matches('.'),
             right.trim_end_matches('.')
         );
+    }
+    if let Some((left, right)) = normalized.split_once(", then it gains ") {
+        let left_trimmed = left.trim_end_matches('.').trim();
+        let left_lower = left_trimmed.to_ascii_lowercase();
+        if left_lower.contains("target creature gets ")
+            && left_lower.ends_with(" until end of turn")
+            && !right.trim().is_empty()
+        {
+            normalized = format!(
+                "{} and gains {}",
+                left_trimmed.trim_end_matches(" until end of turn"),
+                right.trim()
+            );
+        }
     }
     if let Some((left, right)) = normalized.split_once(". it gains ")
         && {
@@ -6849,6 +6871,20 @@ mod tests {
         assert!(
             !mismatch,
             "expected no mismatch for untap-then-buff split normalization"
+        );
+
+        let compiled = vec![String::from(
+            "Untap target creature, it gets +2/+2 until end of turn, then it gains Reach until end of turn.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected comma/then untap-then-buff normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for comma/then untap-then-buff normalization"
         );
     }
 

@@ -38,6 +38,35 @@ fn scoped_collection_zones() -> Vec<Zone> {
     ]
 }
 
+fn filter_references_tagged_collection(filter: &ObjectFilter, tag: &str) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == tag
+            && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+    })
+}
+
+fn normalize_choice_from_last_exiled_collection(
+    ctx: &EffectLoweringContext,
+    filter: &mut ObjectFilter,
+) -> bool {
+    let exiled_tag = ctx.last_exiled_collection_tag.as_deref().or_else(|| {
+        ctx.last_object_tag
+            .as_deref()
+            .filter(|tag| is_sentence_helper_exiled_collection_tag(tag))
+    });
+    let Some(exiled_tag) = exiled_tag else {
+        return false;
+    };
+    if !filter_references_tagged_collection(filter, exiled_tag) {
+        return false;
+    }
+
+    filter.zone = Some(Zone::Exile);
+    filter.controller = None;
+    filter.owner = None;
+    true
+}
+
 pub(super) fn try_compile_object_zone_and_exchange_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -69,12 +98,14 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 } else {
                     subject.bind_battlefield_filter_with_default_controller(filter, ctx)?
                 };
+            let chooses_last_exiled_collection =
+                normalize_choice_from_last_exiled_collection(ctx, &mut resolved_filter);
             if references_revealed_hand && ctx.last_player_filter.is_some() {
                 let has_revealed_collection_tag = ctx
                     .last_object_tag
                     .as_deref()
                     .is_some_and(is_revealed_collection_tag);
-                if !has_revealed_collection_tag {
+                if !chooses_last_exiled_collection && !has_revealed_collection_tag {
                     resolved_filter.tagged_constraints.retain(|constraint| {
                         !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                     });
@@ -116,6 +147,15 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     zones,
                     None,
                     false,
+                )
+            } else if chooses_tagged_pool && resolved_filter.zone == Some(Zone::Exile) {
+                compile_choose_objects_with_subject(
+                    subject,
+                    resolved_filter,
+                    *count,
+                    count_value.clone(),
+                    tag.clone(),
+                    Zone::Exile,
                 )
             } else if chooses_tagged_pool {
                 compile_choose_objects_across_zones_with_subject(
@@ -236,12 +276,14 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 } else {
                     subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
                 };
+            let chooses_last_exiled_collection =
+                normalize_choice_from_last_exiled_collection(ctx, &mut resolved_filter);
             if references_revealed_hand && ctx.last_player_filter.is_some() {
                 let has_revealed_collection_tag = ctx
                     .last_object_tag
                     .as_deref()
                     .is_some_and(is_revealed_collection_tag);
-                if !has_revealed_collection_tag {
+                if !chooses_last_exiled_collection && !has_revealed_collection_tag {
                     resolved_filter.tagged_constraints.retain(|constraint| {
                         !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                     });
@@ -266,16 +308,28 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 .as_ref()
                 .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
                 .transpose()?;
-            let (effects, choices) = compile_choose_objects_across_zones_with_subject(
-                subject,
-                resolved_filter,
-                *count,
-                count_value.clone(),
-                tag.clone(),
-                zones.clone(),
-                *search_mode,
-                default_search,
-            );
+            let (effects, choices) =
+                if chooses_tagged_pool && resolved_filter.zone == Some(Zone::Exile) {
+                    compile_choose_objects_with_subject(
+                        subject,
+                        resolved_filter,
+                        *count,
+                        count_value.clone(),
+                        tag.clone(),
+                        Zone::Exile,
+                    )
+                } else {
+                    compile_choose_objects_across_zones_with_subject(
+                        subject,
+                        resolved_filter,
+                        *count,
+                        count_value.clone(),
+                        tag.clone(),
+                        zones.clone(),
+                        *search_mode,
+                        default_search,
+                    )
+                };
             ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
             ctx.last_object_tag = Some(tag.as_str().to_string());
             ctx.last_player_filter = Some(followup_player);

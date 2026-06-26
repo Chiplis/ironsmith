@@ -547,6 +547,7 @@ fn replace_names_with_map(
                     word,
                     b"attach"
                         | b"destroy"
+                        | b"exile"
                         | b"transform"
                         | b"convert"
                         | b"regenerate"

@@ -7,7 +7,7 @@ use crate::effect::EventValueSpec;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 use crate::{ChooseSpec, CounterType, TagKey, Value};
-use ironsmith_core::{EffectMetric, EffectMetricSource};
+use ironsmith_core::{EffectMetric, EffectMetricSource, ValueSurfaceHint};
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
 use winnow::combinator::separated;
@@ -381,6 +381,11 @@ fn parse_put_counter_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<(Value, usize), CardTextError> {
     let clause = render_clause_words(tokens);
+
+    if token_slice_at_is(tokens, 0, "up") && token_slice_at_is(tokens, 1, "to") {
+        let (value, used) = parse_put_counter_count_value(&tokens[2..])?;
+        return Ok((value.with_surface_hint(ValueSurfaceHint::UpTo), used + 2));
+    }
 
     if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, EVENT_AMOUNT_PREFIXES) {
         return Ok((Value::EventValue(EventValueSpec::Amount), prefix.len()));

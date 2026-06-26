@@ -3092,7 +3092,7 @@ fn necromancers_covenant_strict_parser_and_compiled_text_regression() {
         "bare create after target-player graveyard exile should be controlled by you, got {rendered}"
     );
     assert!(
-        rendered.contains("Zombies you control have Lifelink"),
+        rendered.contains("Zombies you control have lifelink"),
         "Necromancer's Covenant should render the Zombie lifelink grant, got {rendered}"
     );
     assert!(
@@ -11018,7 +11018,7 @@ fn test_parse_labeled_leading_condition_with_gets_and_has() {
         "expected conditional self buff ability, got: {displays:?}"
     );
     assert!(
-        displays.iter().any(|display| display.contains("has Flying")
+        displays.iter().any(|display| display.contains("has flying")
             && display.contains("as long as you control three or more artifacts")),
         "expected conditional flying grant ability, got: {displays:?}"
     );
@@ -21503,6 +21503,53 @@ fn parse_rogue_elephant_unless_sacrifice_keeps_oracle_like_cost_text() {
             && !rendered.contains("sacrifice_cost")
             && !rendered.contains("pay choose"),
         "Rogue Elephant rendering should hide internal choose/tag cost scaffolding, got {rendered_raw}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_champion_keyword_preserves_sacrifice_unless_exile_semantics() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Champion Elemental Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental])
+        .parse_text("Trample\nChampion an Elemental")
+        .expect("champion keyword should parse");
+
+    let rendered_raw = unprocessed_compiled_lines(&def).join(" | ");
+    assert!(
+        rendered_raw.contains("Champion an Elemental"),
+        "expected champion keyword rendering, got {rendered_raw}"
+    );
+    assert!(
+        !rendered_raw.contains("exile another Elemental"),
+        "champion keyword should not render as expanded exile-only text, got {rendered_raw}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("UnlessActionEffect")
+            && debug.contains("SacrificeTargetEffect")
+            && debug.contains("ExileUntilEffect")
+            && debug.contains("SourceLeavesBattlefield"),
+        "champion must lower to sacrifice-unless plus linked exile-until-source-leaves, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn grant_keyword_to_wolves_uses_irregular_plural_and_lowercase_keyword() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wolf Lord Probe")
+        .parse_text("Wolves you control have deathtouch.")
+        .expect("wolf subtype keyword grant should parse");
+
+    let rendered_raw = unprocessed_compiled_lines(&def).join(" | ");
+    assert!(
+        rendered_raw.contains("Wolves you control have deathtouch"),
+        "expected oracle-like wolf grant rendering, got {rendered_raw}"
+    );
+    assert!(
+        !rendered_raw.contains("Wolfs") && !rendered_raw.contains("Deathtouch"),
+        "wolf grants should use irregular plural and lowercase keyword, got {rendered_raw}"
     );
 }
 
@@ -38445,6 +38492,66 @@ fn render_put_counter_on_up_to_one_target_omits_each_of() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_up_to_counter_amount_on_target() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lore Counter Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Put up to three lore counters on target Saga.")
+        .expect("parse optional counter amount clause");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("PutCountersEffect")
+            && debug.contains("Lore")
+            && debug.contains("UpTo")
+            && debug.contains("amount: SurfaceHinted")
+            && debug.contains("3"),
+        "expected up-to counter amount to lower with an up-to amount hint, got {debug}"
+    );
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Put up to three lore counters on target Saga"),
+        "expected up-to counter amount to render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_token_copy_cleanup_preserves_your_next_end_step() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Token Cleanup Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a token that's a copy of target enchantment you control. It gains haste. Sacrifice it at the beginning of your next end step.",
+        )
+        .expect("parse token-copy cleanup with controller-specific end step");
+
+    let schedule = def
+        .spell_effect
+        .as_ref()
+        .expect("expected spell effects")
+        .flattened_default_effects()
+        .into_iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>())
+        .unwrap_or_else(|| {
+            panic!(
+                "expected delayed cleanup trigger, got {:#?}",
+                def.spell_effect
+            )
+        });
+    assert_eq!(
+        schedule.trigger,
+        crate::triggers::Trigger::beginning_of_end_step(PlayerFilter::You)
+    );
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("At the beginning of your next end step, sacrifice it"),
+        "expected rendered cleanup to preserve your next end step, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_scry_one_then_draw_uses_then() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mentor Guidance Variant")
         .card_types(vec![CardType::Sorcery])
@@ -44564,6 +44671,133 @@ fn parse_answered_prayers_keeps_life_gain_and_angel_animation() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_returned_object_pronoun_static_followup_stays_in_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Returned Angel Followup Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever a nontoken, non-Angel creature you control dies, return that card to the battlefield under its owner's control with a +1/+1 counter on it. It has flying and is an Angel in addition to its other types.",
+        )
+        .expect("returned-object pronoun follow-up should parse inside the trigger");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected a triggered ability");
+    let effects_debug = format!("{:?}", triggered.effects);
+    assert!(
+        effects_debug.contains("ApplyContinuousEffect")
+            && effects_debug.contains("returned_")
+            && effects_debug.contains("AddSubtypes")
+            && effects_debug.contains("Angel")
+            && effects_debug.contains("flying"),
+        "expected returned object to receive flying and Angel modifications inside the trigger, got {effects_debug}"
+    );
+    assert!(
+        !def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::AddSubtypes
+        )),
+        "returned-object Angel follow-up must not become a detached static ability: {:?}",
+        def.abilities
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("with a +1/+1 counter")
+            && rendered.to_ascii_lowercase().contains("flying")
+            && rendered.contains("Angel"),
+        "expected returned-object modifications in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_returned_object_color_subtype_static_followup_stays_in_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Returned Zombie Followup Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever a creature you don't control dies, return it to the battlefield under your control with an additional +1/+1 counter on it at the beginning of the next end step. That creature is a black Zombie in addition to its other colors and types.",
+        )
+        .expect("returned-object color/type follow-up should parse inside the trigger");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected a triggered ability");
+    let effects_debug = format!("{:?}", triggered.effects);
+    assert!(
+        effects_debug.contains("ScheduleDelayedTriggerEffect")
+            && effects_debug.contains("AddColors")
+            && effects_debug.contains("AddSubtypes")
+            && effects_debug.contains("Zombie"),
+        "expected returned object to receive color and Zombie modifications inside the trigger, got {effects_debug}"
+    );
+    assert!(
+        !def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::AddSubtypes
+        )),
+        "returned-object Zombie follow-up must not become a detached static ability: {:?}",
+        def.abilities
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("with a +1/+1 counter")
+            && rendered.contains("black Zombie")
+            && rendered.contains("beginning of the next end step"),
+        "expected returned-object color/type modifications in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_your_turn_keyword_grants_preserve_during_vs_as_long_surface() {
+    let during = CardDefinitionBuilder::new(CardId::new(), "During Turn Keyword Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("During your turn, this creature has first strike.")
+        .expect("during-your-turn keyword grant should parse");
+    let during_debug = format!("{:?}", during.abilities);
+    assert!(
+        during_debug.contains("ActivationTiming")
+            && during_debug.contains("DuringYourTurn")
+            && !during_debug.contains("condition: YourTurn"),
+        "expected during-your-turn source to preserve an activation-timing condition, got {during_debug}"
+    );
+    let during_rendered = unprocessed_compiled_lines(&during).join(" ");
+    assert_eq!(
+        during_rendered,
+        "During your turn, this creature has first strike."
+    );
+
+    let as_long = CardDefinitionBuilder::new(CardId::new(), "As Long Keyword Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("As long as it's your turn, this creature has first strike.")
+        .expect("as-long-as-your-turn keyword grant should parse");
+    let as_long_debug = format!("{:?}", as_long.abilities);
+    assert!(
+        as_long_debug.contains("condition: YourTurn"),
+        "expected as-long source to keep the plain YourTurn condition, got {as_long_debug}"
+    );
+    let as_long_rendered = unprocessed_compiled_lines(&as_long).join(" ");
+    assert_eq!(
+        as_long_rendered,
+        "As long as it's your turn, this creature has first strike."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_veiled_apparition_uses_source_gate_and_granted_upkeep_trigger() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Veiled Apparition Variant")
         .card_types(vec![CardType::Enchantment])
@@ -49022,7 +49256,7 @@ fn parse_next_spell_cascade_family_renders_cleanly() {
         .expect("Dark Apostle should compile");
     let dark_rendered = unprocessed_compiled_lines(&dark_apostle).join(" ");
     assert!(
-        dark_rendered.contains("The next noncreature spell you cast this turn has Cascade."),
+        dark_rendered.contains("The next noncreature spell you cast this turn has cascade."),
         "expected clean next-spell render for Dark Apostle, got {dark_rendered}"
     );
 }
@@ -60487,6 +60721,117 @@ fn calamity_bearer_runtime_ignores_non_giant_and_opposing_giant_sources() {
     );
     assert_eq!(opposing_giant_damage.assignments.len(), 1);
     assert_eq!(opposing_giant_damage.assignments[0].amount, 3);
+}
+
+#[test]
+fn torture_pit_adds_two_to_noncombat_damage_to_opponents_only() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(91_306), "Torture Pit Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "If a source you control would deal noncombat damage to an opponent, it deals that much damage plus 2 instead.",
+        )
+        .expect("Torture Pit-style additive noncombat replacement should parse");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "If a source you control would deal noncombat damage to an opponent, it deals that much damage plus 2 instead"
+        ),
+        "Torture Pit should render additive noncombat damage replacement, got {rendered}"
+    );
+    assert!(
+        debug.contains("ModifyDamageAmountReplacement")
+            && debug.contains("delta: 2")
+            && debug.contains("noncombat_only: true")
+            && debug.contains("target_player_filter: Some"),
+        "Torture Pit should compile to noncombat-only +2 damage replacement, got {debug}"
+    );
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_307), "Alice Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let noncombat_to_opponent = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(noncombat_to_opponent.assignments.len(), 1);
+    assert_eq!(noncombat_to_opponent.assignments[0].amount, 5);
+
+    let combat_to_opponent = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(combat_to_opponent.assignments.len(), 1);
+    assert_eq!(combat_to_opponent.assignments[0].amount, 3);
+
+    let noncombat_to_controller = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        source,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(noncombat_to_controller.assignments.len(), 1);
+    assert_eq!(noncombat_to_controller.assignments[0].amount, 3);
+}
+
+#[test]
+fn aftermath_grants_source_cast_from_graveyard_and_exiles_after_resolution() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(91_308), "Aftermath Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Aftermath (Cast this spell only from your graveyard. Then exile it.)\n\
+             Target creature you control fights target creature an opponent controls.",
+        )
+        .expect("aftermath keyword line should parse");
+    let debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let aftermath_grant = def
+        .abilities
+        .iter()
+        .find(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == crate::static_abilities::StaticAbilityId::Grants
+            )
+        })
+        .expect("expected aftermath to lower to a Grants ability");
+
+    assert!(
+        debug.contains("GraveyardCastFromCardManaCost")
+            && debug.contains("exiles_after_resolution: true"),
+        "Aftermath should lower to a graveyard self-cast grant active from graveyard, got {debug}"
+    );
+    assert_eq!(aftermath_grant.functional_zones, vec![Zone::Graveyard]);
+    assert!(
+        rendered.contains("Aftermath")
+            && !rendered.contains("You may cast this card from your graveyard")
+            && rendered.contains("fights target creature an opponent controls"),
+        "Aftermath compiled text should preserve the keyword surface while the model carries graveyard/exile semantics, got {rendered}"
+    );
 }
 
 #[test]

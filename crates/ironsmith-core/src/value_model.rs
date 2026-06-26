@@ -47,6 +47,7 @@ pub enum ValueSurfaceHint {
     PermanentsSacrificedThisWay,
     CountersRemovedThisWay,
     Difference,
+    UpTo,
 }
 
 #[derive(Debug, Clone, PartialEq)]

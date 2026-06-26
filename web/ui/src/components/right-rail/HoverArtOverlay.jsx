@@ -370,6 +370,11 @@ function resolveObjectDetailsId(state, objectIdNum) {
   const card = findCardSnapshotForObjectId(state, objectIdNum);
   const representativeId = Number(card?.id);
   if (Number.isFinite(representativeId)) return representativeId;
+
+  const stackEntry = getVisibleStackObjects(state).find((entry) => Number(entry?.id) === objectIdNum);
+  const stackInspectId = Number(stackEntry?.inspect_object_id);
+  if (Number.isFinite(stackInspectId)) return stackInspectId;
+
   return objectIdNum;
 }
 

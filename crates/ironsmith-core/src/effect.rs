@@ -1872,6 +1872,7 @@ pub struct PopulateEffect {
     pub has_haste: bool,
     pub sacrifice_at_next_end_step: bool,
     pub exile_at_next_end_step: bool,
+    pub next_end_step_player: PlayerFilter,
     pub exile_at_end_of_combat: bool,
     pub sacrifice_at_end_of_combat: bool,
 }
@@ -1885,6 +1886,7 @@ impl PopulateEffect {
             has_haste: false,
             sacrifice_at_next_end_step: false,
             exile_at_next_end_step: false,
+            next_end_step_player: PlayerFilter::Any,
             exile_at_end_of_combat: false,
             sacrifice_at_end_of_combat: false,
         }
@@ -1912,6 +1914,11 @@ impl PopulateEffect {
 
     pub fn exile_at_next_end_step(mut self, value: bool) -> Self {
         self.exile_at_next_end_step = value;
+        self
+    }
+
+    pub fn next_end_step_player(mut self, player: PlayerFilter) -> Self {
+        self.next_end_step_player = player;
         self
     }
 
@@ -2477,6 +2484,7 @@ pub struct CreateTokenEffect<D> {
     pub sacrifice_at_end_of_combat: bool,
     pub sacrifice_at_next_end_step: bool,
     pub exile_at_next_end_step: bool,
+    pub next_end_step_player: PlayerFilter,
 }
 
 impl<D> CreateTokenEffect<D> {
@@ -2500,6 +2508,7 @@ impl<D> CreateTokenEffect<D> {
             sacrifice_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,
             exile_at_next_end_step: false,
+            next_end_step_player: PlayerFilter::Any,
         }
     }
 
@@ -2543,6 +2552,11 @@ impl<D> CreateTokenEffect<D> {
 
     pub fn exile_at_next_end_step(mut self) -> Self {
         self.exile_at_next_end_step = true;
+        self
+    }
+
+    pub fn next_end_step_player(mut self, player: PlayerFilter) -> Self {
+        self.next_end_step_player = player;
         self
     }
 }
@@ -2602,6 +2616,7 @@ pub struct CreateTokenCopyEffect<A> {
     pub exile_at_end_of_combat: bool,
     pub sacrifice_at_next_end_step: bool,
     pub exile_at_next_end_step: bool,
+    pub next_end_step_player: PlayerFilter,
     pub pt_adjustment: Option<CopyPtAdjustment>,
     pub clear_mana_cost: bool,
     pub added_card_types: Vec<CardType>,
@@ -2627,6 +2642,7 @@ impl<A> CreateTokenCopyEffect<A> {
             exile_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,
             exile_at_next_end_step: false,
+            next_end_step_player: PlayerFilter::Any,
             pt_adjustment: None,
             clear_mana_cost: false,
             added_card_types: Vec::new(),
@@ -2707,6 +2723,11 @@ impl<A> CreateTokenCopyEffect<A> {
 
     pub fn exile_at_next_end_step(mut self, value: bool) -> Self {
         self.exile_at_next_end_step = value;
+        self
+    }
+
+    pub fn next_end_step_player(mut self, player: PlayerFilter) -> Self {
+        self.next_end_step_player = player;
         self
     }
 

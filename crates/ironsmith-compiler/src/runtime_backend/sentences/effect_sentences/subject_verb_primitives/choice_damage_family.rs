@@ -513,15 +513,26 @@ pub(crate) fn parse_sentence_exile_multi_target(
     let first_is_explicit_target = is_explicit_target_clause(first_clause);
     let second_is_explicit_target = is_explicit_target_clause(second_clause);
 
-    let mut first_target =
-        if !first_is_explicit_target && is_likely_named_or_source_reference_words(&first_words) {
-            TargetAst::Source(first_clause.span())
-        } else {
-            match parse_target_phrase(first_clause.tokens()) {
-                Ok(target) => target,
-                Err(err) => return Err(err),
-            }
-        };
+    let mut first_target = if !first_is_explicit_target
+        && is_likely_named_or_source_reference_words(&first_words)
+    {
+        if let Some(surface) = crate::runtime_backend::util::source_reference_surface_for_words(
+            &first_words,
+        )
+        .or_else(|| crate::runtime_backend::util::this_source_surface_for_words(&first_words))
+        {
+            crate::runtime_backend::util::record_source_reference_surface(
+                first_clause.span(),
+                surface,
+            );
+        }
+        TargetAst::Source(first_clause.span())
+    } else {
+        match parse_target_phrase(first_clause.tokens()) {
+            Ok(target) => target,
+            Err(err) => return Err(err),
+        }
+    };
     let mut second_target = parse_target_phrase(second_clause.tokens())?;
 
     if first_is_explicit_target

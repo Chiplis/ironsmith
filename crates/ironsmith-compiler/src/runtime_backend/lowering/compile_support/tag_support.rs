@@ -37,6 +37,7 @@ pub(crate) fn is_sentence_helper_exiled_collection_tag(tag: &str) -> bool {
 pub(crate) fn is_exiled_collection_tag(tag: &str) -> bool {
     tag_str_has_prefix(tag, EXILED_COLLECTION_TAG_PREFIX)
         || is_sentence_helper_exiled_collection_tag(tag)
+        || tag == crate::tag::SOURCE_EXILED_TAG
 }
 
 fn total_cost_values_any(

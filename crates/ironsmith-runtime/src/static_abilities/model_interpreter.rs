@@ -382,6 +382,16 @@ impl StaticAbilityModelInterpreter {
                 crate::zone::Zone::Exile,
                 crate::zone::Zone::Command,
             ]),
+            StaticAbilityId::Grants => {
+                if let Some(spec) = static_ability.grant_spec()
+                    && spec.filter.source
+                    && spec.zone != crate::zone::Zone::Battlefield
+                {
+                    ability.in_zones(vec![spec.zone])
+                } else {
+                    ability
+                }
+            }
             _ => ability,
         }
     }
@@ -1386,12 +1396,14 @@ impl StaticAbilityModelInterpreter {
                 target_player_filter,
                 target_object_filter,
                 delta,
+                noncombat_only,
                 display,
-            } => StaticAbility::modify_damage_amount_replacement(
+            } => StaticAbility::modify_damage_amount_replacement_with_noncombat_only(
                 source_filter.clone(),
                 target_player_filter.clone(),
                 target_object_filter.clone(),
                 *delta,
+                *noncombat_only,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::MinimumDamageAmountReplacement {
@@ -1666,6 +1678,9 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn display(&self) -> String {
+        if self.model.label == "Aftermath" {
+            return "Aftermath".to_string();
+        }
         if let Some(ability) = self.leaf_static_ability() {
             return ability.display();
         }

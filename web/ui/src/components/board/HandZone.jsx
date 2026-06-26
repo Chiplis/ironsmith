@@ -18,6 +18,7 @@ const HAND_ROULETTE_EDGE_PADDING = 12;
 const HAND_ROULETTE_WRAP_GAP = 20;
 const HAND_ROULETTE_CYCLE_COUNT = 3;
 const HAND_ROULETTE_CENTER_CYCLE = 1;
+const HAND_SELECTED_LAYOUT_Z_INDEX = 20000;
 const HAND_DRAG_START_DISTANCE_SQ = 14 * 14;
 const DRAW_TO_HAND_REVEAL_DELAY_MS = 1080;
 const HAND_ACTION_HOVER_EVENT = "ironsmith:hand-action-hover";
@@ -227,6 +228,14 @@ function splitHandCardRowStyle(style, { scrollSnapAlign } = {}) {
       "--card-translate-x": cardTranslateX,
       "--card-translate-y": cardTranslateY,
     },
+  };
+}
+
+function elevateHandCardWrapperStyle(wrapperStyle, isInspected) {
+  if (!isInspected) return wrapperStyle;
+  return {
+    ...wrapperStyle,
+    zIndex: HAND_SELECTED_LAYOUT_Z_INDEX,
   };
 }
 
@@ -1033,14 +1042,15 @@ export default function HandZone({
           if (visualIndex > 0 && newIds.has(handCards[visualIndex - 1].id)) bumpDir = 1;
           else if (visualIndex < handCards.length - 1 && newIds.has(handCards[visualIndex + 1].id)) bumpDir = -1;
         }
-        const { wrapperStyle, cardStyle } = splitHandCardRowStyle(
+        const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
           buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
           { scrollSnapAlign: isRoulette ? "start" : undefined }
         );
+        const wrapperStyle = elevateHandCardWrapperStyle(baseWrapperStyle, isInspected);
         return (
           <div
             key={`${cycleIndex}-${entry.key}`}
-            className="hand-layout-item shrink-0 overflow-visible"
+            className={`hand-layout-item shrink-0 overflow-visible${isInspected ? " hand-layout-item--selected" : ""}`}
             style={wrapperStyle}
           >
             <GameCard
@@ -1086,14 +1096,15 @@ export default function HandZone({
         (selectedObjectId != null && String(extra.id) === String(selectedObjectId))
         || isMenuActionPreview
       );
-      const { wrapperStyle, cardStyle } = splitHandCardRowStyle(
+      const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
         buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
         { scrollSnapAlign: isRoulette ? "start" : undefined }
       );
+      const wrapperStyle = elevateHandCardWrapperStyle(baseWrapperStyle, isInspected);
       return (
         <div
           key={`${cycleIndex}-${entry.key}`}
-          className="hand-layout-item shrink-0 overflow-visible"
+          className={`hand-layout-item shrink-0 overflow-visible${isInspected ? " hand-layout-item--selected" : ""}`}
           style={wrapperStyle}
         >
           <GameCard

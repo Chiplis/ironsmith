@@ -2420,6 +2420,19 @@ fn compact_multi_zone_named_search_to_battlefield_surface(line: &str) -> Option<
     None
 }
 
+fn normalize_untap_target_creature_gets_and_gains_split(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("untap target creature, it gets ")?;
+    let (pt_delta, tail) = rest.split_once(" until end of turn, then it gains ")?;
+    let keyword = tail.strip_suffix(" until end of turn")?;
+    if pt_delta.is_empty() || keyword.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "Untap target creature. It gets {pt_delta} and gains {keyword} until end of turn."
+    ))
+}
+
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     if normalized.eq_ignore_ascii_case("Destroy all nonbasic lands. For each land destroyed this way, its controller may search its controller's library for a basic land card. For each tagged 'searched' object, put them onto the battlefield. If you do, shuffle that player's library") {
@@ -2629,6 +2642,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             ". Then if this spell's behold cost was paid, you gain ",
             ". If this spell's behold cost was paid, you gain ",
         ),
+        (". Then if it's a Saga, put ", ". If it's a Saga, put "),
     ] {
         normalized = normalized.replace(from, to);
     }
@@ -2701,6 +2715,11 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .join(" ")
         .to_ascii_lowercase();
     let lower_compact_trimmed = lower_compact.trim_end_matches('.').to_string();
+    if let Some(normalized) =
+        normalize_untap_target_creature_gets_and_gains_split(&lower_compact_trimmed)
+    {
+        return normalized;
+    }
     if lower_compact_trimmed
         == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast it. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
         || lower_compact_trimmed
@@ -10032,6 +10051,12 @@ pub(super) fn owner_library_phrase_for_spec(spec: &ChooseSpec) -> &'static str {
 
 pub(super) fn describe_put_counter_phrase(count: &Value, counter_type: CounterType) -> String {
     let counter_name = counter_type.description().into_owned();
+    if let Value::SurfaceHinted { value, hints } = count
+        && hints.contains(&ValueSurfaceHint::UpTo)
+    {
+        let inner = describe_put_counter_phrase(value, counter_type);
+        return format!("up to {inner}");
+    }
     match count {
         Value::Fixed(1) => with_indefinite_article(&format!("{counter_name} counter")),
         Value::Fixed(n) if *n > 1 => {
@@ -13058,6 +13083,13 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::PlayerCardsInHandOrFewer { player, count } => {
             let subject = describe_player_filter(player);
+            if *count == 0 {
+                return format!(
+                    "{} {} no cards in hand",
+                    subject,
+                    player_verb(&subject, "have", "has")
+                );
+            }
             let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
                 "{} {} {} or fewer cards in hand",
@@ -14845,6 +14877,16 @@ mod tests {
     }
 
     #[test]
+    fn normalize_then_if_saga_counter_followup_removes_sequence_scaffolding() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "It gains haste. Then if it's a Saga, put up to three lore counters on it."
+            ),
+            "It gains haste. If it's a Saga, put up to three lore counters on it."
+        );
+    }
+
+    #[test]
     fn normalize_another_creatures_plural_typo_without_touching_singular() {
         assert_eq!(
             normalize_common_semantic_phrasing("another creatures you control get +1/+1."),
@@ -15079,6 +15121,12 @@ mod tests {
                 "Gain control of target creature until end of turn, untap it, it gets +X/+0 until end of turn, where X is X, then it gains haste until end of turn."
             ),
             "Gain control of target creature until end of turn. Untap that creature. It gets +X/+0 and gains haste until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Untap target creature, it gets +2/+2 until end of turn, then it gains lifelink until end of turn."
+            ),
+            "Untap target creature. It gets +2/+2 and gains lifelink until end of turn."
         );
         assert_eq!(
             normalize_common_semantic_phrasing(

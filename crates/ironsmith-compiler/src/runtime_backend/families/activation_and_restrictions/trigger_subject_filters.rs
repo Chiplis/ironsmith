@@ -2125,20 +2125,23 @@ pub(crate) fn append_token_reminder_to_effect(
                 exile_at_end_of_combat,
                 sacrifice_at_next_end_step,
                 exile_at_next_end_step,
+                next_end_step_player,
                 ..
             } => {
                 if token_reminder_has_haste(reminder_words) {
                     *has_haste = true;
                     return true;
                 }
-                let (sacrifice_next_end_step, exile_next_end_step) =
+                let (sacrifice_next_end_step, exile_next_end_step, parsed_next_end_step_player) =
                     parse_next_end_step_token_delay_flags(reminder_words);
                 if sacrifice_next_end_step {
                     *sacrifice_at_next_end_step = true;
+                    *next_end_step_player = parsed_next_end_step_player.clone();
                     return true;
                 }
                 if exile_next_end_step {
                     *exile_at_next_end_step = true;
+                    *next_end_step_player = parsed_next_end_step_player;
                     return true;
                 }
                 let exile_end_of_combat = token_reminder_exiles_at_end_of_combat(reminder_words);
@@ -2153,6 +2156,7 @@ pub(crate) fn append_token_reminder_to_effect(
                 exile_at_end_of_combat,
                 sacrifice_at_next_end_step,
                 exile_at_next_end_step,
+                next_end_step_player,
                 ..
             }
             | crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenCopyFromSource {
@@ -2160,19 +2164,22 @@ pub(crate) fn append_token_reminder_to_effect(
                 exile_at_end_of_combat,
                 sacrifice_at_next_end_step,
                 exile_at_next_end_step,
+                next_end_step_player,
                 ..
             } => {
                 if token_reminder_has_haste(reminder_words) {
                     *has_haste = true;
                     return true;
                 }
-                let (sacrifice_next_end_step, exile_next_end_step) =
+                let (sacrifice_next_end_step, exile_next_end_step, parsed_next_end_step_player) =
                     parse_next_end_step_token_delay_flags(reminder_words);
                 if sacrifice_next_end_step {
                     *sacrifice_at_next_end_step = true;
+                    *next_end_step_player = parsed_next_end_step_player.clone();
                 }
                 if exile_next_end_step {
                     *exile_at_next_end_step = true;
+                    *next_end_step_player = parsed_next_end_step_player;
                 }
                 let exile_end_of_combat = token_reminder_exiles_at_end_of_combat(reminder_words);
                 if exile_end_of_combat {
@@ -2190,6 +2197,7 @@ pub(crate) fn append_token_reminder_to_effect(
                 sacrifice_at_end_of_combat,
                 sacrifice_at_next_end_step,
                 exile_at_next_end_step,
+                next_end_step_player,
                 ..
             } => {
                 if let Some((power, toughness)) = parse_dynamic_token_pt_reminder(reminder_words) {
@@ -2200,13 +2208,15 @@ pub(crate) fn append_token_reminder_to_effect(
                     name.push(' ');
                 }
                 name.push_str(reminder);
-                let (sacrifice_next_end_step, exile_next_end_step) =
+                let (sacrifice_next_end_step, exile_next_end_step, parsed_next_end_step_player) =
                     parse_next_end_step_token_delay_flags(reminder_words);
                 if sacrifice_next_end_step {
                     *sacrifice_at_next_end_step = true;
+                    *next_end_step_player = parsed_next_end_step_player.clone();
                 }
                 if exile_next_end_step {
                     *exile_at_next_end_step = true;
+                    *next_end_step_player = parsed_next_end_step_player;
                 }
                 let exile_end_of_combat = token_reminder_exiles_at_end_of_combat(reminder_words);
                 if exile_end_of_combat {

@@ -356,6 +356,8 @@ const DAMAGE_DOUBLING_TO_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["would", "deal", "damage", "to"]);
+const WOULD_DEAL_NONCOMBAT_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["would", "deal", "noncombat", "damage", "to"]);
 const WOULD_DEAL_COMBAT_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["would", "deal", "combat", "damage", "to"]);
 const WOULD_DEAL_DAMAGE_TO_YOU_PHRASE_PATTERN: ClauseShape<'static> =
@@ -5420,8 +5422,8 @@ pub(crate) fn parse_damage_amount_replacement_line(
         return Ok(None);
     }
 
-    let Some(would_idx) =
-        keyword_find_exact_clause_window(clause, 4, WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN)
+    let Some((would_idx, damage_phrase_len, noncombat_only)) =
+        find_additive_damage_replacement_would_deal_phrase(clause)
     else {
         return Ok(None);
     };
@@ -5432,12 +5434,15 @@ pub(crate) fn parse_damage_amount_replacement_line(
         return Ok(None);
     }
 
-    let Some(tail_idx) = clause.after_words(would_idx + 4).and_then(|tail| {
-        keyword_find_exact_clause_window(tail, 6, IT_DEALS_THAT_MUCH_DAMAGE_PLUS_PHRASE_PATTERN)
-    }) else {
+    let Some(tail_idx) = clause
+        .after_words(would_idx + damage_phrase_len)
+        .and_then(|tail| {
+            keyword_find_exact_clause_window(tail, 6, IT_DEALS_THAT_MUCH_DAMAGE_PLUS_PHRASE_PATTERN)
+        })
+    else {
         return Ok(None);
     };
-    let replacement_start = would_idx + 4 + tail_idx;
+    let replacement_start = would_idx + damage_phrase_len + tail_idx;
     let Some(delta_word) = words.get(replacement_start + 6) else {
         return Ok(None);
     };
@@ -5445,7 +5450,7 @@ pub(crate) fn parse_damage_amount_replacement_line(
         return Ok(None);
     };
 
-    let damaged_words = &words[would_idx + 4..replacement_start];
+    let damaged_words = &words[would_idx + damage_phrase_len..replacement_start];
     let replacement_target_words = &words[replacement_start + 7..];
     let (target_player_filter, target_object_filter) =
         parse_damage_amount_replacement_target_filters(damaged_words)?;
@@ -5487,13 +5492,27 @@ pub(crate) fn parse_damage_amount_replacement_line(
     if !display.ends_with('.') {
         display.push('.');
     }
-    Ok(Some(StaticAbility::modify_damage_amount_replacement(
-        source_filter,
-        target_player_filter,
-        target_object_filter,
-        delta,
-        display,
-    )))
+    Ok(Some(
+        StaticAbility::modify_damage_amount_replacement_with_noncombat_only(
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            delta,
+            noncombat_only,
+            display,
+        ),
+    ))
+}
+
+fn find_additive_damage_replacement_would_deal_phrase(
+    clause: LexedClause<'_>,
+) -> Option<(usize, usize, bool)> {
+    keyword_find_exact_clause_window(clause, 5, WOULD_DEAL_NONCOMBAT_DAMAGE_TO_PHRASE_PATTERN)
+        .map(|idx| (idx, 5, true))
+        .or_else(|| {
+            keyword_find_exact_clause_window(clause, 4, WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN)
+                .map(|idx| (idx, 4, false))
+        })
 }
 
 fn damage_amount_plus_tail_matches_target(
@@ -10120,8 +10139,11 @@ pub(crate) fn parse_during_your_turn_prevent_all_damage_to_source_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_during_your_turn_prevent_all_damage_to_source_line_lexed(tokens) {
         return Ok(Some(
-            StaticAbility::prevent_all_damage_to_self()
-                .with_condition(crate::ConditionExpr::YourTurn),
+            StaticAbility::prevent_all_damage_to_self().with_condition(
+                crate::ConditionExpr::ActivationTiming(
+                    crate::ability::ActivationTiming::DuringYourTurn,
+                ),
+            ),
         ));
     }
 
