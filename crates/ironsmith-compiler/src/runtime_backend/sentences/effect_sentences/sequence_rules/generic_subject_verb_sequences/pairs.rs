@@ -2293,10 +2293,7 @@ pub(crate) fn parse_consult_match_move_and_bottom_remainder(
     if !matches!(
         parts.effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary {
-                mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
-                ..
-            },
+            action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
             ..
         }))
     ) {

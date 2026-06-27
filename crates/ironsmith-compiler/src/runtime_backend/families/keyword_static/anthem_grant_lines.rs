@@ -1,3 +1,4 @@
+use crate::ability::{PresentationKeyword, PresentationLabel};
 use crate::host::{EffectAst, TriggerSpec};
 
 fn anthem_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
@@ -6045,7 +6046,9 @@ fn nonstatic_keyword_action_as_granted_object_ability(
                     )]),
                     choices: Vec::new(),
                     intervening_if: None,
-                    presentation_label: Some(format!("keyword:casualty {power}")),
+                    presentation_label: Some(PresentationLabel::Keyword(
+                        PresentationKeyword::Casualty(power),
+                    )),
                 }),
                 functional_zones: vec![Zone::Stack],
             };

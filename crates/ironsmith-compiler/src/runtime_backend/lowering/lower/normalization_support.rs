@@ -641,7 +641,8 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
                 && triggered.presentation_label.is_none()
             {
-                triggered.presentation_label = presentation_label.map(str::to_string);
+                triggered.presentation_label =
+                    presentation_label.map(crate::ability::PresentationLabel::from_ability_word);
             }
             Ok(LineAst::Ability(parsed))
         }

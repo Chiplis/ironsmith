@@ -44,6 +44,18 @@ const COUNTER_TARGET_SECOND_SPELL_CAST_THIS_TURN_WORDS: &[&[&str]] = &[
     &[
         "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this", "turn",
     ],
+    &[
+        "counter", "target", "spell", "that's", "second", "spell", "cast", "this", "turn",
+    ],
+    &[
+        "counter", "target", "spell", "that's", "the", "second", "spell", "cast", "this", "turn",
+    ],
+    &[
+        "counter", "target", "spell", "that", "s", "second", "spell", "cast", "this", "turn",
+    ],
+    &[
+        "counter", "target", "spell", "that", "s", "the", "second", "spell", "cast", "this", "turn",
+    ],
 ];
 const EXILE_TARGET_CREATURE_PREFIX: &[&str] = &["exile", "target", "creature"];
 const GREATEST_POWER_AMONG_CREATURES_PHRASE: &[&str] = &["greatest", "power", "among", "creatures"];

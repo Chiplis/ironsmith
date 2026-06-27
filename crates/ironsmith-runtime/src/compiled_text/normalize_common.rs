@@ -250,6 +250,68 @@ pub(super) fn lowercase_first(text: &str) -> String {
     }
 }
 
+fn replace_this_spell_self_reference(text: String, subject: &str) -> String {
+    const CAST_THIS_SPELL: &str = "__ironsmith_cast_this_spell__";
+    let protected = text.replace("cast this spell", CAST_THIS_SPELL);
+    let replaced = protected
+        .replace("This spell", &capitalize_first(subject))
+        .replace("this spell", &lowercase_first(subject));
+    replaced.replace(CAST_THIS_SPELL, "cast this spell")
+}
+
+fn normalize_granted_triggered_ability_surface(surface: String) -> String {
+    let Some((head, tail)) = surface.split_once(": ") else {
+        return surface;
+    };
+    let lower_head = head.to_ascii_lowercase();
+    if !(lower_head.starts_with("when ")
+        || lower_head.starts_with("whenever ")
+        || lower_head.starts_with("at the beginning "))
+    {
+        return surface;
+    }
+
+    let tail = tail
+        .strip_prefix("You ")
+        .or_else(|| tail.strip_prefix("you "))
+        .unwrap_or(tail)
+        .trim_start();
+    if tail.is_empty() {
+        return surface;
+    }
+
+    let mut normalized_tail = lowercase_first(tail);
+    if !normalized_tail.ends_with('.')
+        && !normalized_tail.ends_with('!')
+        && !normalized_tail.ends_with('?')
+    {
+        normalized_tail.push('.');
+    }
+
+    format!("{head}, {normalized_tail}")
+}
+
+fn normalize_temporary_granted_trigger_surface(surface: String, ability: &Ability) -> String {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return surface;
+    };
+    let trigger_surface = triggered.trigger.display();
+    let lower_surface = surface.to_ascii_lowercase();
+    let uses_one_shot_when = trigger_surface
+        .starts_with("Whenever this permanent deals damage to the player who cast ")
+        || (trigger_surface == "Whenever this creature attacks"
+            && (lower_surface.contains("must block")
+                || lower_surface.contains("blocks it this turn if able")));
+    if !uses_one_shot_when {
+        return surface;
+    }
+
+    surface
+        .strip_prefix("Whenever this ")
+        .map(|rest| format!("When this {rest}"))
+        .unwrap_or(surface)
+}
+
 pub(super) fn lowercase_may_clause(text: &str) -> String {
     // Oracle uses lowercase imperatives after "may" ("you may put...", "that player may search...").
     // Avoid lowercasing leading proper nouns/plurals (e.g. creature types like "Allies").
@@ -2077,6 +2139,18 @@ fn normalize_token_death_trigger_quote_surface(line: &str) -> String {
     )
     .replace(
         "When this token dies: It deals 1 damage to any target",
+        "When this token dies, it deals 1 damage to any target",
+    )
+    .replace(
+        "\"When this token dies, this token deals 1 damage to any target.\"",
+        "\"When this token dies, it deals 1 damage to any target.\"",
+    )
+    .replace(
+        "\"When this token dies, this token deals 1 damage to any target\"",
+        "\"When this token dies, it deals 1 damage to any target\"",
+    )
+    .replace(
+        "When this token dies, this token deals 1 damage to any target",
         "When this token dies, it deals 1 damage to any target",
     )
 }
@@ -10303,9 +10377,12 @@ pub(super) fn describe_apply_continuous_clauses(
                 )
                 .replace(". otherwise,", ". Otherwise,");
                 if self_subject != "this spell" {
-                    ability_text = ability_text
-                        .replace("This spell", &capitalize_first(self_subject))
-                        .replace("this spell", self_subject);
+                    ability_text = replace_this_spell_self_reference(ability_text, self_subject);
+                }
+                ability_text = normalize_granted_triggered_ability_surface(ability_text);
+                if matches!(effect.until, Until::EndOfTurn) {
+                    ability_text =
+                        normalize_temporary_granted_trigger_surface(ability_text, ability);
                 }
                 let grant_verb = add_ability_verb;
                 clauses.push(format!("{grant_verb} \"{ability_text}\""));
@@ -10964,11 +11041,13 @@ pub(super) fn describe_apply_continuous_effect(
         return None;
     }
 
+    let quoted_granted_ability = clauses.iter().any(|clause| clause.contains('"'));
     let mut text = format!("{target} {}", join_with_and(&clauses));
-    if let Some(tail) = describe_apply_continuous_tail(effect) {
-        text.push(' ');
-        text.push_str(&tail);
-    }
+    text = apply_continuous_text_with_tail(
+        text,
+        describe_apply_continuous_tail(effect),
+        quoted_granted_ability,
+    );
     let text = normalize_each_other_continuous_subject(text);
     if let Some(condition) = &effect.condition
         && !matches!(effect.until, Until::ThisLeavesTheBattlefield)
@@ -10982,6 +11061,22 @@ pub(super) fn describe_apply_continuous_effect(
         ));
     }
     Some(text)
+}
+
+fn apply_continuous_text_with_tail(
+    mut text: String,
+    tail: Option<String>,
+    quoted_granted_ability: bool,
+) -> String {
+    let Some(tail) = tail else {
+        return text;
+    };
+    if tail == "until end of turn" && quoted_granted_ability {
+        return format!("Until end of turn, {}", lowercase_first(&text));
+    }
+    text.push(' ');
+    text.push_str(&tail);
+    text
 }
 
 fn normalize_each_other_continuous_subject(text: String) -> String {
@@ -11209,11 +11304,12 @@ pub(super) fn describe_compact_apply_continuous_pair(
         return None;
     }
 
-    let mut text = format!("{target} {}", join_with_and(&clauses));
-    if let Some(tail) = describe_apply_continuous_tail(first) {
-        text.push(' ');
-        text.push_str(&tail);
-    }
+    let quoted_granted_ability = clauses.iter().any(|clause| clause.contains('"'));
+    let text = apply_continuous_text_with_tail(
+        format!("{target} {}", join_with_and(&clauses)),
+        describe_apply_continuous_tail(first),
+        quoted_granted_ability,
+    );
     Some(normalize_each_other_continuous_subject(text))
 }
 
@@ -11281,11 +11377,12 @@ pub(super) fn describe_compact_tagged_apply_continuous_pair(
         return None;
     }
 
-    let mut text = format!("{target} {}", join_with_and(&clauses));
-    if let Some(tail) = describe_apply_continuous_tail(first) {
-        text.push(' ');
-        text.push_str(&tail);
-    }
+    let quoted_granted_ability = clauses.iter().any(|clause| clause.contains('"'));
+    let text = apply_continuous_text_with_tail(
+        format!("{target} {}", join_with_and(&clauses)),
+        describe_apply_continuous_tail(first),
+        quoted_granted_ability,
+    );
     Some(normalize_each_other_continuous_subject(text))
 }
 
@@ -13206,6 +13303,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PermanentLeftBattlefieldThisTurn => {
             "a permanent left the battlefield this turn".to_string()
         }
+        Condition::NonlandPermanentLeftBattlefieldThisTurn => {
+            "a nonland permanent left the battlefield this turn".to_string()
+        }
+        Condition::SpellWasWarpedThisTurn => "a spell was warped this turn".to_string(),
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {
             "a permanent left the battlefield under your control this turn".to_string()
         }
@@ -13304,11 +13405,13 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::TargetWasKicked => "the target spell was kicked".to_string(),
         Condition::ThisSpellWasKicked => "this spell was kicked".to_string(),
         Condition::ThisSpellPaidLabel(label) => {
-            if label.eq_ignore_ascii_case("gift") || label.to_ascii_lowercase().starts_with("gift ")
+            let display_label = label.display_label();
+            if display_label.eq_ignore_ascii_case("gift")
+                || display_label.to_ascii_lowercase().starts_with("gift ")
             {
                 return "the gift was promised".to_string();
             }
-            if label.eq_ignore_ascii_case("bargain") {
+            if display_label.eq_ignore_ascii_case("bargain") {
                 return "this spell was bargained".to_string();
             }
             if let Some(cost) = label.strip_prefix("Kicker ") {
@@ -14342,10 +14445,14 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 "it is not your turn".to_string()
             } else if let Condition::PermanentLeftBattlefieldThisTurn = inner.as_ref() {
                 "no permanents left the battlefield this turn".to_string()
+            } else if let Condition::NonlandPermanentLeftBattlefieldThisTurn = inner.as_ref() {
+                "no nonland permanents left the battlefield this turn".to_string()
+            } else if let Condition::SpellWasWarpedThisTurn = inner.as_ref() {
+                "no spells were warped this turn".to_string()
             } else if let Condition::CardsInHandOrMore(1) = inner.as_ref() {
                 "you have no cards in hand".to_string()
             } else if let Condition::ThisSpellPaidLabel(label) = inner.as_ref()
-                && label.eq_ignore_ascii_case("tribute")
+                && label.display_label().eq_ignore_ascii_case("tribute")
             {
                 "tribute wasn't paid".to_string()
             } else if let Condition::ThisSpellPaidLabel(label) = inner.as_ref() {
@@ -14354,7 +14461,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 // in debug_safe and would silently drop the condition.
                 format!(
                     "this spell's {} cost wasn't paid",
-                    label.to_ascii_lowercase()
+                    label.display_label().to_ascii_lowercase()
                 )
             } else if let Condition::PlayerControls { player, filter } = inner.as_ref() {
                 let subject = describe_player_filter(player);
@@ -14857,6 +14964,43 @@ mod tests {
     }
 
     #[test]
+    fn temporary_generic_granted_trigger_renders_quoted_oracle_surface() {
+        let triggered = crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::this_deals_damage_to_player(
+                PlayerFilter::EffectController,
+                None,
+            ),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::new(crate::effects::SacrificeTargetEffect::new(
+                    ChooseSpec::Source,
+                )),
+                Effect::new(crate::effects::LoseLifeEffect::you(Value::Fixed(2))),
+            ]),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        };
+        let ability = Ability {
+            kind: AbilityKind::Triggered(triggered),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        let effect = crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Filter(
+                ObjectFilter::permanent().controlled_by(PlayerFilter::Opponent),
+            ),
+            crate::continuous::Modification::AddAbilityGeneric(ability),
+            Until::EndOfTurn,
+        );
+
+        assert_eq!(
+            describe_apply_continuous_effect(&effect).as_deref(),
+            Some(
+                "Until end of turn, permanents an opponent controls gain \"When this permanent deals damage to the player who cast this spell, sacrifice this permanent. You lose 2 life.\""
+            )
+        );
+    }
+
+    #[test]
     fn normalize_for_each_opponent_clause_inside_trigger_text() {
         assert_eq!(
             normalize_common_semantic_phrasing(
@@ -14883,6 +15027,16 @@ mod tests {
                 "It gains haste. Then if it's a Saga, put up to three lore counters on it."
             ),
             "It gains haste. If it's a Saga, put up to three lore counters on it."
+        );
+    }
+
+    #[test]
+    fn normalize_token_death_quote_uses_it_for_token_damage() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Create three 1/1 red Devil creature tokens with \"When this token dies, this token deals 1 damage to any target\""
+            ),
+            "Create three 1/1 red Devil creature tokens with \"When this token dies, it deals 1 damage to any target\""
         );
     }
 
@@ -15557,7 +15711,9 @@ mod tests {
                 )]),
                 choices: Vec::new(),
                 intervening_if: None,
-                presentation_label: Some("keyword:toxic 1".to_string()),
+                presentation_label: Some(crate::ability::PresentationLabel::Keyword(
+                    crate::ability::PresentationKeyword::Toxic(1),
+                )),
             }),
             functional_zones: vec![Zone::Battlefield],
         };

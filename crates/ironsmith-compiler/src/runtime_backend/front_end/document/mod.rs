@@ -2604,7 +2604,7 @@ mod tests {
         assert_eq!(
             parsed.intervening_if,
             Some(crate::cards::builders::PredicateAst::Not(Box::new(
-                crate::cards::builders::PredicateAst::ThisSpellPaidLabel("Tribute".to_string()),
+                crate::cards::builders::PredicateAst::ThisSpellPaidLabel("Tribute".into()),
             ))),
         );
     }

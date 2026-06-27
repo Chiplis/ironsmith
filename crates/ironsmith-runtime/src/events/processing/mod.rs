@@ -555,6 +555,7 @@ fn process_event_direct(
             TraitApplyResult::Replaced(effects) => TraitEventResult::Replaced {
                 effects,
                 effect_id,
+                replacement: chosen_effect.replacement.clone(),
                 source: chosen_effect.source,
                 controller: chosen_effect.controller,
             },
@@ -628,6 +629,7 @@ fn process_event_direct(
         TraitApplyResult::Replaced(effects) => TraitEventResult::Replaced {
             effects,
             effect_id,
+            replacement: chosen_effect.replacement.clone(),
             source: chosen_effect.source,
             controller: chosen_effect.controller,
         },
@@ -1415,6 +1417,7 @@ pub enum TraitEventResult {
         /// The ID of the replacement effect that was applied.
         /// Used to consume one-shot effects after application.
         effect_id: crate::replacement::ReplacementEffectId,
+        replacement: ReplacementAction,
         source: crate::ids::ObjectId,
         controller: PlayerId,
     },
@@ -1751,6 +1754,7 @@ fn process_destroy_inner(
             effect_id,
             source: replacement_source,
             controller: replacement_controller,
+            ..
         } => {
             // Destruction was replaced with other effects.
             // Execute the replacement effects with a minimal context.
@@ -1924,50 +1928,66 @@ fn process_zone_change_inner(
         TraitEventResult::Replaced {
             effects,
             effect_id,
+            replacement,
             source: replacement_source,
             controller: replacement_controller,
         } => {
-            let replacement_effect = game
-                .effect_store
-                .replacement_effects
-                .get_effect(effect_id)
-                .cloned();
             game.effect_store
                 .replacement_effects
                 .mark_effect_used(effect_id);
-            if let Some(effect) = replacement_effect.as_ref()
-                && matches!(
-                    effect.replacement,
-                    crate::replacement::ReplacementAction::ExileWithSourceLink
-                        | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
-                        | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen { .. }
-                )
-            {
-                let exile_with_counters = match &effect.replacement {
+            if matches!(
+                replacement,
+                crate::replacement::ReplacementAction::MoveToZoneWithCounters { .. }
+                    | crate::replacement::ReplacementAction::ExileWithSourceLink
+                    | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
+                    | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen { .. }
+            ) {
+                let destination = match &replacement {
+                    crate::replacement::ReplacementAction::MoveToZoneWithCounters {
+                        zone, ..
+                    } => *zone,
+                    _ => Zone::Exile,
+                };
+                let counters = match &replacement {
+                    crate::replacement::ReplacementAction::MoveToZoneWithCounters {
+                        counters,
+                        ..
+                    } => counters.as_slice(),
                     crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen {
                         counters,
                         ..
                     } => counters.as_slice(),
                     _ => &[],
                 };
-                if let Some(new_id) = game.move_object(object, Zone::Exile, cause.clone()) {
-                    for (counter_type, count) in exile_with_counters {
+                let should_link_to_source = matches!(
+                    replacement,
+                    crate::replacement::ReplacementAction::ExileWithSourceLink
+                        | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
+                        | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen { .. }
+                );
+                if let Some(new_id) = game.move_object(object, destination, cause.clone()) {
+                    for (counter_type, count) in counters {
                         if let Some(event) = game.add_counters_with_source(
                             new_id,
                             *counter_type,
                             *count,
-                            Some(effect.source),
-                            Some(effect.controller),
+                            Some(replacement_source),
+                            Some(replacement_controller),
                         ) {
                             game.queue_trigger_event(event.provenance(), event);
                         }
                     }
-                    game.add_exiled_with_source_link(effect.source, new_id);
+                    if should_link_to_source {
+                        game.add_exiled_with_source_link(replacement_source, new_id);
+                    }
                     game.record_zone_change_results(object, vec![new_id]);
                 }
                 if !effects.is_empty() {
-                    let mut ctx =
-                        crate::effects::ExecutionContext::new(effect.source, effect.controller, dm);
+                    let mut ctx = crate::effects::ExecutionContext::new(
+                        replacement_source,
+                        replacement_controller,
+                        dm,
+                    );
                     for effect in effects {
                         if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx)
                         {
@@ -2212,6 +2232,7 @@ fn process_with_dm_and_additional_effects_and_applied(
                         return TraitEventResult::Replaced {
                             effects,
                             effect_id,
+                            replacement: chosen_effect.replacement.clone(),
                             source: chosen_effect.source,
                             controller: chosen_effect.controller,
                         };
@@ -3221,6 +3242,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                 effect_id,
                 source: replacement_source,
                 controller: replacement_controller,
+                ..
             } => {
                 use crate::effects::{ExecutionContext, execute_effect};
                 if game.object(object).is_some() {
@@ -3830,6 +3852,7 @@ pub fn process_event_with_chosen_replacement_trait_and_applied_effects(
         TraitApplyResult::Replaced(effects) => TraitEventResult::Replaced {
             effects,
             effect_id: chosen_effect_id,
+            replacement: effect.replacement.clone(),
             source: effect.source,
             controller: effect.controller,
         },

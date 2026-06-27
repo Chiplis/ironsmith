@@ -143,7 +143,7 @@ fn choose_and_pay_optional_costs_for_cast_tagged_spell(
                 .unwrap_or_else(|| opt_cost.cost.display());
             crate::decisions::context::SelectableOption::with_legality(
                 index,
-                format!("{}: {}", opt_cost.label, cost_description),
+                format!("{}: {}", opt_cost.display_label(), cost_description),
                 affordable,
             )
         })

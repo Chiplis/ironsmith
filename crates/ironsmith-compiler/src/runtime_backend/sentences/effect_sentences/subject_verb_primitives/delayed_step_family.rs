@@ -80,6 +80,7 @@ const DELAYED_PLAYER_ITS_OWNER_PHRASES: &[&[&str]] = &[&["its", "owner"], &["the
 const DELAYED_PAY_OR_PAYS_WORDS: &[&str] = &["pay", "pays"];
 const DELAYED_DRAW_OR_DRAWS_WORDS: &[&str] = &["draw", "draws"];
 const DELAYED_DISCARD_OR_DISCARDS_WORDS: &[&str] = &["discard", "discards"];
+const DELAYED_SACRIFICE_OR_SACRIFICES_WORDS: &[&str] = &["sacrifice", "sacrifices"];
 const DELAYED_REFERRED_OBJECT_NOUN_WORDS: &[&str] = &[
     "ability",
     "abilitys",
@@ -232,6 +233,11 @@ const DELAYED_DISCARD_ACTION_PATTERN: LexPattern<'static> = LexPattern::new(&[Le
     "action",
     LexCaptureKind::OneOf(DELAYED_DISCARD_OR_DISCARDS_WORDS),
 )]);
+const DELAYED_SACRIFICE_ACTION_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::action(
+        "action",
+        LexCaptureKind::OneOf(DELAYED_SACRIFICE_OR_SACRIFICES_WORDS),
+    )]);
 const DELAYED_MANA_COST_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::word("mana"),
     LexPattern::object("cost", LexCaptureKind::OneOf(DELAYED_MANA_COST_WORDS)),
@@ -831,6 +837,69 @@ fn parse_unless_payment_clause_as_cost(
     )
 }
 
+fn parse_unless_sacrifice_clause_as_cost(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<crate::cost::TotalCost>, CardTextError> {
+    let words = clause.word_refs();
+    if !matches!(words.first().copied(), Some("sacrifice" | "sacrifices")) {
+        return Ok(None);
+    }
+    let effect = super::super::zone_handlers::parse_sacrifice(clause.tokens(), None, None)?;
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Sacrifice {
+                filter,
+                count: 1,
+                ..
+            },
+        ..
+    }) = effect
+    else {
+        return Ok(None);
+    };
+    Ok(Some(crate::cost::TotalCost::from_cost(
+        crate::costs::Cost::sacrifice(filter),
+    )))
+}
+
+fn parse_unless_sacrifice_or_pay_cost(
+    after_clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<(PlayerAst, crate::cost::TotalCost)>, CardTextError> {
+    let after_words = after_clause.words().to_word_refs();
+    let Some((player, action_word_start)) = parse_delayed_player_prefix(&after_words) else {
+        return Ok(None);
+    };
+    let Some(action_clause) = after_clause.after_words(action_word_start) else {
+        return Ok(None);
+    };
+    let action_clause = action_clause.trimmed();
+    let Some(or_idx) =
+        crate::runtime_backend::families::activation_and_restrictions::find_payment_alternative_or(
+            action_clause.tokens(),
+        )
+    else {
+        return Ok(None);
+    };
+    let left_clause = SubjectVerbPrimitiveClause::new(&action_clause.tokens()[..or_idx]).trimmed();
+    let right_clause =
+        SubjectVerbPrimitiveClause::new(&action_clause.tokens()[or_idx + 1..]).trimmed();
+    if !delayed_clause_starts_with_action(left_clause, DELAYED_SACRIFICE_ACTION_PATTERN)
+        || !delayed_clause_starts_with_action(right_clause, DELAYED_PAY_ACTION_PATTERN)
+    {
+        return Ok(None);
+    }
+    let Some(sacrifice_cost) = parse_unless_sacrifice_clause_as_cost(left_clause)? else {
+        return Ok(None);
+    };
+    let Some(payment_cost) = parse_unless_payment_clause_as_cost(right_clause)? else {
+        return Ok(None);
+    };
+    Ok(Some((
+        player,
+        crate::cost::TotalCost::one_of(vec![sacrifice_cost, payment_cost]),
+    )))
+}
+
 /// Try to build an UnlessPays or UnlessAction AST from the tokens after "unless".
 /// Returns the unless wrapper containing the given `effects` as the main effects.
 pub(crate) fn try_build_unless(
@@ -841,6 +910,14 @@ pub(crate) fn try_build_unless(
     let after_clause = clause.from(unless_idx + 1).trimmed();
     let after_words = after_clause.words().to_word_refs();
     let pay_word_idx = after_clause.find_word_any(&["pay", "pays"]);
+
+    if let Some((player, cost)) = parse_unless_sacrifice_or_pay_cost(after_clause)? {
+        return Ok(Some(EffectAst::UnlessPays {
+            effects,
+            player,
+            cost,
+        }));
+    }
 
     // Determine the player from the "unless" clause
     let Some((player, action_word_start)) = (if let Some(pay_idx) = pay_word_idx {
@@ -1040,6 +1117,31 @@ mod tests {
             debug.contains("TargetOpponent"),
             "expected explicit-player unless choice to bind the target opponent context, got {debug}"
         );
+    }
+
+    #[test]
+    fn try_build_unless_parses_sacrifice_or_pay_as_one_payment_choice() {
+        let tokens = lex_line(
+            "Draw a card unless target opponent sacrifices a creature of their choice or pays 3 life.",
+            0,
+        )
+        .expect("unless sacrifice-or-pay text should lex");
+        let clause = SubjectVerbPrimitiveClause::new(&tokens);
+        let unless_idx = clause.find_token_word("unless").expect("unless token");
+        let effects = parse_effect_chain(&tokens[..unless_idx])
+            .expect("lead effect should parse before unless clause");
+
+        let unless_effect = try_build_unless(effects, clause, unless_idx)
+            .expect("unless sacrifice-or-pay should parse")
+            .expect("unless sacrifice-or-pay should lower");
+        let debug = format!("{unless_effect:?}");
+
+        assert!(debug.contains("UnlessPays"), "{debug}");
+        assert!(debug.contains("TargetOpponent"), "{debug}");
+        assert!(debug.contains("OneOf"), "{debug}");
+        assert!(debug.contains("Sacrifice"), "{debug}");
+        assert!(debug.contains("Creature"), "{debug}");
+        assert!(debug.contains("Life"), "{debug}");
     }
 }
 

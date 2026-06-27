@@ -553,7 +553,10 @@ fn apply_class_level_runtime_gates(definition: &mut ironsmith::cards::CardDefini
         if let ironsmith::ability::AbilityKind::Triggered(triggered) = &mut ability.kind
             && triggered.presentation_label.is_none()
         {
-            triggered.presentation_label = Some(format!("{CLASS_LEVEL_MARKER_PREFIX}{level}"));
+            triggered.presentation_label =
+                Some(ironsmith::ability::PresentationLabel::from_ability_word(
+                    format!("{CLASS_LEVEL_MARKER_PREFIX}{level}"),
+                ));
         }
     }
 }

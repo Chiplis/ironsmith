@@ -7,16 +7,20 @@ use crate::game_state::GameState;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepeatProcessPromptEffect {
-    pub description: String,
+    pub kind: ironsmith_core::RepeatProcessPromptKind,
     pub fallback: FallbackStrategy,
 }
 
 impl RepeatProcessPromptEffect {
-    pub fn new(description: impl Into<String>) -> Self {
+    pub fn new(kind: ironsmith_core::RepeatProcessPromptKind) -> Self {
         Self {
-            description: description.into(),
+            kind,
             fallback: FallbackStrategy::Decline,
         }
+    }
+
+    pub fn description(&self) -> &'static str {
+        self.kind.prompt_text()
     }
 }
 
@@ -35,7 +39,7 @@ impl EffectExecutor for RepeatProcessPromptEffect {
             &mut ctx.decision_maker,
             ctx.iteration.iterated_player.unwrap_or(ctx.controller),
             ctx.source,
-            self.description.clone(),
+            self.description().to_string(),
             self.fallback,
         );
 

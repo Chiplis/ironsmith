@@ -15,6 +15,8 @@ use crate::object::CounterType;
 use crate::target::ChooseSpec;
 pub type TotalCost = ironsmith_core::TotalCost<Cost>;
 pub type OptionalCost = ironsmith_core::OptionalCost<Cost>;
+pub type OptionalCostKind = ironsmith_core::OptionalCostKind;
+pub type OptionalCostRef = ironsmith_core::OptionalCostRef;
 pub type OptionalCostsPaid = ironsmith_core::OptionalCostsPaid;
 
 impl ironsmith_core::CostComponent for Cost {
@@ -309,7 +311,7 @@ mod tests {
     #[test]
     fn gift_prefix_lookup_matches_descriptive_gift_label() {
         let paid = OptionalCostsPaid {
-            costs: vec![("Gift a tapped Fish".to_string(), 1)],
+            costs: vec![("Gift a tapped Fish".into(), 1)],
         };
 
         assert!(paid.was_paid_label("Gift"));

@@ -40,6 +40,7 @@ fn resolve_zone_replacements(
                     replacement.replacement_zone,
                     replacement.optional,
                     replacement.choice_description.clone(),
+                    replacement.counters.clone(),
                 ),
             )
         })

@@ -304,6 +304,9 @@ pub(crate) fn parse_consult_traversal_sentence(
 }
 
 fn apply_consult_relative_mana_value_filter(tokens: &[OwnedLexToken], filter: &mut ObjectFilter) {
+    if filter.mana_value.is_some() {
+        return;
+    }
     let has_lesser_mana_value = contains_token_any_word(tokens, &["lesser", "less"])
         && contains_token_word(tokens, "mana")
         && contains_token_word(tokens, "value");

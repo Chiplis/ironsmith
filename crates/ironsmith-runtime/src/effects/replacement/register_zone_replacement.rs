@@ -3,6 +3,7 @@ use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{EffectExecutionCategory, EffectExecutor, ReplacementApplyMode};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::object::CounterType;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
@@ -17,6 +18,7 @@ pub struct RegisterZoneReplacementEffect {
     pub mode: ReplacementApplyMode,
     pub optional: bool,
     pub choice_description: Option<String>,
+    pub counters: Vec<(CounterType, u32)>,
 }
 
 impl RegisterZoneReplacementEffect {
@@ -35,12 +37,18 @@ impl RegisterZoneReplacementEffect {
             mode,
             optional: false,
             choice_description: None,
+            counters: Vec::new(),
         }
     }
 
     pub fn optional(mut self, description: impl Into<String>) -> Self {
         self.optional = true;
         self.choice_description = Some(description.into());
+        self
+    }
+
+    pub fn with_counters(mut self, counters: Vec<(CounterType, u32)>) -> Self {
+        self.counters = counters;
         self
     }
 
@@ -62,6 +70,7 @@ impl RegisterZoneReplacementEffect {
                     self.replacement_zone,
                     self.optional,
                     self.choice_description.clone(),
+                    self.counters.clone(),
                 );
                 ReplacementEffect::with_matcher(
                     ctx.source,
@@ -83,6 +92,7 @@ pub(crate) fn zone_replacement_action(
     replacement_zone: Zone,
     optional: bool,
     choice_description: Option<String>,
+    counters: Vec<(CounterType, u32)>,
 ) -> ReplacementAction {
     if optional {
         let mut destinations = Vec::new();
@@ -95,6 +105,13 @@ pub(crate) fn zone_replacement_action(
         return ReplacementAction::InteractiveChooseDestination {
             destinations,
             description: choice_description.unwrap_or_else(|| "Choose a destination".to_string()),
+        };
+    }
+
+    if !counters.is_empty() {
+        return ReplacementAction::MoveToZoneWithCounters {
+            zone: replacement_zone,
+            counters,
         };
     }
 
@@ -218,6 +235,56 @@ mod tests {
                 .zone,
             Zone::Exile
         );
+    }
+
+    #[test]
+    fn test_registered_zone_replacement_moves_with_counters() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature = create_creature(&mut game, alice, Zone::Battlefield);
+        let stable_id = game
+            .object(creature)
+            .expect("creature should exist")
+            .stable_id;
+
+        let effect = RegisterZoneReplacementEffect::new(
+            ChooseSpec::SpecificObject(creature),
+            Some(Zone::Battlefield),
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ReplacementApplyMode::OneShot,
+        )
+        .with_counters(vec![(CounterType::Time, 3)]);
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(creature, alice, &mut dm);
+        let _ = execute_effect(&mut game, &crate::effect::Effect::new(effect), &mut ctx)
+            .expect("replacement registration should succeed");
+
+        let move_outcome = execute_effect(
+            &mut game,
+            &crate::effect::Effect::move_to_zone(
+                ChooseSpec::SpecificObject(creature),
+                Zone::Graveyard,
+                false,
+            ),
+            &mut ctx,
+        )
+        .expect("move effect should resolve");
+        assert!(
+            move_outcome.status != OutcomeStatus::TargetInvalid,
+            "expected move effect to resolve on the creature"
+        );
+
+        let exiled_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("creature should still be findable after replacement");
+        assert_eq!(
+            game.object(exiled_id)
+                .expect("exiled creature should exist")
+                .zone,
+            Zone::Exile
+        );
+        assert_eq!(game.counter_count(exiled_id, CounterType::Time), 3);
     }
 
     #[test]

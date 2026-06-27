@@ -1240,7 +1240,7 @@ pub(crate) fn parse_search_face_down_exile_conditional_cast_else_hand(
         return Ok(None);
     };
     let combined_predicate = PredicateAst::And(
-        Box::new(PredicateAst::ThisSpellPaidLabel("Bargain".to_string())),
+        Box::new(PredicateAst::ThisSpellPaidLabel("Bargain".into())),
         Box::new(PredicateAst::ValueComparison {
             left: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(searched_tag.clone()))),
             operator,

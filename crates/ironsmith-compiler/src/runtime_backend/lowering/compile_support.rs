@@ -596,6 +596,10 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::PermanentLeftBattlefieldThisTurn => {
             Condition::PermanentLeftBattlefieldThisTurn
         }
+        PredicateAst::NonlandPermanentLeftBattlefieldThisTurn => {
+            Condition::NonlandPermanentLeftBattlefieldThisTurn
+        }
+        PredicateAst::SpellWasWarpedThisTurn => Condition::SpellWasWarpedThisTurn,
         PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn => {
             Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         }

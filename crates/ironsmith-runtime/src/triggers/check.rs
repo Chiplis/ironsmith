@@ -9,7 +9,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use crate::Effect;
-use crate::ability::{AbilityKind, TriggeredAbility};
+use crate::ability::{AbilityKind, PresentationLabel, TriggeredAbility};
 use crate::continuous::ContinuousEffect;
 use crate::effect::Value;
 use crate::filter::ObjectRef;
@@ -1153,19 +1153,20 @@ fn presentation_labeled_snapshot_trigger_is_active(
     source: &ObjectSnapshot,
     triggered: &crate::ability::TriggeredAbility,
 ) -> bool {
-    let Some(label) = triggered.presentation_label.as_deref() else {
+    let Some(label) = triggered.presentation_label.as_ref() else {
         return true;
     };
-    if label == "__ironsmith_case_solved" {
-        return game.is_case_solved(source.object_id);
+    match label {
+        PresentationLabel::CaseSolved => return game.is_case_solved(source.object_id),
+        PresentationLabel::CaseToSolve => return !game.is_case_solved(source.object_id),
+        _ => {}
     }
-    if label == "__ironsmith_case_to_solve" {
-        return !game.is_case_solved(source.object_id);
-    }
-    let Some(level) = label
-        .strip_prefix("__ironsmith_class_level:")
-        .and_then(|level| level.parse::<u32>().ok())
-    else {
+    let Some(level) = (match label {
+        PresentationLabel::AbilityWord(label) => label
+            .strip_prefix("__ironsmith_class_level:")
+            .and_then(|level| level.parse::<u32>().ok()),
+        _ => None,
+    }) else {
         return true;
     };
 
@@ -1743,19 +1744,20 @@ fn presentation_labeled_trigger_is_active(
     source: &crate::object::Object,
     triggered: &crate::ability::TriggeredAbility,
 ) -> bool {
-    let Some(label) = triggered.presentation_label.as_deref() else {
+    let Some(label) = triggered.presentation_label.as_ref() else {
         return true;
     };
-    if label == "__ironsmith_case_solved" {
-        return game.is_case_solved(source.id);
+    match label {
+        PresentationLabel::CaseSolved => return game.is_case_solved(source.id),
+        PresentationLabel::CaseToSolve => return !game.is_case_solved(source.id),
+        _ => {}
     }
-    if label == "__ironsmith_case_to_solve" {
-        return !game.is_case_solved(source.id);
-    }
-    let Some(level) = label
-        .strip_prefix("__ironsmith_class_level:")
-        .and_then(|level| level.parse::<u32>().ok())
-    else {
+    let Some(level) = (match label {
+        PresentationLabel::AbilityWord(label) => label
+            .strip_prefix("__ironsmith_class_level:")
+            .and_then(|level| level.parse::<u32>().ok()),
+        _ => None,
+    }) else {
         return true;
     };
 
@@ -2450,7 +2452,7 @@ fn evaluate_intervening_if_condition(
         ),
         crate::effect::Condition::ThisSpellPaidLabel(label) => optional_costs_paid.map_or_else(
             || crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
-            |paid| paid.was_paid_label(label),
+            |paid| paid.was_paid_label(label.clone()),
         ),
         _ => crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
     }
@@ -3511,7 +3513,7 @@ mod tests {
         game.object_mut(spell_id)
             .expect("spell object should exist")
             .optional_costs_paid = crate::cost::OptionalCostsPaid {
-            costs: vec![("Conspire".to_string(), 1), ("Conspire 2".to_string(), 1)],
+            costs: vec![("Conspire".into(), 1), ("Conspire 2".into(), 1)],
         };
 
         let triggered = check_triggers(

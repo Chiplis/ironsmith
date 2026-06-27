@@ -10909,6 +10909,11 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         0,
     )
     .expect("rewrite lexer should classify enter-or-graveyard trigger probe");
+    let graveyard_or_exile_from_battlefield_tokens = lex_line(
+        "this artifact or another nontoken artifact you control is put into a graveyard from the battlefield or is put into exile from the battlefield",
+        0,
+    )
+    .expect("rewrite lexer should classify graveyard-or-exile-from-battlefield trigger probe");
     let transforms_tokens = lex_line("this creature transforms into Trystan, Penitent Culler", 0)
         .expect("rewrite lexer should classify standalone transforms trigger probe");
     let this_case_enters_tokens = lex_line("this Case enters", 0)
@@ -11065,6 +11070,40 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
             Ok(crate::cards::builders::TriggerSpec::PutIntoGraveyardFromZone { .. })
         ),
         "{graveyard:?}"
+    );
+    let graveyard_or_exile_from_battlefield =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &graveyard_or_exile_from_battlefield_tokens,
+        );
+    assert!(
+        matches!(
+            graveyard_or_exile_from_battlefield,
+            Ok(crate::cards::builders::TriggerSpec::Either(ref left, ref right))
+                if matches!(
+                    left.as_ref(),
+                    crate::cards::builders::TriggerSpec::PutIntoGraveyardFromZone {
+                        from: crate::zone::Zone::Battlefield,
+                        filter,
+                        ..
+                    } if filter.source
+                        && filter.card_types == vec![crate::types::CardType::Artifact]
+                        && filter.nontoken
+                        && filter.controller == Some(crate::target::PlayerFilter::You)
+                )
+                    && matches!(
+                        right.as_ref(),
+                        crate::cards::builders::TriggerSpec::PutIntoExileFromZones {
+                            from,
+                            filter,
+                            ..
+                        } if *from == vec![crate::zone::Zone::Battlefield]
+                            && filter.source
+                            && filter.card_types == vec![crate::types::CardType::Artifact]
+                            && filter.nontoken
+                            && filter.controller == Some(crate::target::PlayerFilter::You)
+                    )
+        ),
+        "expected graveyard-or-exile battlefield trigger pair, got {graveyard_or_exile_from_battlefield:?}"
     );
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(

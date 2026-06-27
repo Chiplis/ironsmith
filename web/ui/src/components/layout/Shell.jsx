@@ -3,7 +3,11 @@ import { useGame } from "@/context/GameContext";
 import { parseNames } from "@/lib/constants";
 import { UI_NOTICE_EVENT } from "@/lib/ui-notices";
 import { decodeBase64UrlUtf8, normalizePuzzlePayload, PUZZLE_ZONE_ORDER } from "@/lib/puzzles";
-import { MATCH_FORMAT_COMMANDER, MATCH_FORMAT_NORMAL } from "@/lib/decklists";
+import {
+  MATCH_FORMAT_COMMANDER,
+  MATCH_FORMAT_NORMAL,
+  readDefaultLobbyDeck,
+} from "@/lib/decklists";
 import {
   MULTIPLAYER_SECURITY_TRUSTED,
   normalizeMultiplayerSecurityMode,
@@ -603,11 +607,19 @@ function readLobbyQueryParams() {
 
   const params = new URLSearchParams(window.location.search);
   const lobbyId = String(params.get("lobby") || "").trim();
+  const hasDeckParam = params.has("deck");
+  const hasCommanderParam = params.has("commander");
+  const savedLobbyDeck =
+    lobbyId && !hasDeckParam && !hasCommanderParam ? readDefaultLobbyDeck() : null;
   return {
     lobbyId,
     name: String(params.get("name") || "").trim(),
-    deckText: decodeBase64UrlUtf8(params.get("deck")),
-    commanderText: decodeBase64UrlUtf8(params.get("commander")),
+    deckText: hasDeckParam
+      ? decodeBase64UrlUtf8(params.get("deck"))
+      : String(savedLobbyDeck?.deckText || ""),
+    commanderText: hasCommanderParam
+      ? decodeBase64UrlUtf8(params.get("commander"))
+      : String(savedLobbyDeck?.commanderText || ""),
     securityMode: normalizeMultiplayerSecurityMode(
       params.get("securityMode") || params.get("security"),
       MULTIPLAYER_SECURITY_TRUSTED

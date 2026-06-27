@@ -39,7 +39,7 @@ mod tests {
 
         // Should have multikicker
         assert_eq!(card.optional_costs.len(), 1);
-        assert_eq!(card.optional_costs[0].label, "Multikicker");
+        assert_eq!(card.optional_costs[0].source_label, "Multikicker");
         assert!(card.optional_costs[0].repeatable);
 
         // Should have 2 abilities: ETB replacement/static ability and mana ability

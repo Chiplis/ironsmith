@@ -624,6 +624,23 @@ impl super::Trigger {
                 exact_spells_this_turn,
                 from_not_hand,
             ),
+            ironsmith_core::DelayedTriggerSpec::AbilityActivated {
+                activator,
+                filter,
+                non_mana_only,
+                loyalty_only,
+                activation_cost_has_tap,
+            } => Self::ability_activated_qualified_with_activation_cost_tap(
+                activator,
+                filter,
+                non_mana_only,
+                loyalty_only,
+                activation_cost_has_tap,
+            ),
+            ironsmith_core::DelayedTriggerSpec::Either(left, right) => Self::either(
+                Self::from_delayed_trigger_spec(*left),
+                Self::from_delayed_trigger_spec(*right),
+            ),
         }
     }
 

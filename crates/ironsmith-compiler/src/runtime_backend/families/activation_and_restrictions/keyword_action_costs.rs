@@ -623,7 +623,7 @@ fn parse_payment_clause_as_effects(
     }
 }
 
-fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub(crate) fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
     find_index_with(tokens, |idx, token| {
         keyword_action_token_is(token, "or") && !is_comparison_or_delimiter(tokens, idx)
     })

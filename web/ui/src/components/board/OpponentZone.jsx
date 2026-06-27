@@ -73,7 +73,7 @@ function shouldShowZoneBody(player, entry, activity = null) {
   if (activity) return true;
   if (entry.zone === "battlefield") return true;
   if (entry.zone === "hand") {
-    return Boolean(player?.can_view_hand) || (entry.cards || []).length > 0 || entry.count > 0;
+    return true;
   }
   if (entry.zone === "graveyard" || entry.zone === "exile") return true;
   return entry.count > 0 || (entry.cards || []).length > 0;

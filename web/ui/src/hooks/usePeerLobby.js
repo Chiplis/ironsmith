@@ -70,6 +70,7 @@ import {
   parseDeckList,
   parseDeckPrintPreferences,
   parseSideboardList,
+  saveDefaultLobbyDeck,
 } from "@/lib/decklists";
 import { setPreferredCardPrints } from "@/lib/scryfall";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
@@ -2068,6 +2069,10 @@ function parseDeckSubmission(format, deckText, commanderText = "") {
     commanderCount: status.commanderCount,
     ready: status.ready,
   };
+}
+
+function rememberDefaultLobbyDeck(deckText, commanderText = "") {
+  saveDefaultLobbyDeck({ deckText, commanderText });
 }
 
 function withDeckState(player, format, deck, commanders = [], sideboard = []) {
@@ -13067,7 +13072,7 @@ export function usePeerLobby({
     seq,
     clock,
     uiState,
-    enforceMatchClockObservationBounds = true,
+    enforceMatchClockObservationBounds = false,
   }) {
     const normalizedActor = normalizePlayerIndex(actorIndex);
     if (normalizedActor == null) {
@@ -14212,8 +14217,9 @@ export function usePeerLobby({
           seq: nextSequence,
           clock: message.clock,
           uiState: liveStateForClock,
-          enforceMatchClockObservationBounds:
-            options.enforceMatchClockObservationBounds !== false,
+          // Trusted mode uses the clock audit for convergence, but local observation
+          // bounds are a Verified anti-cheat check and can diverge between peers.
+          enforceMatchClockObservationBounds: false,
         });
         applyPhase = "apply_command";
         const appliedState = await applySyncedCommand(message.command, message.label || "", {
@@ -19738,6 +19744,10 @@ export function usePeerLobby({
               submittingAction: false,
             };
           });
+          rememberDefaultLobbyDeck(
+            nextSession.localDeckText,
+            nextSession.localCommanderText
+          );
           ensureDirectPeerConnections(message.players || []);
           void publishLocalDeckUpdateForAssignedSeat(nextSession).catch((err) => {
             emitSyncFailureNotice(
@@ -21308,6 +21318,7 @@ export function usePeerLobby({
 	            };
 	          }
 
+          rememberDefaultLobbyDeck(current.localDeckText, current.localCommanderText);
           setStatus(`You are now the lobby host: ${lobbyId}`);
         });
         takeoverPeer.on("connection", configureIncomingConnection);
@@ -21540,6 +21551,7 @@ export function usePeerLobby({
             ),
           ],
         }));
+        rememberDefaultLobbyDeck(session.localDeckText, session.localCommanderText);
         setStatus(`Lobby created: ${peerId}`);
       });
       peer.on("connection", configureIncomingConnection);
@@ -21987,6 +21999,7 @@ export function usePeerLobby({
 	        nextDeckText,
 	        nextCommanderText
 	      );
+      rememberDefaultLobbyDeck(nextDeckText, nextCommanderText);
 	      if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(currentSession))) {
 	        const nextSession = updateMultiplayer((prev) => ({
 	          ...prev,

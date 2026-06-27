@@ -3757,7 +3757,7 @@ fn parse_cast_this_spell_during_main_phase_shape(tokens: &[OwnedLexToken]) -> Op
         return None;
     }
     Some(PredicateAst::ThisSpellPaidLabel(
-        "CastDuringYourMainPhase".to_string(),
+        "CastDuringYourMainPhase".into(),
     ))
 }
 
@@ -4301,7 +4301,7 @@ fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
             .or_else(|| named_paid_cost_label_from_word(label))?,
         words => mana_cost_label_from_words(words)?,
     };
-    let predicate = PredicateAst::ThisSpellPaidLabel(label);
+    let predicate = PredicateAst::ThisSpellPaidLabel(label.into());
     if negated {
         Some(PredicateAst::Not(Box::new(predicate)))
     } else {
@@ -4558,6 +4558,12 @@ fn parse_battlefield_change_this_turn_predicate(tokens: &[OwnedLexToken]) -> Opt
             } else {
                 Some(predicate)
             }
+        }
+        crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::NonlandPermanentLeftBattlefieldOrSpellWarped => {
+            Some(PredicateAst::Or(
+                Box::new(PredicateAst::NonlandPermanentLeftBattlefieldThisTurn),
+                Box::new(PredicateAst::SpellWasWarpedThisTurn),
+            ))
         }
         crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefieldUnderYourControl => {
             Some(PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn)
@@ -5169,7 +5175,8 @@ fn parse_this_spell_was_kicked_with_cost_shape(tokens: &[OwnedLexToken]) -> Opti
         .mana_cost()
         .map(|cost| cost.to_oracle())
         .unwrap_or_else(|| lowered_cost.display());
-    (!cost_text.is_empty()).then(|| PredicateAst::ThisSpellPaidLabel(format!("Kicker {cost_text}")))
+    (!cost_text.is_empty())
+        .then(|| PredicateAst::ThisSpellPaidLabel(format!("Kicker {cost_text}").into()))
 }
 
 fn parse_this_spell_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -5208,7 +5215,7 @@ fn parse_this_spell_was_bargained_shape(tokens: &[OwnedLexToken]) -> Option<Pred
     if !is_was_bargained_action_clause(action_clause) {
         return None;
     }
-    Some(PredicateAst::ThisSpellPaidLabel("Bargain".to_string()))
+    Some(PredicateAst::ThisSpellPaidLabel("Bargain".into()))
 }
 
 fn parse_named_spell_label_action_shape(
@@ -5227,7 +5234,7 @@ fn parse_named_spell_label_action_shape(
     if !matches!(label_words, [word] if word.eq_ignore_ascii_case(label)) {
         return None;
     }
-    let predicate = PredicateAst::ThisSpellPaidLabel(label.to_string());
+    let predicate = PredicateAst::ThisSpellPaidLabel(label.into());
     if negated {
         Some(PredicateAst::Not(Box::new(predicate)))
     } else {
@@ -5252,7 +5259,7 @@ fn parse_behold_spell_label_shape(tokens: &[OwnedLexToken]) -> Option<PredicateA
     if subtype_words.len() != 1 || parse_subtype_word(subtype_words[0]).is_none() {
         return None;
     }
-    Some(PredicateAst::ThisSpellPaidLabel("Behold".to_string()))
+    Some(PredicateAst::ThisSpellPaidLabel("Behold".into()))
 }
 
 fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -6462,7 +6469,7 @@ fn parse_revealed_or_controlled_subtype_predicate(
     let subtype = parse_subtype_word(revealed_token.parser_text())?;
 
     Some(PredicateAst::Or(
-        Box::new(PredicateAst::ThisSpellPaidLabel("Behold".to_string())),
+        Box::new(PredicateAst::ThisSpellPaidLabel("Behold".into())),
         Box::new(PredicateAst::PlayerControls {
             player: PlayerAst::You,
             filter: ObjectFilter::default().with_subtype(subtype),
@@ -7405,21 +7412,19 @@ mod tests {
         for (text, expected) in [
             (
                 "If this spells surge cost was paid",
-                PredicateAst::ThisSpellPaidLabel("Surge".to_string()),
+                PredicateAst::ThisSpellPaidLabel("Surge".into()),
             ),
             (
                 "If this creature's spectacle cost was paid instead discard your hand",
-                PredicateAst::ThisSpellPaidLabel("Spectacle".to_string()),
+                PredicateAst::ThisSpellPaidLabel("Spectacle".into()),
             ),
             (
                 "If {U} cost was paid",
-                PredicateAst::ThisSpellPaidLabel("{U}".to_string()),
+                PredicateAst::ThisSpellPaidLabel("{U}".into()),
             ),
             (
                 "If {2}{G} cost wasn't paid",
-                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
-                    "{2}{G}".to_string(),
-                ))),
+                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel("{2}{G}".into()))),
             ),
         ] {
             let tokens = lex_line(text, 0)?;
@@ -7789,7 +7794,7 @@ mod tests {
             ),
             (
                 "If you cast this spell during your main phase",
-                PredicateAst::ThisSpellPaidLabel("CastDuringYourMainPhase".to_string()),
+                PredicateAst::ThisSpellPaidLabel("CastDuringYourMainPhase".into()),
             ),
         ] {
             let tokens = lex_line(text, 0)?;
@@ -9011,37 +9016,31 @@ mod tests {
             ("If this spell was kicked", PredicateAst::ThisSpellWasKicked),
             (
                 "If this spell was bargained",
-                PredicateAst::ThisSpellPaidLabel("Bargain".to_string()),
+                PredicateAst::ThisSpellPaidLabel("Bargain".into()),
             ),
             (
                 "If it was bargained",
-                PredicateAst::ThisSpellPaidLabel("Bargain".to_string()),
+                PredicateAst::ThisSpellPaidLabel("Bargain".into()),
             ),
             (
                 "If gift was promised",
-                PredicateAst::ThisSpellPaidLabel("Gift".to_string()),
+                PredicateAst::ThisSpellPaidLabel("Gift".into()),
             ),
             (
                 "If the gift was promised",
-                PredicateAst::ThisSpellPaidLabel("Gift".to_string()),
+                PredicateAst::ThisSpellPaidLabel("Gift".into()),
             ),
             (
                 "If gift was not promised",
-                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
-                    "Gift".to_string(),
-                ))),
+                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel("Gift".into()))),
             ),
             (
                 "If tribute was not paid",
-                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
-                    "Tribute".to_string(),
-                ))),
+                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel("Tribute".into()))),
             ),
             (
                 "If tribute wasn't paid",
-                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
-                    "Tribute".to_string(),
-                ))),
+                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel("Tribute".into()))),
             ),
             ("If that was kicked", PredicateAst::TargetWasKicked),
         ] {
@@ -9375,6 +9374,13 @@ mod tests {
                 PredicateAst::PermanentLeftBattlefieldThisTurn,
             ),
             (
+                "If a nonland permanent left the battlefield this turn or a spell was warped this turn",
+                PredicateAst::Or(
+                    Box::new(PredicateAst::NonlandPermanentLeftBattlefieldThisTurn),
+                    Box::new(PredicateAst::SpellWasWarpedThisTurn),
+                ),
+            ),
+            (
                 "If creatures left battlefield under your control this turn",
                 PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn,
             ),
@@ -9554,7 +9560,7 @@ mod tests {
         assert_eq!(
             parsed,
             PredicateAst::Or(
-                Box::new(PredicateAst::ThisSpellPaidLabel("Behold".to_string())),
+                Box::new(PredicateAst::ThisSpellPaidLabel("Behold".into())),
                 Box::new(PredicateAst::PlayerControls {
                     player: PlayerAst::You,
                     filter: ObjectFilter::default()

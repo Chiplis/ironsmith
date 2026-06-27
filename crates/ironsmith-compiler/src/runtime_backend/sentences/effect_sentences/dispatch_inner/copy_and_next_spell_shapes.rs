@@ -11,7 +11,10 @@ const DELAYED_TARGET_ATTACK_UNBLOCKED_TRIGGER_PATTERN: LexPattern<'static> = Lex
     LexPattern::any_phrase(DELAYED_ATTACKS_UNBLOCKED_PHRASES),
 ]);
 const COPY_NEXT_THIS_TURN_DELAYED_TRIGGER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::modifier("duration", LexCaptureKind::OneOfPhrase(&[&["this", "turn"]])),
+    LexPattern::modifier(
+        "duration",
+        LexCaptureKind::OneOfPhrase(&[&["this", "turn"]]),
+    ),
     LexPattern::action("intro", LexCaptureKind::OneOf(&["when", "whenever"])),
     LexPattern::condition("trigger", LexCaptureKind::UntilToken(TokenKind::Comma)),
     LexPattern::tail("effect", LexCaptureKind::Rest),
@@ -22,7 +25,10 @@ const DELAYED_TRIGGER_THIS_TURN_SUFFIX_PATTERN: LexPattern<'static> = LexPattern
         "trigger",
         LexCaptureKind::UntilLastPhraseBeforeToken(&["this", "turn"], TokenKind::Comma),
     ),
-    LexPattern::modifier("duration", LexCaptureKind::OneOfPhrase(&[&["this", "turn"]])),
+    LexPattern::modifier(
+        "duration",
+        LexCaptureKind::OneOfPhrase(&[&["this", "turn"]]),
+    ),
     LexPattern::token(TokenKind::Comma),
     LexPattern::tail("effect", LexCaptureKind::Rest),
 ]);
@@ -145,7 +151,9 @@ const DELAYED_END_STEP_HEADER_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::tail("effect", LexCaptureKind::Rest),
 ]);
 
-fn delayed_end_step_player_from_owner(owner_clause: Option<LexedClause<'_>>) -> Option<PlayerFilter> {
+fn delayed_end_step_player_from_owner(
+    owner_clause: Option<LexedClause<'_>>,
+) -> Option<PlayerFilter> {
     let Some(owner_clause) = owner_clause.map(LexedClause::trimmed) else {
         return Some(PlayerFilter::Any);
     };
@@ -288,7 +296,8 @@ fn delayed_attack_unblocked_filter_from_trigger(
     full_sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let trigger_clause = LexedClause::new(trigger_tokens).trimmed();
-    let Some(matched) = DELAYED_TARGET_ATTACK_UNBLOCKED_TRIGGER_PATTERN.match_clause(trigger_clause)
+    let Some(matched) =
+        DELAYED_TARGET_ATTACK_UNBLOCKED_TRIGGER_PATTERN.match_clause(trigger_clause)
     else {
         return Ok(None);
     };
@@ -344,7 +353,8 @@ fn delayed_that_deals_combat_damage_to_player_trigger_from_core(
     trigger_core_tokens: &[OwnedLexToken],
 ) -> Option<TriggerSpec> {
     let trigger_clause = LexedClause::new(trigger_core_tokens).trimmed();
-    let matched = DELAYED_THAT_DEALS_COMBAT_DAMAGE_TO_PLAYER_PATTERN.match_clause(trigger_clause)?;
+    let matched =
+        DELAYED_THAT_DEALS_COMBAT_DAMAGE_TO_PLAYER_PATTERN.match_clause(trigger_clause)?;
     let kind_clause = matched
         .capture_clause_by_role(LexCaptureRole::Object, trigger_clause)?
         .trimmed();
@@ -362,10 +372,190 @@ fn delayed_that_deals_combat_damage_to_player_trigger_from_core(
     })
 }
 
+fn next_cast_instant_sorcery_or_loyalty_trigger_from_core(
+    trigger_core_tokens: &[OwnedLexToken],
+) -> Option<TriggerSpec> {
+    let words = trigger_core_tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    let matches_split_instant_sorcery = words.as_slice()
+        == [
+            "you".to_string(),
+            "next".to_string(),
+            "cast".to_string(),
+            "an".to_string(),
+            "instant".to_string(),
+            "spell".to_string(),
+            "cast".to_string(),
+            "a".to_string(),
+            "sorcery".to_string(),
+            "spell".to_string(),
+            "or".to_string(),
+            "activate".to_string(),
+            "a".to_string(),
+            "loyalty".to_string(),
+            "ability".to_string(),
+        ];
+    let matches_joined_instant_sorcery = words.as_slice()
+        == [
+            "you".to_string(),
+            "next".to_string(),
+            "cast".to_string(),
+            "an".to_string(),
+            "instant".to_string(),
+            "or".to_string(),
+            "sorcery".to_string(),
+            "spell".to_string(),
+            "or".to_string(),
+            "activate".to_string(),
+            "a".to_string(),
+            "loyalty".to_string(),
+            "ability".to_string(),
+        ];
+    if !matches_split_instant_sorcery && !matches_joined_instant_sorcery {
+        return None;
+    }
+
+    let spell_cast = TriggerSpec::SpellCast {
+        filter: Some(ObjectFilter::instant_or_sorcery()),
+        caster: PlayerFilter::You,
+        during_turn: None,
+        min_spells_this_turn: None,
+        exact_spells_this_turn: None,
+        from_not_hand: false,
+    };
+    let loyalty_activated = TriggerSpec::AbilityActivated {
+        activator: PlayerFilter::You,
+        filter: ObjectFilter::default(),
+        non_mana_only: false,
+        loyalty_only: true,
+        activation_cost_has_tap: None,
+    };
+    Some(TriggerSpec::Either(
+        Box::new(spell_cast),
+        Box::new(loyalty_activated),
+    ))
+}
+
 fn delayed_trigger_is_one_shot(trigger_clause: LexedClause<'_>) -> bool {
     DELAYED_NEXT_TRIGGER_MARKER_PATTERN
         .find_in_clause(trigger_clause.trimmed())
         .is_some()
+}
+
+fn delayed_trigger_provides_triggering_stack_object(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::SpellCast { .. } | TriggerSpec::AbilityActivated { .. } => true,
+        TriggerSpec::Either(left, right) => {
+            delayed_trigger_provides_triggering_stack_object(left)
+                || delayed_trigger_provides_triggering_stack_object(right)
+        }
+        _ => false,
+    }
+}
+
+fn parse_copy_that_spell_or_ability_twice_tail(
+    effect_tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let words = effect_tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    let copy_twice_prefix = [
+        "copy".to_string(),
+        "that".to_string(),
+        "spell".to_string(),
+        "or".to_string(),
+        "ability".to_string(),
+        "twice".to_string(),
+    ];
+    if !words.starts_with(&copy_twice_prefix) {
+        return None;
+    }
+    let may_choose_new_targets = words[copy_twice_prefix.len()..]
+        == [
+            "you".to_string(),
+            "may".to_string(),
+            "choose".to_string(),
+            "new".to_string(),
+            "targets".to_string(),
+            "for".to_string(),
+            "the".to_string(),
+            "copies".to_string(),
+        ];
+    if words.len() != copy_twice_prefix.len() && !may_choose_new_targets {
+        return None;
+    }
+
+    Some(vec![EffectAst::subject_verb_copy_spell(
+        TargetAst::Tagged(TagKey::from("triggering"), None),
+        Value::Fixed(2),
+        PlayerAst::Implicit,
+        may_choose_new_targets,
+        Vec::new(),
+    )])
+}
+
+fn parse_next_cast_spell_or_loyalty_delayed_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause = LexedClause::new(tokens).trimmed();
+    let tokens = clause.tokens();
+    let Some(first_word) = tokens
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        .map(str::to_ascii_lowercase)
+    else {
+        return Ok(None);
+    };
+    if !matches!(first_word.as_str(), "when" | "whenever") {
+        return Ok(None);
+    }
+    let Some(this_turn_idx) = find_token_word_sequence(tokens, &["this", "turn"]) else {
+        return Ok(None);
+    };
+    let trigger_tokens = tokens.get(1..this_turn_idx).unwrap_or_default();
+    let Some(trigger) = next_cast_instant_sorcery_or_loyalty_trigger_from_core(trigger_tokens)
+    else {
+        return Ok(None);
+    };
+    let Some(comma_idx) = tokens
+        .iter()
+        .enumerate()
+        .skip(this_turn_idx + 2)
+        .find_map(|(idx, token)| (token.kind == TokenKind::Comma).then_some(idx))
+    else {
+        return Ok(None);
+    };
+    let effect_tokens = tokens.get(comma_idx + 1..).unwrap_or_default();
+    if effect_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed spell-or-loyalty effect clause (clause: '{}')",
+            crate::runtime_backend::lexer::render_token_slice(tokens).trim()
+        )));
+    }
+
+    let mut delayed_effects =
+        if let Some(effects) = parse_copy_that_spell_or_ability_twice_tail(effect_tokens) {
+            effects
+        } else {
+            parse_effect_chain(effect_tokens)?
+        };
+    if delayed_effects.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed spell-or-loyalty effect clause (clause: '{}')",
+            crate::runtime_backend::lexer::render_token_slice(tokens).trim()
+        )));
+    }
+    retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
+    Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+        trigger,
+        effects: delayed_effects,
+        one_shot: true,
+    }]))
 }
 
 pub(crate) fn parse_sentence_delayed_trigger_this_turn(
@@ -376,15 +566,18 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if DELAYED_THAT_DIES_THIS_TURN_PATTERN
         .match_clause(clause)
         .is_some()
-        || DELAYED_DIES_THIS_WAY_PATTERN
-            .match_clause(clause)
-            .is_some()
+        || DELAYED_DIES_THIS_WAY_PATTERN.match_clause(clause).is_some()
     {
         return parse_delayed_when_that_dies_this_turn_sentence(tokens);
     }
 
+    if let Some(effects) = parse_next_cast_spell_or_loyalty_delayed_sentence(tokens)? {
+        return Ok(Some(effects));
+    }
+
     if let Some(matched) = COPY_NEXT_THIS_TURN_DELAYED_TRIGGER_PATTERN.match_clause(clause) {
-        let Some(trigger_clause) = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)
+        let Some(trigger_clause) =
+            matched.capture_clause_by_role(LexCaptureRole::Condition, clause)
         else {
             return Ok(None);
         };
@@ -409,7 +602,8 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             )));
         }
 
-        if let Some(filter) = delayed_attack_unblocked_filter_from_trigger(trigger_tokens, tokens)? {
+        if let Some(filter) = delayed_attack_unblocked_filter_from_trigger(trigger_tokens, tokens)?
+        {
             let mut trigger_filter = filter.clone();
             trigger_filter
                 .tagged_constraints
@@ -443,9 +637,11 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             }]));
         }
 
-        let trigger = parse_trigger_clause_lexed(&trigger_tokens)?;
+        let trigger = next_cast_instant_sorcery_or_loyalty_trigger_from_core(trigger_tokens)
+            .map(Ok)
+            .unwrap_or_else(|| parse_trigger_clause_lexed(&trigger_tokens))?;
         let one_shot = delayed_trigger_is_one_shot(trigger_clause);
-        if matches!(trigger, TriggerSpec::SpellCast { .. }) {
+        if delayed_trigger_provides_triggering_stack_object(&trigger) {
             retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
         }
         return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
@@ -474,11 +670,14 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         )));
     }
     let trigger = if let Some(trigger) =
-        delayed_that_deals_combat_damage_to_player_trigger_from_core(trigger_core_tokens)
+        next_cast_instant_sorcery_or_loyalty_trigger_from_core(trigger_core_tokens)
     {
         trigger
     } else if let Some(trigger) =
-        delayed_tagged_dealt_damage_trigger_from_core(trigger_core_tokens)
+        delayed_that_deals_combat_damage_to_player_trigger_from_core(trigger_core_tokens)
+    {
+        trigger
+    } else if let Some(trigger) = delayed_tagged_dealt_damage_trigger_from_core(trigger_core_tokens)
     {
         trigger
     } else {
@@ -499,7 +698,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             clause_display.trim()
         )));
     }
-    if matches!(trigger, TriggerSpec::SpellCast { .. }) {
+    if delayed_trigger_provides_triggering_stack_object(&trigger) {
         retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
     }
 
@@ -767,7 +966,10 @@ mod copy_and_next_spell_shape_tests {
             .expect("dies-this-way parser should match");
         let debug = format!("{effects:#?}");
 
-        assert!(debug.contains("DelayedWhenLastObjectDiesThisTurn"), "{debug}");
+        assert!(
+            debug.contains("DelayedWhenLastObjectDiesThisTurn"),
+            "{debug}"
+        );
         assert!(debug.contains("filter: Some"), "{debug}");
         assert!(debug.contains("card_types"), "{debug}");
         assert!(debug.contains("Exile"), "{debug}");
@@ -775,27 +977,30 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn delayed_that_dies_this_turn_uses_captured_effect_tail() {
-        let tokens = crate::runtime_backend::lex_line(
-            "When that creature dies this turn, draw a card.",
-            0,
-        )
-        .expect("that-dies delayed text should lex");
+        let tokens =
+            crate::runtime_backend::lex_line("When that creature dies this turn, draw a card.", 0)
+                .expect("that-dies delayed text should lex");
 
         let effects = parse_delayed_when_that_dies_this_turn_sentence(&tokens)
             .expect("that-dies parser should not error")
             .expect("that-dies parser should match");
         let debug = format!("{effects:#?}");
 
-        assert!(debug.contains("DelayedWhenLastObjectDiesThisTurn"), "{debug}");
+        assert!(
+            debug.contains("DelayedWhenLastObjectDiesThisTurn"),
+            "{debug}"
+        );
         assert!(debug.contains("filter: None"), "{debug}");
         assert!(debug.contains("Draw"), "{debug}");
     }
 
     #[test]
     fn this_turn_delayed_trigger_uses_captured_duration_tail() {
-        let tokens =
-            crate::runtime_backend::lex_line("This turn, whenever you draw a card, draw a card.", 0)
-                .expect("this-turn delayed trigger text should lex");
+        let tokens = crate::runtime_backend::lex_line(
+            "This turn, whenever you draw a card, draw a card.",
+            0,
+        )
+        .expect("this-turn delayed trigger text should lex");
 
         let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
             .expect("this-turn delayed trigger parser should not error")
@@ -809,11 +1014,9 @@ mod copy_and_next_spell_shape_tests {
 
     #[test]
     fn suffix_this_turn_delayed_trigger_uses_captured_trigger_and_effect() {
-        let tokens = crate::runtime_backend::lex_line(
-            "Whenever you draw a card this turn, draw a card.",
-            0,
-        )
-        .expect("suffix-this-turn delayed trigger text should lex");
+        let tokens =
+            crate::runtime_backend::lex_line("Whenever you draw a card this turn, draw a card.", 0)
+                .expect("suffix-this-turn delayed trigger text should lex");
 
         let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
             .expect("suffix-this-turn delayed trigger parser should not error")
@@ -823,6 +1026,49 @@ mod copy_and_next_spell_shape_tests {
         assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
         assert!(debug.contains("YouDrawCard"), "{debug}");
         assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn suffix_this_turn_delayed_trigger_supports_spell_or_loyalty_union() {
+        let tokens = crate::runtime_backend::lex_line(
+            "When you next cast an instant spell, cast a sorcery spell, or activate a loyalty ability this turn, copy that spell or ability twice. You may choose new targets for the copies.",
+            0,
+        )
+        .expect("next spell-or-loyalty delayed trigger text should lex");
+
+        let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
+            .expect("spell-or-loyalty delayed trigger parser should not error")
+            .expect("spell-or-loyalty delayed trigger parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
+        assert!(debug.contains("Either"), "{debug}");
+        assert!(debug.contains("SpellCast"), "{debug}");
+        assert!(debug.contains("AbilityActivated"), "{debug}");
+        assert!(debug.contains("loyalty_only: true"), "{debug}");
+        assert!(debug.contains("CopySpell"), "{debug}");
+        let [
+            EffectAst::DelayedTriggerThisTurn {
+                effects: delayed_effects,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one delayed trigger effect, got {effects:#?}");
+        };
+        let [EffectAst::SubjectVerb(subject_verb)] = delayed_effects.as_slice() else {
+            panic!("expected one delayed copy effect, got {delayed_effects:#?}");
+        };
+        let SubjectVerbActionAst::CopySpell {
+            count,
+            may_choose_new_targets,
+            ..
+        } = &subject_verb.action
+        else {
+            panic!("expected delayed copy spell action, got {subject_verb:#?}");
+        };
+        assert_eq!(*count, Value::Fixed(2));
+        assert!(*may_choose_new_targets);
     }
 
     #[test]

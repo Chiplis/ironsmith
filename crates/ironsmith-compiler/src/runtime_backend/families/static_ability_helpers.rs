@@ -1,4 +1,4 @@
-use crate::ability::Ability;
+use crate::ability::{Ability, PresentationKeyword, PresentationLabel};
 use crate::cards::builders::{CardTextError, GrantedAbilityAst, KeywordAction};
 use crate::cost::TotalCost;
 use crate::effect::Effect;
@@ -273,7 +273,9 @@ pub(crate) fn afflict_triggered_ability(amount: u32) -> Ability {
             )]),
             choices: vec![],
             intervening_if: None,
-            presentation_label: Some(format!("keyword:afflict {amount}")),
+            presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Afflict(
+                amount,
+            ))),
         }),
         functional_zones: vec![crate::zone::Zone::Battlefield],
     }
@@ -339,7 +341,7 @@ pub(crate) fn suspend_exile_triggered_abilities() -> Vec<Ability> {
                     counter_type: crate::object::CounterType::Time,
                     count: 1,
                 }),
-                presentation_label: Some("keyword:suspend".to_string()),
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
             }),
             functional_zones: vec![crate::zone::Zone::Exile],
         },
@@ -358,7 +360,7 @@ pub(crate) fn suspend_exile_triggered_abilities() -> Vec<Ability> {
                 intervening_if: Some(crate::ConditionExpr::SourceHasNoCounter(
                     crate::object::CounterType::Time,
                 )),
-                presentation_label: Some("keyword:suspend".to_string()),
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
             }),
             functional_zones: vec![crate::zone::Zone::Exile],
         },

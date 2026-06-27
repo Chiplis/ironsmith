@@ -13,7 +13,7 @@ use crate::alternative_cast::AlternativeCastingMethod;
 use crate::card::PtValue;
 use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness};
 use crate::color::ColorSet;
-use crate::cost::{OptionalCost, TotalCost};
+use crate::cost::{OptionalCost, OptionalCostKind, TotalCost};
 use crate::effect::{
     ChoiceCount, Condition, Effect, EffectId, EffectMode, EffectPredicate, EmblemDescription,
     EventValueSpec, Until, Value,
@@ -2490,7 +2490,9 @@ impl CardDefinitionBuilder {
                 .into(),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some(format!("keyword:toxic {amount}")),
+                presentation_label: Some(ability::PresentationLabel::Keyword(
+                    ability::PresentationKeyword::Toxic(amount),
+                )),
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2616,13 +2618,15 @@ impl CardDefinitionBuilder {
     pub fn soulshift_value(self, amount: Value) -> Self {
         self.with_ability(Self::soulshift_triggered_ability(
             crate::filter::Comparison::LessThanOrEqualExpr(Box::new(amount)),
-            Some("keyword:soulshift X".to_string()),
+            Some(ability::PresentationLabel::Keyword(
+                ability::PresentationKeyword::Soulshift("X".to_string()),
+            )),
         ))
     }
 
     fn soulshift_triggered_ability(
         mana_value: crate::filter::Comparison,
-        presentation_label: Option<String>,
+        presentation_label: Option<ability::PresentationLabel>,
     ) -> Ability {
         let filter = ObjectFilter::default()
             .with_subtype(Subtype::Spirit)
@@ -2688,7 +2692,9 @@ impl CardDefinitionBuilder {
                 )]),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some(format!("keyword:recover {cost_text}")),
+                presentation_label: Some(ability::PresentationLabel::Keyword(
+                    ability::PresentationKeyword::Recover(cost_text),
+                )),
             }),
             functional_zones: vec![Zone::Graveyard],
         })
@@ -3160,7 +3166,7 @@ impl CardDefinitionBuilder {
         let existing_instances = self
             .optional_costs
             .iter()
-            .filter(|cost| cost.label == "Conspire" || cost.label.starts_with("Conspire "))
+            .filter(|cost| matches!(cost.kind, OptionalCostKind::Conspire))
             .count();
         let label = if existing_instances == 0 {
             "Conspire".to_string()
@@ -3180,7 +3186,7 @@ impl CardDefinitionBuilder {
                     Effect::may_choose_new_targets(EffectId(0)),
                 ]),
                 choices: vec![],
-                intervening_if: Some(Condition::ThisSpellPaidLabel(label)),
+                intervening_if: Some(Condition::ThisSpellPaidLabel(label.into())),
                 presentation_label: None,
             }),
             functional_zones: vec![Zone::Stack],
@@ -3198,7 +3204,9 @@ impl CardDefinitionBuilder {
                 effects: vec![Effect::devour(multiplier)].into(),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some(format!("keyword:devour {multiplier}")),
+                presentation_label: Some(ability::PresentationLabel::Keyword(
+                    ability::PresentationKeyword::Devour(multiplier),
+                )),
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -3216,7 +3224,9 @@ impl CardDefinitionBuilder {
                 effects: vec![Effect::amplify(amount)].into(),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some(format!("keyword:amplify {amount}")),
+                presentation_label: Some(ability::PresentationLabel::Keyword(
+                    ability::PresentationKeyword::Amplify(amount),
+                )),
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -3391,11 +3401,11 @@ impl CardDefinitionBuilder {
     pub fn riot(self) -> Self {
         let modes = vec![
             EffectMode {
-                description: "This creature enters with a +1/+1 counter on it".to_string(),
+                source_text: "This creature enters with a +1/+1 counter on it".to_string(),
                 effects: vec![Effect::plus_one_counters(1, ChooseSpec::Source)],
             },
             EffectMode {
-                description: "This creature gains haste until end of turn".to_string(),
+                source_text: "This creature gains haste until end of turn".to_string(),
                 effects: vec![Effect::grant_abilities_all(
                     ObjectFilter::source(),
                     vec![StaticAbility::haste()],
@@ -3778,7 +3788,9 @@ impl CardDefinitionBuilder {
                 .into(),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some(format!("keyword:afflict {amount}")),
+                presentation_label: Some(ability::PresentationLabel::Keyword(
+                    ability::PresentationKeyword::Afflict(amount),
+                )),
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -3816,11 +3828,11 @@ impl CardDefinitionBuilder {
         };
         let modes = vec![
             EffectMode {
-                description: put_description,
+                source_text: put_description,
                 effects: vec![Effect::plus_one_counters(amount as i32, ChooseSpec::Source)],
             },
             EffectMode {
-                description: create_description,
+                source_text: create_description,
                 effects: vec![Effect::create_tokens(Self::fabricate_servo_token(), amount)],
             },
         ];
@@ -10866,7 +10878,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected +1/+1 counter and scry effects in heroic trigger, got {effects_debug}"
         );
         assert_eq!(
-            triggered.presentation_label.as_deref(),
+            triggered
+                .presentation_label
+                .as_ref()
+                .and_then(ability::PresentationLabel::display_prefix)
+                .as_deref(),
             Some("Heroic"),
             "expected labeled trigger provenance to be stored on the trigger"
         );

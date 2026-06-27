@@ -2749,7 +2749,7 @@ fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], lab
                 .iter()
                 .any(|constraint| constraint.tag.as_str() == IT_TAG)
         {
-            *count = crate::effect::Value::TimesPaidLabel(label.to_string());
+            *count = crate::effect::Value::TimesPaidLabel(label.into());
         }
         // Recurse into every nested-effect scope through the shared traversal
         // helper so new wrapper variants are covered automatically (the previous

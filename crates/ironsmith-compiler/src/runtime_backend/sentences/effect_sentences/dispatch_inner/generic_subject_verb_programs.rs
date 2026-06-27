@@ -1853,6 +1853,9 @@ fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects:
         else {
             continue;
         };
+        if filter.mana_value.is_some() {
+            continue;
+        }
         let mut had_lesser_constraint = false;
         for constraint in &mut filter.tagged_constraints {
             if matches!(

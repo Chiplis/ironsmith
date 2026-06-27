@@ -740,85 +740,335 @@ mod tests {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum OptionalCostKind {
+    Kicker,
+    Multikicker,
+    Replicate,
+    Buyback,
+    Entwine,
+    Squad,
+    Offspring,
+    Bargain,
+    Conspire,
+    Gift,
+    Behold,
+    Waterbend,
+    CastDuringYourMainPhase,
+    Escape,
+    Blitz,
+    Evoke,
+    Madness,
+    Suspend,
+    CompleatedLifePaid,
+    GrantedConspire,
+    Tribute,
+    Surge,
+    Spectacle,
+    Additional,
+    CustomUnsupported(String),
+}
+
+impl OptionalCostKind {
+    pub fn from_label(label: &str) -> Self {
+        let trimmed = label.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        match lower.as_str() {
+            "kicker" => Self::Kicker,
+            "multikicker" => Self::Multikicker,
+            "replicate" => Self::Replicate,
+            "buyback" => Self::Buyback,
+            "entwine" => Self::Entwine,
+            "squad" => Self::Squad,
+            "offspring" => Self::Offspring,
+            "bargain" => Self::Bargain,
+            "conspire" => Self::Conspire,
+            "gift" => Self::Gift,
+            "behold" => Self::Behold,
+            "waterbend" => Self::Waterbend,
+            "castduringyourmainphase" => Self::CastDuringYourMainPhase,
+            "escape" => Self::Escape,
+            "blitz" => Self::Blitz,
+            "evoke" => Self::Evoke,
+            "madness" => Self::Madness,
+            "suspend" => Self::Suspend,
+            "compleatedlifepaid" => Self::CompleatedLifePaid,
+            "granted conspire" => Self::GrantedConspire,
+            "tribute" => Self::Tribute,
+            "surge" => Self::Surge,
+            "spectacle" => Self::Spectacle,
+            _ if lower.starts_with("kicker ") => Self::Kicker,
+            _ if lower.starts_with("gift ") => Self::Gift,
+            _ if lower.starts_with("conspire") => Self::Conspire,
+            _ if lower.starts_with("waterbend ") => Self::Waterbend,
+            _ if lower.starts_with("as an additional cost to cast this spell, you may behold ") => {
+                Self::Behold
+            }
+            _ if lower.starts_with("as an additional cost to cast this spell, you may ") => {
+                Self::Additional
+            }
+            _ => Self::CustomUnsupported(trimmed.to_string()),
+        }
+    }
+
+    pub fn canonical_label(&self) -> &str {
+        match self {
+            Self::Kicker => "Kicker",
+            Self::Multikicker => "Multikicker",
+            Self::Replicate => "Replicate",
+            Self::Buyback => "Buyback",
+            Self::Entwine => "Entwine",
+            Self::Squad => "Squad",
+            Self::Offspring => "Offspring",
+            Self::Bargain => "Bargain",
+            Self::Conspire => "Conspire",
+            Self::Gift => "Gift",
+            Self::Behold => "Behold",
+            Self::Waterbend => "Waterbend",
+            Self::CastDuringYourMainPhase => "CastDuringYourMainPhase",
+            Self::Escape => "Escape",
+            Self::Blitz => "Blitz",
+            Self::Evoke => "Evoke",
+            Self::Madness => "Madness",
+            Self::Suspend => "Suspend",
+            Self::CompleatedLifePaid => "CompleatedLifePaid",
+            Self::GrantedConspire => "Granted Conspire",
+            Self::Tribute => "Tribute",
+            Self::Surge => "Surge",
+            Self::Spectacle => "Spectacle",
+            Self::Additional => "Additional",
+            Self::CustomUnsupported(label) => label.as_str(),
+        }
+    }
+
+    pub fn is_query_for(&self, stored: &Self) -> bool {
+        self == stored
+            || matches!(
+                (self, stored),
+                (Self::Kicker, Self::Kicker)
+                    | (Self::Gift, Self::Gift)
+                    | (Self::Conspire, Self::Conspire)
+                    | (Self::Behold, Self::Behold)
+                    | (Self::Additional, Self::Additional | Self::Behold)
+            )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct OptionalCostRef {
+    pub kind: OptionalCostKind,
+    pub discriminator: Option<String>,
+}
+
+impl OptionalCostRef {
+    pub fn new(kind: OptionalCostKind) -> Self {
+        Self {
+            kind,
+            discriminator: None,
+        }
+    }
+
+    pub fn with_discriminator(kind: OptionalCostKind, discriminator: impl Into<String>) -> Self {
+        let discriminator = discriminator.into();
+        Self {
+            kind,
+            discriminator: (!discriminator.trim().is_empty()).then(|| discriminator),
+        }
+    }
+
+    pub fn from_label(label: &str) -> Self {
+        let trimmed = label.trim();
+        let kind = OptionalCostKind::from_label(trimmed);
+        let discriminator = match &kind {
+            OptionalCostKind::Kicker => trimmed
+                .strip_prefix("Kicker ")
+                .or_else(|| trimmed.strip_prefix("kicker "))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            OptionalCostKind::Gift => trimmed
+                .strip_prefix("Gift ")
+                .or_else(|| trimmed.strip_prefix("gift "))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            OptionalCostKind::Waterbend => trimmed
+                .strip_prefix("Waterbend ")
+                .or_else(|| trimmed.strip_prefix("waterbend "))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            OptionalCostKind::CustomUnsupported(_) => Some(trimmed.to_string()),
+            _ => None,
+        };
+        Self {
+            kind,
+            discriminator,
+        }
+    }
+
+    pub fn matches_query(&self, query: &Self) -> bool {
+        if !query.kind.is_query_for(&self.kind) {
+            return false;
+        }
+        match query.discriminator.as_deref() {
+            Some(query_discriminator) => {
+                self.discriminator.as_deref() == Some(query_discriminator)
+                    || matches!(query.kind, OptionalCostKind::CustomUnsupported(_))
+            }
+            None => true,
+        }
+    }
+
+    pub fn display_label(&self) -> String {
+        match self.discriminator.as_deref() {
+            Some(discriminator)
+                if matches!(
+                    self.kind,
+                    OptionalCostKind::Kicker | OptionalCostKind::Gift | OptionalCostKind::Waterbend
+                ) =>
+            {
+                format!("{} {discriminator}", self.kind.canonical_label())
+            }
+            _ => self.kind.canonical_label().to_string(),
+        }
+    }
+
+    pub fn eq_ignore_ascii_case(&self, other: &str) -> bool {
+        self.display_label().eq_ignore_ascii_case(other)
+            || self.kind.canonical_label().eq_ignore_ascii_case(other)
+    }
+
+    pub fn starts_with(&self, prefix: &str) -> bool {
+        self.display_label().starts_with(prefix)
+    }
+
+    pub fn to_ascii_lowercase(&self) -> String {
+        self.display_label().to_ascii_lowercase()
+    }
+
+    pub fn strip_prefix(&self, prefix: &str) -> Option<&str> {
+        match (&self.kind, prefix) {
+            (OptionalCostKind::Kicker, "Kicker ") => self.discriminator.as_deref(),
+            (OptionalCostKind::Gift, "Gift ") => self.discriminator.as_deref(),
+            (OptionalCostKind::Waterbend, "Waterbend ") => self.discriminator.as_deref(),
+            (OptionalCostKind::CustomUnsupported(label), _) => label.strip_prefix(prefix),
+            _ => None,
+        }
+    }
+}
+
+impl From<&str> for OptionalCostRef {
+    fn from(label: &str) -> Self {
+        Self::from_label(label)
+    }
+}
+
+impl From<String> for OptionalCostRef {
+    fn from(label: String) -> Self {
+        Self::from_label(&label)
+    }
+}
+
+impl From<&String> for OptionalCostRef {
+    fn from(label: &String) -> Self {
+        Self::from_label(label)
+    }
+}
+
+impl From<&OptionalCostRef> for OptionalCostRef {
+    fn from(value: &OptionalCostRef) -> Self {
+        value.clone()
+    }
+}
+
+impl From<OptionalCostKind> for OptionalCostRef {
+    fn from(kind: OptionalCostKind) -> Self {
+        Self::new(kind)
+    }
+}
+
+impl std::fmt::Display for OptionalCostRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.display_label())
+    }
+}
+
+impl PartialEq<&str> for OptionalCostRef {
+    fn eq(&self, other: &&str) -> bool {
+        self.display_label() == *other || self.kind.canonical_label() == *other
+    }
+}
+
+impl PartialEq<str> for OptionalCostRef {
+    fn eq(&self, other: &str) -> bool {
+        self.display_label() == other || self.kind.canonical_label() == other
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptionalCost<C> {
-    pub label: String,
+    pub kind: OptionalCostKind,
+    pub reference: OptionalCostRef,
+    pub source_label: String,
     pub cost: TotalCost<C>,
     pub repeatable: bool,
     pub returns_to_hand: bool,
 }
 
 impl<C> OptionalCost<C> {
-    pub fn kicker(cost: TotalCost<C>) -> Self {
+    fn typed(kind: OptionalCostKind, source_label: impl Into<String>, cost: TotalCost<C>) -> Self {
+        let source_label = source_label.into();
+        let reference = OptionalCostRef::from_label(&source_label);
         Self {
-            label: "Kicker".to_string(),
+            kind,
+            reference,
+            source_label,
             cost,
             repeatable: false,
             returns_to_hand: false,
         }
+    }
+
+    pub fn cost_ref(&self) -> OptionalCostRef {
+        self.reference.clone()
+    }
+
+    pub fn display_label(&self) -> String {
+        self.cost_ref().display_label()
+    }
+
+    pub fn kicker(cost: TotalCost<C>) -> Self {
+        Self::typed(OptionalCostKind::Kicker, "Kicker", cost)
     }
 
     pub fn multikicker(cost: TotalCost<C>) -> Self {
-        Self {
-            label: "Multikicker".to_string(),
-            cost,
-            repeatable: true,
-            returns_to_hand: false,
-        }
+        Self::typed(OptionalCostKind::Multikicker, "Multikicker", cost).repeatable()
     }
 
     pub fn replicate(cost: TotalCost<C>) -> Self {
-        Self {
-            label: "Replicate".to_string(),
-            cost,
-            repeatable: true,
-            returns_to_hand: false,
-        }
+        Self::typed(OptionalCostKind::Replicate, "Replicate", cost).repeatable()
     }
 
     pub fn buyback(cost: TotalCost<C>) -> Self {
-        Self {
-            label: "Buyback".to_string(),
-            cost,
-            repeatable: false,
-            returns_to_hand: true,
-        }
+        Self::typed(OptionalCostKind::Buyback, "Buyback", cost).returns_to_hand()
     }
 
     pub fn entwine(cost: TotalCost<C>) -> Self {
-        Self {
-            label: "Entwine".to_string(),
-            cost,
-            repeatable: false,
-            returns_to_hand: false,
-        }
+        Self::typed(OptionalCostKind::Entwine, "Entwine", cost)
     }
 
     pub fn squad(cost: TotalCost<C>) -> Self {
-        Self {
-            label: "Squad".to_string(),
-            cost,
-            repeatable: true,
-            returns_to_hand: false,
-        }
+        Self::typed(OptionalCostKind::Squad, "Squad", cost).repeatable()
     }
 
     pub fn offspring(cost: TotalCost<C>) -> Self {
-        Self {
-            label: "Offspring".to_string(),
-            cost,
-            repeatable: false,
-            returns_to_hand: false,
-        }
+        Self::typed(OptionalCostKind::Offspring, "Offspring", cost)
     }
 
     pub fn custom(label: impl Into<String>, cost: TotalCost<C>) -> Self {
-        Self {
-            label: label.into(),
-            cost,
-            repeatable: false,
-            returns_to_hand: false,
-        }
+        let label = label.into();
+        Self::typed(OptionalCostKind::from_label(&label), label, cost)
     }
 
     pub fn repeatable(mut self) -> Self {
@@ -836,7 +1086,9 @@ impl<C> OptionalCost<C> {
         map_cost: impl FnMut(C) -> Result<C2, Error>,
     ) -> Result<OptionalCost<C2>, Error> {
         Ok(OptionalCost {
-            label: self.label,
+            kind: self.kind,
+            reference: self.reference,
+            source_label: self.source_label,
             cost: self.cost.try_map(map_cost)?,
             repeatable: self.repeatable,
             returns_to_hand: self.returns_to_hand,
@@ -846,37 +1098,19 @@ impl<C> OptionalCost<C> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct OptionalCostsPaid {
-    pub costs: Vec<(String, u32)>,
+    pub costs: Vec<(OptionalCostRef, u32)>,
 }
 
 impl OptionalCostsPaid {
-    fn label_matches_query(stored: &str, query: &str) -> bool {
-        stored == query
-            || (query.eq_ignore_ascii_case("Kicker")
-                && stored.to_ascii_lowercase().starts_with("kicker "))
-            || (query.eq_ignore_ascii_case("Gift")
-                && stored.to_ascii_lowercase().starts_with("gift "))
-            || (query.eq_ignore_ascii_case("Conspire")
-                && stored.to_ascii_lowercase().starts_with("conspire"))
-            || (query.eq_ignore_ascii_case("Behold")
-                && stored
-                    .to_ascii_lowercase()
-                    .starts_with("as an additional cost to cast this spell, you may behold "))
-            || (query.eq_ignore_ascii_case("Additional")
-                && stored
-                    .to_ascii_lowercase()
-                    .starts_with("as an additional cost to cast this spell, you may "))
-    }
-
     pub fn new(num_optional_costs: usize) -> Self {
         Self {
-            costs: vec![("".to_string(), 0); num_optional_costs],
+            costs: vec![(OptionalCostRef::from(""), 0); num_optional_costs],
         }
     }
 
     pub fn from_costs<C>(costs: &[OptionalCost<C>]) -> Self {
         Self {
-            costs: costs.iter().map(|c| (c.label.clone(), 0)).collect(),
+            costs: costs.iter().map(|c| (c.cost_ref(), 0)).collect(),
         }
     }
 
@@ -888,20 +1122,22 @@ impl OptionalCostsPaid {
         self.costs.get(index).map(|(_, n)| *n > 0).unwrap_or(false)
     }
 
-    pub fn was_paid_label(&self, label: &str) -> bool {
+    pub fn was_paid_label(&self, label: impl Into<OptionalCostRef>) -> bool {
+        let query = label.into();
         self.costs
             .iter()
-            .any(|(l, n)| Self::label_matches_query(l, label) && *n > 0)
+            .any(|(stored, n)| stored.matches_query(&query) && *n > 0)
     }
 
     pub fn times_paid(&self, index: usize) -> u32 {
         self.costs.get(index).map(|(_, n)| *n).unwrap_or(0)
     }
 
-    pub fn times_paid_label(&self, label: &str) -> u32 {
+    pub fn times_paid_label(&self, label: impl Into<OptionalCostRef>) -> u32 {
+        let query = label.into();
         self.costs
             .iter()
-            .filter(|(l, _)| Self::label_matches_query(l, label))
+            .filter(|(stored, _)| stored.matches_query(&query))
             .map(|(_, n)| *n)
             .sum()
     }
@@ -918,17 +1154,19 @@ impl OptionalCostsPaid {
         }
     }
 
-    pub fn pay_label(&mut self, label: &str) {
-        if let Some((_, times)) = self.costs.iter_mut().find(|(l, _)| *l == label) {
+    pub fn pay_label(&mut self, label: impl Into<OptionalCostRef>) {
+        let label = label.into();
+        if let Some((_, times)) = self.costs.iter_mut().find(|(stored, _)| *stored == label) {
             *times += 1;
         }
     }
 
-    pub fn mark_label_paid(&mut self, label: &str) {
-        if let Some((_, times)) = self.costs.iter_mut().find(|(l, _)| *l == label) {
+    pub fn mark_label_paid(&mut self, label: impl Into<OptionalCostRef>) {
+        let label = label.into();
+        if let Some((_, times)) = self.costs.iter_mut().find(|(stored, _)| *stored == label) {
             *times += 1;
         } else {
-            self.costs.push((label.to_string(), 1));
+            self.costs.push((label, 1));
         }
     }
 

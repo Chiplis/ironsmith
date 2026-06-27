@@ -34,7 +34,7 @@ impl EffectExecutor for ChooseModeEffect {
 
     fn get_modal_spec(&self) -> Option<ModalSpec> {
         Some(ModalSpec {
-            mode_descriptions: self.modes.iter().map(|m| m.description.clone()).collect(),
+            mode_descriptions: self.modes.iter().map(|m| m.source_text.clone()).collect(),
             max_modes: self.choose_count.clone(),
             min_modes: self.min_choose_count.clone(),
             allow_repeated_modes: self.allow_repeated_modes,

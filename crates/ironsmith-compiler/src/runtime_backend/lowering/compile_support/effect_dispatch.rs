@@ -251,7 +251,7 @@ fn compile_effect_inner(
                 push_choice(&mut choices, choice);
             }
             lowered_modes.push(EffectMode {
-                description: mode.description.clone(),
+                source_text: mode.description.clone(),
                 effects: mode_effects,
             });
         }
@@ -1311,6 +1311,7 @@ fn compile_subject_verb_effect(
             duration,
             optional,
             choice_description,
+            counters,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1325,7 +1326,8 @@ fn compile_subject_verb_effect(
                 *to_zone,
                 *replacement_zone,
                 mode,
-            );
+            )
+            .with_counters(counters.clone());
             if *optional {
                 replacement.optional = true;
                 replacement.choice_description = choice_description.clone();
@@ -1803,7 +1805,7 @@ fn compile_subject_verb_effect(
             if *allow_colorless {
                 let ability = StaticAbility::protection(crate::ability::ProtectionFrom::Colorless);
                 modes.push(EffectMode {
-                    description: "Colorless".to_string(),
+                    source_text: "Colorless".to_string(),
                     effects: vec![Effect::new(
                         crate::effects::GrantAbilitiesTargetEffect::new(
                             spec.clone(),
@@ -1824,7 +1826,7 @@ fn compile_subject_verb_effect(
                     ColorSet::from(color),
                 ));
                 modes.push(EffectMode {
-                    description: name.to_string(),
+                    source_text: name.to_string(),
                     effects: vec![Effect::new(
                         crate::effects::GrantAbilitiesTargetEffect::new(
                             spec.clone(),
@@ -2291,11 +2293,11 @@ fn compile_subject_verb_effect(
 
             let effect = Effect::choose_one(vec![
                 EffectMode {
-                    description: put_mode_text.clone(),
+                    source_text: put_mode_text.clone(),
                     effects: vec![put_effect],
                 },
                 EffectMode {
-                    description: remove_mode_text.clone(),
+                    source_text: remove_mode_text.clone(),
                     effects: vec![remove_effect],
                 },
             ]);
@@ -3659,7 +3661,7 @@ fn compile_subject_verb_effect(
             let modes = modifications
                 .iter()
                 .map(|modification| EffectMode {
-                    description: String::new(),
+                    source_text: String::new(),
                     effects: vec![Effect::new(
                         crate::effects::ApplyContinuousEffect::new(
                             crate::continuous::EffectTarget::Filter(resolved_filter.clone()),
@@ -3794,7 +3796,7 @@ fn compile_subject_verb_effect(
                     .iter()
                     .zip(modifications.iter())
                     .map(|(ability, modification)| EffectMode {
-                        description: granted_ability_mode_description(ability, &spec)
+                        source_text: granted_ability_mode_description(ability, &spec)
                             .unwrap_or_default(),
                         effects: vec![Effect::new(
                             crate::effects::ApplyContinuousEffect::with_spec(
@@ -4636,11 +4638,11 @@ fn compile_subject_verb_effect(
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let modes = vec![
                 EffectMode {
-                    description: "Tap".to_string(),
+                    source_text: "Tap".to_string(),
                     effects: vec![Effect::tap(spec.clone())],
                 },
                 EffectMode {
-                    description: "Untap".to_string(),
+                    source_text: "Untap".to_string(),
                     effects: vec![Effect::untap(spec.clone())],
                 },
             ];
@@ -4661,11 +4663,11 @@ fn compile_subject_verb_effect(
             }
             let modes = vec![
                 EffectMode {
-                    description: "Tap".to_string(),
+                    source_text: "Tap".to_string(),
                     effects: vec![Effect::tap_all(resolved_tap)],
                 },
                 EffectMode {
-                    description: "Untap".to_string(),
+                    source_text: "Untap".to_string(),
                     effects: vec![Effect::untap_all(resolved_untap)],
                 },
             ];
@@ -4793,7 +4795,7 @@ fn compile_subject_verb_effect(
                     effect = effect.tag(tag.clone());
                 }
                 modes.push(EffectMode {
-                    description,
+                    source_text: description,
                     effects: vec![effect],
                 });
             }
@@ -5071,7 +5073,7 @@ fn compile_subject_verb_effect(
                 .iter()
                 .enumerate()
                 .map(|(idx, counter_type)| EffectMode {
-                    description: mode_texts
+                    source_text: mode_texts
                         .get(idx)
                         .cloned()
                         .unwrap_or_else(|| format!("Put a {} counter", counter_type.description())),
@@ -5298,7 +5300,7 @@ fn compile_subject_verb_effect(
                     filter.description()
                 );
                 modes.push(EffectMode {
-                    description,
+                    source_text: description,
                     effects: vec![Effect::return_all_to_hand(filter)],
                 });
             }

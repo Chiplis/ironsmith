@@ -47,6 +47,7 @@ pub struct TurnHistory {
     pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
     pub saddled_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
+    pub spell_warped_this_turn: bool,
     pub event_records: Vec<TurnEventRecord>,
     pub staged_event_records: Vec<TurnEventRecord>,
 }
@@ -71,6 +72,7 @@ impl TurnHistory {
         self.creature_attack_counts_this_turn.clear();
         self.crewed_this_turn.clear();
         self.saddled_this_turn.clear();
+        self.spell_warped_this_turn = false;
         self.event_records.clear();
         self.staged_event_records.clear();
 
@@ -811,6 +813,23 @@ impl TurnHistory {
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
             .filter(|event| event.from == Zone::Battlefield)
             .count() as u32
+    }
+
+    pub fn nonland_permanents_left_battlefield_this_turn(&self) -> u32 {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+            .filter(|event| event.from == Zone::Battlefield)
+            .filter(|event| {
+                event
+                    .snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| !snapshot.card_types.contains(&CardType::Land))
+            })
+            .count() as u32
+    }
+
+    pub fn spell_was_warped_this_turn(&self) -> bool {
+        self.spell_warped_this_turn
     }
 
     pub fn creatures_left_battlefield_under_controller(&self, player: PlayerId) -> u32 {

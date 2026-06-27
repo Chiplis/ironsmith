@@ -659,7 +659,8 @@ fn is_hidden_gift_etb_ability(ability: &Ability) -> bool {
     };
     if !matches!(
         triggered.intervening_if.as_ref(),
-        Some(Condition::ThisSpellPaidLabel(label)) if label == "Gift"
+        Some(Condition::ThisSpellPaidLabel(label))
+            if label.display_label().eq_ignore_ascii_case("Gift")
     ) || !triggered.choices.is_empty()
         || !trigger_is_this_enters_battlefield(&triggered.trigger)
     {
@@ -745,10 +746,88 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(token_life_text);
     }
+    if let Some(void_text) = describe_void_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &branch.condition,
+        &condition_text,
+    ) {
+        return Some(void_text);
+    }
     Some(format!(
         "{default_text}. If {condition_text}, {} instead",
         rewrite_self_replacement_referent_phrase(&default_text, &replacement_text)
     ))
+}
+
+fn describe_void_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    condition: &Condition,
+    condition_text: &str,
+) -> Option<String> {
+    if !is_void_condition(condition) {
+        return None;
+    }
+    let replacement_clause = describe_void_replacement_clause(replacement_effects)?;
+    Some(format!(
+        "{}. Void — If {condition_text}, instead {replacement_clause}",
+        describe_effect_list(default_effects)
+    ))
+}
+
+fn is_void_condition(condition: &Condition) -> bool {
+    let Condition::Or(left, right) = condition else {
+        return false;
+    };
+    (matches!(
+        left.as_ref(),
+        Condition::NonlandPermanentLeftBattlefieldThisTurn
+    ) && matches!(right.as_ref(), Condition::SpellWasWarpedThisTurn))
+        || (matches!(left.as_ref(), Condition::SpellWasWarpedThisTurn)
+            && matches!(
+                right.as_ref(),
+                Condition::NonlandPermanentLeftBattlefieldThisTurn
+            ))
+}
+
+fn describe_void_replacement_clause(effects: &[Effect]) -> Option<String> {
+    if let [draw_effect, for_players_effect] = effects {
+        let draw = unwrap_basic_render_wrapper(draw_effect)
+            .downcast_ref::<crate::effects::DrawCardsEffect>()?;
+        let for_players = unwrap_basic_render_wrapper(for_players_effect)
+            .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+        let [inner_effect] = for_players.effects.as_slice() else {
+            return None;
+        };
+        let lose = unwrap_basic_render_wrapper(inner_effect)
+            .downcast_ref::<crate::effects::LoseLifeEffect>()?;
+        if matches!(
+            draw.player,
+            PlayerFilter::You | PlayerFilter::EffectController
+        ) && for_players.filter == PlayerFilter::Opponent
+            && matches!(
+                lose.player,
+                ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+            )
+        {
+            return Some(format!(
+                "you draw {} and each opponent loses {} life",
+                describe_card_count(&draw.count),
+                describe_value(&lose.amount)
+            ));
+        }
+    }
+
+    let mut rendered = super::normalize_common::lowercase_first(
+        describe_effect_list(effects).trim_end_matches('.'),
+    )
+    .replace(". Each ", " and each ")
+    .replace(". each ", " and each ");
+    if rendered.starts_with("draw ") {
+        rendered = format!("you {rendered}");
+    }
+    Some(rendered)
 }
 
 fn describe_looked_cards_non_hand_self_replacement(
@@ -1251,7 +1330,7 @@ fn describe_resolution_program_for_card(
     let has_visible_gift_line = def
         .optional_costs
         .iter()
-        .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
+        .any(|cost| matches!(cost.kind, crate::cost::OptionalCostKind::Gift));
     if !has_visible_gift_line {
         let rendered = describe_resolution_program(program);
         return rewrite_spell_resolution_damage_source(def, &rendered);
@@ -2385,7 +2464,7 @@ fn is_conspire_helper_ability(ability: &Ability) -> bool {
         || !matches!(
             triggered.intervening_if.as_ref(),
             Some(Condition::ThisSpellPaidLabel(label))
-                if label == "Conspire" || label.starts_with("Conspire ")
+                if label.display_label().eq_ignore_ascii_case("Conspire")
         )
         || !triggered.choices.is_empty()
         || triggered
@@ -2868,7 +2947,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     out.extend(leading_alternative_cast_lines);
     for cost in &def.optional_costs {
         let line = describe_optional_cost_line(cost);
-        if spell_like_card && cost.label == "Conspire" {
+        if spell_like_card && matches!(cost.kind, crate::cost::OptionalCostKind::Conspire) {
             deferred_spell_optional_lines.push(line);
         } else {
             out.push(line);
@@ -2877,7 +2956,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let has_visible_gift_line = def
         .optional_costs
         .iter()
-        .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
+        .any(|cost| matches!(cost.kind, crate::cost::OptionalCostKind::Gift));
     if let Some(filter) = &def.aura_attach_filter {
         out.push(format!("Enchant {}", describe_enchant_filter(filter)));
     }

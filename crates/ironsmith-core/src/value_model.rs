@@ -1,3 +1,4 @@
+use crate::cost_model::OptionalCostRef;
 use crate::{
     ActivationTiming, AnthemCountExpression, Comparison, CounterType, EffectId, EventValueSpec,
     ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, Subtype, TagKey,
@@ -163,9 +164,9 @@ pub enum Value {
     WasBoughtBack,
     WasEntwined,
     WasPaid(usize),
-    WasPaidLabel(String),
+    WasPaidLabel(OptionalCostRef),
     TimesPaid(usize),
-    TimesPaidLabel(String),
+    TimesPaidLabel(OptionalCostRef),
     KickCount,
     MagicGamesLostToOpponentsSinceLastWin,
     DraftNotedHighestNumber {
@@ -806,6 +807,8 @@ pub enum Condition {
     AttackedWithNOrMoreCreaturesThisTurn(u32),
     OpponentLostLifeThisTurn,
     PermanentLeftBattlefieldThisTurn,
+    NonlandPermanentLeftBattlefieldThisTurn,
+    SpellWasWarpedThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
     ObjectEnteredBattlefieldThisTurn(ObjectFilter),
     ObjectEnteredBattlefieldLastTurn(ObjectFilter),
@@ -840,7 +843,7 @@ pub enum Condition {
     TargetIsBlocked,
     TargetWasKicked,
     ThisSpellWasKicked,
-    ThisSpellPaidLabel(String),
+    ThisSpellPaidLabel(OptionalCostRef),
     YouHaveFullParty,
     TargetSpellCastOrderThisTurn(u32),
     TargetSpellControllerIsPoisoned,

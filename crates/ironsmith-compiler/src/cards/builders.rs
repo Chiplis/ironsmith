@@ -1,4 +1,4 @@
-pub(crate) use crate::ability::ActivationTiming;
+pub(crate) use crate::ability::{ActivationTiming, PresentationKeyword, PresentationLabel};
 use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness};
 pub use crate::cards::CardDefinition;
 use crate::color::ColorSet;
@@ -582,7 +582,7 @@ impl CardDefinitionBuilder {
                 .into(),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some("keyword:prowess".to_string()),
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Prowess)),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -649,7 +649,9 @@ impl CardDefinitionBuilder {
                 .into(),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some(format!("keyword:toxic {amount}")),
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Toxic(
+                    amount,
+                ))),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -685,7 +687,9 @@ impl CardDefinitionBuilder {
                 .into(),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some(format!("keyword:afflict {amount}")),
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Afflict(
+                    amount,
+                ))),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -698,7 +702,9 @@ impl CardDefinitionBuilder {
                 effects: vec![crate::effect::Effect::amplify(amount)].into(),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some(format!("keyword:amplify {amount}")),
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Amplify(
+                    amount,
+                ))),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -711,7 +717,9 @@ impl CardDefinitionBuilder {
                 effects: vec![crate::effect::Effect::devour(multiplier)].into(),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some(format!("keyword:devour {multiplier}")),
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Devour(
+                    multiplier,
+                ))),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1209,20 +1217,24 @@ impl CardDefinitionBuilder {
     pub fn soulshift_value(self, amount: Value) -> Self {
         self.with_ability(Self::soulshift_triggered_ability(
             crate::filter::Comparison::LessThanOrEqualExpr(Box::new(amount)),
-            Some("keyword:soulshift X".to_string()),
+            Some(PresentationLabel::Keyword(PresentationKeyword::Soulshift(
+                "X".to_string(),
+            ))),
         ))
     }
 
     pub(crate) fn soulshift_triggered_ability_from_value(amount: Value) -> crate::ability::Ability {
         Self::soulshift_triggered_ability(
             crate::filter::Comparison::LessThanOrEqualExpr(Box::new(amount)),
-            Some("keyword:soulshift X".to_string()),
+            Some(PresentationLabel::Keyword(PresentationKeyword::Soulshift(
+                "X".to_string(),
+            ))),
         )
     }
 
     fn soulshift_triggered_ability(
         mana_value: crate::filter::Comparison,
-        presentation_label: Option<String>,
+        presentation_label: Option<PresentationLabel>,
     ) -> crate::ability::Ability {
         let filter = crate::target::ObjectFilter::default()
             .with_subtype(Subtype::Spirit)
@@ -1294,7 +1306,9 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: Some(format!("keyword:recover {cost_text}")),
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Recover(
+                    cost_text,
+                ))),
             }),
             functional_zones: vec![crate::zone::Zone::Graveyard],
         })
@@ -1603,7 +1617,9 @@ impl CardDefinitionBuilder {
         let existing_instances = self
             .optional_costs
             .iter()
-            .filter(|cost| cost.label == "Conspire" || cost.label.starts_with("Conspire "))
+            .filter(|cost| {
+                cost.source_label == "Conspire" || cost.source_label.starts_with("Conspire ")
+            })
             .count();
         let label = if existing_instances == 0 {
             "Conspire".to_string()
@@ -1631,7 +1647,7 @@ impl CardDefinitionBuilder {
                     ),
                 ]),
                 choices: vec![],
-                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(label)),
+                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(label.into())),
                 presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Stack],

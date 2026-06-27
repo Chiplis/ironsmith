@@ -115,12 +115,14 @@ fn object_ability_is_static_keyword(ability: &Ability) -> bool {
     matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.is_keyword())
 }
 
-fn object_ability_keyword_label(ability: &Ability) -> Option<&str> {
+fn object_ability_keyword_label(ability: &Ability) -> Option<String> {
     match &ability.kind {
-        AbilityKind::Triggered(triggered) => triggered
-            .presentation_label
-            .as_deref()
-            .and_then(|label| label.strip_prefix("keyword:")),
+        AbilityKind::Triggered(triggered) => match triggered.presentation_label.as_ref()? {
+            crate::ability::PresentationLabel::Keyword(keyword) => {
+                Some(keyword.display().to_ascii_lowercase())
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -5060,7 +5062,6 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
 
         let filter_desc = self.filter.description();
         let keyword_label = object_ability_keyword_label(&self.ability)
-            .map(str::to_string)
             .or_else(|| explicit_granted_keyword_label(&ability_text));
         if object_ability_is_static_keyword(&self.ability) {
             ability_text = lowercase_first_ascii(&ability_text);

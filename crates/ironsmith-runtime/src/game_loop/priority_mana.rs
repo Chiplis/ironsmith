@@ -4173,9 +4173,9 @@ pub(super) fn finalize_spell_cast(
             "escape" | "blitz" | "evoke"
         )
     {
-        optional_costs_paid.mark_label_paid(&label);
+        optional_costs_paid.mark_label_paid(label);
         if let Some(spell_obj) = game.object_mut(new_id) {
-            spell_obj.optional_costs_paid.mark_label_paid(&label);
+            spell_obj.optional_costs_paid.mark_label_paid(label);
         }
     }
 

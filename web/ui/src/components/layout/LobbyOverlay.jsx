@@ -19,6 +19,7 @@ import {
   normalizeMatchFormat,
   parseCommanderList,
   parseDeckList,
+  readDefaultLobbyDeck,
 } from "@/lib/decklists";
 import {
   MULTIPLAYER_SECURITY_TRUSTED,
@@ -144,11 +145,22 @@ export default function LobbyOverlay({
     status,
     setStatus,
   } = useGame();
+  const lobbyDeckDefault = useMemo(() => readDefaultLobbyDeck(), []);
+  const shouldDefaultCreateDeck =
+    !String(initialCreateDeckText || "").trim()
+    && !String(initialCreateCommanderText || "").trim();
+  const shouldDefaultJoinDeck =
+    !String(initialJoinDeckText || "").trim()
+    && !String(initialJoinCommanderText || "").trim();
+  const resolvedInitialCreateFormat =
+    shouldDefaultCreateDeck && String(lobbyDeckDefault.commanderText || "").trim()
+      ? MATCH_FORMAT_COMMANDER
+      : normalizeMatchFormat(initialCreateFormat);
   const [mode, setMode] = useState(
     initialMode === "join" ? "join" : "create"
   );
   const [createFormat, setCreateFormat] = useState(
-    normalizeMatchFormat(initialCreateFormat)
+    resolvedInitialCreateFormat
   );
   const [createName, setCreateName] = useState(
     String(initialCreateName || defaultName)
@@ -164,7 +176,7 @@ export default function LobbyOverlay({
   );
   const [startingLife, setStartingLife] = useState(() => {
     const initialLife = Math.max(1, Number(defaultStartingLife) || 20);
-    const normalizedFormat = normalizeMatchFormat(initialCreateFormat);
+    const normalizedFormat = resolvedInitialCreateFormat;
     if (normalizedFormat === MATCH_FORMAT_COMMANDER && initialLife === 20) {
       return 40;
     }
@@ -173,12 +185,26 @@ export default function LobbyOverlay({
     }
     return initialLife;
   });
-  const [createDeckText, setCreateDeckText] = useState(String(initialCreateDeckText || ""));
-  const [joinDeckText, setJoinDeckText] = useState(String(initialJoinDeckText || ""));
-  const [createCommanderText, setCreateCommanderText] = useState(
-    String(initialCreateCommanderText || "")
+  const [createDeckText, setCreateDeckText] = useState(
+    shouldDefaultCreateDeck
+      ? String(lobbyDeckDefault.deckText || "")
+      : String(initialCreateDeckText || "")
   );
-  const [joinCommanderText, setJoinCommanderText] = useState(String(initialJoinCommanderText || ""));
+  const [joinDeckText, setJoinDeckText] = useState(
+    shouldDefaultJoinDeck
+      ? String(lobbyDeckDefault.deckText || "")
+      : String(initialJoinDeckText || "")
+  );
+  const [createCommanderText, setCreateCommanderText] = useState(
+    shouldDefaultCreateDeck
+      ? String(lobbyDeckDefault.commanderText || "")
+      : String(initialCreateCommanderText || "")
+  );
+  const [joinCommanderText, setJoinCommanderText] = useState(
+    shouldDefaultJoinDeck
+      ? String(lobbyDeckDefault.commanderText || "")
+      : String(initialJoinCommanderText || "")
+  );
   const [inviteName, setInviteName] = useState("");
   const [inviteDeckText, setInviteDeckText] = useState("");
   const [inviteCommanderText, setInviteCommanderText] = useState("");

@@ -80,6 +80,37 @@ fn words_find_any_phrase(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
         .find_map(|phrase| words_find_phrase(words, phrase))
 }
 
+fn search_put_attachment_target(
+    search_tokens: &[OwnedLexToken],
+    put_idx: Option<usize>,
+) -> Result<Option<TargetAst>, CardTextError> {
+    let Some(put_idx) = put_idx else {
+        return Ok(None);
+    };
+    let put_tokens = &search_tokens[put_idx..];
+    let word_positions = parser_token_word_positions(put_tokens);
+    let words = word_positions
+        .iter()
+        .map(|(_, word)| *word)
+        .collect::<Vec<_>>();
+    let Some(attached_idx) = words_find_phrase(&words, &["attached", "to"]) else {
+        return Ok(None);
+    };
+    let Some((target_token_idx, _)) = word_positions.get(attached_idx + 2) else {
+        return Ok(None);
+    };
+    let target_tokens = &put_tokens[*target_token_idx..];
+    let target_end = target_tokens
+        .iter()
+        .position(|token| token.is_comma() || token_is_any_word(token, &["and", "then"]))
+        .unwrap_or(target_tokens.len());
+    let target_tokens = trim_commas(&target_tokens[..target_end]);
+    if target_tokens.is_empty() {
+        return Ok(None);
+    }
+    parse_target_phrase(&target_tokens).map(Some)
+}
+
 fn words_contain_all(words: &[&str], required: &[&str]) -> bool {
     required
         .iter()
@@ -1362,6 +1393,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let shuffle = original_shuffle && trailing_create_followup.is_none();
     let split_battlefield_and_hand = effect_routing.split_battlefield_and_hand;
     let library_position_from_top = effect_routing.library_position_from_top.clone();
+    let attachment_target = search_put_attachment_target(search_tokens, clause_markers.put_idx)?;
     let mut handled_direct_may_in_iterated_search = false;
     let mut effects = if let Some(mut slots) = basic_land_type_slots.take() {
         if !has_explicit_destination || !search_zones_are_library_only {
@@ -1551,16 +1583,25 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 SubjectVerbActionAst::ShuffleLibrary,
             ));
         }
+        let mut per_tag_effects = vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(chosen_tag.clone(), span_from_tokens(tokens)),
+            destination,
+            matches!(destination, Zone::Library),
+            ReturnControllerAst::Preserve,
+            battlefield_tapped,
+            None,
+        )];
+        if destination == Zone::Battlefield
+            && let Some(target) = attachment_target.clone()
+        {
+            per_tag_effects.push(EffectAst::subject_verb_attach(
+                TargetAst::Tagged(chosen_tag.clone(), span_from_tokens(tokens)),
+                target,
+            ));
+        }
         sequence.push(EffectAst::ForEachTagged {
             tag: chosen_tag.clone(),
-            effects: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(chosen_tag, span_from_tokens(tokens)),
-                destination,
-                matches!(destination, Zone::Library),
-                ReturnControllerAst::Preserve,
-                battlefield_tapped,
-                None,
-            )],
+            effects: per_tag_effects,
         });
         if shuffle
             && !(destination == Zone::Library && zone_slice_contains(&search_zones, Zone::Library))

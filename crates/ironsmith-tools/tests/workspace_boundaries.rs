@@ -152,6 +152,49 @@ fn aggregate_compiled_card_models_are_core_owned() {
 }
 
 #[test]
+fn compiled_text_renderer_does_not_read_source_only_fields() {
+    let root = workspace_root();
+    let renderer_files = [
+        "crates/ironsmith-runtime/src/compiled_text/mod.rs",
+        "crates/ironsmith-runtime/src/compiled_text/ast_render.rs",
+        "crates/ironsmith-runtime/src/compiled_text/render_effects.rs",
+        "crates/ironsmith-runtime/src/compiled_text/normalize_common.rs",
+        "crates/ironsmith-runtime/src/compiled_text/oracle_style.rs",
+    ];
+    let forbidden = [
+        ".source_text",
+        ".source_label",
+        ".presentation_label.as_deref()",
+        "mode.description",
+        "prompt.description",
+        "RepeatProcessPromptEffect { pub description",
+    ];
+
+    for relative in renderer_files {
+        let content = read_repo_file(&root, relative);
+        let production_content = content
+            .split("\n#[cfg(test)]")
+            .next()
+            .unwrap_or(content.as_str());
+        for fragment in forbidden {
+            assert!(
+                !production_content.contains(fragment),
+                "{relative} must render from AST/typed presentation metadata, not source-only field `{fragment}`"
+            );
+        }
+    }
+
+    let repeat_prompt = read_repo_file(
+        &root,
+        "crates/ironsmith-runtime/src/effects/composition/repeat_process_prompt.rs",
+    );
+    assert!(
+        !repeat_prompt.contains("pub description"),
+        "RepeatProcessPromptEffect must not store renderer-ready source text"
+    );
+}
+
+#[test]
 fn migrated_effect_payloads_are_core_owned() {
     let root = workspace_root();
     let core_effect = read_repo_file(&root, "crates/ironsmith-core/src/effect.rs");

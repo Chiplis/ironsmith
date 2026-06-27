@@ -41,8 +41,8 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     helper_tag_for_tokens, is_article, mana_pips_from_token, parse_counter_type_words,
-    parse_number, parse_subject, parse_target_phrase, span_from_tokens, token_index_for_word_index,
-    trim_commas, words,
+    parse_number, parse_number_word_refs, parse_subject, parse_target_phrase, span_from_tokens,
+    token_index_for_word_index, trim_commas, words,
 };
 use super::super::value_helpers::parse_value_from_lexed;
 use super::bundle_rules::{
@@ -844,6 +844,47 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
     future_zone_replacement_from_sentence_tokens(&tokens)
 }
 
+fn future_zone_replacement_counters(
+    tokens: &[OwnedLexToken],
+) -> Vec<(crate::object::CounterType, u32)> {
+    let token_words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(counter_word_idx) = token_words
+        .iter()
+        .position(|word| COUNTER_OR_COUNTERS_WORDS.contains(word))
+    else {
+        return Vec::new();
+    };
+    if token_words.get(counter_word_idx + 1) != Some(&ON_WORD)
+        || token_words.get(counter_word_idx + 2) != Some(&"it")
+    {
+        return Vec::new();
+    }
+    let Some(with_word_idx) = token_words[..counter_word_idx]
+        .iter()
+        .rposition(|word| *word == WITH_WORD)
+    else {
+        return Vec::new();
+    };
+    let count_word_idx = with_word_idx + 1;
+    let Some((count, consumed_words)) = parse_number_word_refs(&token_words[count_word_idx..])
+    else {
+        return Vec::new();
+    };
+    let descriptor_start_word_idx = count_word_idx + consumed_words;
+    if descriptor_start_word_idx >= counter_word_idx {
+        return Vec::new();
+    }
+
+    let descriptor_words = token_words[descriptor_start_word_idx..counter_word_idx]
+        .iter()
+        .copied()
+        .chain(std::iter::once("counter"))
+        .collect::<Vec<_>>();
+    parse_counter_type_words(&descriptor_words)
+        .map(|counter_type| vec![(counter_type, count)])
+        .unwrap_or_default()
+}
+
 fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let target = || TargetAst::Tagged(TagKey::from(IT_TAG), None);
     if sentence_contains(tokens, COUNTERED_THIS_WAY_PHRASE)
@@ -851,6 +892,19 @@ fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Opt
         && sentence_contains(tokens, GRAVEYARD_PHRASE)
         && sentence_contains(tokens, EXILE_PHRASE)
     {
+        let counters = future_zone_replacement_counters(tokens);
+        if !counters.is_empty() {
+            return Some(
+                EffectAst::subject_verb_register_zone_replacement_with_counters(
+                    target(),
+                    Some(Zone::Stack),
+                    Some(Zone::Graveyard),
+                    Zone::Exile,
+                    ZoneReplacementDurationAst::OneShot,
+                    counters,
+                ),
+            );
+        }
         return Some(EffectAst::subject_verb_register_zone_replacement(
             target(),
             Some(Zone::Stack),

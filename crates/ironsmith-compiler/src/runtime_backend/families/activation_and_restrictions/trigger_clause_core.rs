@@ -1229,6 +1229,102 @@ const PUT_INTO_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] = &[
         8,
     ),
 ];
+const PUT_INTO_GRAVEYARD_OR_EXILE_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] = &[
+    trigger_suffix_shape(
+        clause_shape!(
+            suffix
+                & [
+                    "is",
+                    "put",
+                    "into",
+                    "a",
+                    "graveyard",
+                    "from",
+                    "the",
+                    "battlefield",
+                    "or",
+                    "is",
+                    "put",
+                    "into",
+                    "exile",
+                    "from",
+                    "the",
+                    "battlefield",
+                ]
+        ),
+        16,
+    ),
+    trigger_suffix_shape(
+        clause_shape!(
+            suffix
+                & [
+                    "is",
+                    "put",
+                    "into",
+                    "graveyard",
+                    "from",
+                    "the",
+                    "battlefield",
+                    "or",
+                    "is",
+                    "put",
+                    "into",
+                    "exile",
+                    "from",
+                    "the",
+                    "battlefield",
+                ]
+        ),
+        15,
+    ),
+    trigger_suffix_shape(
+        clause_shape!(
+            suffix
+                & [
+                    "are",
+                    "put",
+                    "into",
+                    "a",
+                    "graveyard",
+                    "from",
+                    "the",
+                    "battlefield",
+                    "or",
+                    "are",
+                    "put",
+                    "into",
+                    "exile",
+                    "from",
+                    "the",
+                    "battlefield",
+                ]
+        ),
+        16,
+    ),
+    trigger_suffix_shape(
+        clause_shape!(
+            suffix
+                & [
+                    "are",
+                    "put",
+                    "into",
+                    "graveyard",
+                    "from",
+                    "the",
+                    "battlefield",
+                    "or",
+                    "are",
+                    "put",
+                    "into",
+                    "exile",
+                    "from",
+                    "the",
+                    "battlefield",
+                ]
+        ),
+        15,
+    ),
+];
 const PUT_INTO_OPPONENT_GRAVEYARD_FROM_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] = &[
     trigger_suffix_shape(
         clause_shape!(
@@ -2826,6 +2922,56 @@ pub(crate) fn parse_trigger_clause_lexed(
                 during_your_turn: during_turn == Some(PlayerFilter::You),
             });
         }
+    }
+
+    if let Some(suffix_word_len) = trigger_suffix_word_len(
+        zone_change_words,
+        PUT_INTO_GRAVEYARD_OR_EXILE_FROM_BATTLEFIELD_SUFFIXES,
+    ) {
+        let subject_tokens =
+            trigger_subject_tokens_before_suffix(tokens, zone_change_words.len(), suffix_word_len);
+        let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
+        let subject_words = subject_view.to_word_refs();
+        let one_or_more = subject_starts_one_or_more(&subject_words);
+        let subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
+        let stripped_subject_words =
+            ActivationRestrictionCompatWords::new(subject_tokens).to_word_refs();
+        let mut filter = if subject_is_card_or_cards(&stripped_subject_words) {
+            ObjectFilter::default()
+        } else {
+            parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported filter in put-into-graveyard-or-exile-from-battlefield trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?
+        };
+        filter.zone = None;
+        filter.owner = None;
+        if filter.controller.is_none()
+            && (trigger_clause_shape_matches_words(&subject_words, UNDER_YOUR_CONTROL_PATTERN)
+                || contains_window(&subject_words, &["you", "control"]))
+        {
+            filter.controller = Some(PlayerFilter::You);
+        }
+        if subject_mentions_card(&subject_words) {
+            filter.card_types.clear();
+            filter.nontoken = true;
+        }
+        return Ok(TriggerSpec::Either(
+            Box::new(TriggerSpec::PutIntoGraveyardFromZone {
+                filter: filter.clone(),
+                from: Zone::Battlefield,
+                one_or_more,
+            }),
+            Box::new(TriggerSpec::PutIntoExileFromZones {
+                filter,
+                from: vec![Zone::Battlefield],
+                one_or_more,
+                during_turn,
+                cause_filter: None,
+            }),
+        ));
     }
 
     for (tail, from_zones) in [

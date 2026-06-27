@@ -65,6 +65,8 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::MoveToZoneWithCounters { .. } => TraitApplyResult::Replaced(Vec::new()),
+
         ReplacementAction::ExileWithSourceLink => TraitApplyResult::Replaced(Vec::new()),
 
         ReplacementAction::ExileWithSourceLinkThen(effects) => {

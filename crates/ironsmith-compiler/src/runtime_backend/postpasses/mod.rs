@@ -2,6 +2,7 @@ use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::CardDefinition;
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
+use crate::cost::OptionalCostKind;
 use crate::effect::{Condition, Effect, Value};
 use crate::resolution::ResolutionProgram;
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -155,7 +156,7 @@ fn finalize_squad_abilities(mut definition: CardDefinition) -> CardDefinition {
     if !definition
         .optional_costs
         .iter()
-        .any(|cost| cost.label == "Squad")
+        .any(|cost| matches!(cost.kind, OptionalCostKind::Squad))
     {
         return definition;
     }
@@ -164,7 +165,7 @@ fn finalize_squad_abilities(mut definition: CardDefinition) -> CardDefinition {
         Trigger::this_enters_battlefield(),
         vec![Effect::new(crate::effects::CreateTokenCopyEffect::new(
             ChooseSpec::Source,
-            Value::TimesPaidLabel("Squad".to_string()),
+            Value::TimesPaidLabel("Squad".into()),
             PlayerFilter::You,
         ))],
     );
@@ -176,7 +177,7 @@ fn finalize_offspring_abilities(mut definition: CardDefinition) -> CardDefinitio
     if !definition
         .optional_costs
         .iter()
-        .any(|cost| cost.label == "Offspring")
+        .any(|cost| matches!(cost.kind, OptionalCostKind::Offspring))
     {
         return definition;
     }
@@ -187,13 +188,13 @@ fn finalize_offspring_abilities(mut definition: CardDefinition) -> CardDefinitio
             effects: ResolutionProgram::from_effects(vec![Effect::new(
                 crate::effects::CreateTokenCopyEffect::new(
                     ChooseSpec::Source,
-                    Value::WasPaidLabel("Offspring".to_string()),
+                    Value::WasPaidLabel("Offspring".into()),
                     PlayerFilter::You,
                 )
                 .set_base_power_toughness(1, 1),
             )]),
             choices: vec![],
-            intervening_if: Some(Condition::ThisSpellPaidLabel("Offspring".to_string())),
+            intervening_if: Some(Condition::ThisSpellPaidLabel("Offspring".into())),
             presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],

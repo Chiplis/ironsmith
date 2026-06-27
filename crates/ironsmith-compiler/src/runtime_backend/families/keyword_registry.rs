@@ -776,7 +776,7 @@ pub(super) fn lower_evoke(
         LineAst::Triggered {
             trigger: TriggerSpec::ThisEntersBattlefield,
             effects: vec![EffectAst::Conditional {
-                predicate: PredicateAst::ThisSpellPaidLabel("Evoke".to_string()),
+                predicate: PredicateAst::ThisSpellPaidLabel("Evoke".into()),
                 if_true: vec![EffectAst::subject_verb_sacrifice(
                     PlayerAst::ItsController,
                     crate::target::ObjectFilter::source(),

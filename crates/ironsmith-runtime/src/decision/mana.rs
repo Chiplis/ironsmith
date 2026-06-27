@@ -1523,7 +1523,7 @@ fn effective_cost_with_affordable_non_mana_optional_cost(
         if spell_with_optional_costs
             .optional_costs
             .iter()
-            .any(|existing| existing.label == label)
+            .any(|existing| existing.source_label == label)
         {
             continue;
         }

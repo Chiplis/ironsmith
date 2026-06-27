@@ -1765,7 +1765,7 @@ fn lower_gift_keyword_chunk(
             let mut gift_effects = lowered.effects.to_vec();
             gift_effects.push(crate::Effect::emit_gift_given(PlayerFilter::ChosenPlayer));
             let gift_effect = crate::effect::Effect::conditional(
-                crate::ConditionExpr::ThisSpellPaidLabel("Gift".to_string()),
+                crate::ConditionExpr::ThisSpellPaidLabel("Gift".into()),
                 gift_effects,
                 Vec::new(),
             );
@@ -1786,7 +1786,7 @@ fn lower_gift_keyword_chunk(
                 Some(format!(
                     "When this permanent enters, if the gift was promised, {followup_text}"
                 )),
-                Some(crate::ConditionExpr::ThisSpellPaidLabel("Gift".to_string())),
+                Some(crate::ConditionExpr::ThisSpellPaidLabel("Gift".into())),
                 None,
                 prepared.imports.clone(),
             );
@@ -1841,14 +1841,14 @@ fn lower_optional_cost_with_cast_trigger_chunk(
         unreachable!("optional-cost-cast-trigger lowerer received mismatched chunk");
     };
 
-    let cost_label = cost.label.clone();
+    let cost_ref = cost.cost_ref();
     builder = builder.optional_cost(cost);
     let parsed = super::rewrite_parsed_triggered_ability(
         TriggerSpec::YouCastThisSpell,
         prepared.effects.clone(),
         vec![Zone::Stack],
         Some(followup_text),
-        Some(crate::ConditionExpr::ThisSpellPaidLabel(cost_label)),
+        Some(crate::ConditionExpr::ThisSpellPaidLabel(cost_ref)),
         None,
         prepared.imports.clone(),
     );

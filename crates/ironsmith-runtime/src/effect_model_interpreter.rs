@@ -979,7 +979,7 @@ where
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RepeatProcessPromptEffect>(&effect) {
         return Ok(Effect::new(crate::effects::RepeatProcessPromptEffect::new(
-            payload.text.clone(),
+            payload.kind,
         )));
     }
     if let Some(converted) =
@@ -1293,7 +1293,8 @@ where
             payload.to_zone,
             payload.replacement_zone,
             payload.mode,
-        );
+        )
+        .with_counters(payload.counters.clone());
         if payload.optional {
             converted.optional = true;
             converted.choice_description = payload.choice_description.clone();
@@ -1813,7 +1814,7 @@ where
 {
     let effects = convert_effects(mode.effects.into_iter(), hooks)?;
     Ok(EffectMode::new(
-        mode.description,
+        mode.source_text,
         remove_redundant_target_only_effects(effects),
     ))
 }

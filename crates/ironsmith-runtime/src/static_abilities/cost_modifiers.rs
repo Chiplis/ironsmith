@@ -1550,7 +1550,7 @@ fn condition_expr_matches_for_cast(
     if let crate::effect::Condition::ThisSpellPaidLabel(label) = expr
         && let Some(paid) = optional_costs_paid
     {
-        return paid.was_paid_label(label);
+        return paid.was_paid_label(label.clone());
     }
 
     let eval_ctx = this_spell_condition_eval_ctx(source, controller);

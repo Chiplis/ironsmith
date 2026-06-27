@@ -1768,7 +1768,11 @@ pub fn resolve_value(
         Value::WasPaidLabel(label) => {
             // Check if the optional cost with the given label was paid
             let paid = get_optional_costs_paid(game, ctx);
-            Ok(if paid.was_paid_label(label) { 1 } else { 0 })
+            Ok(if paid.was_paid_label(label.clone()) {
+                1
+            } else {
+                0
+            })
         }
 
         Value::TimesPaid(index) => {
@@ -1780,7 +1784,7 @@ pub fn resolve_value(
         Value::TimesPaidLabel(label) => {
             // Get the number of times the optional cost with the label was paid
             let paid = get_optional_costs_paid(game, ctx);
-            Ok(paid.times_paid_label(label) as i32)
+            Ok(paid.times_paid_label(label.clone()) as i32)
         }
 
         Value::KickCount => {

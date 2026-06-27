@@ -1299,6 +1299,7 @@ pub(super) fn apply_replacement_choice_response(
             effect_id,
             source,
             controller,
+            ..
         } => {
             // Event was replaced with different effects - execute them
             // Consume one-shot effects

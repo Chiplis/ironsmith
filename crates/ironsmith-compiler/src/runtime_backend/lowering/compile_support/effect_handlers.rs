@@ -93,6 +93,23 @@ fn compile_delayed_trigger_spec(
             exact_spells_this_turn: *exact_spells_this_turn,
             from_not_hand: *from_not_hand,
         }),
+        TriggerSpec::AbilityActivated {
+            activator,
+            filter,
+            non_mana_only,
+            loyalty_only,
+            activation_cost_has_tap,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::AbilityActivated {
+            activator: activator.clone(),
+            filter: filter.clone(),
+            non_mana_only: *non_mana_only,
+            loyalty_only: *loyalty_only,
+            activation_cost_has_tap: *activation_cost_has_tap,
+        }),
+        TriggerSpec::Either(left, right) => Ok(ironsmith_core::DelayedTriggerSpec::Either(
+            Box::new(compile_delayed_trigger_spec(left)?),
+            Box::new(compile_delayed_trigger_spec(right)?),
+        )),
         other => Err(CardTextError::ParseError(format!(
             "unsupported delayed trigger spec: {other:?}"
         ))),

@@ -9,7 +9,7 @@ use crate::tag::TagKey;
 use crate::target_model::ChooseSpec;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::value_model::{Restriction, Value, ValueSurfaceHint};
-use crate::{Color, ColorSet, SourceReferenceSurface};
+use crate::{Color, ColorSet, CounterType, SourceReferenceSurface};
 
 /// Identifier for an effect within an effect sequence.
 ///
@@ -177,6 +177,14 @@ pub enum DelayedTriggerSpec {
         exact_spells_this_turn: Option<u32>,
         from_not_hand: bool,
     },
+    AbilityActivated {
+        activator: PlayerFilter,
+        filter: ObjectFilter,
+        non_mana_only: bool,
+        loyalty_only: bool,
+        activation_cost_has_tap: Option<bool>,
+    },
+    Either(Box<DelayedTriggerSpec>, Box<DelayedTriggerSpec>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -851,14 +859,14 @@ impl<E> TaggedEffect<E> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EffectMode<E> {
-    pub description: String,
+    pub source_text: String,
     pub effects: Vec<E>,
 }
 
 impl<E> EffectMode<E> {
-    pub fn new(description: impl Into<String>, effects: Vec<E>) -> Self {
+    pub fn new(source_text: impl Into<String>, effects: Vec<E>) -> Self {
         Self {
-            description: description.into(),
+            source_text: source_text.into(),
             effects,
         }
     }
@@ -4016,6 +4024,7 @@ pub struct RegisterZoneReplacementEffect {
     pub mode: ReplacementApplyMode,
     pub optional: bool,
     pub choice_description: Option<String>,
+    pub counters: Vec<(CounterType, u32)>,
 }
 
 impl RegisterZoneReplacementEffect {
@@ -4034,12 +4043,18 @@ impl RegisterZoneReplacementEffect {
             mode,
             optional: false,
             choice_description: None,
+            counters: Vec::new(),
         }
     }
 
     pub fn optional(mut self, description: impl Into<String>) -> Self {
         self.optional = true;
         self.choice_description = Some(description.into());
+        self
+    }
+
+    pub fn with_counters(mut self, counters: Vec<(CounterType, u32)>) -> Self {
+        self.counters = counters;
         self
     }
 }
@@ -6530,14 +6545,27 @@ impl LoseLifeEffect {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepeatProcessPromptKind {
+    MayRepeatAnyNumberOfTimes,
+}
+
+impl RepeatProcessPromptKind {
+    pub fn prompt_text(self) -> &'static str {
+        match self {
+            Self::MayRepeatAnyNumberOfTimes => "You may repeat this process any number of times",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepeatProcessPromptEffect {
-    pub text: String,
+    pub kind: RepeatProcessPromptKind,
 }
 
 impl RepeatProcessPromptEffect {
-    pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into() }
+    pub fn new(kind: RepeatProcessPromptKind) -> Self {
+        Self { kind }
     }
 }
 

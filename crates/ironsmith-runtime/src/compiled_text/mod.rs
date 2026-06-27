@@ -47,6 +47,7 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
         .map(|line| {
             substitute_legendary_source_reference(&line, &def.card, "", oracle_short.as_deref())
         })
+        .map(|line| substitute_spell_caster_source_reference(&line, def))
         .map(|line| substitute_kicked_draw_source_reference(&line, def))
         .collect();
     compact_post_substitution_surface_lines(lines)
@@ -62,6 +63,7 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
         .map(|line| {
             substitute_legendary_source_reference(&line, &def.card, "", oracle_short.as_deref())
         })
+        .map(|line| substitute_spell_caster_source_reference(&line, def))
         .collect();
     compact_post_substitution_surface_lines(lines)
         .into_iter()
@@ -75,6 +77,16 @@ pub fn ability_surface_text(ability: &Ability) -> String {
         return keyword;
     }
     self::render_effects::describe_inline_ability(ability)
+}
+
+fn substitute_spell_caster_source_reference(line: &str, def: &CardDefinition) -> String {
+    if !(def.card.is_instant() || def.card.is_sorcery()) || def.card.name.contains(" // ") {
+        return line.to_string();
+    }
+    line.replace(
+        "the player who cast this spell",
+        &format!("the player who cast {}", def.card.name),
+    )
 }
 
 fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
@@ -365,6 +377,11 @@ fn normalize_scored_compiled_line(line: String) -> String {
         return "Exile all cards from target player's hand and graveyard.".to_string();
     }
     if lower.trim_end_matches('.')
+        == "this creature enters with x +1/+1 counters on it, where x is the number of another creature or artifact you control"
+    {
+        return "This creature enters with a +1/+1 counter on it for each other creature and/or artifact you control".to_string();
+    }
+    if lower.trim_end_matches('.')
         == "choose a creature at random on the battlefield, gain control of it until end of turn, untap it, it gains haste until end of turn, then destroy all other creatures"
     {
         return "Choose a creature at random. You gain control of that creature until end of turn. Untap it. It gains haste until end of turn. Then destroy all other creatures.".to_string();
@@ -433,8 +450,10 @@ fn normalize_mass_opponent_controller_surface(line: String) -> String {
 fn substitute_kicked_draw_source_reference(line: &str, def: &CardDefinition) -> String {
     let has_repeatable_kicker = def.optional_costs.iter().any(|cost| {
         cost.repeatable
-            && (cost.label.eq_ignore_ascii_case("kicker")
-                || cost.label.eq_ignore_ascii_case("multikicker"))
+            && matches!(
+                cost.kind,
+                crate::cost::OptionalCostKind::Kicker | crate::cost::OptionalCostKind::Multikicker
+            )
     });
     if !has_repeatable_kicker
         || def.card.name.contains(" // ")
@@ -1116,6 +1135,10 @@ fn finalize_ast_surface_line(line: String) -> String {
     );
     line = line.replace(
         "number of another creature artifact you control",
+        "number of other creatures and/or artifacts you control",
+    );
+    line = line.replace(
+        "number of another creature or artifact you control",
         "number of other creatures and/or artifacts you control",
     );
     line = line.replace(
@@ -1930,6 +1953,197 @@ fn expand_finalized_ast_surface_line(line: String) -> Vec<String> {
 mod tests {
     use super::*;
 
+    fn poison_program_source_fields(program: &mut crate::resolution::ResolutionProgram) {
+        let original = std::mem::take(program);
+        *program = original
+            .try_map_effects(|effect| {
+                Ok::<_, std::convert::Infallible>(poison_effect_source_fields(effect))
+            })
+            .expect("infallible poison transform");
+    }
+
+    fn poison_effects(effects: Vec<crate::Effect>) -> Vec<crate::Effect> {
+        effects
+            .into_iter()
+            .map(poison_effect_source_fields)
+            .collect()
+    }
+
+    fn poison_effect_source_fields(effect: crate::Effect) -> crate::Effect {
+        if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
+            let mut choose_mode = choose_mode.clone();
+            for mode in &mut choose_mode.modes {
+                mode.source_text = "POISON".to_string();
+                mode.effects = poison_effects(std::mem::take(&mut mode.effects));
+            }
+            return crate::Effect::new(choose_mode);
+        }
+        if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+            let mut conditional = conditional.clone();
+            conditional.if_true = poison_effects(std::mem::take(&mut conditional.if_true));
+            conditional.if_false = poison_effects(std::mem::take(&mut conditional.if_false));
+            return crate::Effect::new(conditional);
+        }
+        if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+            let mut if_effect = if_effect.clone();
+            if_effect.then = poison_effects(std::mem::take(&mut if_effect.then));
+            if_effect.else_ = poison_effects(std::mem::take(&mut if_effect.else_));
+            return crate::Effect::new(if_effect);
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            let mut with_id = with_id.clone();
+            with_id.effect = Box::new(poison_effect_source_fields(*with_id.effect));
+            return crate::Effect::new(with_id);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            let mut tagged = tagged.clone();
+            tagged.effect = Box::new(poison_effect_source_fields(*tagged.effect));
+            return crate::Effect::new(tagged);
+        }
+        if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
+            let mut repeat = repeat.clone();
+            repeat.effects = poison_effects(std::mem::take(&mut repeat.effects));
+            return crate::Effect::new(repeat);
+        }
+        if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
+            let mut repeat = repeat.clone();
+            repeat.effects = poison_effects(std::mem::take(&mut repeat.effects));
+            return crate::Effect::new(repeat);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            let mut sequence = sequence.clone();
+            sequence.effects = poison_effects(std::mem::take(&mut sequence.effects));
+            return crate::Effect::new(sequence);
+        }
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+            let mut may = may.clone();
+            may.effects = poison_effects(std::mem::take(&mut may.effects));
+            return crate::Effect::new(may);
+        }
+        if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+            let mut for_players = for_players.clone();
+            for_players.effects = poison_effects(std::mem::take(&mut for_players.effects));
+            return crate::Effect::new(for_players);
+        }
+        effect
+    }
+
+    fn poison_card_source_fields(definition: &mut CardDefinition) {
+        for optional_cost in &mut definition.optional_costs {
+            optional_cost.source_label = "POISON".to_string();
+        }
+        if let Some(spell_effect) = &mut definition.spell_effect {
+            poison_program_source_fields(spell_effect);
+        }
+        for ability in &mut definition.abilities {
+            match &mut ability.kind {
+                crate::ability::AbilityKind::Triggered(triggered) => {
+                    poison_program_source_fields(&mut triggered.effects);
+                }
+                crate::ability::AbilityKind::Activated(activated) => {
+                    poison_program_source_fields(&mut activated.effects);
+                }
+                crate::ability::AbilityKind::Static(_) => {}
+            }
+        }
+    }
+
+    fn assert_source_poison_does_not_change_compiled_text(mut definition: CardDefinition) {
+        let before = compiled_text_lines(&definition);
+        poison_card_source_fields(&mut definition);
+        let after = compiled_text_lines(&definition);
+        assert_eq!(after, before, "compiled text changed after source poison");
+        assert!(
+            !after.join("\n").contains("POISON"),
+            "compiled text leaked poisoned source fields: {after:?}"
+        );
+    }
+
+    #[test]
+    fn poisoned_source_fields_do_not_affect_representative_compiled_text() {
+        let modal = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Source Poison Riot",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+        .riot()
+        .build();
+        assert_source_poison_does_not_change_compiled_text(modal);
+
+        let optional_cost = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Source Poison Kicker",
+        )
+        .card_types(vec![CardType::Instant])
+        .kicker_mana(crate::mana::ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(2),
+        ]))
+        .with_spell_effect(vec![crate::Effect::draw(1)])
+        .build();
+        assert_source_poison_does_not_change_compiled_text(optional_cost);
+
+        let presentation = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Source Poison Toxic",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+        .toxic(1)
+        .build();
+        assert_source_poison_does_not_change_compiled_text(presentation);
+
+        let repeat = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Source Poison Repeat",
+        )
+        .card_types(vec![CardType::Instant])
+        .with_spell_effect(vec![
+            crate::Effect::draw(1),
+            crate::Effect::new(crate::effects::RepeatProcessPromptEffect::new(
+                ironsmith_core::RepeatProcessPromptKind::MayRepeatAnyNumberOfTimes,
+            )),
+        ])
+        .build();
+        assert_source_poison_does_not_change_compiled_text(repeat);
+    }
+
+    #[test]
+    fn presentation_label_prefixes_rendered_trigger_body() {
+        let ability = crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_enters_battlefield(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::Effect::draw(1),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(crate::ability::PresentationLabel::from_ability_word(
+                    "Custom Label",
+                )),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        let definition = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Presentation Label Prefix",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+        .with_ability(ability)
+        .build();
+
+        let rendered = compiled_text_lines(&definition).join(" ");
+        assert!(
+            rendered.contains("Custom Label"),
+            "expected presentation label prefix, got {rendered}"
+        );
+        assert!(
+            rendered.to_ascii_lowercase().contains("draw a card"),
+            "presentation label must not replace the rendered trigger body: {rendered}"
+        );
+    }
+
     #[test]
     fn post_substitution_compacts_conditional_source_animation_bundle() {
         let lines = compact_post_substitution_surface_lines(vec![
@@ -1975,6 +2189,13 @@ mod tests {
                 "Exile all cards from their hand. Exile target player's graveyard.".to_string()
             ),
             "Exile all cards from target player's hand and graveyard."
+        );
+        assert_eq!(
+            normalize_scored_compiled_line(
+                "This creature enters with X +1/+1 counters on it, where X is the number of another creature or artifact you control."
+                    .to_string()
+            ),
+            "This creature enters with a +1/+1 counter on it for each other creature and/or artifact you control"
         );
         assert_eq!(
             normalize_scored_compiled_line(

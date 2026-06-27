@@ -25,6 +25,20 @@ const COUNTER_TARGET_SECOND_SPELL_THIS_TURN_PHRASES: &[&[&str]] = &[
     &[
         "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this", "turn",
     ],
+    &[
+        "counter", "target", "spell", "that's", "second", "spell", "cast", "this", "turn",
+    ],
+    &[
+        "counter", "target", "spell", "that's", "the", "second", "spell", "cast", "this",
+        "turn",
+    ],
+    &[
+        "counter", "target", "spell", "that", "s", "second", "spell", "cast", "this", "turn",
+    ],
+    &[
+        "counter", "target", "spell", "that", "s", "the", "second", "spell", "cast", "this",
+        "turn",
+    ],
 ];
 const COUNTER_UNLESS_PAYS_WORD: &str = "pays";
 const COUNTER_DYNAMIC_PAYMENT_TAIL_WORDS: &[&str] = &[

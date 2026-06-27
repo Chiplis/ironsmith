@@ -4,6 +4,7 @@ export const LOBBY_DECK_SIZE = 60;
 export const COMMANDER_DECK_SIZE = 99;
 export const PARTNER_DECK_SIZE = 98;
 const SAVED_DECK_PRESETS_STORAGE_KEY = "ironsmith.savedDeckPresets";
+const DEFAULT_LOBBY_DECK_STORAGE_KEY = "ironsmith.defaultLobbyDeck.v1";
 
 const MAIN_DECK_HEADER = /^Deck$/i;
 const COMMANDER_HEADER = /^(Commander|Commanders)$/i;
@@ -108,6 +109,59 @@ function writeSavedDeckPresets(entries) {
   } catch (error) {
     console.warn("Failed to write saved deck presets:", error);
   }
+}
+
+function normalizeLobbyDeckDefault(entry) {
+  if (!entry || typeof entry !== "object") {
+    return {
+      deckText: "",
+      commanderText: "",
+      updatedAt: 0,
+    };
+  }
+
+  return {
+    deckText: String(entry.deckText || ""),
+    commanderText: String(entry.commanderText || ""),
+    updatedAt: Number(entry.updatedAt) || 0,
+  };
+}
+
+export function readDefaultLobbyDeck() {
+  if (!canUseLocalStorage()) return normalizeLobbyDeckDefault(null);
+
+  try {
+    const raw = window.localStorage.getItem(DEFAULT_LOBBY_DECK_STORAGE_KEY);
+    if (!raw) return normalizeLobbyDeckDefault(null);
+    return normalizeLobbyDeckDefault(JSON.parse(raw));
+  } catch (error) {
+    console.warn("Failed to read default lobby deck:", error);
+    return normalizeLobbyDeckDefault(null);
+  }
+}
+
+export function saveDefaultLobbyDeck({ deckText = "", commanderText = "" } = {}) {
+  if (!canUseLocalStorage()) return readDefaultLobbyDeck();
+
+  const nextEntry = normalizeLobbyDeckDefault({
+    deckText,
+    commanderText,
+    updatedAt: Date.now(),
+  });
+  if (!nextEntry.deckText.trim() && !nextEntry.commanderText.trim()) {
+    return readDefaultLobbyDeck();
+  }
+
+  try {
+    window.localStorage.setItem(
+      DEFAULT_LOBBY_DECK_STORAGE_KEY,
+      JSON.stringify(nextEntry)
+    );
+  } catch (error) {
+    console.warn("Failed to write default lobby deck:", error);
+  }
+
+  return nextEntry;
 }
 
 export function parseDeckList(text) {

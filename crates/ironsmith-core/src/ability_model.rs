@@ -95,13 +95,200 @@ pub struct LevelAbility<SA> {
     pub abilities: Vec<SA>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PresentationKeyword {
+    Prowess,
+    Toxic(u32),
+    Afflict(u32),
+    Amplify(u32),
+    Devour(u32),
+    Suspend,
+    Recover(String),
+    Casualty(u32),
+    Soulshift(String),
+}
+
+impl PresentationKeyword {
+    pub fn from_legacy_keyword(label: &str) -> Option<Self> {
+        let payload = label.trim().strip_prefix("keyword:")?.trim();
+        let lower = payload.to_ascii_lowercase();
+        if lower == "prowess" {
+            return Some(Self::Prowess);
+        }
+        if lower == "suspend" {
+            return Some(Self::Suspend);
+        }
+        if let Some(rest) = lower.strip_prefix("toxic ") {
+            return rest.parse().ok().map(Self::Toxic);
+        }
+        if let Some(rest) = lower.strip_prefix("afflict ") {
+            return rest.parse().ok().map(Self::Afflict);
+        }
+        if let Some(rest) = lower.strip_prefix("amplify ") {
+            return rest.parse().ok().map(Self::Amplify);
+        }
+        if let Some(rest) = lower.strip_prefix("devour ") {
+            return rest.parse().ok().map(Self::Devour);
+        }
+        if let Some(rest) = payload.strip_prefix("recover ") {
+            return Some(Self::Recover(rest.trim().to_string()));
+        }
+        if let Some(rest) = lower.strip_prefix("casualty ") {
+            return rest.parse().ok().map(Self::Casualty);
+        }
+        if let Some(rest) = payload.strip_prefix("soulshift ") {
+            return Some(Self::Soulshift(rest.trim().to_string()));
+        }
+        None
+    }
+
+    pub fn display(&self) -> String {
+        match self {
+            Self::Prowess => "Prowess".to_string(),
+            Self::Toxic(amount) => format!("Toxic {amount}"),
+            Self::Afflict(amount) => format!("Afflict {amount}"),
+            Self::Amplify(amount) => format!("Amplify {amount}"),
+            Self::Devour(amount) => format!("Devour {amount}"),
+            Self::Suspend => "Suspend".to_string(),
+            Self::Recover(cost) => format!("Recover {cost}"),
+            Self::Casualty(power) => format!("Casualty {power}"),
+            Self::Soulshift(amount) => format!("Soulshift {amount}"),
+        }
+    }
+
+    pub fn matches_name(&self, name: &str) -> bool {
+        let lower = name.trim().to_ascii_lowercase();
+        matches!(
+            (self, lower.as_str()),
+            (Self::Prowess, "prowess")
+                | (Self::Suspend, "suspend")
+                | (Self::Toxic(_), "toxic")
+                | (Self::Afflict(_), "afflict")
+                | (Self::Amplify(_), "amplify")
+                | (Self::Devour(_), "devour")
+                | (Self::Recover(_), "recover")
+                | (Self::Casualty(_), "casualty")
+                | (Self::Soulshift(_), "soulshift")
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ActivatedPresentationLabel {
+    ThrowEllipsis,
+    Boast,
+    Exhaust,
+    Renew,
+    Channel,
+    Cohort,
+    Teleport,
+    Transmute,
+}
+
+impl ActivatedPresentationLabel {
+    pub fn from_label(label: &str) -> Option<Self> {
+        let trimmed = label.trim();
+        if trimmed.eq_ignore_ascii_case("Throw ...") || trimmed.eq_ignore_ascii_case("Throw") {
+            return Some(Self::ThrowEllipsis);
+        }
+        let head = trimmed.split_whitespace().next().unwrap_or(trimmed);
+        match head.to_ascii_lowercase().as_str() {
+            "boast" => Some(Self::Boast),
+            "exhaust" => Some(Self::Exhaust),
+            "renew" => Some(Self::Renew),
+            "channel" => Some(Self::Channel),
+            "cohort" => Some(Self::Cohort),
+            "teleport" => Some(Self::Teleport),
+            "transmute" => Some(Self::Transmute),
+            _ => None,
+        }
+    }
+
+    pub fn display(self) -> &'static str {
+        match self {
+            Self::ThrowEllipsis => "Throw ...",
+            Self::Boast => "Boast",
+            Self::Exhaust => "Exhaust",
+            Self::Renew => "Renew",
+            Self::Channel => "Channel",
+            Self::Cohort => "Cohort",
+            Self::Teleport => "Teleport",
+            Self::Transmute => "Transmute",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PresentationLabel {
+    AbilityWord(String),
+    Keyword(PresentationKeyword),
+    CaseSolved,
+    CaseToSolve,
+    Activated(ActivatedPresentationLabel),
+}
+
+impl PresentationLabel {
+    pub fn from_ability_word(label: impl Into<String>) -> Self {
+        let label = label.into();
+        let trimmed = label.trim();
+        if trimmed.eq_ignore_ascii_case("solved") {
+            return Self::CaseSolved;
+        }
+        if trimmed.eq_ignore_ascii_case("__ironsmith_case_solved") {
+            return Self::CaseSolved;
+        }
+        if trimmed.eq_ignore_ascii_case("to solve") {
+            return Self::CaseToSolve;
+        }
+        if trimmed.eq_ignore_ascii_case("__ironsmith_case_to_solve") {
+            return Self::CaseToSolve;
+        }
+        if let Some(keyword) = PresentationKeyword::from_legacy_keyword(trimmed) {
+            return Self::Keyword(keyword);
+        }
+        if let Some(activated) = ActivatedPresentationLabel::from_label(trimmed) {
+            return Self::Activated(activated);
+        }
+        Self::AbilityWord(trimmed.to_string())
+    }
+
+    pub fn display_prefix(&self) -> Option<String> {
+        match self {
+            Self::AbilityWord(label) if label.trim().is_empty() => None,
+            Self::AbilityWord(label) => Some(label.clone()),
+            Self::Keyword(keyword) => Some(keyword.display()),
+            Self::CaseSolved => Some("Solved".to_string()),
+            Self::CaseToSolve => Some("To solve".to_string()),
+            Self::Activated(label) => Some(label.display().to_string()),
+        }
+    }
+
+    pub fn activated_display(&self) -> Option<&'static str> {
+        match self {
+            Self::Activated(label) => Some(label.display()),
+            _ => None,
+        }
+    }
+
+    pub fn is_keyword(&self, keyword: &str) -> bool {
+        matches!(self, Self::Keyword(label) if label.matches_name(keyword))
+    }
+
+    pub fn recover_cost(&self) -> Option<&str> {
+        match self {
+            Self::Keyword(PresentationKeyword::Recover(cost)) => Some(cost.as_str()),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TriggeredAbility<T, E> {
     pub trigger: T,
     pub effects: ResolutionProgram<E>,
     pub choices: Vec<crate::ChooseSpec>,
     pub intervening_if: Option<Condition>,
-    pub presentation_label: Option<String>,
+    pub presentation_label: Option<PresentationLabel>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

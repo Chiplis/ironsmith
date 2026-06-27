@@ -943,7 +943,7 @@ pub(crate) fn rewrite_lower_prepared_additional_cost_choice_modes_with_exports(
             exports = ReferenceExports::join(&exports, &lowered.exports);
         }
         modes.push(EffectMode {
-            description: option.description.trim().to_string(),
+            source_text: option.description.trim().to_string(),
             effects: lowered.effects.flattened_default_effects().to_vec(),
         });
     }
@@ -1252,7 +1252,8 @@ pub(crate) fn rewrite_parsed_triggered_ability(
                 effects: crate::resolution::ResolutionProgram::default(),
                 choices: Vec::new(),
                 intervening_if,
-                presentation_label: presentation_label.map(str::to_string),
+                presentation_label: presentation_label
+                    .map(crate::ability::PresentationLabel::from_ability_word),
             }),
             functional_zones,
         }

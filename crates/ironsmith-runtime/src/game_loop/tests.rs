@@ -20131,11 +20131,11 @@ fn test_spell_has_legal_targets_with_choose_mode_allows_non_target_mode() {
     let alice = PlayerId::from_index(0);
     let effects = vec![Effect::choose_one(vec![
         crate::effect::EffectMode {
-            description: "Counter target spell".to_string(),
+            source_text: "Counter target spell".to_string(),
             effects: vec![Effect::counter(ChooseSpec::spell())],
         },
         crate::effect::EffectMode {
-            description: "Gain 3 life".to_string(),
+            source_text: "Gain 3 life".to_string(),
             effects: vec![Effect::gain_life(3)],
         },
     ])];
@@ -20156,11 +20156,11 @@ fn test_spell_has_legal_targets_with_choose_mode_requires_enough_legal_modes() {
             2,
             vec![
                 crate::effect::EffectMode {
-                    description: "Counter target spell".to_string(),
+                    source_text: "Counter target spell".to_string(),
                     effects: vec![Effect::counter(ChooseSpec::spell())],
                 },
                 crate::effect::EffectMode {
-                    description: "Gain 3 life".to_string(),
+                    source_text: "Gain 3 life".to_string(),
                     effects: vec![Effect::gain_life(3)],
                 },
             ],
@@ -20181,11 +20181,11 @@ fn test_spell_has_legal_targets_with_mode_selection_respects_selected_mode_legal
     let bob = PlayerId::from_index(1);
     let effects = vec![Effect::choose_one(vec![
         crate::effect::EffectMode {
-            description: "Counter target spell".to_string(),
+            source_text: "Counter target spell".to_string(),
             effects: vec![Effect::counter(ChooseSpec::spell())],
         },
         crate::effect::EffectMode {
-            description: "Gain 3 life".to_string(),
+            source_text: "Gain 3 life".to_string(),
             effects: vec![Effect::gain_life(3)],
         },
     ])];
@@ -20226,15 +20226,15 @@ fn test_spell_has_legal_targets_with_mode_preview_allows_partial_choose_two_sele
         2,
         vec![
             crate::effect::EffectMode {
-                description: "Counter target spell".to_string(),
+                source_text: "Counter target spell".to_string(),
                 effects: vec![Effect::counter(ChooseSpec::spell())],
             },
             crate::effect::EffectMode {
-                description: "Gain 3 life".to_string(),
+                source_text: "Gain 3 life".to_string(),
                 effects: vec![Effect::gain_life(3)],
             },
             crate::effect::EffectMode {
-                description: "Draw a card".to_string(),
+                source_text: "Draw a card".to_string(),
                 effects: vec![Effect::draw(1)],
             },
         ],
@@ -21520,11 +21520,11 @@ fn test_active_target_assignments_modal_target_slot_tracks_chosen_mode_without_r
 {
     let effects = vec![Effect::choose_one(vec![
         crate::effect::EffectMode {
-            description: "Counter target spell".to_string(),
+            source_text: "Counter target spell".to_string(),
             effects: vec![Effect::counter(ChooseSpec::spell())],
         },
         crate::effect::EffectMode {
-            description: "Gain 3 life".to_string(),
+            source_text: "Gain 3 life".to_string(),
             effects: vec![Effect::gain_life(3)],
         },
     ])];
@@ -21594,15 +21594,15 @@ fn test_casting_choose_two_spell_keeps_non_targeting_modes_clickable_in_modes_co
             2,
             vec![
                 crate::effect::EffectMode {
-                    description: "Gain 3 life".to_string(),
+                    source_text: "Gain 3 life".to_string(),
                     effects: vec![Effect::gain_life(3)],
                 },
                 crate::effect::EffectMode {
-                    description: "Draw a card".to_string(),
+                    source_text: "Draw a card".to_string(),
                     effects: vec![Effect::draw(1)],
                 },
                 crate::effect::EffectMode {
-                    description: "Gain 4 life".to_string(),
+                    source_text: "Gain 4 life".to_string(),
                     effects: vec![Effect::gain_life(4)],
                 },
             ],
@@ -21662,11 +21662,11 @@ fn test_casting_repeated_mode_spell_exposes_repeatable_modes_and_accepts_duplica
             2,
             vec![
                 crate::effect::EffectMode {
-                    description: "Gain 3 life".to_string(),
+                    source_text: "Gain 3 life".to_string(),
                     effects: vec![Effect::gain_life(3)],
                 },
                 crate::effect::EffectMode {
-                    description: "Draw a card".to_string(),
+                    source_text: "Draw a card".to_string(),
                     effects: vec![Effect::draw(1)],
                 },
             ],
@@ -28798,7 +28798,7 @@ fn optional_cost_intervening_if_trigger_uses_stack_entry_paid_state_after_source
         .with_source_snapshot(source_snapshot)
         .with_triggering_event(event)
         .with_intervening_if(crate::effect::Condition::ThisSpellPaidLabel(
-            "Bargain".to_string(),
+            "Bargain".into(),
         ));
     game.push_to_stack(stack_entry);
 
@@ -28857,7 +28857,7 @@ fn test_offspring_trigger_resolves_after_source_leaves_battlefield() {
         .with_source_info(source_snapshot.stable_id, source_snapshot.name.clone())
         .with_source_snapshot(source_snapshot)
         .with_intervening_if(crate::effect::Condition::ThisSpellPaidLabel(
-            "Offspring".to_string(),
+            "Offspring".into(),
         ));
     game.push_to_stack(stack_entry);
 
@@ -44645,7 +44645,7 @@ fn test_gift_promise_updates_cast_time_target_requirements() {
         crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
             default_effects: vec![Effect::move_to_zone(default_target, Zone::Hand, false)],
             self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
-                crate::effect::Condition::ThisSpellPaidLabel("Gift".to_string()),
+                crate::effect::Condition::ThisSpellPaidLabel("Gift".into()),
                 vec![Effect::move_to_zone(gift_target, Zone::Hand, false)],
             )],
         }]);
@@ -44737,7 +44737,7 @@ fn test_gift_optional_cost_choice_refreshes_pending_target_prompt() {
         crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
             default_effects: vec![Effect::move_to_zone(default_target, Zone::Hand, false)],
             self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
-                crate::effect::Condition::ThisSpellPaidLabel("Gift".to_string()),
+                crate::effect::Condition::ThisSpellPaidLabel("Gift".into()),
                 vec![Effect::move_to_zone(gift_target, Zone::Hand, false)],
             )],
         }]);

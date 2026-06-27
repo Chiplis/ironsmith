@@ -117,6 +117,12 @@ pub enum ReplacementAction {
     /// Change the zone an object would go to
     ChangeDestination(Zone),
 
+    /// Move the object to a replacement zone and put counters on it.
+    MoveToZoneWithCounters {
+        zone: Zone,
+        counters: Vec<(CounterType, u32)>,
+    },
+
     /// Exile the object and record it as exiled with the replacement source.
     ExileWithSourceLink,
 

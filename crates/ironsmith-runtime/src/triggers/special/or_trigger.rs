@@ -45,6 +45,54 @@ fn object_filter_is_plain_subtype(filter: &ObjectFilter, subtype: Subtype) -> bo
     normalized == ObjectFilter::default()
 }
 
+fn is_this_enters_battlefield_trigger(trigger: &ZoneChangeTrigger) -> bool {
+    trigger.this_object
+        && trigger.from == ZonePattern::Any
+        && trigger.to == ZonePattern::Specific(Zone::Battlefield)
+        && trigger.player == PlayerRelation::Any
+        && trigger.cause_filter.is_none()
+        && trigger.during_turn.is_none()
+        && trigger.count_mode == CountMode::Each
+}
+
+fn is_this_dies_trigger(trigger: &ZoneChangeTrigger) -> bool {
+    trigger.this_object
+        && trigger.from == ZonePattern::Specific(Zone::Battlefield)
+        && trigger.to == ZonePattern::Specific(Zone::Graveyard)
+        && trigger.player == PlayerRelation::Any
+        && trigger.cause_filter.is_none()
+        && trigger.during_turn.is_none()
+        && trigger.count_mode == CountMode::Each
+}
+
+fn strip_leading_article(text: &str) -> &str {
+    text.strip_prefix("a ")
+        .or_else(|| text.strip_prefix("an "))
+        .or_else(|| text.strip_prefix("the "))
+        .unwrap_or(text)
+}
+
+fn source_or_matching_subject(filter: &ObjectFilter) -> Option<String> {
+    if !filter.source {
+        return Some(filter.description());
+    }
+    let source_text = filter.source_surface.as_ref()?.display_text();
+    let mut other_filter = filter.clone();
+    other_filter.source = false;
+    other_filter.source_surface = None;
+    let other_subject = strip_leading_article(&other_filter.description()).to_string();
+    if other_subject.is_empty() {
+        return None;
+    }
+    Some(format!("{source_text} or another {other_subject}"))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CastOrActivateComponent {
+    InstantOrSorcery,
+    LoyaltyAbility,
+}
+
 /// A trigger that matches if any of the inner triggers match.
 ///
 /// This is useful for cards like Tivit, Seller of Secrets which trigger
@@ -109,6 +157,32 @@ impl OrTrigger {
             "enters or attacks"
         };
         Some(format!("Whenever {subject} {action}"))
+    }
+
+    fn self_enters_or_dies_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let (enters, dies) = if let (Some(enters), Some(dies)) = (
+            first.downcast_ref::<ZoneChangeTrigger>(),
+            second.downcast_ref::<ZoneChangeTrigger>(),
+        ) {
+            if is_this_enters_battlefield_trigger(enters) && is_this_dies_trigger(dies) {
+                (enters, dies)
+            } else if is_this_enters_battlefield_trigger(dies) && is_this_dies_trigger(enters) {
+                (dies, enters)
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
+
+        let subject = enters.this_subject_text("creature");
+        if subject != dies.this_subject_text("creature") {
+            return None;
+        }
+        Some(format!("When {subject} enters or dies"))
     }
 
     fn your_commander_enters_or_attacks_display(&self) -> Option<String> {
@@ -232,6 +306,117 @@ impl OrTrigger {
         Some(format!(
             "Whenever {this_subject} or another {other_subject} enters"
         ))
+    }
+
+    fn battlefield_graveyard_or_exile_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let first = first.downcast_ref::<ZoneChangeTrigger>()?;
+        let second = second.downcast_ref::<ZoneChangeTrigger>()?;
+
+        let (graveyard, exile) = if first.from == ZonePattern::Specific(Zone::Battlefield)
+            && first.to == ZonePattern::Specific(Zone::Graveyard)
+            && second.from == ZonePattern::Specific(Zone::Battlefield)
+            && second.to == ZonePattern::Specific(Zone::Exile)
+        {
+            (first, second)
+        } else if second.from == ZonePattern::Specific(Zone::Battlefield)
+            && second.to == ZonePattern::Specific(Zone::Graveyard)
+            && first.from == ZonePattern::Specific(Zone::Battlefield)
+            && first.to == ZonePattern::Specific(Zone::Exile)
+        {
+            (second, first)
+        } else {
+            return None;
+        };
+
+        if graveyard.object_filter != exile.object_filter
+            || graveyard.player != exile.player
+            || graveyard.cause_filter != exile.cause_filter
+            || graveyard.during_turn != exile.during_turn
+            || graveyard.count_mode != CountMode::Each
+            || exile.count_mode != CountMode::Each
+            || graveyard.this_object != exile.this_object
+            || graveyard.this_object_surface != exile.this_object_surface
+        {
+            return None;
+        }
+
+        let subject = if graveyard.this_object {
+            graveyard.this_subject_text("permanent")
+        } else {
+            source_or_matching_subject(&graveyard.object_filter)?
+        };
+        Some(format!(
+            "Whenever {subject} is put into a graveyard from the battlefield or is put into exile from the battlefield"
+        ))
+    }
+
+    fn collect_you_cast_or_activate_components(
+        trigger: &Trigger,
+        components: &mut Vec<CastOrActivateComponent>,
+    ) -> bool {
+        if let Some(or_trigger) = trigger.downcast_ref::<OrTrigger>() {
+            return or_trigger
+                .triggers
+                .iter()
+                .all(|inner| Self::collect_you_cast_or_activate_components(inner, components));
+        }
+        if let Some(spell) = trigger.downcast_ref::<SpellCastTrigger>() {
+            if spell.caster == PlayerFilter::You
+                && spell.during_turn.is_none()
+                && spell.min_spells_this_turn.is_none()
+                && spell.exact_spells_this_turn.is_none()
+                && !spell.from_not_hand
+                && spell
+                    .filter
+                    .as_ref()
+                    .is_some_and(|filter| *filter == ObjectFilter::instant_or_sorcery())
+            {
+                components.push(CastOrActivateComponent::InstantOrSorcery);
+                return true;
+            }
+            return false;
+        }
+        if let Some(ability) = trigger.downcast_ref::<AbilityActivatedTrigger>() {
+            if ability.activator == PlayerFilter::You
+                && ability.filter == ObjectFilter::default()
+                && !ability.non_mana_only
+                && ability.loyalty_only
+                && ability.activation_cost_has_tap.is_none()
+            {
+                components.push(CastOrActivateComponent::LoyaltyAbility);
+                return true;
+            }
+        }
+        false
+    }
+
+    fn you_cast_or_activate_display(&self) -> Option<String> {
+        let mut components = Vec::new();
+        for trigger in &self.triggers {
+            if !Self::collect_you_cast_or_activate_components(trigger, &mut components) {
+                return None;
+            }
+        }
+        components.sort_by_key(|component| match component {
+            CastOrActivateComponent::InstantOrSorcery => 0,
+            CastOrActivateComponent::LoyaltyAbility => 1,
+        });
+        components.dedup();
+
+        if components.len() < 2
+            || !components.contains(&CastOrActivateComponent::InstantOrSorcery)
+            || !components.contains(&CastOrActivateComponent::LoyaltyAbility)
+        {
+            return None;
+        }
+
+        Some(
+            "Whenever you cast an instant spell, cast a sorcery spell, or activate a loyalty ability"
+                .to_string(),
+        )
     }
 
     fn spell_or_activated_ability_x_cost_display(&self) -> Option<String> {
@@ -398,6 +583,9 @@ impl TriggerMatcher for OrTrigger {
         if let Some(display) = self.self_enters_or_attacks_display() {
             return display;
         }
+        if let Some(display) = self.self_enters_or_dies_display() {
+            return display;
+        }
         if let Some(display) = self.your_commander_enters_or_attacks_display() {
             return display;
         }
@@ -405,6 +593,12 @@ impl TriggerMatcher for OrTrigger {
             return display;
         }
         if let Some(display) = self.this_or_another_enters_display() {
+            return display;
+        }
+        if let Some(display) = self.battlefield_graveyard_or_exile_display() {
+            return display;
+        }
+        if let Some(display) = self.you_cast_or_activate_display() {
             return display;
         }
         if let Some(display) = self.spell_or_activated_ability_x_cost_display() {
@@ -515,6 +709,63 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever your commander enters or attacks"
+        );
+    }
+
+    #[test]
+    fn display_compacts_this_creature_enters_or_dies() {
+        let enters =
+            Trigger::new(ZoneChangeTrigger::enters_battlefield(ObjectFilter::creature()).this());
+        let trigger = OrTrigger::two(enters, Trigger::this_dies());
+
+        assert_eq!(trigger.display(), "When this creature enters or dies");
+    }
+
+    #[test]
+    fn display_compacts_source_or_another_artifact_graveyard_or_exile_from_battlefield() {
+        let mut filter = ObjectFilter::source_with_surface(
+            crate::target::SourceReferenceSurface::ThisPermanentType("this artifact".to_string()),
+        )
+        .nontoken()
+        .controlled_by(PlayerFilter::You);
+        filter.card_types = vec![CardType::Artifact];
+
+        let graveyard = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(Zone::Battlefield)
+                .to(Zone::Graveyard)
+                .filter(filter.clone()),
+        );
+        let exile = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(Zone::Battlefield)
+                .to(Zone::Exile)
+                .filter(filter),
+        );
+        let trigger = OrTrigger::two(graveyard, exile);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever this artifact or another nontoken artifact you control is put into a graveyard from the battlefield or is put into exile from the battlefield"
+        );
+    }
+
+    #[test]
+    fn display_compacts_you_cast_instant_sorcery_or_activate_loyalty() {
+        let trigger = OrTrigger::two(
+            Trigger::new(SpellCastTrigger::new(
+                Some(ObjectFilter::instant_or_sorcery()),
+                PlayerFilter::You,
+            )),
+            Trigger::new(
+                AbilityActivatedTrigger::new(PlayerFilter::You, ObjectFilter::default(), false)
+                    .loyalty_only(true),
+            ),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever you cast an instant spell, cast a sorcery spell, or activate a loyalty ability"
         );
     }
 

@@ -290,7 +290,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
         }
         EffectAst::RepeatThisProcessMay => (
             vec![Effect::new(crate::effects::RepeatProcessPromptEffect::new(
-                "You may repeat this process any number of times",
+                ironsmith_core::RepeatProcessPromptKind::MayRepeatAnyNumberOfTimes,
             ))],
             Vec::new(),
         ),
@@ -385,11 +385,11 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             {
                 Effect::choose_one(vec![
                     EffectMode {
-                        description: main_label.to_string(),
+                        source_text: main_label.to_string(),
                         effects: inner_effects,
                     },
                     EffectMode {
-                        description: alternative_label.to_string(),
+                        source_text: alternative_label.to_string(),
                         effects: alt_effects,
                     },
                 ])

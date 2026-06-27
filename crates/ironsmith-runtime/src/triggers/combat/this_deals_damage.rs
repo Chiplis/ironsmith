@@ -75,6 +75,7 @@ fn describe_player_filter(filter: &PlayerFilter) -> &'static str {
     match filter {
         PlayerFilter::You => "you",
         PlayerFilter::Opponent => "an opponent",
+        PlayerFilter::EffectController => "the player who cast this spell",
         _ => "a player",
     }
 }

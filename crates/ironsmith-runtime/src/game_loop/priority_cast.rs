@@ -141,7 +141,7 @@ fn ensure_optional_life_cost_reduction_costs(game: &mut GameState, pending: &mut
         if spell
             .optional_costs
             .iter()
-            .any(|existing| existing.label == label)
+            .any(|existing| existing.source_label == label)
         {
             continue;
         }
@@ -1079,7 +1079,7 @@ pub(super) fn check_optional_costs_or_continue(
 
                 OptionalCostOption {
                     index,
-                    label: opt_cost.label.clone(),
+                    label: opt_cost.display_label(),
                     repeatable: opt_cost.repeatable,
                     affordable,
                     cost_description,

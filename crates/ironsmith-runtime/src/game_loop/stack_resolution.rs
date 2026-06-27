@@ -1194,6 +1194,8 @@ pub(super) fn resolve_stack_entry_full(
                     );
                 }
                 if cast_with_warp {
+                    game.turn_store.turn_history.spell_warped_this_turn = true;
+
                     let exile_then_grant = crate::effects::ScheduleDelayedTriggerEffect::new(
                         Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
                         vec![crate::effect::Effect::new(

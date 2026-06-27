@@ -911,13 +911,17 @@ pub(crate) fn parse_must_block_if_able_clause(
         )));
     }
 
-    let attacker_target = parse_target_phrase(attacker_clause.tokens())?;
-    let attacker_filter = target_ast_to_object_filter(attacker_target).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unsupported attacker target in must-block clause (clause: '{}')",
-            clause_text
-        ))
-    })?;
+    let attacker_filter = if attacker_clause.word_refs() == ["it"] {
+        ObjectFilter::tagged("triggering")
+    } else {
+        let attacker_target = parse_target_phrase(attacker_clause.tokens())?;
+        target_ast_to_object_filter(attacker_target).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported attacker target in must-block clause (clause: '{}')",
+                clause_text
+            ))
+        })?
+    };
 
     if starts_with_target_indicator(subject_clause.tokens()) {
         let blocker_target = parse_target_phrase(subject_clause.tokens())?;

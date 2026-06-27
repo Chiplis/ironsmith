@@ -5548,7 +5548,7 @@ mod tests {
                     creature_spell_filter,
                 )))],
                 self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
-                    Condition::ThisSpellPaidLabel("Gift".to_string()),
+                    Condition::ThisSpellPaidLabel("Gift".into()),
                     vec![Effect::counter(ChooseSpec::target_spell())],
                 )],
             }]);

@@ -1,7 +1,7 @@
 use crate::ConditionExpr;
 use crate::ability::Ability;
 use crate::color::ColorSet;
-use crate::cost::TotalCost;
+use crate::cost::{OptionalCostRef, TotalCost};
 use crate::effect::{ChoiceCount, EffectId, Until, Value};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::model::RedirectNextTimeDamageDestinationAst;
@@ -652,6 +652,8 @@ pub(crate) enum PredicateAst {
     },
     CreatureCardPutIntoYourGraveyardThisTurn,
     PermanentLeftBattlefieldThisTurn,
+    NonlandPermanentLeftBattlefieldThisTurn,
+    SpellWasWarpedThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
     ObjectEnteredBattlefieldThisTurn(ObjectFilter),
     ObjectEnteredBattlefieldLastTurn(ObjectFilter),
@@ -663,7 +665,7 @@ pub(crate) enum PredicateAst {
     ThisSpellEscaped,
     NoSpellsWereCastLastTurn,
     ThisSpellWasKicked,
-    ThisSpellPaidLabel(String),
+    ThisSpellPaidLabel(OptionalCostRef),
     TargetWasKicked,
     ThisAbilityResolvedThisTurnExactly(u32),
     TargetSpellCastOrderThisTurn(u32),
@@ -997,6 +999,7 @@ pub(crate) enum SubjectVerbActionAst {
         duration: ZoneReplacementDurationAst,
         optional: bool,
         choice_description: Option<String>,
+        counters: Vec<(CounterType, u32)>,
     },
     RegisterFutureZoneReplacement {
         filter: ObjectFilter,
@@ -2161,6 +2164,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 duration,
                 optional,
                 choice_description,
+                counters,
             } => f
                 .debug_struct("RegisterZoneReplacement")
                 .field("target", target)
@@ -2170,6 +2174,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .field("optional", optional)
                 .field("choice_description", choice_description)
+                .field("counters", counters)
                 .finish(),
             Self::RegisterFutureZoneReplacement {
                 filter,
@@ -5484,6 +5489,31 @@ impl EffectAst {
                 duration,
                 optional: false,
                 choice_description: None,
+                counters: Vec::new(),
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_register_zone_replacement_with_counters(
+        target: TargetAst,
+        from_zone: Option<Zone>,
+        to_zone: Option<Zone>,
+        replacement_zone: Zone,
+        duration: ZoneReplacementDurationAst,
+        counters: Vec<(CounterType, u32)>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterZoneReplacement {
+                target,
+                from_zone,
+                to_zone,
+                replacement_zone,
+                duration,
+                optional: false,
+                choice_description: None,
+                counters,
             },
         )
     }

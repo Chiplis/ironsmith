@@ -678,7 +678,7 @@ pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_t
         },
         EffectAst::subject_verb_reveal_tagged(revealed_tag.clone()),
         EffectAst::Conditional {
-            predicate: PredicateAst::ThisSpellPaidLabel("Bargain".to_string()),
+            predicate: PredicateAst::ThisSpellPaidLabel("Bargain".into()),
             if_true: vec![EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(revealed_tag.clone(), None),
                 Zone::Battlefield,

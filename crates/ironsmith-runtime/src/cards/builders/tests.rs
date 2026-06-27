@@ -813,11 +813,11 @@ fn katara_seeking_revenge_waterbend_optional_cost_has_mana_and_tap_branches() {
     );
     assert!(
         def.optional_costs[0]
-            .label
+            .source_label
             .to_ascii_lowercase()
             .contains("waterbend {2}"),
         "Katara optional cost label should preserve waterbend, got {:?}",
-        def.optional_costs[0].label
+        def.optional_costs[0].source_label
     );
 
     let branches = def.optional_costs[0]
@@ -978,7 +978,7 @@ fn katara_seeking_revenge_unpaid_additional_cost_discards_and_paid_cost_skips() 
     game.object_mut(katara)
         .expect("Katara object exists")
         .optional_costs_paid
-        .mark_label_paid(&def.optional_costs[0].label);
+        .mark_label_paid(&def.optional_costs[0].source_label);
     hand_card(&mut game, alice, "Katara Revenge Kept Card");
     let mut ctx = crate::effects::ExecutionContext::new_default(katara, alice);
     conditional
@@ -2272,7 +2272,7 @@ fn clockspinning_strict_parser_and_compiled_text_regression() {
     assert_eq!(def.card.card_types, vec![CardType::Instant]);
     assert!(
         def.optional_costs.iter().any(|cost| {
-            cost.label == "Buyback"
+            cost.source_label == "Buyback"
                 && cost.returns_to_hand
                 && format!("{:?}", cost.cost).contains("Generic(3)")
         }),
@@ -14395,7 +14395,7 @@ fn test_parse_buyback_keyword_line_compiles_to_optional_cost() {
 
     assert_eq!(def.optional_costs.len(), 1);
     let buyback = &def.optional_costs[0];
-    assert_eq!(buyback.label, "Buyback");
+    assert_eq!(buyback.source_label, "Buyback");
     assert!(buyback.returns_to_hand);
     let mana = buyback
         .cost
@@ -14414,7 +14414,7 @@ fn test_parse_kicker_keyword_line_compiles_to_optional_cost() {
 
     assert_eq!(def.optional_costs.len(), 1);
     let kicker = &def.optional_costs[0];
-    assert_eq!(kicker.label, "Kicker");
+    assert_eq!(kicker.source_label, "Kicker");
     assert!(!kicker.repeatable, "kicker should not be repeatable");
     let mana = kicker
         .cost
@@ -14435,7 +14435,7 @@ fn test_parse_kicker_keyword_line_with_reminder_text_strips_reminder_tail() {
 
     assert_eq!(def.optional_costs.len(), 1);
     let kicker = &def.optional_costs[0];
-    assert_eq!(kicker.label, "Kicker");
+    assert_eq!(kicker.source_label, "Kicker");
     let mana = kicker
         .cost
         .mana_cost()
@@ -14449,8 +14449,8 @@ fn nightscape_battlemage_strict_parser_text_and_structure_regression() {
     let def = parse_oracle_card_definition("Nightscape Battlemage");
 
     assert_eq!(def.optional_costs.len(), 2);
-    assert_eq!(def.optional_costs[0].label, "Kicker {2}{U}");
-    assert_eq!(def.optional_costs[1].label, "Kicker {2}{R}");
+    assert_eq!(def.optional_costs[0].source_label, "Kicker {2}{U}");
+    assert_eq!(def.optional_costs[1].source_label, "Kicker {2}{R}");
     assert_eq!(
         def.optional_costs[0]
             .cost
@@ -14496,13 +14496,13 @@ fn nightscape_battlemage_strict_parser_text_and_structure_regression() {
         .collect();
     assert!(
         conditions.contains(&&crate::effect::Condition::ThisSpellPaidLabel(
-            "Kicker {2}{U}".to_string()
+            "Kicker {2}{U}".into()
         )),
         "expected blue kicker paid-label condition, got {conditions:?}"
     );
     assert!(
         conditions.contains(&&crate::effect::Condition::ThisSpellPaidLabel(
-            "Kicker {2}{R}".to_string()
+            "Kicker {2}{R}".into()
         )),
         "expected red kicker paid-label condition, got {conditions:?}"
     );
@@ -14520,9 +14520,7 @@ fn nightscape_battlemage_runtime_branches_use_matching_kicker_labels() {
             .find_map(|ability| match &ability.kind {
                 AbilityKind::Triggered(triggered)
                     if triggered.intervening_if.as_ref()
-                        == Some(&crate::effect::Condition::ThisSpellPaidLabel(
-                            label.to_string(),
-                        )) =>
+                        == Some(&crate::effect::Condition::ThisSpellPaidLabel(label.into())) =>
                 {
                     Some(triggered.effects.clone())
                 }
@@ -14572,7 +14570,7 @@ fn nightscape_battlemage_runtime_branches_use_matching_kicker_labels() {
             ])
             .with_optional_costs_paid(paid(&def, 0))
             .with_intervening_if(crate::effect::Condition::ThisSpellPaidLabel(
-                "Kicker {2}{U}".to_string(),
+                "Kicker {2}{U}".into(),
             )),
     );
     crate::game_loop::resolve_stack_entry(&mut game)
@@ -14598,7 +14596,7 @@ fn nightscape_battlemage_runtime_branches_use_matching_kicker_labels() {
     assert!(
         !crate::triggers::verify_intervening_if(
             &game,
-            &crate::effect::Condition::ThisSpellPaidLabel("Kicker {2}{R}".to_string()),
+            &crate::effect::Condition::ThisSpellPaidLabel("Kicker {2}{R}".into()),
             alice,
             &etb_event,
             source,
@@ -14615,7 +14613,7 @@ fn nightscape_battlemage_runtime_branches_use_matching_kicker_labels() {
     assert!(
         crate::triggers::verify_intervening_if(
             &game,
-            &crate::effect::Condition::ThisSpellPaidLabel("Kicker {2}{R}".to_string()),
+            &crate::effect::Condition::ThisSpellPaidLabel("Kicker {2}{R}".into()),
             alice,
             &etb_event,
             source,
@@ -14630,7 +14628,7 @@ fn nightscape_battlemage_runtime_branches_use_matching_kicker_labels() {
             .with_targets(vec![crate::game_state::Target::Object(land)])
             .with_optional_costs_paid(paid(&def, 1))
             .with_intervening_if(crate::effect::Condition::ThisSpellPaidLabel(
-                "Kicker {2}{R}".to_string(),
+                "Kicker {2}{R}".into(),
             )),
     );
     crate::game_loop::resolve_stack_entry(&mut game)
@@ -14667,7 +14665,7 @@ fn test_parse_dash_kicker_with_typed_discard_cost_compiles_to_optional_cost() {
         "discard cost must not become a spell effect"
     );
     let kicker = &def.optional_costs[0];
-    assert_eq!(kicker.label, "Kicker");
+    assert_eq!(kicker.source_label, "Kicker");
     let costs = kicker.cost.costs();
     assert_eq!(costs.len(), 2);
     assert_eq!(
@@ -14697,7 +14695,7 @@ fn test_parse_multikicker_and_entwine_keyword_lines_compile_to_optional_costs() 
     assert_eq!(def.optional_costs.len(), 2);
 
     let multikicker = &def.optional_costs[0];
-    assert_eq!(multikicker.label, "Multikicker");
+    assert_eq!(multikicker.source_label, "Multikicker");
     assert!(multikicker.repeatable, "multikicker should be repeatable");
     let mana = multikicker
         .cost
@@ -14706,7 +14704,7 @@ fn test_parse_multikicker_and_entwine_keyword_lines_compile_to_optional_costs() 
     assert_eq!(mana.to_oracle(), "{1}{G}");
 
     let entwine = &def.optional_costs[1];
-    assert_eq!(entwine.label, "Entwine");
+    assert_eq!(entwine.source_label, "Entwine");
     assert!(!entwine.repeatable, "entwine should not be repeatable");
     let mana = entwine
         .cost
@@ -14732,7 +14730,7 @@ fn parse_strength_of_the_tajuru_strict_and_renders_kicked_targets() {
         .expect("Strength of the Tajuru should parse strictly");
 
     assert_eq!(def.optional_costs.len(), 1);
-    assert_eq!(def.optional_costs[0].label, "Multikicker");
+    assert_eq!(def.optional_costs[0].source_label, "Multikicker");
     assert!(
         def.optional_costs[0].repeatable,
         "Strength of the Tajuru's multikicker should be repeatable"
@@ -14773,7 +14771,7 @@ fn parse_spell_contortion_strict_and_renders_kicked_draw_count() {
         .expect("Spell Contortion should parse strictly");
 
     assert_eq!(def.optional_costs.len(), 1);
-    assert_eq!(def.optional_costs[0].label, "Multikicker");
+    assert_eq!(def.optional_costs[0].source_label, "Multikicker");
     assert!(
         def.optional_costs[0].repeatable,
         "Spell Contortion's multikicker should be repeatable"
@@ -14820,7 +14818,7 @@ fn test_parse_replicate_keyword_line_compiles_to_repeatable_optional_cost() {
 
     assert_eq!(def.optional_costs.len(), 1);
     let replicate = &def.optional_costs[0];
-    assert_eq!(replicate.label, "Replicate");
+    assert_eq!(replicate.source_label, "Replicate");
     assert!(replicate.repeatable, "replicate should be repeatable");
     let mana = replicate
         .cost
@@ -14851,7 +14849,7 @@ fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger(
 
     assert_eq!(def.optional_costs.len(), 1, "expected one squad cost");
     let squad = &def.optional_costs[0];
-    assert_eq!(squad.label, "Squad");
+    assert_eq!(squad.source_label, "Squad");
     assert!(squad.repeatable, "squad should be repeatable");
     let mana = squad
         .cost
@@ -14955,7 +14953,7 @@ fn test_thrill_kill_disciple_compiles_squad_as_optional_cost_and_death_trigger()
 
     assert_eq!(def.optional_costs.len(), 1, "expected one squad cost");
     let squad = &def.optional_costs[0];
-    assert_eq!(squad.label, "Squad");
+    assert_eq!(squad.source_label, "Squad");
     assert!(squad.repeatable, "squad should be repeatable");
 
     let costs = squad.cost.costs();
@@ -15004,7 +15002,7 @@ fn test_parse_offspring_keyword_line_compiles_to_optional_cost_and_etb_copy_trig
 
     assert_eq!(def.optional_costs.len(), 1, "expected one offspring cost");
     let offspring = &def.optional_costs[0];
-    assert_eq!(offspring.label, "Offspring");
+    assert_eq!(offspring.source_label, "Offspring");
     assert!(!offspring.repeatable, "offspring should not be repeatable");
     let mana = offspring
         .cost
@@ -15032,7 +15030,7 @@ fn test_parse_offspring_keyword_line_compiles_to_optional_cost_and_etb_copy_trig
         .expect("offspring ETB trigger should exist");
     assert_eq!(
         triggered.intervening_if.as_ref(),
-        Some(&Condition::ThisSpellPaidLabel("Offspring".to_string())),
+        Some(&Condition::ThisSpellPaidLabel("Offspring".into())),
         "offspring should use an intervening-if cost-paid check",
     );
 
@@ -15055,7 +15053,7 @@ fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
 
     assert_eq!(def.optional_costs.len(), 1, "expected one conspire cost");
     let conspire = &def.optional_costs[0];
-    assert_eq!(conspire.label, "Conspire");
+    assert_eq!(conspire.source_label, "Conspire");
     assert!(!conspire.repeatable, "conspire should not be repeatable");
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
@@ -16253,7 +16251,7 @@ fn test_rix_maadi_reveler_etb_uses_spectacle_branch_when_paid() {
     }
 
     let paid = OptionalCostsPaid {
-        costs: vec![("Spectacle".to_string(), 1)],
+        costs: vec![("Spectacle".into(), 1)],
     };
     game.object_mut(source)
         .expect("source object exists")
@@ -17134,6 +17132,55 @@ fn open_the_way_parses_x_cap_and_reveal_x_lands() {
             && debug.contains("enters_tapped: true")
             && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
         "expected Open the Way to lower to an X cap plus X-count consult/move/bottom effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn venture_forth_exile_until_land_uses_consult_and_suspend() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Venture Forth")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile cards from the top of your library until you exile a land card. Put that card onto the battlefield and the rest on the bottom of your library in a random order. Exile Venture Forth with three time counters on it.\nSuspend 3—{1}{G}",
+        )
+        .expect("Venture Forth should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("exile cards from the top of your library until you exile a land card")
+            && rendered.contains("put that card onto the battlefield")
+            && rendered.contains("the rest on the bottom of your library in a random order")
+            && rendered.contains("exile venture forth with three time counters on it")
+            && rendered.contains("suspend 3"),
+        "expected Venture Forth consult, battlefield, remainder, and suspend wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("choose the top card"),
+        "expected Venture Forth to avoid top-card chooser fallback, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ConsultTopOfLibraryEffect")
+            && debug.contains("mode: Exile")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("zone: Battlefield")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected Venture Forth to lower to exile consult, battlefield move, and bottom remainder, got {debug}"
+    );
+    assert!(
+        matches!(
+            def.alternative_casts.as_slice(),
+            [AlternativeCastingMethod::Suspend { time: 3, .. }]
+        ),
+        "expected Venture Forth suspend metadata, got {:?}",
+        def.alternative_casts
     );
 }
 
@@ -18422,6 +18469,62 @@ fn howl_of_the_horde_compiled_text_preserves_raid_next_cast_copy_clause() {
             && rendered.contains("copy that spell an additional time")
             && rendered.contains("You may choose new targets for the copy"),
         "expected Howl's next-cast raid copy text to render structurally, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+const REPEATED_REVERBERATION_TEXT: &str = "When you next cast an instant spell, cast a sorcery spell, or activate a loyalty ability this turn, copy that spell or ability twice. You may choose new targets for the copies.";
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn repeated_reverberation_parses_as_spell_effect_delayed_spell_or_loyalty_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Repeated Reverberation")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(REPEATED_REVERBERATION_TEXT)
+        .expect("Repeated Reverberation should parse strictly");
+
+    assert!(
+        def.abilities.is_empty(),
+        "Repeated's next-stack-object clause should be a spell effect, not a battlefield trigger: {:?}",
+        def.abilities
+    );
+    let spell_debug = format!("{:#?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        spell_debug.contains("ScheduleDelayedTriggerEffect")
+            && spell_debug.contains("one_shot: true")
+            && spell_debug.contains("until_end_of_turn: true")
+            && spell_debug.contains("OrTrigger")
+            && spell_debug.contains("AbilityActivatedTrigger")
+            && spell_debug.contains("CopySpellEffect")
+            && spell_debug.contains("RetargetStackObjectEffect"),
+        "expected one-shot delayed spell-or-loyalty copy trigger, got {spell_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn repeated_reverberation_compiled_text_preserves_next_spell_or_loyalty_copy_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Repeated Reverberation")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(REPEATED_REVERBERATION_TEXT)
+        .expect("Repeated Reverberation should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "When you next cast an instant spell, cast a sorcery spell, or activate a loyalty ability this turn, copy that spell or ability twice"
+        ) && rendered.contains("You may choose new targets for the copies"),
+        "expected Repeated's delayed spell-or-loyalty copy text to render structurally, got {rendered}"
     );
 }
 
@@ -23137,7 +23240,18 @@ fn parse_oracle_resize_strictly_parses_and_renders_recover() {
     let recover = def
         .abilities
         .iter()
-        .find(|ability| matches!(&ability.kind, AbilityKind::Triggered(triggered) if triggered.presentation_label.as_deref() == Some("keyword:recover {1}{G}")))
+        .find(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Triggered(triggered)
+                    if matches!(
+                        triggered.presentation_label.as_ref(),
+                        Some(crate::ability::PresentationLabel::Keyword(
+                            crate::ability::PresentationKeyword::Recover(cost)
+                        )) if cost == "{1}{G}"
+                    )
+            )
+        })
         .expect("Resize should lower recover to a triggered ability");
     assert_eq!(
         recover.functional_zones,
@@ -53154,11 +53268,11 @@ fn parse_oracle_into_the_flood_maw_gift_regression() {
     );
     assert!(
         def.optional_costs[0]
-            .label
+            .source_label
             .to_ascii_lowercase()
             .starts_with("gift a tapped fish"),
         "expected Into the Flood Maw gift label to preserve the gift descriptor, got {:?}",
-        def.optional_costs[0].label
+        def.optional_costs[0].source_label
     );
 
     let raw = format!("{def:#?}");
@@ -53215,11 +53329,11 @@ fn parse_oracle_scrapshooter_gift_etb_regression() {
     );
     assert!(
         def.optional_costs[0]
-            .label
+            .source_label
             .to_ascii_lowercase()
             .starts_with("gift a card"),
         "expected Scrapshooter gift label to preserve the gift descriptor, got {:?}",
-        def.optional_costs[0].label
+        def.optional_costs[0].source_label
     );
 
     let raw = format!("{def:#?}");
@@ -53261,11 +53375,11 @@ fn parse_oracle_longstalk_brawl_gift_spell_line_keeps_main_effects() {
     );
     assert!(
         def.optional_costs[0]
-            .label
+            .source_label
             .to_ascii_lowercase()
             .starts_with("gift a tapped fish"),
         "expected Longstalk Brawl gift label to preserve the gift descriptor, got {:?}",
-        def.optional_costs[0].label
+        def.optional_costs[0].source_label
     );
 
     let raw = format!("{def:#?}");
@@ -53529,11 +53643,11 @@ fn parse_oracle_osseous_exhale_behold_paid_regression() {
     );
     assert!(
         def.optional_costs[0]
-            .label
+            .source_label
             .to_ascii_lowercase()
             .starts_with("as an additional cost to cast this spell, you may behold a dragon"),
         "expected Osseous Exhale to preserve the optional behold line, got {:?}",
-        def.optional_costs[0].label
+        def.optional_costs[0].source_label
     );
     assert!(
         raw.contains("ThisSpellPaidLabel") && raw.contains("Behold"),
@@ -64899,7 +65013,7 @@ fn mighty_servant_of_leuk_o_compiled_text_keeps_crew_count_granted_trigger() {
         rendered.contains("Whenever this Vehicle becomes crewed for the first time each turn")
             && rendered.contains("crewed by exactly two creatures")
             && rendered.contains("Whenever this creature deals combat damage to a player")
-            && rendered.contains("Draw two cards")
+            && rendered.contains("draw two cards")
             && rendered.contains("until end of turn")
             && rendered.contains("Crew 4"),
         "expected Mighty Servant of Leuk-o compiled text to preserve crew-count trigger and temporary combat-damage draw grant, got {rendered}"
@@ -67171,7 +67285,7 @@ fn return_to_dust_main_phase_paid_label_condition_branches() {
     let mut decision_maker = NoChoices;
     let mut ctx = crate::effects::ExecutionContext::new(spell_id, alice, &mut decision_maker);
 
-    let cond = crate::effect::Condition::ThisSpellPaidLabel("CastDuringYourMainPhase".to_string());
+    let cond = crate::effect::Condition::ThisSpellPaidLabel("CastDuringYourMainPhase".into());
     let without_label = crate::condition_eval::evaluate_condition_resolution(&game, &cond, &ctx)
         .expect("condition evaluation should succeed");
     assert!(
@@ -68294,6 +68408,52 @@ fn parse_counter_then_exile_clause_registers_future_zone_replacement() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_counter_then_exile_with_time_counters_and_suspend() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Delay Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Counter target spell. If that spell is countered this way, exile it with three time counters on it instead of putting it into its owner's graveyard. If it doesn't have suspend, it gains suspend.",
+        )
+        .expect("Delay-style counter/exile/suspend text should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("RegisterZoneReplacementEffect"),
+        "expected countered-this-way exile clause to lower as a zone replacement, got {debug}"
+    );
+    assert!(
+        debug.contains("counters: [") && debug.contains("Time") && debug.contains("3"),
+        "expected replacement to carry three time counters, got {debug}"
+    );
+    assert!(
+        debug.contains("ApplyContinuousEffect"),
+        "expected follow-up to grant suspend through a continuous effect, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("counter target spell"),
+        "expected rendered text to keep the counter instruction, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains(
+            "if that spell is countered this way, exile it with three time counters on it instead of putting it into its owner's graveyard"
+        ),
+        "expected rendered text to preserve the time-counter replacement, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("if it doesn't have suspend, it gains suspend"),
+        "expected rendered text to preserve the suspend grant, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("keyword:suspend"),
+        "expected rendered text to hide raw suspend internals, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_fatal_push_revolt_stays_self_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Fatal Push Variant")
         .card_types(vec![CardType::Instant])
@@ -69065,8 +69225,35 @@ fn parse_void_pump_upgrade_as_self_replacement() {
     let debug = format!("{:#?}", def.spell_effect);
     assert!(
         debug.contains("SelfReplacementBranch")
-            && debug.contains("PermanentLeftBattlefieldThisTurn"),
+            && debug.contains("NonlandPermanentLeftBattlefieldThisTurn")
+            && debug.contains("SpellWasWarpedThisTurn"),
         "expected void pump upgrade to lower as self-replacement, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_void_draw_life_upgrade_renders_named_void_self_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Decode Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "You draw two cards and lose 2 life.\nVoid \u{2014} If a nonland permanent left the battlefield this turn or a spell was warped this turn, instead you draw two cards and each opponent loses 2 life.",
+        )
+        .expect("void draw/life replacement should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("SelfReplacementBranch")
+            && debug.contains("NonlandPermanentLeftBattlefieldThisTurn")
+            && debug.contains("SpellWasWarpedThisTurn"),
+        "expected void draw/life upgrade to lower as self-replacement, got {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Void — If a nonland permanent left the battlefield this turn or a spell was warped this turn, instead draw two cards and each opponent loses 2 life"
+        ),
+        "expected void renderer to keep the named replacement line, got {rendered}"
     );
 }
 

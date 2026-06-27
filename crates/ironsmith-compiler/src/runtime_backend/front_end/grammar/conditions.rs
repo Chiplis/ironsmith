@@ -300,6 +300,7 @@ pub(crate) struct PlayerWouldActionConditionAst {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BattlefieldChangeThisTurnConditionAst {
     PermanentLeftBattlefield { negated: bool },
+    NonlandPermanentLeftBattlefieldOrSpellWarped,
     PermanentLeftBattlefieldUnderYourControl,
     ObjectPutIntoGraveyardFromBattlefield { filter: ObjectFilter },
 }
@@ -2198,7 +2199,7 @@ fn parse_nonland_permanent_or_spell_warped_this_turn_shape(
         LexPattern::any_phrase(spell_warped_phrases),
     ];
     LexPattern::new(&atoms).match_clause(clause)?;
-    Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield { negated: false })
+    Some(BattlefieldChangeThisTurnConditionAst::NonlandPermanentLeftBattlefieldOrSpellWarped)
 }
 
 pub(crate) fn parse_object_death_this_turn_condition(

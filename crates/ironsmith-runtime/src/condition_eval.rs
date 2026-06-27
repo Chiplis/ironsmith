@@ -1300,6 +1300,15 @@ fn evaluate_condition_shared_core(
                 .permanents_left_battlefield_this_turn()
                 > 0,
         ),
+        Condition::NonlandPermanentLeftBattlefieldThisTurn => Some(
+            game.turn_store
+                .turn_history
+                .nonland_permanents_left_battlefield_this_turn()
+                > 0,
+        ),
+        Condition::SpellWasWarpedThisTurn => {
+            Some(game.turn_store.turn_history.spell_was_warped_this_turn())
+        }
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => Some(
             game.turn_store
                 .turn_history
@@ -1517,6 +1526,8 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::AttackedWithNOrMoreCreaturesThisTurn(..) => {}
         Condition::OpponentLostLifeThisTurn => {}
         Condition::PermanentLeftBattlefieldThisTurn => {}
+        Condition::NonlandPermanentLeftBattlefieldThisTurn => {}
+        Condition::SpellWasWarpedThisTurn => {}
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {}
         Condition::ObjectEnteredBattlefieldThisTurn(..) => {}
         Condition::ObjectEnteredBattlefieldLastTurn(..) => {}
@@ -1745,7 +1756,7 @@ pub fn evaluate_condition_external(
         Condition::ThisSpellWasCastFromNonHand => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(ctx.source)
-            .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
+            .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label.clone())),
         Condition::YouHaveFullParty => player_has_full_party(game, ctx.controller),
         Condition::YouControl(filter) => {
             let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
@@ -2509,6 +2520,8 @@ pub fn evaluate_condition_external(
         | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
+        | Condition::NonlandPermanentLeftBattlefieldThisTurn
+        | Condition::SpellWasWarpedThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
         | Condition::ObjectEnteredBattlefieldLastTurn(_)
@@ -2733,7 +2746,7 @@ fn evaluate_condition_simple(
         Condition::ThisSpellWasCastFromNonHand => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(source)
-            .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
+            .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label.clone())),
         Condition::YouHaveFullParty => player_has_full_party(game, controller),
         Condition::YouControl(filter) => game
             .battlefield
@@ -3298,6 +3311,8 @@ fn evaluate_condition_simple(
         | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
+        | Condition::NonlandPermanentLeftBattlefieldThisTurn
+        | Condition::SpellWasWarpedThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
         | Condition::ObjectEnteredBattlefieldLastTurn(_)
@@ -4497,6 +4512,8 @@ fn evaluate_condition(
         | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
+        | Condition::NonlandPermanentLeftBattlefieldThisTurn
+        | Condition::SpellWasWarpedThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
         | Condition::ObjectEnteredBattlefieldLastTurn(_)

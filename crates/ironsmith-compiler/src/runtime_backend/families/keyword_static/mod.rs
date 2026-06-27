@@ -7159,7 +7159,7 @@ pub(crate) fn parse_this_spell_cost_condition(
     }
     if THIS_SPELL_BARGAINED_PATTERN.matches(clause) {
         return Some(ThisSpellCostCondition::ConditionExpr {
-            condition: crate::ConditionExpr::ThisSpellPaidLabel("Bargain".to_string()),
+            condition: crate::ConditionExpr::ThisSpellPaidLabel("Bargain".into()),
             display: w.join(" "),
         });
     }

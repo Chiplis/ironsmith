@@ -66,6 +66,46 @@ function isInspectorOnlyViewedCards(viewedCards) {
   return Boolean(viewedCards?.inspector_only || viewedCards?.inspectorOnly);
 }
 
+function finiteNumberOrNull(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function playerStateKey(player) {
+  return String(player?.id ?? player?.index ?? player?.name ?? "");
+}
+
+function stabilizePeerUiState(nextState, previousState) {
+  if (
+    !nextState
+    || !previousState
+    || !Array.isArray(nextState.players)
+    || !Array.isArray(previousState.players)
+  ) {
+    return nextState;
+  }
+
+  const previousPlayersByKey = new Map(
+    previousState.players.map((player) => [playerStateKey(player), player])
+  );
+  let changed = false;
+  const players = nextState.players.map((player) => {
+    if (finiteNumberOrNull(player?.hand_size) != null) return player;
+
+    const previousPlayer = previousPlayersByKey.get(playerStateKey(player));
+    const previousHandSize = finiteNumberOrNull(previousPlayer?.hand_size);
+    if (previousHandSize == null) return player;
+
+    changed = true;
+    return {
+      ...player,
+      hand_size: previousHandSize,
+    };
+  });
+
+  return changed ? { ...nextState, players } : nextState;
+}
+
 async function waitForAuditReplayGate(gate) {
   for (
     let attempt = 0;
@@ -861,10 +901,12 @@ export function GameProvider({ children }) {
   }, [state]);
 
   const setPeerState = useCallback((nextState) => {
-    if (nextState?.viewed_cards && !isInspectorOnlyViewedCards(nextState.viewed_cards)) {
-      stickyViewedCardsRef.current = nextState.viewed_cards;
+    const visibleState = stabilizePeerUiState(nextState, stateRef.current);
+    if (visibleState?.viewed_cards && !isInspectorOnlyViewedCards(visibleState.viewed_cards)) {
+      stickyViewedCardsRef.current = visibleState.viewed_cards;
     }
-    setState(nextState);
+    setState(visibleState);
+    stateRef.current = visibleState;
   }, []);
 
   const moveTriggerOrderingItem = useCallback((position, direction) => {

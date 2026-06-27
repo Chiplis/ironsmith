@@ -217,7 +217,7 @@ pub(crate) fn run_choose_mode(
             .enumerate()
             .map(|(i, mode)| {
                 let option =
-                    ModeOption::with_legality(i, mode.description.clone(), is_mode_legal(i));
+                    ModeOption::with_legality(i, mode.source_text.clone(), is_mode_legal(i));
                 if let Some(object_ids) = related_object_ids_for_mode(game, mode, ctx) {
                     option.with_related_objects(object_ids)
                 } else {

@@ -42,8 +42,9 @@ pub mod zone;
 pub struct WorkspaceSplitMarker;
 
 pub use ability_model::{
-    Ability, AbilityKind, ActivatedAbility, ActivationTiming, LevelAbility, ManaUsageRestriction,
-    ManaUsageSubtypeRequirement, ProtectionFrom, RestrictedManaUnit, TriggeredAbility,
+    Ability, AbilityKind, ActivatedAbility, ActivatedPresentationLabel, ActivationTiming,
+    LevelAbility, ManaUsageRestriction, ManaUsageSubtypeRequirement, PresentationKeyword,
+    PresentationLabel, ProtectionFrom, RestrictedManaUnit, TriggeredAbility,
 };
 pub use alternative_cast_model::{
     AlternativeCastRequirements, AlternativeCastingMethod, TrapCondition,
@@ -59,7 +60,7 @@ pub use continuous_model::{
 };
 pub use cost_model::{
     CoreCostComponent, Cost, CostComponent, DynamicManaCost, DynamicManaDisplayHint, OptionalCost,
-    OptionalCostsPaid, TotalCost, TotalCostKind,
+    OptionalCostKind, OptionalCostRef, OptionalCostsPaid, TotalCost, TotalCostKind,
 };
 pub use counter::CounterType;
 pub use definition_model::CardDefinition;
@@ -123,8 +124,8 @@ pub use effect::{
     RegisterZoneReplacementEffect, RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect,
     RemoveCountersEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect,
     RemoveUpToCountersEffect, RenownEffect, ReorderGraveyardEffect, ReorderLibraryTopEffect,
-    RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect, ReplacementApplyMode,
-    RetainManaUntilEndOfTurnEffect, RetargetMode, RetargetStackObjectEffect,
+    RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect, RepeatProcessPromptKind,
+    ReplacementApplyMode, RetainManaUntilEndOfTurnEffect, RetargetMode, RetargetStackObjectEffect,
     ReturnAllToBattlefieldEffect, ReturnAsAuraOptions, ReturnFromGraveyardToBattlefieldEffect,
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, RevealFromHandEffect,
     RevealSourceFromHandEffect, RevealTaggedEffect, RevealTopEffect, RingTemptsYouEffect,

@@ -19,7 +19,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
     }
 
     let Some(remove_mode_idx) = find_index(choose_mode.modes.as_slice(), |mode| {
-        lex_line(mode.description.as_str(), 0)
+        lex_line(mode.source_text.as_str(), 0)
             .ok()
             .is_some_and(|tokens| tokens_start_with_remove(&tokens))
     }) else {
@@ -226,7 +226,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
             Err(err) => return Err(err),
         };
         compiled_modes.push(crate::effect::EffectMode {
-            description: mode.description,
+            source_text: mode.description,
             effects: effects.to_vec(),
         });
         mode_point_costs.push(point_cost);
