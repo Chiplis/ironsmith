@@ -2524,7 +2524,13 @@ pub(crate) fn parse_trigger_clause_lexed(
             && trigger_clause_shape_matches_word_at(&words, 3, THE_WORD_PATTERN)
             && trigger_clause_shape_matches_word_at(&words, 4, BATTLEFIELD_WORD_PATTERN))
     {
-        return Ok(TriggerSpec::ThisLeavesBattlefield);
+        let subject_word_count = if words.len() == 5 { 2 } else { 1 };
+        let subject_token_end = word_view
+            .token_index_for_word_index(subject_word_count)
+            .unwrap_or(subject_word_count.min(tokens.len()));
+        return Ok(this_leaves_battlefield_trigger_spec(
+            source_reference_surface_for_trigger_subject(&tokens[..subject_token_end]),
+        ));
     }
 
     if let Some(leaves_word_idx) = LEAVE_OR_LEAVES_PATTERN.find_word(&words)

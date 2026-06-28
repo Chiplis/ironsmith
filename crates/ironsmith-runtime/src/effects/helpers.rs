@@ -838,6 +838,38 @@ pub fn resolve_value(
             }
             Ok(seen.len() as i32)
         }
+        Value::StaticAbilitiesAmong { filter, abilities } => {
+            let filter_ctx = ctx.filter_context(game);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let mut seen = HashSet::new();
+                for snapshot in snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                {
+                    for ability_id in abilities {
+                        if snapshot.has_static_ability_id(*ability_id) {
+                            seen.insert(*ability_id);
+                        }
+                    }
+                }
+                return Ok(seen.len() as i32);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
+
+            let mut seen = HashSet::new();
+            for obj in candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            {
+                for ability_id in abilities {
+                    if game.current_has_static_ability_id(obj.id, *ability_id) {
+                        seen.insert(*ability_id);
+                    }
+                }
+            }
+            Ok(seen.len() as i32)
+        }
         Value::ColorsAmong(filter) => {
             let filter_ctx = ctx.filter_context(game);
             if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
@@ -1819,6 +1851,13 @@ pub fn resolve_value(
             }
         }
         Value::CountersOn(spec, counter_type) => {
+            if let Some(snapshots) = tagged_snapshots_for_choose_spec(ctx, spec) {
+                return Ok(snapshots
+                    .iter()
+                    .map(|snapshot| snapshot_counter_total(snapshot, counter_type))
+                    .sum());
+            }
+
             if matches!(spec.base(), ChooseSpec::Source) {
                 if let Some(snapshot) =
                     source_lki_for_moved_current_object(game, ctx).or_else(|| {
@@ -1907,6 +1946,27 @@ fn object_lki_snapshot<'a>(
         .as_ref()
         .filter(|snapshot| snapshot.object_id == object_id)
         .or_else(|| ctx.target_snapshots.get(&object_id))
+}
+
+fn tagged_snapshots_for_choose_spec<'a>(
+    ctx: &'a ExecutionContext<'_>,
+    spec: &ChooseSpec,
+) -> Option<&'a [ObjectSnapshot]> {
+    match spec.base() {
+        ChooseSpec::Tagged(tag) => ctx.get_tagged_all(tag).map(Vec::as_slice),
+        _ => None,
+    }
+}
+
+fn snapshot_counter_total(
+    snapshot: &ObjectSnapshot,
+    counter_type: &Option<crate::object::CounterType>,
+) -> i32 {
+    if let Some(counter_type) = counter_type {
+        snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32
+    } else {
+        snapshot.counters.values().map(|count| *count as i32).sum()
+    }
 }
 
 fn latest_tagged_lki_snapshot<'a>(

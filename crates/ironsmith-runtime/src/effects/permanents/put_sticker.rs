@@ -42,6 +42,7 @@ impl EffectExecutor for PutStickerEffect {
         let snapshot = game
             .object(object_id)
             .map(|object| ObjectSnapshot::from_object(object, game));
+        game.put_sticker_on_object(object_id, self.action);
         let event = TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(self.action, ctx.controller, ctx.source, 1)
                 .with_snapshot(snapshot),

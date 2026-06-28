@@ -778,6 +778,60 @@ where
             }
         }
 
+        fn source_exiled_cast_subject(
+            filter: &ObjectFilter,
+            beneficiary: &PlayerFilter,
+        ) -> Option<String> {
+            if filter.zone != Some(Zone::Exile) {
+                return None;
+            }
+
+            let mut normalized = filter.clone();
+            normalized.zone = None;
+            let before_constraints = normalized.tagged_constraints.len();
+            normalized.tagged_constraints.retain(|constraint| {
+                !(constraint.tag.as_str() == crate::SOURCE_EXILED_TAG
+                    && constraint.relation
+                        == crate::filter_model::TaggedOpbjectRelation::IsTaggedObject)
+            });
+            if normalized.tagged_constraints.len() == before_constraints
+                || !normalized.tagged_constraints.is_empty()
+            {
+                return None;
+            }
+
+            let owner_words = match normalized.owner.take() {
+                None => String::new(),
+                Some(PlayerFilter::NotYou) if matches!(beneficiary, PlayerFilter::Any) => {
+                    "they don't own ".to_string()
+                }
+                Some(PlayerFilter::NotYou) => "you don't own ".to_string(),
+                Some(_) => return None,
+            };
+
+            let (spell_subject, card_subject) = if normalized == ObjectFilter::default() {
+                ("a spell".to_string(), "cards".to_string())
+            } else if is_simple_card_type_filter(&normalized) && normalized.card_types.len() == 1 {
+                let type_text = normalized.card_types[0].to_string().to_ascii_lowercase();
+                (
+                    format!("{} {type_text} spell", article_for(type_text.as_str())),
+                    format!("{type_text} cards"),
+                )
+            } else if normalized.excluded_card_types.as_slice() == [CardType::Land] && {
+                let mut without_land = normalized.clone();
+                without_land.excluded_card_types.clear();
+                without_land == ObjectFilter::default()
+            } {
+                ("a nonland spell".to_string(), "nonland cards".to_string())
+            } else {
+                return None;
+            };
+            let article = if owner_words.is_empty() { "" } else { "the " };
+            Some(format!(
+                "{spell_subject} from among {article}{card_subject} {owner_words}exiled with this permanent"
+            ))
+        }
+
         let mut filter = self.filter.clone();
         filter.zone.get_or_insert(self.zone);
         let filter_desc = filter.description();
@@ -854,6 +908,19 @@ where
                 "{may_prefix} cast this card from exile{}",
                 cast_this_way_suffix()
             );
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Exile
+            && let Some(cast_subject) = source_exiled_cast_subject(&self.filter, &self.beneficiary)
+        {
+            let prefix = if matches!(self.beneficiary, PlayerFilter::Any)
+                && matches!(self.filter.owner, Some(PlayerFilter::NotYou))
+            {
+                "During each player's turn, that player may".to_string()
+            } else {
+                may_prefix.clone()
+            };
+            return format!("{prefix} cast {cast_subject}{}", cast_this_way_suffix());
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard

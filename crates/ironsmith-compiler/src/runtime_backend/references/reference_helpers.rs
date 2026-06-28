@@ -634,15 +634,25 @@ pub(crate) fn resolve_choose_spec_it_tag(
         ChooseSpec::Tagged(tag) => Ok(ChooseSpec::Tagged(tag.clone())),
         ChooseSpec::Object(filter) => {
             let resolved = resolve_it_tag(filter, refs)?;
-            if let Some(tag) = object_filter_as_tagged_reference(&resolved) {
+            if resolved.source && resolved.zone != Some(Zone::Exile) {
+                Ok(source_reference_hinted_spec(
+                    ChooseSpec::Source,
+                    resolved.source_surface.clone(),
+                ))
+            } else if let Some(tag) = object_filter_as_tagged_reference(&resolved) {
                 Ok(ChooseSpec::Tagged(tag))
             } else {
                 Ok(ChooseSpec::Object(resolved))
             }
         }
-        ChooseSpec::Target(inner) => Ok(ChooseSpec::Target(Box::new(resolve_choose_spec_it_tag(
-            inner, refs,
-        )?))),
+        ChooseSpec::Target(inner) => {
+            let resolved = resolve_choose_spec_it_tag(inner, refs)?;
+            if matches!(resolved.base(), ChooseSpec::Source) {
+                Ok(resolved)
+            } else {
+                Ok(ChooseSpec::Target(Box::new(resolved)))
+            }
+        }
         ChooseSpec::WithCount(inner, count) => Ok(ChooseSpec::WithCount(
             Box::new(resolve_choose_spec_it_tag(inner, refs)?),
             *count,
@@ -720,6 +730,10 @@ pub(crate) fn resolve_value_it_tag(
             Ok(Value::CreatureTypesAmong(resolve_it_tag(filter, refs)?))
         }
         Value::CardTypesAmong(filter) => Ok(Value::CardTypesAmong(resolve_it_tag(filter, refs)?)),
+        Value::StaticAbilitiesAmong { filter, abilities } => Ok(Value::StaticAbilitiesAmong {
+            filter: resolve_it_tag(filter, refs)?,
+            abilities: abilities.clone(),
+        }),
         Value::ColorsAmong(filter) => Ok(Value::ColorsAmong(resolve_it_tag(filter, refs)?)),
         Value::DistinctNames(filter) => Ok(Value::DistinctNames(resolve_it_tag(filter, refs)?)),
         Value::DistinctPowers(filter) => Ok(Value::DistinctPowers(resolve_it_tag(filter, refs)?)),
@@ -969,5 +983,31 @@ pub(crate) fn resolve_attach_object_spec(
         _ => Err(CardTextError::ParseError(
             "unsupported attach object reference".to_string(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::TagKey;
+    use crate::runtime_backend::references::reference_model::RefState;
+
+    #[test]
+    fn target_wrapped_implicit_it_value_resolves_to_source() {
+        let mut refs = ReferenceEnv::default();
+        refs.source_object_antecedent = true;
+        refs.last_player_filter = RefState::Known(PlayerFilter::You);
+
+        let value = Value::PowerOf(Box::new(ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+        ))));
+
+        let resolved = resolve_value_it_tag(&value, &refs).expect("resolve implicit it value");
+
+        assert_eq!(
+            resolved,
+            Value::PowerOf(Box::new(ChooseSpec::Source)),
+            "source-bound implicit it should not remain target-wrapped"
+        );
     }
 }

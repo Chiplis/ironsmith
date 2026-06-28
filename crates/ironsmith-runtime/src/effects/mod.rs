@@ -117,7 +117,8 @@ pub use composition::{
     TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringBlockersEffect,
     TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TagTriggeringSourceEffect,
     TaggedEffect, TargetOnlyEffect, UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG,
-    VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
+    VOTED_OBJECTS_TAG, VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult,
+    WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{

@@ -455,10 +455,46 @@ fn split_full_shared_color_target(target: &TargetAst) -> Option<(TargetAst, Obje
     ))
 }
 
+fn split_leading_end_of_turn_duration(
+    tokens: &[OwnedLexToken],
+) -> (Option<Vec<OwnedLexToken>>, Vec<OwnedLexToken>) {
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.word_refs();
+    if !word_slice_starts_with(&words, &["until", "end", "of", "turn"]) {
+        return (None, tokens.to_vec());
+    }
+
+    let body_start = word_view
+        .token_index_for_word_index(4)
+        .unwrap_or(tokens.len());
+    let body = trim_commas(&tokens[body_start..]);
+    if body.is_empty() {
+        return (None, tokens.to_vec());
+    }
+    (Some(tokens[..body_start].to_vec()), body)
+}
+
+fn strip_leading_radiance_label(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    if !token_slice_first_is(tokens, "radiance") {
+        return tokens;
+    }
+
+    let mut start = 1usize;
+    while tokens
+        .get(start)
+        .is_some_and(|token| token.as_word().is_none())
+    {
+        start += 1;
+    }
+    &tokens[start..]
+}
+
 fn parse_explicit_shared_color_gets_or_gains(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words_all = crate::runtime_backend::token_word_refs(tokens);
+    let (leading_duration_tokens, working_tokens) = split_leading_end_of_turn_duration(tokens);
+    let tokens = working_tokens.as_slice();
     let find_and_each_other =
         |scope: &[OwnedLexToken]| find_token_word_sequence(scope, &["and", "each", "other"]);
 
@@ -535,7 +571,11 @@ fn parse_explicit_shared_color_gets_or_gains(
         ]));
     }
 
-    let mut first_clause = first_target_tokens.clone();
+    let mut first_clause = Vec::new();
+    if let Some(duration_tokens) = &leading_duration_tokens {
+        first_clause.extend_from_slice(duration_tokens);
+    }
+    first_clause.extend_from_slice(&first_target_tokens);
     first_clause.extend_from_slice(&tokens[verb_token_idx..]);
     let Some(first_effect) = parse_simple_gain_ability_clause(&first_clause)? else {
         return Ok(None);
@@ -571,6 +611,7 @@ fn parse_explicit_shared_color_gets_or_gains(
 pub(crate) fn parse_shared_color_target_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = strip_leading_radiance_label(tokens);
     if let Some(effects) = parse_explicit_shared_color_gets_or_gains(tokens)? {
         return Ok(Some(effects));
     }

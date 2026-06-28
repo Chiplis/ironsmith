@@ -3738,6 +3738,72 @@ fn source_counter_count_expression_from_value(value: Value) -> Option<AnthemCoun
     }
 }
 
+fn parse_sticker_count_head(words: &[&str]) -> Option<(crate::events::KeywordActionKind, usize)> {
+    if words.get(0..4) == Some(&["power", "and", "toughness", "sticker"])
+        || words.get(0..4) == Some(&["power", "and", "toughness", "stickers"])
+    {
+        return Some((crate::events::KeywordActionKind::PowerToughnessSticker, 4));
+    }
+    if words.get(0..2) == Some(&["name", "sticker"])
+        || words.get(0..2) == Some(&["name", "stickers"])
+    {
+        return Some((crate::events::KeywordActionKind::NameSticker, 2));
+    }
+    if words.get(0..2) == Some(&["art", "sticker"])
+        || words.get(0..2) == Some(&["art", "stickers"])
+    {
+        return Some((crate::events::KeywordActionKind::ArtSticker, 2));
+    }
+    if words.get(0..2) == Some(&["ability", "sticker"])
+        || words.get(0..2) == Some(&["ability", "stickers"])
+    {
+        return Some((crate::events::KeywordActionKind::AbilitySticker, 2));
+    }
+    if words.first().is_some_and(|word| *word == "sticker" || *word == "stickers") {
+        return Some((crate::events::KeywordActionKind::Sticker, 1));
+    }
+    None
+}
+
+fn parse_sticker_letter_cap(words: &[&str]) -> Option<(u32, usize)> {
+    let (max_letters, used) =
+        crate::runtime_backend::front_end::shared::util::parse_number_word_refs(words)?;
+    if words.get(used..used + 3) == Some(&["or", "fewer", "letters"])
+        || words.get(used..used + 3) == Some(&["or", "less", "letters"])
+    {
+        return Some((max_letters, used + 3));
+    }
+    None
+}
+
+fn parse_sticker_count_expression(words: &[&str]) -> Option<AnthemCountExpression> {
+    let (action, head_used) = parse_sticker_count_head(words)?;
+    let after_head = words.get(head_used..)?;
+    if after_head.first() != Some(&"on") {
+        return None;
+    }
+
+    let mut source_words = after_head.get(1..)?;
+    let mut max_name_letters = None;
+    if let Some(with_idx) = source_words.iter().position(|word| *word == "with") {
+        let (max_letters, used) = parse_sticker_letter_cap(source_words.get(with_idx + 1..)?)?;
+        if with_idx + 1 + used != source_words.len() {
+            return None;
+        }
+        max_name_letters = Some(max_letters);
+        source_words = &source_words[..with_idx];
+    }
+
+    let surface = (!source_words.is_empty())
+        .then(|| explicit_source_counter_surface(source_words))
+        .flatten();
+    Some(AnthemCountExpression::StickersOnSource {
+        action,
+        surface,
+        max_name_letters,
+    })
+}
+
 pub(crate) fn parse_anthem_for_each_expression(
     tokens: &[OwnedLexToken],
 ) -> Result<AnthemCountExpression, CardTextError> {
@@ -3805,6 +3871,10 @@ pub(crate) fn parse_anthem_for_each_expression(
             player: PlayerFilter::You,
             symbol: crate::mana::ManaSymbol::Green,
         });
+    }
+
+    if let Some(sticker_count) = parse_sticker_count_expression(&rest_words) {
+        return Ok(sticker_count);
     }
 
     if let Some(filter) = parse_compound_anthem_count_filter(rest) {

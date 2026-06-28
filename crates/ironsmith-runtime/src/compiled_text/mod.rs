@@ -356,6 +356,23 @@ fn station_threshold_body(body: &str) -> String {
 
 fn normalize_scored_compiled_line(line: String) -> String {
     let lower = line.to_ascii_lowercase();
+    if lower.contains("whenever a land you control enters")
+        && lower.contains("if it's a mountain, this creature deals")
+    {
+        return line.replace(
+            "If it's a Mountain, this creature deals",
+            "If that land is a Mountain, this creature deals",
+        );
+    }
+    if let Some((source, _)) = line.split_once(
+        " deals 2 damage to each opponent and each creature they control. If this spell was cast from exile, ",
+    ) && let Some(rest) = line.strip_prefix(&format!(
+        "{source} deals 2 damage to each opponent and each creature they control. If this spell was cast from exile, {source} deals 5 damage instead"
+    )) {
+        return format!(
+            "{source} deals 2 damage to each opponent and each creature they control. If this spell was cast from exile, it deals 5 damage to each opponent and each creature they control instead{rest}"
+        );
+    }
     if lower.trim_end_matches('.')
         == "mill two cards, choose up to one permanent cards, for each card chosen this way, return that object to its owner's hand, then gain 2 life"
     {
@@ -487,6 +504,21 @@ fn substitute_kicked_draw_source_reference(line: &str, def: &CardDefinition) -> 
 
 fn normalize_unprocessed_compiled_line(line: String) -> String {
     let lower = line.to_ascii_lowercase();
+    if lower.contains("whenever a land you control enters")
+        && lower.contains("if it's a mountain, this creature deals")
+    {
+        return line.replace(
+            "If it's a Mountain, this creature deals",
+            "If that land is a Mountain, this creature deals",
+        );
+    }
+    if let Some((source, _)) = line.split_once(" deals 2 damage to each opponent and each creature they control. If this spell was cast from exile, ")
+        && let Some(rest) = line.strip_prefix(&format!("{source} deals 2 damage to each opponent and each creature they control. If this spell was cast from exile, {source} deals 5 damage instead"))
+    {
+        return format!(
+            "{source} deals 2 damage to each opponent and each creature they control. If this spell was cast from exile, it deals 5 damage to each opponent and each creature they control instead{rest}"
+        );
+    }
     if lower.contains("unless an opponent lost life this turn, sacrifice it") {
         return line
             .replace(
@@ -1381,14 +1413,16 @@ fn replace_ascii_case_insensitive_once(
 fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
     loop {
         let previous = lines;
-        let merged = merge_conditioned_spell_and_activation_tax_lines(
-            merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
-                merge_specific_adjacent_surface_lines(merge_base_pt_loss_transform_lines(
-                    merge_lose_all_transform_lines(merge_attached_transform_keyword_loss_lines(
-                        merge_blockability_lines(annotate_color_choice_exclusions(
-                            merge_same_true_color_lines(merge_same_true_type_addition_lines(
-                                merge_same_true_keyword_grant_lines(
-                                    merge_subject_predicate_surface_lines(previous.clone()),
+        let merged = merge_cast_permission_any_mana_lines(
+            merge_conditioned_spell_and_activation_tax_lines(merge_adjacent_simple_mana_add_lines(
+                drop_redundant_spell_cost_lines(merge_specific_adjacent_surface_lines(
+                    merge_base_pt_loss_transform_lines(merge_lose_all_transform_lines(
+                        merge_attached_transform_keyword_loss_lines(merge_blockability_lines(
+                            annotate_color_choice_exclusions(merge_same_true_color_lines(
+                                merge_same_true_type_addition_lines(
+                                    merge_same_true_keyword_grant_lines(
+                                        merge_subject_predicate_surface_lines(previous.clone()),
+                                    ),
                                 ),
                             )),
                         )),

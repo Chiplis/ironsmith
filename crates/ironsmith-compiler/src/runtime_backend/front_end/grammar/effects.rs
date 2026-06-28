@@ -3,9 +3,10 @@ use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SearchLibrarySlotAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst,
+    SearchLibrarySlotAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    TextSpan,
 };
 use crate::effect::SearchSelectionMode;
 use crate::target::PlayerFilter;
@@ -1524,33 +1525,40 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             None,
         ));
         if shuffle && zones.contains(&Zone::Library) {
-            sequence.push(EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner,
-                player,
-                SubjectVerbActionAst::ShuffleLibrary,
-            ));
+            sequence.push(EffectAst::IfResult {
+                predicate: IfResultPredicate::SearchedLibrary,
+                effects: vec![EffectAst::subject_verb(
+                    SubjectVerbRoleAst::LibraryOwner,
+                    player,
+                    SubjectVerbActionAst::ShuffleLibrary,
+                )],
+            });
         }
         sequence
     } else if !has_explicit_destination {
         let chosen_tag: TagKey = "searched".into();
+        let search_zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
         let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
             count_value: count_value.clone(),
             player: chooser,
             tag: chosen_tag.clone(),
-            zones: search_zones_override.unwrap_or_else(|| vec![Zone::Library]),
+            zones: search_zones.clone(),
             search_mode: Some(search_mode),
         }];
         if reveal {
             sequence.push(EffectAst::subject_verb_reveal_tagged(chosen_tag.clone()));
         }
-        if shuffle {
-            sequence.push(EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner,
-                player,
-                SubjectVerbActionAst::ShuffleLibrary,
-            ));
+        if shuffle && search_zones.contains(&Zone::Library) {
+            sequence.push(EffectAst::IfResult {
+                predicate: IfResultPredicate::SearchedLibrary,
+                effects: vec![EffectAst::subject_verb(
+                    SubjectVerbRoleAst::LibraryOwner,
+                    player,
+                    SubjectVerbActionAst::ShuffleLibrary,
+                )],
+            });
         }
         sequence
     } else if let Some(search_zones) = search_zones_override.clone() {
@@ -1577,11 +1585,14 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             && destination == Zone::Library
             && zone_slice_contains(&search_zones, Zone::Library)
         {
-            sequence.push(EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner,
-                shuffle_player,
-                SubjectVerbActionAst::ShuffleLibrary,
-            ));
+            sequence.push(EffectAst::IfResult {
+                predicate: IfResultPredicate::SearchedLibrary,
+                effects: vec![EffectAst::subject_verb(
+                    SubjectVerbRoleAst::LibraryOwner,
+                    shuffle_player,
+                    SubjectVerbActionAst::ShuffleLibrary,
+                )],
+            });
         }
         let mut per_tag_effects = vec![EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(chosen_tag.clone(), span_from_tokens(tokens)),
@@ -1606,11 +1617,14 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         if shuffle
             && !(destination == Zone::Library && zone_slice_contains(&search_zones, Zone::Library))
         {
-            sequence.push(EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner,
-                shuffle_player,
-                SubjectVerbActionAst::ShuffleLibrary,
-            ));
+            sequence.push(EffectAst::IfResult {
+                predicate: IfResultPredicate::SearchedLibrary,
+                effects: vec![EffectAst::subject_verb(
+                    SubjectVerbRoleAst::LibraryOwner,
+                    shuffle_player,
+                    SubjectVerbActionAst::ShuffleLibrary,
+                )],
+            });
         }
         sequence
     } else if split_battlefield_and_hand {

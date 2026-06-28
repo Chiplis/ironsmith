@@ -180,7 +180,7 @@ fn effect_needs_followup_library_shuffle(effect: &EffectAst) -> bool {
 
 fn shuffle_library_if_previous_effect_happened() -> EffectAst {
     EffectAst::IfResult {
-        predicate: IfResultPredicate::Did,
+        predicate: IfResultPredicate::SearchedLibrary,
         effects: vec![EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::You,
@@ -395,11 +395,9 @@ fn pre_rule_library_shuffle_followups(
             .iter()
             .any(effect_needs_followup_library_shuffle)
         {
-            state.effects.push(EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner,
-                PlayerAst::You,
-                SubjectVerbActionAst::ShuffleLibrary,
-            ));
+            state
+                .effects
+                .push(shuffle_library_if_previous_effect_happened());
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
                 route: None,

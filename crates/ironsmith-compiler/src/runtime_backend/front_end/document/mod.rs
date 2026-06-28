@@ -2742,6 +2742,28 @@ mod tests {
     }
 
     #[test]
+    fn trigger_sentence_chunk_splitter_keeps_one_or_more_this_way_followup_with_trigger() {
+        let tokens = lex_line(
+            "When this creature enters, you may sacrifice up to three Zombies. When you sacrifice one or more Zombies this way, each opponent sacrifices that many creatures of their choice.",
+            0,
+        )
+        .expect("rewrite lexer should classify one-or-more this-way followup line");
+
+        let chunks = split_trigger_sentence_chunks_rewrite_lexed(&tokens)
+            .into_iter()
+            .map(|chunk| render_token_slice(&chunk))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            chunks,
+            vec![
+                "When this creature enters, you may sacrifice up to three Zombies. When you sacrifice one or more Zombies this way, each opponent sacrifices that many creatures of their choice"
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn named_source_rewrite_covers_trigger_bodies_as_well_as_heads() {
         let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Kain, Traitorous Dragoon")
             .card_types(vec![CardType::Creature]);

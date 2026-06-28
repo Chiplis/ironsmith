@@ -3619,6 +3619,12 @@ pub(crate) enum EffectAst {
     ChooseOneOf {
         modes: Vec<ChooseOneModeAst>,
     },
+    /// A resolution-time villainous choice made by the specified player.
+    VillainousChoice {
+        player: PlayerFilter,
+        player_surface: Option<String>,
+        modes: Vec<ChooseOneModeAst>,
+    },
     /// Lower `effect` (which must lower to a single runtime effect) under a
     /// fresh internal effect id, then emit an `if_then(id, DidNotHappen,
     /// otherwise)`. The effect id stays internal to lowering and is never

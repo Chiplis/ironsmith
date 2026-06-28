@@ -692,6 +692,22 @@ pub(crate) fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
     }
 }
 
+fn force_implicit_choose_chooser_you(effects: &mut [EffectAst]) {
+    for effect in effects {
+        match effect {
+            EffectAst::ChooseObjects { player, .. }
+            | EffectAst::ChooseObjectsBottomOfLibrary { player, .. }
+                if matches!(*player, PlayerAst::Implicit) =>
+            {
+                *player = PlayerAst::You;
+            }
+            _ => for_each_nested_effects_mut(effect, true, |nested| {
+                force_implicit_choose_chooser_you(nested);
+            }),
+        }
+    }
+}
+
 pub(crate) fn parse_for_each_opponent_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1128,7 +1144,7 @@ pub(crate) fn parse_for_each_opponent_clause(
     }
 
     let normalized_inner_tokens = prepend_that_player_life_total_subject(&inner_tokens);
-    let effects = if normalized_inner_tokens
+    let mut effects = if normalized_inner_tokens
         .iter()
         .any(|token| token.is_word(FOR_EACH_MAY_WORD))
     {
@@ -1140,6 +1156,12 @@ pub(crate) fn parse_for_each_opponent_clause(
     } else {
         parse_effect_chain(&normalized_inner_tokens)?
     };
+    if inner_words
+        .first()
+        .is_some_and(|word| *word == FOR_EACH_CHOOSE_WORD)
+    {
+        force_implicit_choose_chooser_you(&mut effects);
+    }
     Ok(Some(wrap_for_each(effects)))
 }
 
@@ -1507,7 +1529,7 @@ pub(crate) fn parse_for_each_player_clause(
     }
 
     let normalized_inner_tokens = prepend_that_player_life_total_subject(&inner_tokens);
-    let effects = if normalized_inner_tokens
+    let mut effects = if normalized_inner_tokens
         .iter()
         .any(|token| token.is_word(FOR_EACH_MAY_WORD))
     {
@@ -1519,6 +1541,12 @@ pub(crate) fn parse_for_each_player_clause(
     } else {
         parse_effect_chain(&normalized_inner_tokens)?
     };
+    if inner_words
+        .first()
+        .is_some_and(|word| *word == FOR_EACH_CHOOSE_WORD)
+    {
+        force_implicit_choose_chooser_you(&mut effects);
+    }
     Ok(Some(wrap_for_each(effects)))
 }
 

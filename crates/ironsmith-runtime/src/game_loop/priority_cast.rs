@@ -2446,6 +2446,73 @@ fn card_cost_choice_reveal_policy(
     }
 }
 
+fn filter_names_source_object(game: &GameState, source: ObjectId, filter: &ObjectFilter) -> bool {
+    if filter.specific == Some(source) {
+        return true;
+    }
+
+    let Some(source_name) = game.object(source).map(|object| object.name.as_str()) else {
+        return false;
+    };
+
+    filter
+        .name
+        .as_deref()
+        .is_some_and(|name| name.eq_ignore_ascii_case(source_name))
+}
+
+fn deterministic_named_source_cost(
+    game: &GameState,
+    source: ObjectId,
+    filter: &ObjectFilter,
+    description: &str,
+    legal_objects: &[ObjectId],
+) -> bool {
+    if legal_objects.len() != 1 || legal_objects[0] != source {
+        return false;
+    }
+
+    if filter_names_source_object(game, source, filter) {
+        return true;
+    }
+
+    let Some(source_name) = game.object(source).map(|object| object.name.as_str()) else {
+        return false;
+    };
+    description
+        .to_ascii_lowercase()
+        .contains(&source_name.to_ascii_lowercase())
+}
+
+fn deterministic_named_source_card_cost(
+    game: &GameState,
+    source: ObjectId,
+    card_choice_cost: &ActivationCardCostChoice,
+    legal_objects: &[ObjectId],
+) -> bool {
+    match card_choice_cost {
+        ActivationCardCostChoice::ExileChosenObject {
+            filter,
+            description,
+            ..
+        }
+        | ActivationCardCostChoice::ReturnToHand {
+            filter,
+            description,
+            ..
+        }
+        | ActivationCardCostChoice::MoveChosenObjectToZone {
+            filter,
+            description,
+            ..
+        } => deterministic_named_source_cost(game, source, filter, description, legal_objects),
+        ActivationCardCostChoice::Discard { .. }
+        | ActivationCardCostChoice::ExileFromHand { .. }
+        | ActivationCardCostChoice::ExileFromGraveyard { .. }
+        | ActivationCardCostChoice::RevealFromHand { .. } => false,
+    }
+}
+
 pub(super) fn collect_spell_cost_steps(
     game: &GameState,
     spell_id: ObjectId,
@@ -3057,6 +3124,24 @@ pub(super) fn continue_activation_cost_payment(
                 ));
             }
 
+            if deterministic_named_source_cost(
+                game,
+                pending.source,
+                filter,
+                description,
+                &legal_targets,
+            ) {
+                pending.stage = ActivationStage::ChoosingSacrifice;
+                state.pending_activation = Some(pending);
+                return apply_sacrifice_target_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    legal_targets[0],
+                    decision_maker,
+                );
+            }
+
             let player = pending.activator;
             let source = pending.source;
             pending.stage = ActivationStage::ChoosingSacrifice;
@@ -3098,6 +3183,23 @@ pub(super) fn continue_activation_cost_payment(
                 return Err(GameLoopError::InvalidState(
                     "No valid cards available for activation cost choice".to_string(),
                 ));
+            }
+
+            if deterministic_named_source_card_cost(
+                game,
+                pending.source,
+                &card_choice_cost,
+                &legal_cards,
+            ) {
+                pending.stage = ActivationStage::ChoosingCardCost;
+                state.pending_activation = Some(pending);
+                return apply_sacrifice_target_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    legal_cards[0],
+                    decision_maker,
+                );
             }
 
             let player = pending.activator;

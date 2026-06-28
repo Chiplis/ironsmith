@@ -733,6 +733,12 @@ pub struct ObjectCantBeTargetedFrom {
     pub controller: PlayerId,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StickerMarker {
+    pub action: KeywordActionKind,
+    pub name_letter_count: Option<u32>,
+}
+
 #[derive(Debug, Clone)]
 pub struct RestrictionEffectInstance {
     pub restriction: crate::effect::Restriction,
@@ -2178,6 +2184,10 @@ pub struct GameState {
     /// Last life total noted for a battlefield source object.
     pub noted_life_totals: HashMap<ObjectId, i32>,
 
+    /// Stickers attached to an object, tracked by stable object identity so
+    /// zone changes preserve the sticker state.
+    pub object_stickers: HashMap<StableId, Vec<StickerMarker>>,
+
     // =========================================================================
     // Battlefield State Extension Maps
     // =========================================================================
@@ -2376,6 +2386,7 @@ impl GameState {
             speed_increase_triggered_this_turn: HashSet::new(),
             draft_noted_highest_numbers: HashMap::new(),
             noted_life_totals: HashMap::new(),
+            object_stickers: HashMap::new(),
             // Battlefield state extension maps
             tapped_permanents: HashSet::new(),
             summoning_sick: HashSet::new(),
@@ -2456,6 +2467,43 @@ impl GameState {
 
     pub fn noted_life_total_for_source(&self, source: ObjectId) -> Option<i32> {
         self.noted_life_totals.get(&source).copied()
+    }
+
+    pub fn put_sticker_on_object(&mut self, object_id: ObjectId, action: KeywordActionKind) {
+        let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
+            return;
+        };
+        self.object_stickers
+            .entry(stable_id)
+            .or_default()
+            .push(StickerMarker {
+                action,
+                name_letter_count: None,
+            });
+    }
+
+    pub fn sticker_count_on_object(
+        &self,
+        object_id: ObjectId,
+        action: KeywordActionKind,
+        max_name_letters: Option<u32>,
+    ) -> u32 {
+        let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
+            return 0;
+        };
+        self.object_stickers
+            .get(&stable_id)
+            .into_iter()
+            .flatten()
+            .filter(|sticker| {
+                sticker.action == action
+                    && max_name_letters.is_none_or(|max| {
+                        sticker
+                            .name_letter_count
+                            .is_none_or(|letter_count| letter_count <= max)
+                    })
+            })
+            .count() as u32
     }
 
     /// Creates a new game state after explicitly resetting runtime player/object IDs.

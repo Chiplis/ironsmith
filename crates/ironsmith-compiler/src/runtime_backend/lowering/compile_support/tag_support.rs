@@ -476,6 +476,10 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
             .tagged_constraints
             .iter()
             .any(|constraint| constraint.tag.as_str() == tag),
+        Value::StaticAbilitiesAmong { filter, .. } => filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == tag),
         Value::PowerOf(spec) | Value::ToughnessOf(spec) => choose_spec_references_tag(spec, tag),
         Value::ManaValueOf(spec) => choose_spec_references_tag(spec, tag),
         Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),
@@ -1239,12 +1243,8 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             if_true,
             if_false,
         } => {
-            matches!(
-                predicate,
-                PredicateAst::ItIsLandCard
-                    | PredicateAst::ItIsSoulbondPaired
-                    | PredicateAst::ItMatches(_)
-            ) || predicate_references_tag(predicate, IT_TAG)
+            predicate_uses_implicit_it_reference(predicate)
+                || predicate_references_tag(predicate, IT_TAG)
                 || effects_reference_it_tag(if_true)
                 || effects_reference_it_tag(if_false)
         }
@@ -1267,6 +1267,21 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             });
             references
         }
+    }
+}
+
+fn predicate_uses_implicit_it_reference(predicate: &PredicateAst) -> bool {
+    match predicate {
+        PredicateAst::ItIsLandCard
+        | PredicateAst::ItIsSoulbondPaired
+        | PredicateAst::ItMatches(_)
+        | PredicateAst::TargetMatches(_) => true,
+        PredicateAst::Not(inner) => predicate_uses_implicit_it_reference(inner),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            predicate_uses_implicit_it_reference(left)
+                || predicate_uses_implicit_it_reference(right)
+        }
+        _ => false,
     }
 }
 

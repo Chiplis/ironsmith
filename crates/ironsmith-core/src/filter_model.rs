@@ -2623,6 +2623,17 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::CardTypesAmong(filter) => {
                 format!("the number of card types among {}", filter.description())
             }
+            Value::StaticAbilitiesAmong { filter, abilities } => {
+                let names = abilities
+                    .iter()
+                    .map(|ability| format!("{ability:?}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "the number of abilities from among {names} among {}",
+                    filter.description()
+                )
+            }
             Value::CreatureTypesAmong(filter) => {
                 format!(
                     "the number of creature types among {}",

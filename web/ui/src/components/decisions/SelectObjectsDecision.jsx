@@ -176,7 +176,7 @@ export default function SelectObjectsDecision({
         >
           <div className={cn(
             stripLayout
-              ? "flex w-max min-w-full flex-nowrap items-center gap-1.5 py-0.5 pr-1"
+              ? "decision-strip-options-row flex w-max min-w-full flex-nowrap items-center gap-1.5 py-0.5 pr-1"
               : "w-full divide-y divide-[rgba(128,107,78,0.28)]"
           )}>
             {visibleCandidates.map((c) => {

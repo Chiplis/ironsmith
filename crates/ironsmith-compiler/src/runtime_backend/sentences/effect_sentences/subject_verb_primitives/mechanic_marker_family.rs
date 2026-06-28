@@ -1174,6 +1174,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         390,
         PostDiagnostic,
         &[
+            LexRuleHeadHint::Single("until"),
             LexRuleHeadHint::Single("target"),
             LexRuleHeadHint::Pair("target", "radiance"),
         ],

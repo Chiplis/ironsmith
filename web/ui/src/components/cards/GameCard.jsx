@@ -1635,7 +1635,7 @@ export default function GameCard({
             </div>
             {showDebugSimilarityBadge && (
               <span
-                className="absolute right-1.5 top-1 rounded border border-[#6aa6d5]/50 bg-[rgba(7,13,20,0.88)] px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-[#bfe5ff] shadow-[0_2px_6px_rgba(0,0,0,0.32)]"
+                className="absolute right-1.5 top-1 rounded-none border border-[#6aa6d5]/50 bg-[rgba(7,13,20,0.88)] px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-[#bfe5ff] shadow-[0_2px_6px_rgba(0,0,0,0.32)]"
                 title={`Similarity score: ${debugSimilarityLabel}`}
               >
                 {debugSimilarityLabel}
@@ -1654,7 +1654,7 @@ export default function GameCard({
             <span className="flex items-center gap-1">
               {showDebugSimilarityBadge && (
                 <span
-                  className="rounded border border-[#6aa6d5]/50 bg-[rgba(7,13,20,0.88)] px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-[#bfe5ff] shadow-[0_2px_6px_rgba(0,0,0,0.32)]"
+                  className="rounded-none border border-[#6aa6d5]/50 bg-[rgba(7,13,20,0.88)] px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-[#bfe5ff] shadow-[0_2px_6px_rgba(0,0,0,0.32)]"
                   title={`Similarity score: ${debugSimilarityLabel}`}
                 >
                   {debugSimilarityLabel}
@@ -1715,7 +1715,7 @@ export default function GameCard({
         )}
 
         {variant !== "hand" && variant !== "battlefield" && card.power_toughness && (
-          <span className="absolute bottom-1 right-1 bg-[rgba(16,24,35,0.92)] text-[#f5d08b] text-[13px] font-bold leading-none px-1 py-0.5 rounded-sm z-2 tracking-wide">
+          <span className="absolute bottom-1 right-1 bg-[rgba(16,24,35,0.92)] text-[#f5d08b] text-[13px] font-bold leading-none px-1 py-0.5 rounded-none z-2 tracking-wide">
             {card.power_toughness}
           </span>
         )}

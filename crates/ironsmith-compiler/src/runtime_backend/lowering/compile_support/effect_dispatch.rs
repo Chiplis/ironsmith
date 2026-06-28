@@ -83,6 +83,23 @@ fn bind_iterated_value_to_choose_spec(value: &Value, spec: &ChooseSpec) -> Value
     }
 }
 
+fn choose_spec_owned_by_iterated_player(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => choose_spec_owned_by_iterated_player(spec),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            matches!(filter.owner, Some(PlayerFilter::IteratedPlayer))
+                || filter
+                    .any_of
+                    .iter()
+                    .any(|filter| matches!(filter.owner, Some(PlayerFilter::IteratedPlayer)))
+        }
+        _ => false,
+    }
+}
+
 fn reserved_or_next_object_tag(ctx: &mut EffectLoweringContext, prefix: &str) -> String {
     let prefix_with_sep = format!("{prefix}_");
     ctx.last_object_tag
@@ -256,6 +273,34 @@ fn compile_effect_inner(
             });
         }
         return Ok((vec![Effect::choose_one(lowered_modes)], choices));
+    }
+    if let EffectAst::VillainousChoice {
+        player,
+        player_surface,
+        modes,
+    } = effect
+    {
+        use crate::effect::EffectMode;
+        let mut lowered_modes = Vec::with_capacity(modes.len());
+        let mut choices = Vec::new();
+        for mode in modes {
+            let (mode_effects, mode_choices) = compile_effects(&mode.effects, ctx)?;
+            for choice in mode_choices {
+                push_choice(&mut choices, choice);
+            }
+            lowered_modes.push(EffectMode {
+                source_text: mode.description.clone(),
+                effects: mode_effects,
+            });
+        }
+        return Ok((
+            vec![Effect::villainous_choice(
+                player.clone(),
+                player_surface.clone(),
+                lowered_modes,
+            )],
+            choices,
+        ));
     }
     if let EffectAst::IfEffectDidNotHappen { effect, otherwise } = effect {
         let id = ctx.next_effect_id();
@@ -1453,9 +1498,17 @@ fn compile_subject_verb_effect(
         } => {
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
-            let controller = subject.into_player_filter();
-            choices.extend(subject.into_choices());
+            let (controller, subject_choices) = if matches!(player, PlayerAst::Implicit) {
+                if ctx.iterated_player && choose_spec_owned_by_iterated_player(&spec) {
+                    (PlayerFilter::IteratedPlayer, Vec::new())
+                } else {
+                    (PlayerFilter::You, Vec::new())
+                }
+            } else {
+                let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+                (subject.into_player_filter(), subject.into_choices())
+            };
+            choices.extend(subject_choices);
             let runtime_modification = if matches!(controller, PlayerFilter::You) {
                 crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController
             } else {
@@ -1485,6 +1538,8 @@ fn compile_subject_verb_effect(
             let tag = ctx.next_tag("revealed");
             ctx.last_object_tag = Some(tag.clone());
             ctx.last_revealed_tag = Some(tag.clone());
+            ctx.last_revealed_zone = Some(Zone::Library);
+            ctx.last_revealed_player_filter = Some(player_filter.clone());
             Ok((
                 vec![Effect::reveal_top(player_filter, tag)],
                 subject.into_choices(),
@@ -1569,6 +1624,8 @@ fn compile_subject_verb_effect(
             .reveal();
             ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
             ctx.last_revealed_tag = Some(resolved_tag.as_str().to_string());
+            ctx.last_revealed_zone = Some(Zone::Hand);
+            ctx.last_revealed_player_filter = Some(player_filter.clone());
             ctx.last_player_filter = Some(player_filter);
             Ok((vec![Effect::new(choose)], subject.into_choices()))
         }
@@ -1583,6 +1640,8 @@ fn compile_subject_verb_effect(
             ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
             if *reveal {
                 ctx.last_revealed_tag = Some(resolved_tag.as_str().to_string());
+                ctx.last_revealed_zone = Some(Zone::Library);
+                ctx.last_revealed_player_filter = Some(player_filter.clone());
             }
             let effect = if *reveal {
                 Effect::reveal_top_cards(player_filter, count.clone(), resolved_tag)
@@ -2425,11 +2484,34 @@ fn compile_subject_verb_effect(
         } => {
             let subject = LoweredSubject::resolve_library_owner(*player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
-            let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+            let current_refs = current_reference_env(ctx);
+            let (resolved_tag, inferred_keep_tagged) = if tag.as_str() == IT_TAG
+                && let Some(revealed_tag) = ctx.last_revealed_tag.clone()
+                && ctx.last_object_tag.as_deref() != Some(revealed_tag.as_str())
+            {
+                (
+                    TagKey::from(revealed_tag.as_str()),
+                    ctx.last_object_tag
+                        .as_ref()
+                        .map(|tag| TagKey::from(tag.as_str())),
+                )
+            } else if tag.as_str() == "__last_revealed__" {
+                (
+                    TagKey::from(ctx.last_revealed_tag.clone().ok_or_else(|| {
+                        CardTextError::ParseError(
+                            "unable to resolve revealed remainder without prior reveal".to_string(),
+                        )
+                    })?),
+                    None,
+                )
+            } else {
+                (resolve_it_tag_key(tag, &current_refs)?, None)
+            };
             let resolved_keep_tagged = keep_tagged
                 .as_ref()
-                .map(|tag| resolve_it_tag_key(tag, &current_reference_env(ctx)))
-                .transpose()?;
+                .map(|tag| resolve_it_tag_key(tag, &current_refs))
+                .transpose()?
+                .or(inferred_keep_tagged);
             let resolved_order = match order {
                 crate::cards::builders::LibraryBottomOrderAst::Random => {
                     crate::effects::consult_helpers::LibraryBottomOrder::Random
@@ -2618,16 +2700,19 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            Ok((
-                vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
-                    resolved_tag,
-                    player_filter,
-                    crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd,
-                    *allow_land,
-                    *allow_any_color_for_cast,
-                ))],
-                Vec::new(),
-            ))
+            let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
+                resolved_tag.clone(),
+                player_filter,
+                crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd,
+                *allow_land,
+                *allow_any_color_for_cast,
+            );
+            if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
+                && ctx.last_exiled_collection_is_plural
+            {
+                grant_play = grant_play.cast_pool_is_plural(true);
+            }
+            Ok((vec![Effect::new(grant_play)], Vec::new()))
         }
         SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
             tag,
@@ -3141,9 +3226,19 @@ fn compile_subject_verb_effect(
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::TargetOnly { target } => {
-            compile_tagged_effect_for_target(target, ctx, "targeted", |spec| {
-                Effect::new(crate::effects::TargetOnlyEffect::new(spec))
-            })
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if matches!(spec.base(), ChooseSpec::Source) {
+                Ok((Vec::new(), choices))
+            } else {
+                let effect = tag_object_target_effect(
+                    Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone())),
+                    &spec,
+                    ctx,
+                    "targeted",
+                );
+                Ok((vec![effect], choices))
+            }
         }
         SubjectVerbActionAst::TagMatchingObjects { filter, zones, tag } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
@@ -5443,10 +5538,20 @@ fn compile_subject_verb_effect(
             filter,
             tag,
         } => {
+            let discard_references_revealed_hand_choice = filter.as_ref().is_some_and(|filter| {
+                filter.zone == Some(Zone::Hand) && filter_references_tag(filter, IT_TAG)
+            });
             let resolved_filter = if let Some(filter) = filter {
                 let mut resolved = resolve_it_tag(filter, &current_reference_env(ctx))?;
                 if resolved.zone.is_none() {
                     resolved.zone = Some(Zone::Hand);
+                }
+                if discard_references_revealed_hand_choice
+                    && resolved.zone == Some(Zone::Hand)
+                    && let Some(revealed_player) = ctx.last_revealed_player_filter.clone()
+                {
+                    resolved.owner = Some(revealed_player);
+                    resolved.controller = None;
                 }
                 Some(resolved)
             } else {
@@ -5456,7 +5561,15 @@ fn compile_subject_verb_effect(
                 if matches!(subject_verb.subject.player, PlayerAst::Implicit) {
                     if let Some(inferred_player) = resolved_filter
                         .as_ref()
-                        .and_then(infer_player_filter_from_object_filter)
+                        .and_then(|filter| {
+                            if discard_references_revealed_hand_choice
+                                && filter.zone == Some(Zone::Hand)
+                            {
+                                ctx.last_revealed_player_filter.clone()
+                            } else {
+                                infer_player_filter_from_object_filter(filter)
+                            }
+                        })
                         .or_else(|| {
                             ctx.last_player_filter
                                 .clone()
@@ -5474,6 +5587,12 @@ fn compile_subject_verb_effect(
                         )?;
                         (subject.into_player_filter(), subject.into_choices())
                     }
+                } else if matches!(subject_verb.subject.player, PlayerAst::That)
+                    && let Some(inferred_player) = resolved_filter
+                        .as_ref()
+                        .and_then(infer_player_filter_from_object_filter)
+                {
+                    (inferred_player, Vec::new())
                 } else {
                     let subject = LoweredSubject::resolve_affected_player(
                         subject_verb.subject.player,
@@ -6225,6 +6344,9 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter)
         | Value::PlayersWhoControlMoreThanYou(filter) => {
+            collect_object_filter_player_target_choices(filter, choices);
+        }
+        Value::StaticAbilitiesAmong { filter, .. } => {
             collect_object_filter_player_target_choices(filter, choices);
         }
         Value::SpellsCastThisTurnMatching { player, filter, .. } => {

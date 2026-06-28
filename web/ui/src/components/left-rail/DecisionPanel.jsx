@@ -329,7 +329,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
       {/* Cancel flash overlay */}
       {cancelling && (
         <div
-          className="absolute inset-0 z-10 pointer-events-none rounded"
+          className="absolute inset-0 z-10 pointer-events-none rounded-none"
           style={{ animation: "cancel-flash 350ms ease-out forwards" }}
         />
       )}

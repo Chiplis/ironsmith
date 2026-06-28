@@ -558,7 +558,7 @@ fn parse_modal_header_prefix_effects(
             let effect_predicate = match gate_spec.predicate {
                 IfResultPredicate::Did => EffectPredicate::Happened,
                 IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
-                IfResultPredicate::SearchedLibrary => EffectPredicate::Happened,
+                IfResultPredicate::SearchedLibrary => EffectPredicate::SearchedLibrary,
                 IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
                 IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
                 IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,

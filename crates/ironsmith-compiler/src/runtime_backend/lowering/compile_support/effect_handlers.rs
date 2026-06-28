@@ -738,12 +738,8 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 saved_source_object_antecedent || predicate.establishes_source_object_antecedent();
             let (false_effects, false_choices) = compile_effects(if_false, ctx)?;
             ctx.source_object_antecedent = saved_source_object_antecedent;
-            let predicate_references_it = matches!(
-                predicate,
-                PredicateAst::ItIsLandCard
-                    | PredicateAst::ItIsSoulbondPaired
-                    | PredicateAst::ItMatches(_)
-            ) || predicate_references_tag(predicate, IT_TAG);
+            let predicate_references_it = predicate_uses_implicit_object_reference(predicate)
+                || predicate_references_tag(predicate, IT_TAG);
 
             let antecedent_choice = if saved_last_tag.is_none() && predicate_references_it {
                 let mut antecedent_choice = None;
@@ -776,9 +772,17 @@ pub(super) fn try_compile_stack_and_condition_effect(
 
             let original_last_tag = ctx.last_object_tag.clone();
             ctx.last_object_tag = condition_reference_tag.clone().or(saved_last_tag.clone());
+            let original_source_object_antecedent = ctx.source_object_antecedent;
+            if ctx.last_object_tag.is_none()
+                && antecedent_choice.is_none()
+                && predicate_uses_implicit_object_reference(predicate)
+            {
+                ctx.source_object_antecedent = true;
+            }
             let condition =
                 compile_condition_from_predicate_ast(predicate, ctx, &condition_reference_tag)?;
             ctx.last_object_tag = original_last_tag;
+            ctx.source_object_antecedent = original_source_object_antecedent;
 
             let true_effects = if matches!(predicate, PredicateAst::ItIsSoulbondPaired)
                 && let Some(reference_tag) = condition_reference_tag.as_deref()
@@ -821,6 +825,21 @@ pub(super) fn try_compile_stack_and_condition_effect(
     };
 
     Ok(Some(compiled))
+}
+
+fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
+    match predicate {
+        PredicateAst::ItIsLandCard
+        | PredicateAst::ItIsSoulbondPaired
+        | PredicateAst::ItMatches(_)
+        | PredicateAst::TargetMatches(_) => true,
+        PredicateAst::Not(inner) => predicate_uses_implicit_object_reference(inner),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            predicate_uses_implicit_object_reference(left)
+                || predicate_uses_implicit_object_reference(right)
+        }
+        _ => false,
+    }
 }
 
 pub(super) fn try_compile_attachment_and_setup_effect(

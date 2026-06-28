@@ -1,7 +1,7 @@
 use crate::cost_model::OptionalCostRef;
 use crate::{
     ActivationTiming, AnthemCountExpression, Comparison, CounterType, EffectId, EventValueSpec,
-    ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, Subtype, TagKey,
+    ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, StaticAbilityId, Subtype, TagKey,
     ValueComparisonOperator, Zone,
 };
 use crate::{ChooseSpec, ChooseSpecSurfaceHint, Color, ColorSet, SourceReferenceSurface};
@@ -49,6 +49,7 @@ pub enum ValueSurfaceHint {
     CountersRemovedThisWay,
     Difference,
     UpTo,
+    BlightKeywordAction,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +78,10 @@ pub enum Value {
     BasicLandTypesAmong(ObjectFilter),
     CreatureTypesAmong(ObjectFilter),
     CardTypesAmong(ObjectFilter),
+    StaticAbilitiesAmong {
+        filter: ObjectFilter,
+        abilities: Vec<StaticAbilityId>,
+    },
     ColorsAmong(ObjectFilter),
     DistinctNames(ObjectFilter),
     DistinctPowers(ObjectFilter),

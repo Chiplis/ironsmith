@@ -136,7 +136,7 @@ export default function ActionPopover({
       }}
     >
       <div
-        className="min-w-[200px] rounded-xl overflow-hidden"
+        className="min-w-[200px] rounded-none overflow-hidden"
         style={{
           width: `${popoverWidth}px`,
           background: palette.panel,

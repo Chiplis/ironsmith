@@ -162,14 +162,14 @@ function HorizontalStackEntry({
           className="pointer-events-none absolute right-2 top-1/2 z-[3] -translate-y-1/2"
         />
         <span
-          className="stack-entry-badge pointer-events-none absolute left-2 z-[2] rounded bg-[rgba(54,43,33,0.9)] px-1 py-[1px] text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-[#f0d7a2]"
+          className="stack-entry-badge pointer-events-none absolute left-2 z-[2] rounded-none bg-[rgba(54,43,33,0.9)] px-1 py-[1px] text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-[#f0d7a2]"
           style={{ top: `${compact ? 22 : HORIZONTAL_STACK_BADGE_TOP}px` }}
         >
           {positionLabel}
         </span>
         <div
           className={cn(
-            "relative z-[2] shrink-0 overflow-hidden rounded-md bg-[rgba(43,34,27,0.96)]",
+            "relative z-[2] shrink-0 overflow-hidden rounded-none bg-[rgba(43,34,27,0.96)]",
             compact ? "h-5 w-5" : "h-6 w-6"
           )}
         >
@@ -198,7 +198,7 @@ function HorizontalStackEntry({
                 </span>
               )}
               {pt && (
-                <span className="rounded-sm border border-[rgba(196,167,112,0.42)] bg-[rgba(79,61,39,0.24)] px-1 py-0.5 text-[10px] font-bold leading-none tracking-wide text-[#f5d08b]">
+                <span className="rounded-none border border-[rgba(196,167,112,0.42)] bg-[rgba(79,61,39,0.24)] px-1 py-0.5 text-[10px] font-bold leading-none tracking-wide text-[#f5d08b]">
                   {pt}
                 </span>
               )}
@@ -381,7 +381,7 @@ export default function InspectorStackTimeline({
           "pointer-events-none relative isolate flex w-fit max-w-full items-stretch overflow-hidden",
           compact
             ? "rounded-none bg-transparent shadow-none"
-            : "rounded-[14px] bg-transparent shadow-none"
+            : "rounded-none bg-transparent shadow-none"
         )}
         style={{ minHeight: `${compact ? 40 : HORIZONTAL_STACK_ENTRY_MIN_HEIGHT + 2}px` }}
         data-inspector-stack-timeline
@@ -455,7 +455,7 @@ export default function InspectorStackTimeline({
     <section
       className={cn(
         embedded
-          ? "pointer-events-auto w-full min-h-0 overflow-hidden rounded-l rounded-r-sm border border-[#35506c] bg-transparent shadow-none flex flex-col"
+          ? "pointer-events-auto w-full min-h-0 overflow-hidden rounded-none border border-[#35506c] bg-transparent shadow-none flex flex-col"
           : "pointer-events-none absolute inset-x-0 bottom-0 z-[36] overflow-hidden border-t border-[#35506c] bg-transparent shadow-none",
         compact && !isHorizontal && "stack-timeline-compact"
       )}
@@ -467,7 +467,7 @@ export default function InspectorStackTimeline({
           {collapsible && typeof onToggleCollapsed === "function" && (
             <button
               type="button"
-              className="pointer-events-auto inline-flex h-4 w-4 items-center justify-center rounded-sm border border-[#3a5673] bg-[rgba(9,18,30,0.7)] text-[10px] text-[#9cc8f3] transition-colors hover:border-[#8ec4ff] hover:text-[#d8ecff]"
+              className="pointer-events-auto inline-flex h-4 w-4 items-center justify-center rounded-none border border-[#3a5673] bg-[rgba(9,18,30,0.7)] text-[10px] text-[#9cc8f3] transition-colors hover:border-[#8ec4ff] hover:text-[#d8ecff]"
               onClick={onToggleCollapsed}
               aria-label={collapsed ? "Expand stack" : "Collapse stack"}
               title={collapsed ? "Expand stack" : "Collapse stack"}
@@ -502,7 +502,7 @@ export default function InspectorStackTimeline({
                     key={entry.__timeline_key}
                     className="stack-timeline-entry pointer-events-auto relative"
                   >
-                    <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
+                    <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded-none bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
                       {positionLabelForIndex(index)}
                     </span>
                     <StackCard
@@ -539,7 +539,7 @@ export default function InspectorStackTimeline({
               : stackPreview.map((name, index) => (
                   <div
                     key={`${name}-${index}`}
-                    className="pointer-events-auto rounded border border-[#304760] bg-[linear-gradient(180deg,rgba(13,33,52,0.8),rgba(8,18,31,0.92))] px-2.5 py-2 text-[14px] text-[#d5e7fd]"
+                    className="pointer-events-auto rounded-none border border-[#304760] bg-[linear-gradient(180deg,rgba(13,33,52,0.8),rgba(8,18,31,0.92))] px-2.5 py-2 text-[14px] text-[#d5e7fd]"
                   >
                     <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
                       Preview
@@ -558,7 +558,7 @@ export default function InspectorStackTimeline({
                     key={entry.__timeline_key}
                     className="stack-timeline-entry pointer-events-auto relative"
                   >
-                    <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
+                    <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded-none bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
                       {positionLabelForIndex(index)}
                     </span>
                     <StackCard
@@ -593,7 +593,7 @@ export default function InspectorStackTimeline({
               : stackPreview.map((name, index) => (
                   <div
                     key={`${name}-${index}`}
-                    className="pointer-events-auto rounded border border-[#304760] bg-[linear-gradient(180deg,rgba(13,33,52,0.8),rgba(8,18,31,0.92))] px-2.5 py-2 text-[14px] text-[#d5e7fd]"
+                    className="pointer-events-auto rounded-none border border-[#304760] bg-[linear-gradient(180deg,rgba(13,33,52,0.8),rgba(8,18,31,0.92))] px-2.5 py-2 text-[14px] text-[#d5e7fd]"
                   >
                     <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
                       Preview

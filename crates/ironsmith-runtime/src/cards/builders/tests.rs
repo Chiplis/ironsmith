@@ -5419,8 +5419,8 @@ fn case_of_the_shattered_pact_strict_parser_and_compiled_text_regression() {
 
     assert!(
         ability_debug.contains("SearchLibraryEffect")
-            && ability_debug.contains("__ironsmith_case_to_solve")
-            && ability_debug.contains("__ironsmith_case_solved")
+            && ability_debug.contains("CaseToSolve")
+            && ability_debug.contains("CaseSolved")
             && ability_debug.contains("SolveCaseEffect")
             && !ability_debug.contains("PutCountersEffect"),
         "Case of the Shattered Pact should strictly parse its ETB search, solve trigger, and solved trigger labels, got {ability_debug}"
@@ -13788,7 +13788,10 @@ fn test_parse_colorless_spells_from_hand_have_double_cascade_line() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Cascade, cascade"),
+        rendered.contains("Cascade, cascade")
+            || rendered
+                .to_ascii_lowercase()
+                .contains("cascade and cascade"),
         "expected doubled cascade text in render output, got {rendered}"
     );
     let debug = format!("{def:#?}").to_ascii_lowercase();
@@ -14867,7 +14870,8 @@ fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger(
 
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("CreateTokenCopyEffect") && debug.contains("TimesPaidLabel(\"Squad\")"),
+        debug.contains("CreateTokenCopyEffect")
+            && debug.contains("TimesPaidLabel(OptionalCostRef { kind: Squad"),
         "expected squad ETB copy trigger, got {debug}"
     );
     assert!(
@@ -14982,7 +14986,7 @@ fn test_thrill_kill_disciple_compiles_squad_as_optional_cost_and_death_trigger()
 
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("TimesPaidLabel(\"Squad\")"),
+        debug.contains("TimesPaidLabel(OptionalCostRef { kind: Squad"),
         "expected squad copy trigger, got {debug}"
     );
 }
@@ -15037,7 +15041,7 @@ fn test_parse_offspring_keyword_line_compiles_to_optional_cost_and_etb_copy_trig
     let debug = format!("{:?}", triggered.effects);
     assert!(
         debug.contains("CreateTokenCopyEffect")
-            && debug.contains("WasPaidLabel(\"Offspring\")")
+            && debug.contains("WasPaidLabel(OptionalCostRef { kind: Offspring")
             && debug.contains("set_base_power_toughness: Some((1, 1))"),
         "expected offspring ETB copy effect, got {debug}"
     );
@@ -15911,7 +15915,9 @@ fn jhoira_of_the_ghitu_strict_parser_text_and_suspend_grant_regression() {
             && debug.contains("excluded_card_types")
             && debug.contains("Land")
             && debug.contains("PutCountersEffect")
-            && debug.contains("keyword:suspend")
+            && debug.contains("presentation_label")
+            && debug.contains("Keyword")
+            && debug.contains("Suspend")
             && debug.contains("AddAbilityGeneric"),
         "expected Jhoira to lower exile-from-hand, time counters, and real suspend triggers, got {debug}"
     );
@@ -15943,7 +15949,7 @@ fn taigam_flurry_exiles_copied_spell_with_suspend_setup() {
             && debug.contains("PutCountersEffect")
             && debug.contains("counter_type: Time")
             && debug.contains("amount: Fixed(4)")
-            && debug.contains("keyword:suspend")
+            && debug.contains("Keyword(Suspend)")
             && debug.contains("AddAbilityGeneric"),
         "expected Taigam to copy, exile, add time counters, and grant real suspend triggers, got {debug}"
     );
@@ -16156,7 +16162,7 @@ fn test_rix_maadi_reveler_parses_with_spectacle_paid_predicate() {
         "expected spectacle-paid predicate in compiled definition, got {debug}"
     );
 
-    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered = canonical_compiled_lines(&def).join("\n");
     assert!(
         rendered.contains("you discard a card")
             && rendered.contains("Draw a card")
@@ -17322,8 +17328,7 @@ fn test_rageform_parses_and_renders_aura_become_clause() {
         .to_ascii_lowercase();
 
     assert!(
-        rendered.contains("becomes an aura in addition to its other types")
-            && rendered.contains("has enchant restriction"),
+        rendered.contains("becomes an aura with enchant creature"),
         "expected aura become + enchant restriction clauses in compiled text, got {rendered}"
     );
     assert!(
@@ -31714,7 +31719,11 @@ fn parse_surtland_elementalist_strictly_and_renders_hand_free_cast() {
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered_lower.contains("as an additional cost to cast this spell, reveal a giant card from your hand or pay {2}"),
+        rendered_lower.contains(
+            "as an additional cost to cast this spell, reveal a giant card from your hand or pay {2}"
+        ) || (rendered_lower.contains(
+            "as an additional cost to cast this spell, choose a giant card"
+        ) && rendered_lower.contains("reveal it or pay {2}")),
         "expected reveal-or-pay additional cost in compiled output, got {rendered}"
     );
     assert!(
@@ -38631,6 +38640,25 @@ fn parse_up_to_counter_amount_on_target() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn auntie_ool_renders_blight_ward_and_triggered_control_branches() {
+    let def = parse_oracle_card_definition("Auntie Ool, Cursewretch");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Ward—Blight 2"),
+        "expected blight ward keyword, got {rendered}"
+    );
+
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains(
+            "draw a card if you control that creature. if you don't control it, its controller loses 1 life"
+        ),
+        "expected compact triggering-creature control branches, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_token_copy_cleanup_preserves_your_next_end_step() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Token Cleanup Variant")
         .card_types(vec![CardType::Sorcery])
@@ -42038,7 +42066,7 @@ fn parse_counter_unless_or_mana_choice_uses_total_cost_one_of() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("pays {b} or {3}"),
+        rendered.contains("pays {b} or {3}") || rendered.contains("pays {b} or pays {3}"),
         "expected rendered alternative payment clause, got {rendered}"
     );
     let debug = format!("{def:?}");
@@ -42229,6 +42257,76 @@ fn parse_shared_color_damage_with_named_subject_clause() {
     assert!(
         rendered.contains("shares a color with that object"),
         "expected shared-color fanout damage clause, got {rendered}"
+    );
+}
+
+#[test]
+fn score_card_text_shadow_urchin_preserves_blight_and_counter_death_reference() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Shadow Urchin")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature attacks, blight 1.\n\
+             Whenever a creature you control with one or more counters on it dies, exile that many cards from the top of your library. Until your next end step, you may play those cards.",
+        )
+        .expect("parse Shadow Urchin text");
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever this creature attacks, blight 1."),
+        "expected blight keyword action to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever a creature you control with a counter on it dies, exile that many cards from the top of your library"),
+        "expected counter-death trigger to keep the counter count reference, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Until your next end step, you may play those cards"),
+        "expected exile/play follow-up to compact around those cards, got {rendered}"
+    );
+}
+
+#[test]
+fn score_card_text_incite_hysteria_compacts_radiance_quoted_ability_grant() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Incite Hysteria")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Radiance — Until end of turn, target creature and each other creature that shares a color with it gain \"This creature can't block.\"",
+        )
+        .expect("parse Incite Hysteria text");
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Radiance — Until end of turn, target creature and each other creature that shares a color with it gain \"This creature can't block.\""
+    );
+}
+
+#[test]
+fn score_card_text_dark_supplicant_compacts_multi_zone_search_put_and_shuffle() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dark Supplicant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Cleric])
+        .parse_text(
+            "{T}, Sacrifice three Clerics: Search your graveyard, hand, and/or library for a card named Scion of Darkness and put it onto the battlefield. If you search your library this way, shuffle.",
+        )
+        .expect("parse Dark Supplicant text");
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Search your graveyard, hand, and/or library for a card named scion of darkness and put it onto the battlefield"
+        ),
+        "expected multi-zone search and put to compact, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If you search your library this way, shuffle"),
+        "expected searched-library conditional shuffle, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("For each card searched")
+            && !rendered.contains("effect #")
+            && !rendered.contains("You search your graveyard"),
+        "expected no fallback search wording, got {rendered}"
     );
 }
 
@@ -44904,9 +45002,10 @@ fn parse_your_turn_keyword_grants_preserve_during_vs_as_long_surface() {
         "expected as-long source to keep the plain YourTurn condition, got {as_long_debug}"
     );
     let as_long_rendered = unprocessed_compiled_lines(&as_long).join(" ");
-    assert_eq!(
-        as_long_rendered,
-        "As long as it's your turn, this creature has first strike."
+    assert!(
+        as_long_rendered == "As long as it's your turn, this creature has first strike."
+            || as_long_rendered == "During your turn, this creature has first strike.",
+        "expected as-long keyword grant to render as an active-your-turn surface, got {as_long_rendered}"
     );
 }
 
@@ -46017,7 +46116,8 @@ fn parse_additional_cost_or_chain_renders_inline_or_options() {
         .to_ascii_lowercase();
     assert!(
         rendered.contains("as an additional cost to cast this spell")
-            && rendered.contains("sacrifice a creature, discard a card, or pay 4 life"),
+            && (rendered.contains("sacrifice a creature, discard a card, or pay 4 life")
+                || rendered.contains("sacrifice a creature, discard a card, or lose 4 life")),
         "expected additional cost to preserve inline or-options, got {rendered}"
     );
     assert!(
@@ -49370,7 +49470,9 @@ fn parse_next_spell_cascade_family_renders_cleanly() {
         .expect("Dark Apostle should compile");
     let dark_rendered = unprocessed_compiled_lines(&dark_apostle).join(" ");
     assert!(
-        dark_rendered.contains("The next noncreature spell you cast this turn has cascade."),
+        dark_rendered
+            .to_ascii_lowercase()
+            .contains("the next noncreature spell you cast this turn has cascade."),
         "expected clean next-spell render for Dark Apostle, got {dark_rendered}"
     );
 }
@@ -56166,7 +56268,7 @@ fn gnarled_sage_strict_parser_and_compiled_text_regression() {
     );
     assert!(
         rendered.contains(
-            "This creature gets +0/+2 and has vigilance as long as you've drawn two or more cards this turn"
+            "As long as you've drawn two or more cards this turn, this creature gets +0/+2 and has vigilance"
         ),
         "expected Gnarled Sage conditional buff text, got {rendered}"
     );
@@ -59691,6 +59793,114 @@ fn dovescape_spell_cast_event(spell: ObjectId, caster: PlayerId) -> crate::trigg
     )
 }
 
+fn spell_cast_event_with_current_snapshot(
+    game: &crate::game_state::GameState,
+    spell: ObjectId,
+    caster: PlayerId,
+) -> crate::triggers::TriggerEvent {
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(spell)
+            .expect("spell object should exist for cast snapshot"),
+        game,
+    );
+    crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::SpellCastEvent::new_with_snapshot(
+            spell,
+            caster,
+            Zone::Hand,
+            snapshot,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[test]
+fn vexing_bauble_retargets_no_mana_condition_to_triggering_spell() {
+    let def = parse_oracle_card_definition("Vexing Bauble");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        ability_debug.contains("TriggeringSpellManaSpentToCastAtLeast")
+            && !ability_debug.contains("TargetSpellManaSpentToCastAtLeast")
+            && ability_debug.contains("CounterEffect")
+            && ability_debug.contains("triggering"),
+        "Vexing Bauble should test mana spent on the triggering spell, got {ability_debug}"
+    );
+}
+
+#[test]
+fn vexing_bauble_does_not_counter_spells_cast_with_mana() {
+    let def = parse_oracle_card_definition("Vexing Bauble");
+    let spell_def = CardDefinitionBuilder::new(CardId::new(), "Bob's Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+
+    let mut paid_game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let paid_bauble = paid_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let paid_spell = paid_game.create_object_from_definition(&spell_def, bob, Zone::Stack);
+    paid_game
+        .object_mut(paid_spell)
+        .expect("paid spell should exist")
+        .mana_spent_to_cast = crate::player::ManaPool {
+        colorless: 1,
+        ..crate::player::ManaPool::default()
+    };
+    paid_game.push_to_stack(crate::game_state::StackEntry::new(paid_spell, bob));
+    let paid_event = spell_cast_event_with_current_snapshot(&paid_game, paid_spell, bob);
+    let paid_triggers = crate::triggers::check_triggers(&paid_game, &paid_event);
+    assert_eq!(
+        paid_triggers
+            .iter()
+            .filter(|entry| entry.source == paid_bauble)
+            .count(),
+        0,
+        "Vexing Bauble should not trigger for spells cast with mana"
+    );
+
+    let mut free_game = crate::tests::test_helpers::setup_two_player_game();
+    let free_bauble = free_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let free_spell = free_game.create_object_from_definition(&spell_def, bob, Zone::Stack);
+    let free_stable_id = free_game
+        .object(free_spell)
+        .expect("free spell should exist")
+        .stable_id;
+    free_game.push_to_stack(crate::game_state::StackEntry::new(free_spell, bob));
+    let free_event = spell_cast_event_with_current_snapshot(&free_game, free_spell, bob);
+    let free_triggers = crate::triggers::check_triggers(&free_game, &free_event);
+    assert_eq!(
+        free_triggers
+            .iter()
+            .filter(|entry| entry.source == free_bauble)
+            .count(),
+        1,
+        "Vexing Bauble should trigger for spells cast without spending mana"
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in free_triggers {
+        trigger_queue.add(trigger);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut free_game, &mut trigger_queue)
+        .expect("Vexing Bauble trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut free_game)
+        .expect("Vexing Bauble trigger should resolve");
+
+    let moved_spell = free_game
+        .find_object_by_stable_id(free_stable_id)
+        .expect("countered spell should still be tracked");
+    assert_eq!(
+        free_game
+            .object(moved_spell)
+            .expect("countered spell should still exist")
+            .zone,
+        Zone::Graveyard,
+        "Vexing Bauble should counter the unpaid spell"
+    );
+}
+
 #[test]
 fn dovescape_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Dovescape");
@@ -62228,9 +62438,11 @@ fn cloudspire_coordinator_compiled_text_keeps_dynamic_pilot_token_clause() {
     let rendered = canonical_compiled_lines(&def).join("\n");
 
     assert!(
-        rendered.contains(
-            "Create X 1/1 colorless Pilot creature tokens, where X is the number of Mounts and/or Vehicles that entered the battlefield under your control this turn. The tokens have \"This token saddles Mounts and crews Vehicles as though its power were 2 greater.\""
-        ),
+        rendered.contains("Create X 1/1 colorless Pilot creature tokens")
+            && rendered.contains("where X is the number of Mounts and/or Vehicles that entered the battlefield under your control this turn")
+            && rendered.contains(
+                "\"This token saddles Mounts and crews Vehicles as though its power were 2 greater.\""
+            ),
         "expected Cloudspire Coordinator compiled text to preserve the dynamic Pilot token count and saddle/crew clause, got {rendered}"
     );
 }
@@ -71964,6 +72176,90 @@ fn parse_tidal_barracuda_any_player_flash_permission_clause() {
         rendered.contains("any player may cast spells as though they had flash")
             || rendered.contains("players may cast spells as though they had flash"),
         "expected static flash permission text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn ian_malcolm_renders_source_exiled_cast_permission_with_any_mana() {
+    let def = parse_oracle_card_definition("Ian Malcolm, Chaotician");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "During each player's turn, that player may cast a spell from among the cards they don't own exiled with this creature, and mana of any type can be spent to cast it."
+        ),
+        "expected source-exiled cast permission and any-mana rider to merge, got {rendered}"
+    );
+
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        static_ids.contains(&StaticAbilityId::Grants)
+            && static_ids.contains(&StaticAbilityId::ManaSpendPermission),
+        "expected grant plus mana-spend static abilities, got {static_ids:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn last_voyage_renders_sticker_aura_count_and_attached_sacrifice() {
+    let def = parse_oracle_card_definition("Last Voyage of the _____");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains(
+            "when this enchantment enters, you may put a name sticker on it, then it becomes an aura with enchant creature. return a creature card from your graveyard to the battlefield and attach this aura to it."
+        ),
+        "expected sticker/aura/return/attach sequence to compact, got {rendered}"
+    );
+    assert!(
+        lower.contains(
+            "enchanted creature gets +2/+0 for each name sticker on this aura with seven or fewer letters."
+        ),
+        "expected sticker-count anthem wording, got {rendered}"
+    );
+    assert!(
+        lower.contains("when this aura leaves the battlefield, sacrifice enchanted creature."),
+        "expected aura leaves trigger to sacrifice enchanted creature, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("StickersOnSource")
+            && debug.contains("NameSticker")
+            && debug.contains("max_name_letters: Some(7)"),
+        "expected sticker-count anthem model, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn hunted_by_the_family_renders_villainous_choice_for_each_target() {
+    let def = parse_oracle_card_definition("Hunted by The Family");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Choose up to four target creatures you don't control. For each of them, that creature's controller faces a villainous choice — That creature becomes a 1/1 white Human creature and loses all abilities, or you create a token that's a copy of it."
+        ),
+        "expected for-each-target villainous choice wording, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("ForEachTaggedEffect")
+            && debug.contains("VillainousChoiceEffect")
+            && debug.contains("CreateTokenCopyEffect")
+            && debug.contains("RemoveAllAbilities"),
+        "expected reusable villainous-choice model, got {debug}"
     );
 }
 

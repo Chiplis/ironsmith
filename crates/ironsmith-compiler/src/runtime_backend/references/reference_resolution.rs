@@ -350,9 +350,10 @@ fn propagated_or_generated_object_tag(
 
     match spec.base() {
         ChooseSpec::Tagged(tag) => Some(tag.as_str().to_string()),
-        ChooseSpec::Object(_) | ChooseSpec::SpecificObject(_) | ChooseSpec::Source => {
+        ChooseSpec::Object(_) | ChooseSpec::SpecificObject(_) => {
             Some(next_reference_tag(id_gen, prefix))
         }
+        ChooseSpec::Source => None,
         _ => None,
     }
 }
@@ -448,14 +449,27 @@ fn advance_reference_frame_for_effect(
                     }
                 }
                 SubjectVerbActionAst::DealDamage { target, .. }
-                | SubjectVerbActionAst::DealDistributedDamage { target, .. }
-                | SubjectVerbActionAst::DealDamageEqualToPower { target, .. } => {
+                | SubjectVerbActionAst::DealDistributedDamage { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "damaged")?;
                     if target_is_any_damage_target(target) {
                         if frame.auto_tag_object_targets {
                             frame.last_object_tag = Some(next_reference_tag(id_gen, "damaged"));
                         }
                         frame.last_player_filter = Some(PlayerFilter::DamagedPlayer);
+                    }
+                }
+                SubjectVerbActionAst::DealDamageEqualToPower { source, target, .. } => {
+                    if matches!(target, TargetAst::Source(_)) {
+                        maybe_tag_target(source, frame, id_gen, "damage_source")?;
+                    } else {
+                        maybe_tag_target(target, frame, id_gen, "damaged")?;
+                        if target_is_any_damage_target(target) {
+                            if frame.auto_tag_object_targets {
+                                frame.last_object_tag =
+                                    Some(next_reference_tag(id_gen, "damaged"));
+                            }
+                            frame.last_player_filter = Some(PlayerFilter::DamagedPlayer);
+                        }
                     }
                 }
                 SubjectVerbActionAst::DealDamageEach { filter, .. } => {
@@ -608,10 +622,15 @@ fn advance_reference_frame_for_effect(
                     let refs = lowering_reference_frame(frame);
                     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
                     if frame.auto_tag_object_targets
-                        && let Some(tag) =
-                            propagated_or_generated_object_tag(&spec, id_gen, "moved")
                     {
-                        frame.last_object_tag = Some(tag);
+                        let tag = if matches!(spec.base(), ChooseSpec::Source) {
+                            Some(next_reference_tag(id_gen, "moved"))
+                        } else {
+                            propagated_or_generated_object_tag(&spec, id_gen, "moved")
+                        };
+                        if let Some(tag) = tag {
+                            frame.last_object_tag = Some(tag);
+                        }
                     }
                     track_target_player(target, frame);
                 }
@@ -810,11 +829,15 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::ReturnToBattlefield { target, .. } => {
                     let refs = lowering_reference_frame(frame);
                     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
-                    if frame.auto_tag_object_targets
-                        && let Some(tag) =
+                    if frame.auto_tag_object_targets {
+                        let tag = if matches!(spec.base(), ChooseSpec::Source) {
+                            Some(next_reference_tag(id_gen, "returned"))
+                        } else {
                             propagated_or_generated_object_tag(&spec, id_gen, "returned")
-                    {
-                        frame.last_object_tag = Some(tag);
+                        };
+                        if let Some(tag) = tag {
+                            frame.last_object_tag = Some(tag);
+                        }
                     }
                     track_target_player(target, frame);
                 }
@@ -904,11 +927,15 @@ fn advance_reference_frame_for_effect(
                     {
                         next_reference_tag(id_gen, "chosen");
                     }
-                    if frame.auto_tag_object_targets
-                        && let Some(tag) =
+                    if frame.auto_tag_object_targets {
+                        let tag = if matches!(spec.base(), ChooseSpec::Source) {
+                            Some(next_reference_tag(id_gen, "moved"))
+                        } else {
                             propagated_or_generated_object_tag(&spec, id_gen, "moved")
-                    {
-                        frame.last_object_tag = Some(tag);
+                        };
+                        if let Some(tag) = tag {
+                            frame.last_object_tag = Some(tag);
+                        }
                     }
                     track_target_player(target, frame);
                 }
@@ -1281,7 +1308,7 @@ fn advance_reference_frame_for_effect(
         EffectAst::ManaRestricted { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
-        EffectAst::ChooseOneOf { modes } => {
+        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
             // Modes are mutually-exclusive branches: resolve references within
             // each in an isolated frame so one mode's bindings don't leak into
             // the next or into following effects.
@@ -1603,11 +1630,13 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         | EffectAst::RepeatEffects { effects, .. } => {
             effects.iter().any(effect_can_supply_prior_effect_memory)
         }
-        EffectAst::ChooseOneOf { modes } => modes.iter().any(|mode| {
-            mode.effects
-                .iter()
-                .any(effect_can_supply_prior_effect_memory)
-        }),
+        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
+            modes.iter().any(|mode| {
+                mode.effects
+                    .iter()
+                    .any(effect_can_supply_prior_effect_memory)
+            })
+        }
         EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
             effect_can_supply_prior_effect_memory(effect)
                 || otherwise.iter().any(effect_can_supply_prior_effect_memory)
@@ -3557,6 +3586,9 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => bind_unresolved_it_in_filter(filter, seed_tag),
+        Value::StaticAbilitiesAmong { filter, .. } => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
+        }
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)

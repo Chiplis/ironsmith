@@ -177,14 +177,30 @@ fn looks_like_delayed_next_turn_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
 fn parse_when_one_or_more_followup_head_inner<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
-    (
-        alt((grammar::kw("when"), grammar::kw("whenever"))),
-        grammar::kw("one"),
-        grammar::kw("or"),
-        grammar::kw("more"),
-    )
-        .void()
-        .parse_next(input)
+    alt((
+        (
+            alt((grammar::kw("when"), grammar::kw("whenever"))),
+            grammar::kw("one"),
+            grammar::kw("or"),
+            grammar::kw("more"),
+        )
+            .void(),
+        (
+            alt((grammar::kw("when"), grammar::kw("whenever"))),
+            grammar::kw("you"),
+            alt((
+                grammar::kw("discard"),
+                grammar::kw("exile"),
+                grammar::kw("mill"),
+                grammar::kw("sacrifice"),
+            )),
+            grammar::kw("one"),
+            grammar::kw("or"),
+            grammar::kw("more"),
+        )
+            .void(),
+    ))
+    .parse_next(input)
 }
 
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {

@@ -56,6 +56,8 @@ impl ReferenceFrame {
             snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             last_revealed_tag: None,
+            last_revealed_zone: None,
+            last_revealed_player_filter: None,
             last_exiled_collection_tag: None,
             last_exiled_collection_is_plural: false,
             last_player_filter: self.last_player_filter.clone(),

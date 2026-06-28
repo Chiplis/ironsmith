@@ -627,12 +627,40 @@ fn compose_put_filtered_looked_cards_into_hand_rest_into_graveyard(
 
 fn compose_put_filtered_looked_cards_to_zone_rest_to_zone(
     player: PlayerAst,
-    mut filter: ObjectFilter,
+    filter: ObjectFilter,
     count: ChoiceCount,
     looked_tag: TagKey,
     chosen_tag: TagKey,
     chosen_zone: Zone,
     rest_zone: Zone,
+) -> Vec<EffectAst> {
+    let mut effects = compose_put_filtered_looked_cards_to_zone(
+        player,
+        filter,
+        count,
+        looked_tag.clone(),
+        chosen_tag.clone(),
+        chosen_zone,
+    );
+    effects.push(EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::PutTaggedRemainderInZone {
+            tag: looked_tag,
+            keep_tagged: chosen_tag,
+            zone: rest_zone,
+        },
+    ));
+    effects
+}
+
+fn compose_put_filtered_looked_cards_to_zone(
+    player: PlayerAst,
+    mut filter: ObjectFilter,
+    count: ChoiceCount,
+    looked_tag: TagKey,
+    chosen_tag: TagKey,
+    chosen_zone: Zone,
 ) -> Vec<EffectAst> {
     filter.zone = Some(Zone::Library);
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -655,15 +683,6 @@ fn compose_put_filtered_looked_cards_to_zone_rest_to_zone(
             tag: chosen_tag.clone(),
             zone: chosen_zone,
         },
-        EffectAst::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            PlayerAst::Implicit,
-            SubjectVerbActionAst::PutTaggedRemainderInZone {
-                tag: looked_tag,
-                keep_tagged: chosen_tag,
-                zone: rest_zone,
-            },
-        ),
     ]
 }
 
@@ -1286,6 +1305,25 @@ pub(crate) fn parse_put_into_hand(
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
 
+    if cca_words_contain_all(
+        &clause_words,
+        &["rest", "cards", "revealed", "this", "way", "bottom", "library"],
+    ) {
+        let order = if cca_words_contain_word(&clause_words, "random") {
+            crate::cards::builders::LibraryBottomOrderAst::Random
+        } else {
+            crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
+        };
+        return Ok(
+            EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                TagKey::from("__last_revealed__"),
+                Some(TagKey::from(IT_TAG)),
+                order,
+                cca_destination_player_from_tokens(tokens, player),
+            ),
+        );
+    }
+
     fn parse_counted_those_cards_target(tokens: &[OwnedLexToken]) -> Option<u32> {
         let tokens = trim_commas(tokens);
         let words = crate::runtime_backend::token_word_refs(&tokens);
@@ -1334,6 +1372,36 @@ pub(crate) fn parse_put_into_hand(
 
     let from_among_view = TokenWordView::new(tokens);
     let from_among_words = from_among_view.word_refs();
+    if let Some(from_among_word_idx) =
+        word_slice_find_phrase_start(&from_among_words, &["from", "among", "them"])
+        && let Some((count, filter)) =
+            parse_put_from_among_hand_choice(tokens, from_among_word_idx, &clause_words)?
+    {
+        let after_from_among_words = &from_among_words[from_among_word_idx + 3..];
+        if word_slice_starts_with_any(
+            after_from_among_words,
+            CCA_ONTO_BATTLEFIELD_PREFIX_PHRASES,
+        ) {
+            let looked_tag =
+                crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                    tokens, "looked",
+                );
+            let chosen_tag =
+                crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                    tokens, "chosen",
+                );
+            return Ok(EffectAst::Sequence {
+                effects: compose_put_filtered_looked_cards_to_zone(
+                    player,
+                    filter,
+                    count,
+                    looked_tag,
+                    chosen_tag,
+                    Zone::Battlefield,
+                ),
+            });
+        }
+    }
     if CCA_FROM_AMONG_HAND_SHAPE
         .find_in_word_refs(&from_among_words)
         .is_some()

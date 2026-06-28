@@ -347,6 +347,75 @@ pub(crate) fn parse_sacrifice(
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
+    if let Some((choice_count, used)) =
+        crate::runtime_backend::util::parse_choice_count_token_prefix_consumed(tokens)
+        && !choice_count.is_single()
+    {
+        let filter_tokens = &tokens[used..];
+        if filter_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing sacrifice object after choice count (clause: '{}')",
+                normalized_words.join(" ")
+            )));
+        }
+        let filter = parse_object_filter_lexed(filter_tokens, false)?;
+        let tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            tokens,
+            "sacrificed",
+        );
+        return Ok(wrap_unless_escaped(
+            EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::ChooseObjects {
+                        filter,
+                        count: choice_count,
+                        count_value: None,
+                        player,
+                        tag: tag.clone(),
+                    },
+                    EffectAst::subject_verb_sacrifice_all(player, ObjectFilter::tagged(tag)),
+                ],
+            },
+            unless_escaped,
+        ));
+    }
+
+    if normalized_words.starts_with(&["that", "many"]) {
+        let Some(filter_token_idx) = token_index_for_word_index(tokens, 2) else {
+            return Err(CardTextError::ParseError(format!(
+                "missing sacrifice object after that many (clause: '{}')",
+                normalized_words.join(" ")
+            )));
+        };
+        let filter_tokens = &tokens[filter_token_idx..];
+        if filter_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing sacrifice object after that many (clause: '{}')",
+                normalized_words.join(" ")
+            )));
+        }
+        let filter = parse_object_filter_lexed(filter_tokens, false)?;
+        let tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            tokens,
+            "sacrificed",
+        );
+        return Ok(wrap_unless_escaped(
+            EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::ChooseObjects {
+                        filter,
+                        count: crate::effect::ChoiceCount::dynamic_x(),
+                        count_value: Some(Value::EventValue(EventValueSpec::Amount)),
+                        player,
+                        tag: tag.clone(),
+                    },
+                    EffectAst::subject_verb_sacrifice_all(player, ObjectFilter::tagged(tag)),
+                ],
+            },
+            unless_escaped,
+        ));
+    }
+
     if tokens
         .first()
         .is_some_and(|token| token_is_any_word(token, SACRIFICE_ALL_OR_EACH_WORDS))

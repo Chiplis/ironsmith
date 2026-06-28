@@ -4248,6 +4248,23 @@ fn resolve_value_with_context(
             });
             seen.len() as i32
         }
+        Value::StaticAbilitiesAmong { filter, abilities } => {
+            use std::collections::HashSet;
+
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+
+            let mut seen = HashSet::new();
+            for_each_filter_candidate(ctx, filter, |obj| {
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
+                    for ability_id in abilities {
+                        if ctx.game.current_has_static_ability_id(obj.id, *ability_id) {
+                            seen.insert(*ability_id);
+                        }
+                    }
+                }
+            });
+            seen.len() as i32
+        }
         Value::CardTypesInGraveyard(player_filter) => {
             let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let mut seen = HashSet::new();

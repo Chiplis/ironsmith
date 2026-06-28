@@ -139,9 +139,10 @@ pub(crate) use control_flow_handlers::{
     compile_effects_in_iterated_object_context, compile_effects_in_iterated_player_context,
     compile_effects_preserving_last_effect, compile_if_do_with_opponent_did,
     compile_if_do_with_opponent_doesnt, compile_if_do_with_player_did,
-    compile_if_do_with_player_doesnt, compile_repeat_process_body, compile_vote_sequence,
-    effect_predicate_from_if_result, force_implicit_vote_token_controller_you,
-    target_context_prelude_for_filter, with_preserved_lowering_context,
+    compile_if_do_with_player_doesnt, compile_repeat_process_body, compile_result_followup,
+    compile_vote_sequence, effect_predicate_from_if_result,
+    force_implicit_vote_token_controller_you, target_context_prelude_for_filter,
+    with_preserved_lowering_context,
 };
 pub(crate) use effect_dispatch::compile_effect;
 pub(crate) use iterated_player_validation::validate_iterated_player_bindings_in_lowered_effects;
@@ -209,6 +210,8 @@ pub(crate) fn compile_condition_from_predicate_ast(
             resolved.zone = None;
             if let Some(tag) = saved_last_tag.clone() {
                 Condition::TaggedObjectMatches(tag.into(), resolved)
+            } else if refs.has_source_object_antecedent() {
+                Condition::SourceMatches(resolved)
             } else {
                 Condition::TargetMatches(resolved)
             }
@@ -216,7 +219,16 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::TargetMatches(filter) => {
             let mut resolved = resolve_it_tag(filter, &refs)?;
             resolved.zone = None;
-            Condition::TargetMatches(resolved)
+            if let Some(tag) = saved_last_tag.clone()
+                && !filter_references_tag(&resolved, &tag)
+            {
+                Condition::TaggedObjectMatches(tag.into(), resolved)
+            } else if resolved.source && resolved.zone != Some(Zone::Exile) {
+                resolved.source = false;
+                Condition::SourceMatches(resolved)
+            } else {
+                Condition::TargetMatches(resolved)
+            }
         }
         PredicateAst::TaggedMatches(tag, filter) => {
             let resolved_tag = resolve_it_tag_key(tag, &refs)?;
@@ -907,6 +919,19 @@ pub(crate) fn compile_annotated_effects_with_context(
             continue;
         }
 
+        if idx + 1 < annotated.effects.len()
+            && let Some((effect_sequence, effect_choices)) =
+                compile_result_followup(&current.effect, &annotated.effects[idx + 1].effect, ctx)?
+        {
+            compiled.extend(effect_sequence);
+            for choice in effect_choices {
+                push_choice(&mut choices, choice);
+            }
+            apply_local_reference_env(ctx, &annotated.effects[idx + 1].out_env);
+            idx += 2;
+            continue;
+        }
+
         let (mut effect_list, effect_choices) = compile_effect(&current.effect, ctx)?;
         if let Some(id) = current.assigned_effect_id {
             if !effect_list.is_empty() {
@@ -1168,6 +1193,9 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => {
+            bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+        }
+        Value::StaticAbilitiesAmong { filter, .. } => {
             bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
         }
         Value::CreaturesDiedThisTurnControlledBy(filter) => {

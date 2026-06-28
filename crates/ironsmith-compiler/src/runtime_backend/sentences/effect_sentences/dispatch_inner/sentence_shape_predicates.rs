@@ -882,6 +882,14 @@ fn parse_effect_sentence_lexed_inner(
         && sentence_words
             .iter()
             .any(|word| matches!(*word, "gain" | "gains" | "has" | "have" | "lose" | "loses"))
+        && let Some(effects) = super::fanout_family::parse_shared_color_target_fanout_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+    if contains_token_kind(tokens, TokenKind::Quote)
+        && sentence_words
+            .iter()
+            .any(|word| matches!(*word, "gain" | "gains" | "has" | "have" | "lose" | "loses"))
         && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
     {
         return Ok(effects);

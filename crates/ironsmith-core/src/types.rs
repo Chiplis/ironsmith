@@ -163,6 +163,7 @@ pub enum Subtype {
     Angel,
     Antelope,
     Ape,
+    Aurochs,
     Army,
     Archer,
     Archon,
@@ -467,6 +468,7 @@ impl Subtype {
             Subtype::Angel,
             Subtype::Antelope,
             Subtype::Ape,
+            Subtype::Aurochs,
             Subtype::Army,
             Subtype::Archer,
             Subtype::Archon,
@@ -809,6 +811,7 @@ impl Subtype {
                 | Subtype::Angel
                 | Subtype::Antelope
                 | Subtype::Ape
+                | Subtype::Aurochs
                 | Subtype::Army
                 | Subtype::Archer
                 | Subtype::Archon

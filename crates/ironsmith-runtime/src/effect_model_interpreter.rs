@@ -240,6 +240,21 @@ where
             payload.disallow_previously_chosen_modes_this_turn;
         return Ok(Effect::new(converted));
     }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::VillainousChoiceEffect<M::Effect>>(&effect)
+    {
+        let mut converted = crate::effects::VillainousChoiceEffect::new(
+            payload.player.clone(),
+            payload
+                .modes
+                .iter()
+                .cloned()
+                .map(|mode| convert_effect_mode(mode, hooks))
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+        converted.player_surface = payload.player_surface.clone();
+        return Ok(Effect::new(converted));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ConditionalEffect<M::Effect>>(&effect)
     {
         return Ok(Effect::conditional(

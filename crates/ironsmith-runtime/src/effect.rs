@@ -776,6 +776,13 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                             || outcome.value.something_happened()))
             }
             Self::DidNotHappen => !Self::Happened.evaluate_outcome(outcome),
+            Self::SearchedLibrary => outcome.execution_facts.iter().any(|fact| {
+                matches!(
+                    fact,
+                    ExecutionFact::ChosenObjectMemory(memory)
+                        if memory.iter().any(|object| object.zone == Zone::Library)
+                )
+            }),
             Self::HappenedNotReplaced => {
                 Self::Happened.evaluate_outcome(outcome)
                     && !outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::Replaced))
@@ -3576,6 +3583,20 @@ impl Effect {
         Self::new(ChooseModeEffect::choose_one(modes))
     }
 
+    /// Create a villainous choice where the specified player chooses one mode during resolution.
+    pub fn villainous_choice(
+        player: PlayerFilter,
+        player_surface: Option<String>,
+        modes: Vec<EffectMode>,
+    ) -> Self {
+        use crate::effects::VillainousChoiceEffect;
+        let mut effect = VillainousChoiceEffect::new(player, modes);
+        if let Some(surface) = player_surface {
+            effect = effect.with_player_surface(surface);
+        }
+        Self::new(effect)
+    }
+
     /// Create a "choose exactly N" modal effect.
     ///
     /// Example: "Choose two modes."
@@ -4452,6 +4473,36 @@ mod tests {
         assert!(EffectPredicate::WasDeclined.evaluate_outcome(&outcome));
         assert!(!EffectPredicate::Chosen.evaluate_outcome(&outcome));
         assert!(!EffectPredicate::Happened.evaluate_outcome(&outcome));
+    }
+
+    #[test]
+    fn test_predicate_searched_library_uses_chosen_object_memory_zone() {
+        fn memory_in_zone(zone: Zone) -> OutcomeObjectMemory {
+            let object_id = ObjectId::from_raw(1);
+            OutcomeObjectMemory {
+                object_id,
+                stable_id: StableId::from(object_id),
+                controller: PlayerId::from_index(0),
+                owner: PlayerId::from_index(0),
+                zone,
+                power: None,
+                toughness: None,
+                mana_value: 1,
+                card_types: vec![CardType::Creature],
+                colors: ColorSet::COLORLESS,
+                subtypes: Vec::new(),
+                is_token: false,
+            }
+        }
+
+        let library_choice = EffectOutcome::resolved()
+            .with_chosen_object_memory(vec![memory_in_zone(Zone::Library)]);
+        let graveyard_choice = EffectOutcome::resolved()
+            .with_chosen_object_memory(vec![memory_in_zone(Zone::Graveyard)]);
+
+        assert!(EffectPredicate::SearchedLibrary.evaluate_outcome(&library_choice));
+        assert!(!EffectPredicate::SearchedLibrary.evaluate_outcome(&graveyard_choice));
+        assert!(!EffectPredicate::SearchedLibrary.evaluate_outcome(&EffectOutcome::resolved()));
     }
 
     #[test]

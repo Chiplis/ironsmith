@@ -5,7 +5,9 @@ use crate::cards::builders::{
 };
 use crate::color::ColorSet;
 use crate::effect::{EventValueSpec, Value};
-use crate::static_abilities::{Anthem, AnthemCountExpression, AnthemValue, StaticAbility};
+use crate::static_abilities::{
+    Anthem, AnthemCountExpression, AnthemValue, StaticAbility, StaticAbilityId,
+};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
@@ -1437,9 +1439,78 @@ fn parse_create_for_each_counter_count(tokens: &[OwnedLexToken]) -> Option<Value
     })
 }
 
+fn parse_static_ability_id_words(words: &[&str]) -> Option<(StaticAbilityId, usize)> {
+    match words {
+        ["first", "strike", ..] => Some((StaticAbilityId::FirstStrike, 2)),
+        ["double", "strike", ..] => Some((StaticAbilityId::DoubleStrike, 2)),
+        ["flying", ..] => Some((StaticAbilityId::Flying, 1)),
+        ["deathtouch", ..] => Some((StaticAbilityId::Deathtouch, 1)),
+        ["haste", ..] => Some((StaticAbilityId::Haste, 1)),
+        ["hexproof", ..] => Some((StaticAbilityId::Hexproof, 1)),
+        ["indestructible", ..] => Some((StaticAbilityId::Indestructible, 1)),
+        ["lifelink", ..] => Some((StaticAbilityId::Lifelink, 1)),
+        ["menace", ..] => Some((StaticAbilityId::Menace, 1)),
+        ["reach", ..] => Some((StaticAbilityId::Reach, 1)),
+        ["trample", ..] => Some((StaticAbilityId::Trample, 1)),
+        ["vigilance", ..] => Some((StaticAbilityId::Vigilance, 1)),
+        _ => None,
+    }
+}
+
+fn parse_create_for_each_static_abilities_among_count(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
+    let ability_start = if create_words_starts_with(&words, &["ability", "from", "among"]) {
+        3
+    } else if create_words_starts_with(&words, &["abilities", "from", "among"]) {
+        3
+    } else {
+        return None;
+    };
+    let found_idx = words
+        .windows(2)
+        .position(|window| window == ["found", "among"])?;
+    if found_idx <= ability_start {
+        return None;
+    }
+
+    let mut ability_ids = Vec::new();
+    let mut cursor = ability_start;
+    while cursor < found_idx {
+        if matches!(words[cursor], "and" | "or") {
+            cursor += 1;
+            continue;
+        }
+        let (ability_id, consumed) = parse_static_ability_id_words(&words[cursor..found_idx])?;
+        if !ability_ids.contains(&ability_id) {
+            ability_ids.push(ability_id);
+        }
+        cursor += consumed;
+    }
+    if ability_ids.is_empty() {
+        return None;
+    }
+
+    let scope_tokens = clause.from_word(found_idx + 2)?.trimmed();
+    if scope_tokens.is_empty() {
+        return None;
+    }
+    let filter = parse_object_filter(scope_tokens.tokens(), false).ok()?;
+    Some(
+        Value::StaticAbilitiesAmong {
+            filter,
+            abilities: ability_ids,
+        }
+        .with_surface_hint(ValueSurfaceHint::ForEach),
+    )
+}
+
 pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
     if let Some(value) = parse_create_for_each_counter_count(tokens) {
         return Some(value.with_surface_hint(ValueSurfaceHint::ForEach));
+    }
+    if let Some(value) = parse_create_for_each_static_abilities_among_count(tokens) {
+        return Some(value);
     }
 
     if grammar::words_match_any_prefix(

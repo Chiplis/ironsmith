@@ -867,6 +867,26 @@ fn player_has_no_opponent_with_more_life_than(game: &GameState, player_id: Playe
         .all(|candidate| candidate.id == player_id || life >= candidate.life)
 }
 
+fn triggering_event_object_matches(
+    game: &GameState,
+    ctx: &ExternalEvaluationContext<'_>,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    let Some(event) = ctx.triggering_event else {
+        return false;
+    };
+    let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+    if let Some(snapshot) = event.snapshot()
+        && filter.matches_snapshot(snapshot, &filter_ctx, game)
+    {
+        return true;
+    }
+    event
+        .object_id()
+        .and_then(|id| game.object(id))
+        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+}
+
 #[derive(Debug, Clone, Copy)]
 struct SharedConditionContext<'a> {
     controller: PlayerId,
@@ -1731,6 +1751,11 @@ pub fn evaluate_condition_external(
         },
     ) {
         return result;
+    }
+    if let Condition::TaggedObjectMatches(tag, filter) = condition
+        && tag.as_str() == "triggering"
+    {
+        return triggering_event_object_matches(game, ctx, filter);
     }
     if let Condition::ValueComparison {
         left,

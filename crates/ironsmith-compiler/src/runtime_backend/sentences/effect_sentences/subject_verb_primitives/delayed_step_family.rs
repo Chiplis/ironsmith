@@ -846,12 +846,9 @@ fn parse_unless_sacrifice_clause_as_cost(
     }
     let effect = super::super::zone_handlers::parse_sacrifice(clause.tokens(), None, None)?;
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::Sacrifice {
-                filter,
-                count: 1,
-                ..
-            },
+        action: SubjectVerbActionAst::Sacrifice {
+            filter, count: 1, ..
+        },
         ..
     }) = effect
     else {

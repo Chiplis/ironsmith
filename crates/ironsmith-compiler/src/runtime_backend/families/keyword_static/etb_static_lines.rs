@@ -1,3 +1,4 @@
+use crate::static_abilities::StaticAbilityId;
 use ironsmith_core::ValueSurfaceHint;
 
 const ETB_TRIGGER_INTRO_AFTER_LABEL_PATTERN: ClauseShape<'static> =
@@ -2766,6 +2767,9 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     if let Some(value) = parse_number_of_counters_on_source_value(&filter_words) {
         return Some(value);
     }
+    if let Some(value) = parse_static_abilities_among_scope_value(filter_tokens) {
+        return Some(scale_where_x_number_value(value, multiplier));
+    }
     if let Some(value) = parse_among_types_scope_value(filter_tokens) {
         return Some(scale_where_x_number_value(value, multiplier));
     }
@@ -2860,6 +2864,66 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     }
     let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
     Some(scale_where_x_number_value(Value::Count(filter), multiplier))
+}
+
+fn parse_static_ability_id_words(words: &[&str]) -> Option<(StaticAbilityId, usize)> {
+    match words {
+        ["first", "strike", ..] => Some((StaticAbilityId::FirstStrike, 2)),
+        ["double", "strike", ..] => Some((StaticAbilityId::DoubleStrike, 2)),
+        ["flying", ..] => Some((StaticAbilityId::Flying, 1)),
+        ["deathtouch", ..] => Some((StaticAbilityId::Deathtouch, 1)),
+        ["haste", ..] => Some((StaticAbilityId::Haste, 1)),
+        ["hexproof", ..] => Some((StaticAbilityId::Hexproof, 1)),
+        ["indestructible", ..] => Some((StaticAbilityId::Indestructible, 1)),
+        ["lifelink", ..] => Some((StaticAbilityId::Lifelink, 1)),
+        ["menace", ..] => Some((StaticAbilityId::Menace, 1)),
+        ["reach", ..] => Some((StaticAbilityId::Reach, 1)),
+        ["trample", ..] => Some((StaticAbilityId::Trample, 1)),
+        ["vigilance", ..] => Some((StaticAbilityId::Vigilance, 1)),
+        _ => None,
+    }
+}
+
+fn parse_static_abilities_among_scope_value(filter_tokens: &[OwnedLexToken]) -> Option<Value> {
+    let clause = LexedClause::new(filter_tokens);
+    let words = clause.word_refs();
+    let ability_start = match words.as_slice() {
+        ["ability" | "abilities", "from", "among", ..] => 3,
+        _ => return None,
+    };
+    let found_idx = words
+        .windows(2)
+        .position(|window| window == ["found", "among"])?;
+    if found_idx <= ability_start {
+        return None;
+    }
+
+    let mut ability_ids = Vec::new();
+    let mut cursor = ability_start;
+    while cursor < found_idx {
+        if matches!(words[cursor], "and" | "or") {
+            cursor += 1;
+            continue;
+        }
+        let (ability_id, consumed) = parse_static_ability_id_words(&words[cursor..found_idx])?;
+        if !ability_ids.contains(&ability_id) {
+            ability_ids.push(ability_id);
+        }
+        cursor += consumed;
+    }
+    if ability_ids.is_empty() {
+        return None;
+    }
+
+    let scope = clause.from_word(found_idx + 2)?.trimmed();
+    if scope.is_empty() {
+        return None;
+    }
+    let filter = parse_object_filter_lexed(scope.tokens(), false).ok()?;
+    Some(Value::StaticAbilitiesAmong {
+        filter,
+        abilities: ability_ids,
+    })
 }
 
 fn parse_among_types_scope_value(filter_tokens: &[OwnedLexToken]) -> Option<Value> {

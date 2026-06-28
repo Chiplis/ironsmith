@@ -687,6 +687,33 @@ fn describe_source_reference_surface(surface: &SourceReferenceSurface) -> String
     surface.display_text()
 }
 
+fn sticker_action_count_noun(action: crate::events::KeywordActionKind) -> &'static str {
+    match action {
+        crate::events::KeywordActionKind::NameSticker => "name sticker",
+        crate::events::KeywordActionKind::ArtSticker => "art sticker",
+        crate::events::KeywordActionKind::AbilitySticker => "ability sticker",
+        crate::events::KeywordActionKind::PowerToughnessSticker => "power and toughness sticker",
+        _ => "sticker",
+    }
+}
+
+fn describe_sticker_count_subject(
+    action: crate::events::KeywordActionKind,
+    surface: Option<&SourceReferenceSurface>,
+    max_name_letters: Option<u32>,
+) -> String {
+    let source_text = surface
+        .map(describe_source_reference_surface)
+        .unwrap_or_else(|| "this permanent".to_string());
+    let mut text = format!("{} on {source_text}", sticker_action_count_noun(action));
+    if let Some(max_letters) = max_name_letters {
+        let max_letters_text =
+            number_word_u32(max_letters).unwrap_or_else(|| max_letters.to_string());
+        text.push_str(&format!(" with {} or fewer letters", max_letters_text));
+    }
+    text
+}
+
 fn counter_source_location(expr: &AnthemCountExpression) -> Option<(CounterType, String)> {
     match expr {
         AnthemCountExpression::CountersOnSource(counter_type) => {
@@ -761,6 +788,11 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
                 describe_source_reference_surface(surface)
             )
         }
+        AnthemCountExpression::StickersOnSource {
+            action,
+            surface,
+            max_name_letters,
+        } => describe_sticker_count_subject(*action, surface.as_ref(), *max_name_letters),
         AnthemCountExpression::CountersOnAffected(counter_type) => {
             format!("{} counter on it", counter_type.description())
         }
@@ -878,6 +910,15 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             "{} counter on {}",
             counter_type.description(),
             describe_source_reference_surface(surface)
+        )),
+        AnthemCountExpression::StickersOnSource {
+            action,
+            surface,
+            max_name_letters,
+        } => Some(describe_sticker_count_subject(
+            *action,
+            surface.as_ref(),
+            *max_name_letters,
         )),
         AnthemCountExpression::CountersOnAffected(counter_type) => {
             Some(format!("{} counter on it", counter_type.description()))
@@ -1794,6 +1835,11 @@ pub(crate) fn resolve_anthem_count_expression(
         AnthemCountExpression::CountersOnSourceWithSurface { counter_type, .. } => {
             game.counter_count(source, *counter_type) as i32
         }
+        AnthemCountExpression::StickersOnSource {
+            action,
+            max_name_letters,
+            ..
+        } => game.sticker_count_on_object(source, *action, *max_name_letters) as i32,
         AnthemCountExpression::CountersOnAffected(counter_type) => {
             game.counter_count(source, *counter_type) as i32
         }
@@ -2615,7 +2661,7 @@ impl StaticAbilityKind for GrantAbility {
                 let condition_text =
                     normalize_source_counter_condition_text(&describe_static_condition(condition));
                 if let Some(rest) = condition_text.strip_prefix("as long as ") {
-                    return format!("as long as {rest}, {subject} has {raw_ability_text}");
+                    return format!("as long as {rest}, {subject} has {ability_text}");
                 }
             }
             let condition_text = describe_static_condition(condition);
@@ -2623,6 +2669,9 @@ impl StaticAbilityKind for GrantAbility {
                 return format!("During your turn, {text}");
             }
             if let Some(rest) = condition_text.strip_prefix("as long as ") {
+                if applies_to_source {
+                    return format!("{text} as long as {rest}");
+                }
                 return format!("as long as {rest}, {text}");
             }
             text.push(' ');

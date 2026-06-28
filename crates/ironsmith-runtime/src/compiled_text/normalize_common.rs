@@ -42,6 +42,61 @@ fn is_source_exiled_count_filter(filter: &ObjectFilter) -> bool {
     base == ObjectFilter::default()
 }
 
+fn describe_player_controls_only_implicit_tagged_object(
+    player: &PlayerFilter,
+    filter: &ObjectFilter,
+    negated: bool,
+) -> Option<String> {
+    let mut stripped = filter.clone();
+    if stripped
+        .controller
+        .as_ref()
+        .is_some_and(|controller| controller == player)
+    {
+        stripped.controller = None;
+    }
+
+    let tagged_idx = stripped.tagged_constraints.iter().position(|constraint| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && is_implicit_reference_tag(constraint.tag.as_str())
+    })?;
+    if stripped
+        .tagged_constraints
+        .iter()
+        .enumerate()
+        .any(|(idx, constraint)| {
+            idx != tagged_idx || constraint.relation != TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return None;
+    }
+
+    stripped.tagged_constraints.remove(tagged_idx);
+    let object_text = if stripped == ObjectFilter::creature() {
+        "that creature"
+    } else if stripped == ObjectFilter::default() {
+        "it"
+    } else {
+        return None;
+    };
+
+    let subject = describe_player_filter(player);
+    if negated {
+        let verb = if subject == "you" {
+            "don't control"
+        } else {
+            "doesn't control"
+        };
+        Some(format!("{subject} {verb} it"))
+    } else {
+        Some(format!(
+            "{} {} {object_text}",
+            subject,
+            player_verb(&subject, "control", "controls")
+        ))
+    }
+}
+
 pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::You => "you".to_string(),
@@ -2507,6 +2562,394 @@ fn normalize_untap_target_creature_gets_and_gains_split(line: &str) -> Option<St
     ))
 }
 
+fn normalize_this_creature_gets_gains_can_attack_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (activation_prefix, body) = if let Some((prefix, body)) = trimmed.split_once(": ") {
+        (Some(prefix), body)
+    } else {
+        (None, trimmed)
+    };
+    let rest = body.strip_prefix("This creature gets ")?;
+    let (pt_delta, tail) = rest.split_once(" until end of turn, this creature gains ")?;
+    let (keyword, attack_tail) =
+        tail.split_once(" until end of turn and can attack this turn as though ")?;
+    if pt_delta.is_empty() || keyword.is_empty() || attack_tail.is_empty() {
+        return None;
+    }
+
+    let normalized = format!(
+        "This creature gets {pt_delta} and gains {keyword} until end of turn. It can attack this turn as though {attack_tail}."
+    );
+    Some(match activation_prefix {
+        Some(prefix) => format!("{prefix}: {normalized}"),
+        None => normalized,
+    })
+}
+
+fn normalize_for_each_opponent_gain_control_followup(line: &str) -> Option<String> {
+    for marker in [
+        "for each opponent, gain control of up to one target creature that player controls until end of turn",
+        "For each opponent, gain control of up to one target creature that player controls until end of turn",
+        "For each opponent, Gain control of up to one target creature that player controls until end of turn",
+    ] {
+        let Some(index) = line.find(marker) else {
+            continue;
+        };
+        let prefix = &line[..index];
+        let after_marker = &line[index + marker.len()..];
+        let marker = if marker.starts_with("For") {
+            "For each opponent, gain control of up to one target creature that player controls until end of turn"
+        } else {
+            marker
+        };
+        for followup_prefix in [
+            ", untap that creature, then it gains ",
+            ". Untap that creature. It gains ",
+        ] {
+            let Some(after_followup) = after_marker.strip_prefix(followup_prefix) else {
+                continue;
+            };
+            let (keywords, remainder) = after_followup.split_once(" until end of turn")?;
+            if keywords.is_empty() {
+                return None;
+            }
+            return Some(format!(
+                "{prefix}{marker}. Untap those creatures. They gain {keywords} until end of turn{remainder}"
+            ));
+        }
+    }
+
+    None
+}
+
+struct DamageClauseParts<'a> {
+    source: &'a str,
+    amount: &'a str,
+    target: &'a str,
+    prefix_before_target: Option<&'a str>,
+    consumed: usize,
+}
+
+fn damage_source_tail(source_prefix: &str) -> &str {
+    let start = source_prefix
+        .rfind(", ")
+        .map(|idx| idx + 2)
+        .or_else(|| source_prefix.rfind(": ").map(|idx| idx + 2))
+        .or_else(|| source_prefix.rfind(" — ").map(|idx| idx + " — ".len()))
+        .unwrap_or(0);
+    source_prefix[start..].trim()
+}
+
+fn parse_trailing_damage_clause(text: &str) -> Option<DamageClauseParts<'_>> {
+    let deals_idx = text.rfind(" deals ")?;
+    let source_prefix = &text[..deals_idx];
+    let source = damage_source_tail(source_prefix);
+    let after_deals = &text[deals_idx + " deals ".len()..];
+    let (amount, _) = after_deals.split_once(" damage to ")?;
+    let target_start = deals_idx + " deals ".len() + amount.len() + " damage to ".len();
+    let target = text[target_start..].trim();
+    Some(DamageClauseParts {
+        source,
+        amount: amount.trim(),
+        target,
+        prefix_before_target: Some(&text[..target_start]),
+        consumed: text.len(),
+    })
+}
+
+fn parse_leading_damage_clause(text: &str) -> Option<DamageClauseParts<'_>> {
+    let deals_idx = text.find(" deals ")?;
+    let source = text[..deals_idx].trim();
+    let after_deals = &text[deals_idx + " deals ".len()..];
+    let (amount, _) = after_deals.split_once(" damage to ")?;
+    let target_start = deals_idx + " deals ".len() + amount.len() + " damage to ".len();
+    let after_target = &text[target_start..];
+    let target_len = after_target
+        .find(". ")
+        .map(|idx| idx + 1)
+        .unwrap_or(after_target.len());
+    let raw_target = &after_target[..target_len];
+    Some(DamageClauseParts {
+        source,
+        amount: amount.trim(),
+        target: raw_target.trim().trim_end_matches('.').trim(),
+        prefix_before_target: None,
+        consumed: target_start + target_len,
+    })
+}
+
+fn split_damage_instead_suffix(target: &str) -> (&str, &str) {
+    target
+        .trim()
+        .strip_suffix(" instead")
+        .map(|target| (target.trim(), " instead"))
+        .unwrap_or((target.trim(), ""))
+}
+
+fn normalize_joined_damage_target(target: &str) -> &str {
+    match target {
+        "it" => "that creature",
+        "target defending player's creature" => "target creature defending player controls",
+        _ => target,
+    }
+}
+
+fn compact_split_damage_pair_once(line: &str, delimiter: &str) -> Option<String> {
+    let mut search_start = 0;
+    while let Some(relative_idx) = line[search_start..].find(delimiter) {
+        let delimiter_idx = search_start + relative_idx;
+        let first_text = &line[..delimiter_idx];
+        let second_start = delimiter_idx + delimiter.len();
+        let second_text = &line[second_start..];
+        let Some(first) = parse_trailing_damage_clause(first_text) else {
+            search_start = second_start;
+            continue;
+        };
+        let Some(second) = parse_leading_damage_clause(second_text) else {
+            search_start = second_start;
+            continue;
+        };
+        if !first.source.eq_ignore_ascii_case(second.source) {
+            search_start = second_start;
+            continue;
+        }
+
+        let (second_target, suffix) = split_damage_instead_suffix(second.target);
+        let first_target = normalize_joined_damage_target(first.target);
+        let controller_followup = second_target == "that object's controller"
+            && (first_target.contains("creature") || first_target == "that creature");
+        let mass_followup = first_target.starts_with("each ") && second_target.starts_with("each ");
+        let direct_followup = matches!(second_target, "you" | "any target")
+            || first_target.contains("any target")
+            || second_target.starts_with("each ");
+        if !controller_followup && !mass_followup && !direct_followup {
+            search_start = second_start;
+            continue;
+        }
+
+        let first_target = if controller_followup && first_target == "target creature" {
+            if first_text.contains(". If ") || first_text.contains(" — If ") {
+                "that creature"
+            } else {
+                first_target
+            }
+        } else {
+            first_target
+        };
+        let second_target = if controller_followup {
+            "that creature's controller"
+        } else {
+            normalize_joined_damage_target(second_target)
+        };
+        let joined_target = if mass_followup && first.amount == second.amount {
+            format!("{first_target} and {second_target}{suffix}")
+        } else {
+            format!(
+                "{first_target} and {} damage to {second_target}{suffix}",
+                second.amount
+            )
+        };
+        let consumed_text = &second_text[..second.consumed];
+        let terminal_period = if consumed_text.trim_end().ends_with('.') {
+            "."
+        } else {
+            ""
+        };
+        let remainder = &second_text[second.consumed..];
+        return Some(format!(
+            "{}{joined_target}{terminal_period}{remainder}",
+            first.prefix_before_target?
+        ));
+    }
+
+    None
+}
+
+fn normalize_split_damage_pairs(line: &str) -> String {
+    let mut normalized = line.to_string();
+    let mut seen = Vec::new();
+    loop {
+        if seen.iter().any(|previous| previous == &normalized) {
+            break;
+        }
+        seen.push(normalized.clone());
+        if let Some(joined) = compact_split_damage_pair_once(&normalized, ". ") {
+            if joined == normalized {
+                break;
+            }
+            normalized = joined;
+            continue;
+        }
+        if let Some(joined) = compact_split_damage_pair_once(&normalized, ", then ") {
+            if joined == normalized {
+                break;
+            }
+            normalized = joined;
+            continue;
+        }
+        break;
+    }
+    normalized
+}
+
+fn normalize_gets_replacement_instead_order(line: &str) -> Option<String> {
+    let (prefix, tail) = line.rsplit_once(". If ")?;
+    let (condition, effect) = tail.split_once(", it gets ")?;
+    if !matches!(
+        condition,
+        "it's a Human" | "it's an Human" | "that creature has toxic"
+    ) {
+        return None;
+    }
+    let effect = effect.trim_end_matches('.');
+    let effect = effect.strip_suffix(" instead")?;
+    Some(format!(
+        "{prefix}. If {condition}, instead it gets {effect}."
+    ))
+}
+
+fn color_mana_word(symbol: &str) -> Option<&'static str> {
+    match symbol {
+        "{W}" => Some("white"),
+        "{U}" => Some("blue"),
+        "{B}" => Some("black"),
+        "{R}" => Some("red"),
+        "{G}" => Some("green"),
+        _ => None,
+    }
+}
+
+fn normalize_spell_damage_replacement_surfaces(line: &str) -> Option<String> {
+    let (default_text, replacement_tail) =
+        line.split_once(". If this spell's additional cost was paid, ")?;
+    let default_damage = parse_trailing_damage_clause(default_text)?;
+    let replacement_damage = parse_leading_damage_clause(replacement_tail)?;
+    if !default_damage
+        .source
+        .eq_ignore_ascii_case(replacement_damage.source)
+    {
+        return None;
+    }
+    let (target, suffix) = split_damage_instead_suffix(replacement_damage.target);
+    let consumed_text = &replacement_tail[..replacement_damage.consumed];
+    let terminal_period = if consumed_text.trim_end().ends_with('.') {
+        "."
+    } else {
+        ""
+    };
+    let remainder = &replacement_tail[replacement_damage.consumed..];
+    Some(format!(
+        "{default_text}. It deals {} damage to {target}{suffix} if this spell's additional cost was paid{terminal_period}{remainder}",
+        replacement_damage.amount
+    ))
+}
+
+fn normalize_adamant_damage_replacement_surface(line: &str) -> Option<String> {
+    let (default_text, tail) = line.split_once(". If at least three ")?;
+    let default_damage = parse_trailing_damage_clause(default_text)?;
+    let (mana_symbol, after_mana) = tail.split_once(" mana was spent to cast this spell, ")?;
+    let color = color_mana_word(mana_symbol)?;
+    let deals_idx = after_mana.find(" deals ")?;
+    let replacement_source = after_mana[..deals_idx].trim();
+    if !default_damage
+        .source
+        .eq_ignore_ascii_case(replacement_source)
+    {
+        return None;
+    }
+    let after_deals = &after_mana[deals_idx + " deals ".len()..];
+    let (amount, raw_after_damage) = after_deals.split_once(" damage")?;
+    let skipped_ws = raw_after_damage.len() - raw_after_damage.trim_start().len();
+    let after_damage = raw_after_damage.trim_start();
+    let (target, suffix, consumed_tail_len) = if let Some(rest) = after_damage.strip_prefix("to ") {
+        let target_len = rest.find(". ").map(|idx| idx + 1).unwrap_or(rest.len());
+        let raw_target = rest[..target_len].trim().trim_end_matches('.').trim();
+        let (target, suffix) = split_damage_instead_suffix(raw_target);
+        (target, suffix, "to ".len() + target_len)
+    } else {
+        let tail_len = after_damage
+            .find(". ")
+            .map(|idx| idx + 1)
+            .unwrap_or(after_damage.len());
+        let raw_tail = after_damage[..tail_len].trim().trim_end_matches('.').trim();
+        let suffix = if raw_tail == "instead" {
+            " instead"
+        } else {
+            ""
+        };
+        ("", suffix, tail_len)
+    };
+    let target_text = if target.is_empty() {
+        String::new()
+    } else {
+        format!(" to {target}")
+    };
+    let consumed = deals_idx
+        + " deals ".len()
+        + amount.len()
+        + " damage".len()
+        + skipped_ws
+        + consumed_tail_len;
+    let consumed_text = &after_mana[..consumed];
+    let terminal_period = if consumed_text.trim_end().ends_with('.') {
+        "."
+    } else {
+        ""
+    };
+    let remainder = &after_mana[consumed..];
+    Some(format!(
+        "{default_text}. Adamant — If at least three {color} mana was spent to cast this spell, it deals {} damage{target_text}{suffix}{terminal_period}{remainder}",
+        amount.trim()
+    ))
+}
+
+fn normalize_kicked_also_damage_surface(line: &str) -> Option<String> {
+    let (default_text, tail) = line.split_once(". Then if this spell was kicked, ")?;
+    let default_damage = parse_trailing_damage_clause(default_text)?;
+    let kicked_damage = parse_leading_damage_clause(tail)?;
+    if !default_damage
+        .source
+        .eq_ignore_ascii_case(kicked_damage.source)
+    {
+        return None;
+    }
+    let consumed_text = &tail[..kicked_damage.consumed];
+    let terminal_period = if consumed_text.trim_end().ends_with('.') {
+        "."
+    } else {
+        ""
+    };
+    let remainder = &tail[kicked_damage.consumed..];
+    if kicked_damage.target == "any other target" {
+        return Some(format!(
+            "{default_text}. If this spell was kicked, it deals {} damage to another target{terminal_period}{remainder}",
+            kicked_damage.amount
+        ));
+    }
+    Some(format!(
+        "{default_text}. If this spell was kicked, it also deals {} damage to {}{terminal_period}{remainder}",
+        kicked_damage.amount, kicked_damage.target
+    ))
+}
+
+fn normalize_delayed_player_planeswalker_damage_surface(line: &str) -> Option<String> {
+    let (default_text, tail) = line.split_once(". At the beginning of your next upkeep, ")?;
+    let default_damage = parse_trailing_damage_clause(default_text)?;
+    if default_damage.target != "target player or planeswalker" {
+        return None;
+    }
+    let damage = parse_leading_damage_clause(tail)?;
+    if !default_damage.source.eq_ignore_ascii_case(damage.source)
+        || damage.target != "a planeswalker unless that player or that object's controller pays {U}"
+    {
+        return None;
+    }
+    Some(format!(
+        "{default_text}. It deals an additional {} damage to that player or planeswalker at the beginning of your next upkeep step unless that player or that planeswalker's controller pays {{U}} before that step.",
+        damage.amount
+    ))
+}
+
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     if normalized.eq_ignore_ascii_case("Destroy all nonbasic lands. For each land destroyed this way, its controller may search its controller's library for a basic land card. For each tagged 'searched' object, put them onto the battlefield. If you do, shuffle that player's library") {
@@ -2541,6 +2984,63 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         "tap target creature or planeswalker. its activated abilities can't be activated this turn",
     );
     normalized = normalized.replace("that permanent's mana value", "that card's mana value");
+    normalized = normalized
+        .replace(
+            "This enchantment enters with X hope counters on it, where X is the number of a creature you control",
+            "This enchantment enters with a hope counter on it for each creature you control",
+        )
+        .replace(
+            "Then if this enchantment has no hope counters on it, sacrifice this enchantment, then gain 4 life",
+            "Then if this enchantment has no hope counters on it, sacrifice it and you gain 4 life",
+        )
+        .replace(
+            "Then if that object is a Villain, draw a card",
+            "If that creature was a Villain, draw a card",
+        )
+        .replace(
+            "Whenever you are dealt damage, the attacking player gains control of this artifact. Untap it",
+            "Whenever you're dealt combat damage, the attacking player gains control of this artifact and untaps it",
+        )
+        .replace(
+            "Draw a card. Put a point counter on this artifact. Then if it has five or more point counters on it, sacrifice this artifact, then create a Treasure token",
+            "Draw a card and put a point counter on this artifact. Then if it has five or more point counters on it, sacrifice it and create a Treasure token",
+        )
+        .replace(
+            "This creature has trample as long as it has two or fewer oil counters on it otherwise it has hexproof",
+            "This creature has trample as long as it has two or fewer oil counters on it. Otherwise, it has hexproof",
+        )
+        .replace(
+            "Then if it has no oil counters on it, sacrifice this creature",
+            "Then if it has no oil counters on it, sacrifice it",
+        )
+        .replace(
+            "Whenever you cast a black spell, if that object is a tapped permanent, you may destroy target creature",
+            "Whenever you cast a black spell, you may destroy target creature if it's tapped",
+        )
+        .replace(
+            "Then if it's a tapped permanent, put a stun counter on it",
+            "If it's tapped, put a stun counter on it",
+        )
+        .replace(
+            "then if it's a tapped permanent, put a stun counter on it",
+            "if it's tapped, put a stun counter on it",
+        )
+        .replace(
+            "target defending player's creature",
+            "target creature defending player controls",
+        )
+        .replace(
+            "If it's a Mountain, this creature deals",
+            "If that land is a Mountain, this creature deals",
+        )
+        .replace(
+            "If this spell was cast from the exile",
+            "If this spell was cast from exile",
+        )
+        .replace("Vibro-shock gauntlets", "Vibro-Shock Gauntlets")
+        .replace("Vibro-Shock gauntlets", "Vibro-Shock Gauntlets")
+        .replace(", then the Ring tempts you", ". The Ring tempts you")
+        .replace("More than meets the eye {2}{R}.", "More Than Meets the Eye {2}{R}");
     normalized = normalized
         .replace("have Protection from", "have protection from")
         .replace("has Protection from", "has protection from")
@@ -2698,7 +3198,47 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "this creature gains can attack as though it didn't have defender until end of turn",
             "this creature can attack this turn as though it didn't have defender",
+        )
+        .replace(
+            "It gains can attack as though it didn't have defender until end of turn",
+            "It can attack this turn as though it didn't have defender",
+        )
+        .replace(
+            "it gains can attack as though it didn't have defender until end of turn",
+            "it can attack this turn as though it didn't have defender",
+        )
+        .replace(
+            "until end of turn. It can attack this turn as though",
+            "until end of turn and can attack this turn as though",
+        )
+        .replace(
+            "until end of turn, then it can attack this turn as though",
+            "until end of turn and can attack this turn as though",
         );
+    if let Some(defender_attack) =
+        normalize_this_creature_gets_gains_can_attack_surface(&normalized)
+    {
+        normalized = defender_attack;
+    }
+    if let Some(gain_control) = normalize_for_each_opponent_gain_control_followup(&normalized) {
+        normalized = gain_control;
+    }
+    normalized = normalize_split_damage_pairs(&normalized);
+    if let Some(ordered) = normalize_gets_replacement_instead_order(&normalized) {
+        normalized = ordered;
+    }
+    if let Some(replacement) = normalize_spell_damage_replacement_surfaces(&normalized) {
+        normalized = replacement;
+    }
+    if let Some(adamant) = normalize_adamant_damage_replacement_surface(&normalized) {
+        normalized = adamant;
+    }
+    if let Some(kicked) = normalize_kicked_also_damage_surface(&normalized) {
+        normalized = kicked;
+    }
+    if let Some(delayed) = normalize_delayed_player_planeswalker_damage_surface(&normalized) {
+        normalized = delayed;
+    }
     for (from, to) in [
         (
             ". Then if you control a modified creature, deal ",
@@ -2806,8 +3346,15 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact_trimmed
         == "choose any number red cards, reveal it, then deal that much damage to any target"
+        || lower_compact_trimmed
+            == "choose any number red cards, reveal it, then scent of cinder deals that much damage to any target"
     {
         return "Reveal any number of red cards in your hand. Scent of Cinder deals X damage to any target, where X is the number of cards revealed this way.".to_string();
+    }
+    if lower_compact_trimmed
+        == "serpentine spike deals 2 damage to target creature. serpentine spike deals 4 damage to another target creature. then if a creature dealt damage this way would die this turn, exile it instead"
+    {
+        return "Serpentine Spike deals 2 damage to target creature, 3 damage to another target creature, and 4 damage to a third target creature. If a creature dealt damage this way would die this turn, exile it instead.".to_string();
     }
     if lower_compact_trimmed
         == "{2}{r}, {t}: choose any number red cards, reveal it, then deal that much damage to any target"
@@ -2957,6 +3504,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact_trimmed
         == "whenever this creature attacks, choose target defending player's creature. target permanent must block target permanent if able this turn"
+        || lower_compact_trimmed
+            == "whenever this creature attacks, choose target creature defending player controls. target permanent must block target permanent if able this turn"
     {
         return "Whenever this creature attacks, target creature defending player controls blocks it this combat if able.".to_string();
     }
@@ -7790,7 +8339,7 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             match hints.iter().find_map(|hint| match hint {
                 crate::target::ChooseSpecSurfaceHint::SourceReference(surface) => Some(surface),
             }) {
-                Some(surface) => surface.display_text(),
+                Some(surface) => describe_source_reference_surface_text(surface),
                 None => describe_choose_spec(spec),
             }
         }
@@ -9187,6 +9736,26 @@ fn describe_effect_metric_value(
 }
 
 pub(crate) fn describe_value(value: &Value) -> String {
+    fn describe_static_ability_id(
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> &'static str {
+        match ability_id {
+            crate::static_abilities::StaticAbilityId::Flying => "flying",
+            crate::static_abilities::StaticAbilityId::FirstStrike => "first strike",
+            crate::static_abilities::StaticAbilityId::DoubleStrike => "double strike",
+            crate::static_abilities::StaticAbilityId::Deathtouch => "deathtouch",
+            crate::static_abilities::StaticAbilityId::Haste => "haste",
+            crate::static_abilities::StaticAbilityId::Hexproof => "hexproof",
+            crate::static_abilities::StaticAbilityId::Indestructible => "indestructible",
+            crate::static_abilities::StaticAbilityId::Lifelink => "lifelink",
+            crate::static_abilities::StaticAbilityId::Menace => "menace",
+            crate::static_abilities::StaticAbilityId::Reach => "reach",
+            crate::static_abilities::StaticAbilityId::Trample => "trample",
+            crate::static_abilities::StaticAbilityId::Vigilance => "vigilance",
+            _ => "ability",
+        }
+    }
+
     match value {
         Value::SurfaceHinted { hints, .. }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::Difference) =>
@@ -9333,6 +9902,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of card types among {}",
             describe_count_filter_value_subject(filter)
         ),
+        Value::StaticAbilitiesAmong { filter, abilities } => {
+            let ability_list = abilities
+                .iter()
+                .map(|ability_id| describe_static_ability_id(*ability_id))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "the number of abilities from among {ability_list} found among {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
         Value::ColorsAmong(filter) => {
             format!("the number of {}", describe_colors_among(filter))
         }
@@ -10020,7 +10600,14 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
 fn describe_source_reference_surface_text(
     surface: &crate::target::SourceReferenceSurface,
 ) -> String {
-    surface.display_text()
+    match surface {
+        crate::target::SourceReferenceSurface::ThisPermanentType(text)
+            if text.to_ascii_lowercase().starts_with("this of ") =>
+        {
+            "this permanent".to_string()
+        }
+        _ => surface.display_text(),
+    }
 }
 
 fn apply_continuous_source_reference_text(
@@ -10186,6 +10773,11 @@ pub(super) fn describe_apply_continuous_clauses(
     let self_subject = granted_ability_self_subject_for_apply_continuous(effect);
 
     let mut clauses = Vec::new();
+
+    if let Some(enchant_target) = describe_becomes_aura_enchantment_clause(effect) {
+        let verb = if plural_target { "become" } else { "becomes" };
+        return vec![format!("{verb} an Aura with enchant {enchant_target}")];
+    }
 
     let mut push_modification = |modification: &crate::continuous::Modification| match modification
     {
@@ -10507,6 +11099,59 @@ pub(super) fn describe_apply_continuous_clauses(
     }
 
     clauses
+}
+
+fn describe_becomes_aura_enchantment_clause(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> Option<String> {
+    if effect.condition.is_some() || !matches!(effect.until, Until::Forever) {
+        return None;
+    }
+    let Some(crate::continuous::Modification::AddCardTypes(card_types)) = &effect.modification
+    else {
+        return None;
+    };
+    if card_types.as_slice() != [CardType::Enchantment] {
+        return None;
+    }
+    let mut removes_non_enchantment_types = false;
+    let mut adds_aura_subtype = false;
+    for modification in &effect.additional_modifications {
+        match modification {
+            crate::continuous::Modification::RemoveCardTypes(card_types) => {
+                removes_non_enchantment_types = card_types.contains(&CardType::Artifact)
+                    && card_types.contains(&CardType::Battle)
+                    && card_types.contains(&CardType::Creature)
+                    && card_types.contains(&CardType::Kindred)
+                    && card_types.contains(&CardType::Land)
+                    && card_types.contains(&CardType::Planeswalker);
+            }
+            crate::continuous::Modification::AddSubtypes(subtypes) => {
+                adds_aura_subtype = subtypes.as_slice() == [Subtype::Aura];
+            }
+            _ => return None,
+        }
+    }
+    if !removes_non_enchantment_types || !adds_aura_subtype {
+        return None;
+    }
+    let [crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter)] =
+        effect.runtime_modifications.as_slice()
+    else {
+        return None;
+    };
+    Some(describe_aura_attachment_filter_inline(filter))
+}
+
+fn describe_aura_attachment_filter_inline(filter: &crate::object::AuraAttachmentFilter) -> String {
+    match filter {
+        crate::object::AuraAttachmentFilter::Object(filter) => {
+            strip_leading_article(&filter.description()).to_string()
+        }
+        crate::object::AuraAttachmentFilter::Player(player) => {
+            strip_leading_article(&describe_player_filter(player)).to_string()
+        }
+    }
 }
 
 pub(super) fn describe_apply_continuous_tail(
@@ -12262,6 +12907,7 @@ pub(super) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
         EffectPredicate::Failed => "failed".to_string(),
         EffectPredicate::Happened => "happened".to_string(),
         EffectPredicate::DidNotHappen => "that doesn't happen".to_string(),
+        EffectPredicate::SearchedLibrary => "you searched your library this way".to_string(),
         EffectPredicate::HappenedNotReplaced => "happened and was not replaced".to_string(),
         EffectPredicate::ExcessDamageDealt => "excess damage was dealt this way".to_string(),
         EffectPredicate::Value(cmp) => format!("its count {}", describe_comparison(cmp)),
@@ -12754,6 +13400,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::PlayerControls { player, filter } => {
             let subject = describe_player_filter(player);
+            if let Some(text) =
+                describe_player_controls_only_implicit_tagged_object(player, filter, false)
+            {
+                return text;
+            }
             // Lieutenant wording: "if you control your commander".
             if filter.is_commander
                 && matches!(player, PlayerFilter::You)
@@ -13705,6 +14356,27 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 {
                     return state_clause;
                 }
+                if tag.as_str() == "triggering"
+                    && let Some(origin_clause) =
+                        describe_triggering_graveyard_origin_condition(subject, filter)
+                {
+                    return origin_clause;
+                }
+                if let Some(any_of_clause) =
+                    describe_implicit_tagged_object_any_of_condition(tag, filter)
+                {
+                    return any_of_clause;
+                }
+                if let Some(quality_clause) =
+                    describe_implicit_tagged_object_quality_condition(subject, filter)
+                {
+                    return quality_clause;
+                }
+                if let Some(pt_clause) =
+                    describe_implicit_tagged_object_pt_condition(subject, filter)
+                {
+                    return pt_clause;
+                }
 
                 if !filter.all_card_types.is_empty()
                     && filter.card_types.is_empty()
@@ -13912,6 +14584,22 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     };
                     return is_clause(noun);
                 }
+                if matches!(
+                    stripped.as_str(),
+                    "enchanted permanent"
+                        | "enchanted creature"
+                        | "enchanted enchantment"
+                        | "enchanted artifact"
+                        | "equipped permanent"
+                        | "equipped creature"
+                ) && let Some((quality, _)) = stripped.split_once(' ')
+                {
+                    return if subject == "it" {
+                        format!("it's {quality}")
+                    } else {
+                        format!("{subject} is {quality}")
+                    };
+                }
                 if filter.subtypes.len() == 1
                     && filter.zone.is_none()
                     && filter.controller.is_none()
@@ -13945,7 +14633,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     let subtype = filter.subtypes[0].to_string();
                     return is_clause(&subtype);
                 }
-                return format!("{subject} matches {desc}");
+                return describe_implicit_tagged_object_fallback_condition(subject, &desc);
                 }
                 format!("the tagged object '{}' matches {desc}", tag.as_str())
             }
@@ -14464,6 +15152,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     label.display_label().to_ascii_lowercase()
                 )
             } else if let Condition::PlayerControls { player, filter } = inner.as_ref() {
+                if let Some(text) =
+                    describe_player_controls_only_implicit_tagged_object(player, filter, true)
+                {
+                    return text;
+                }
                 let subject = describe_player_filter(player);
                 let mut described_filter = filter.clone();
                 if described_filter
@@ -14567,6 +15260,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             {
                 return initiative_gate;
             }
+            if let Some(origin_gate) =
+                describe_triggering_graveyard_origin_or_condition(left, right)
+            {
+                return origin_gate;
+            }
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
     }
@@ -14579,6 +15277,10 @@ fn describe_implicit_tagged_object_state_condition(
     let mut base = filter.clone();
     base.attacking = false;
     base.nonattacking = false;
+    base.blocking = false;
+    base.nonblocking = false;
+    base.blocked = false;
+    base.unblocked = false;
     if base != ObjectFilter::default()
         && base != ObjectFilter::permanent()
         && base != ObjectFilter::creature()
@@ -14596,8 +15298,307 @@ fn describe_implicit_tagged_object_state_condition(
             "that object wasn't attacking".to_string()
         });
     }
+    if filter.blocking {
+        return Some(if subject == "it" {
+            "it was blocking".to_string()
+        } else {
+            "that object was blocking".to_string()
+        });
+    }
+    if filter.nonblocking {
+        return Some(if subject == "it" {
+            "it wasn't blocking".to_string()
+        } else {
+            "that object wasn't blocking".to_string()
+        });
+    }
+    if filter.blocked {
+        return Some(if subject == "it" {
+            "it was blocked this turn".to_string()
+        } else {
+            "that object was blocked this turn".to_string()
+        });
+    }
+    if filter.unblocked {
+        return Some(if subject == "it" {
+            "it was unblocked".to_string()
+        } else {
+            "that object was unblocked".to_string()
+        });
+    }
 
     None
+}
+
+fn is_implicit_object_identity_filter(filter: &ObjectFilter) -> bool {
+    filter == &ObjectFilter::default()
+        || filter == &ObjectFilter::permanent()
+        || filter == &ObjectFilter::permanent_card()
+        || filter == &ObjectFilter::creature()
+}
+
+fn describe_triggering_graveyard_origin_condition(
+    subject: &str,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    if filter.any_of.len() != 2 {
+        return None;
+    }
+
+    let branches = filter
+        .any_of
+        .iter()
+        .map(triggering_graveyard_origin_filter_branch)
+        .collect::<Option<Vec<_>>>()?;
+    describe_triggering_graveyard_origin_from_branches(subject, &branches)
+}
+
+fn triggering_graveyard_origin_filter_branch(
+    filter: &ObjectFilter,
+) -> Option<(Option<PlayerFilter>, Option<PlayerFilter>)> {
+    let mut base = filter.clone();
+    let owner = base.owner.take();
+    let cast_by = base.cast_by.take();
+    is_implicit_object_identity_filter(&base).then_some((cast_by, owner))
+}
+
+fn describe_triggering_graveyard_origin_or_condition(
+    left: &Condition,
+    right: &Condition,
+) -> Option<String> {
+    fn branch(condition: &Condition) -> Option<(Option<PlayerFilter>, Option<PlayerFilter>)> {
+        let Condition::TaggedObjectMatches(tag, filter) = condition else {
+            return None;
+        };
+        (tag.as_str() == "triggering")
+            .then(|| triggering_graveyard_origin_filter_branch(filter))
+            .flatten()
+    }
+
+    let branches = vec![branch(left)?, branch(right)?];
+    describe_triggering_graveyard_origin_from_branches("that object", &branches)
+}
+
+fn describe_triggering_graveyard_origin_from_branches(
+    subject: &str,
+    branches: &[(Option<PlayerFilter>, Option<PlayerFilter>)],
+) -> Option<String> {
+    let entered = branches.iter().find(|(cast_by, _)| cast_by.is_none())?;
+    let cast = branches.iter().find(|(cast_by, _)| cast_by.is_some())?;
+    let caster = cast.0.as_ref()?;
+    let entered_origin = describe_graveyard_origin_phrase(entered.1.as_ref());
+    let cast_origin = describe_graveyard_origin_phrase(cast.1.as_ref().or(entered.1.as_ref()));
+    let caster = describe_player_filter(caster);
+
+    Some(format!(
+        "{subject} entered from {entered_origin} or {caster} cast it from {cast_origin}"
+    ))
+}
+
+fn describe_graveyard_origin_phrase(owner: Option<&PlayerFilter>) -> String {
+    match owner {
+        None | Some(PlayerFilter::Any) => "a graveyard".to_string(),
+        Some(PlayerFilter::You) => "your graveyard".to_string(),
+        Some(PlayerFilter::Opponent) => "an opponent's graveyard".to_string(),
+        Some(PlayerFilter::NotYou) => "a graveyard other than yours".to_string(),
+        Some(player) => format!("{}'s graveyard", describe_player_filter(player)),
+    }
+}
+
+fn describe_implicit_tagged_object_any_of_condition(
+    tag: &crate::TagKey,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    if filter.any_of.is_empty() {
+        return None;
+    }
+
+    let clauses = filter
+        .any_of
+        .iter()
+        .map(|branch| {
+            describe_condition(&Condition::TaggedObjectMatches(tag.clone(), branch.clone()))
+        })
+        .collect::<Vec<_>>();
+    Some(join_with_or(&clauses))
+}
+
+fn describe_implicit_tagged_object_quality_condition(
+    subject: &str,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    let mut base = filter.clone();
+    base.historic = false;
+    base.nonhistoric = false;
+    base.entered_battlefield_this_turn = false;
+    base.entered_battlefield_controller = None;
+    if !is_implicit_object_identity_filter(&base) {
+        return None;
+    }
+
+    if filter.historic {
+        return Some(if subject == "it" {
+            "it was historic".to_string()
+        } else {
+            "that object was historic".to_string()
+        });
+    }
+    if filter.nonhistoric {
+        return Some(if subject == "it" {
+            "it wasn't historic".to_string()
+        } else {
+            "that object wasn't historic".to_string()
+        });
+    }
+    if filter.entered_battlefield_this_turn || filter.entered_battlefield_controller.is_some() {
+        let entered_subject = if subject == "it" { "it" } else { "that object" };
+        if let Some(controller) = &filter.entered_battlefield_controller {
+            let controller = describe_player_filter(controller);
+            return Some(format!(
+                "{entered_subject} entered under {controller}'s control this turn"
+            ));
+        }
+        return Some(format!("{entered_subject} entered this turn"));
+    }
+
+    None
+}
+
+fn describe_implicit_tagged_object_pt_condition(
+    subject: &str,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    let mut base = filter.clone();
+    base.power = None;
+    base.power_parity = None;
+    base.power_reference = ironsmith_core::PtReference::default();
+    base.power_relative_to_source = None;
+    base.power_greater_than_base_power = false;
+    base.power_toughness_relation = None;
+    base.toughness = None;
+    base.toughness_reference = ironsmith_core::PtReference::default();
+    base.total_power_toughness = None;
+    if !is_implicit_object_identity_filter(&base) {
+        return None;
+    }
+
+    let possessive = if subject == "it" {
+        "its"
+    } else {
+        "that object's"
+    };
+
+    if let (Some(power), Some(toughness)) = (&filter.power, &filter.toughness)
+        && let (
+            ironsmith_core::FilterComparison::Equal(power),
+            ironsmith_core::FilterComparison::Equal(toughness),
+        ) = (power, toughness)
+        && filter.power_reference == filter.toughness_reference
+    {
+        let label = match filter.power_reference {
+            ironsmith_core::PtReference::Effective => "power and toughness",
+            ironsmith_core::PtReference::Base => "base power and toughness",
+        };
+        return Some(format!("{possessive} {label} are {power}/{toughness}"));
+    }
+
+    if let Some(power) = &filter.power {
+        let label = match filter.power_reference {
+            ironsmith_core::PtReference::Effective => "power",
+            ironsmith_core::PtReference::Base => "base power",
+        };
+        return Some(format!(
+            "{possessive} {label} {}",
+            describe_filter_comparison_clause(power)
+        ));
+    }
+    if filter.power_greater_than_base_power {
+        return Some(format!("{possessive} power is greater than its base power"));
+    }
+    if let Some(relation) = filter.power_toughness_relation {
+        return Some(match relation {
+            ironsmith_core::PowerToughnessRelation::PowerGreaterThanToughness => {
+                format!("{possessive} power is greater than its toughness")
+            }
+            ironsmith_core::PowerToughnessRelation::ToughnessGreaterThanPower => {
+                format!("{possessive} toughness is greater than its power")
+            }
+        });
+    }
+    if let Some(relation) = filter.power_relative_to_source {
+        return Some(match relation {
+            ironsmith_core::SourcePowerRelation::LessThanSource => {
+                format!("{possessive} power is less than this creature's power")
+            }
+        });
+    }
+    if let Some(toughness) = &filter.toughness {
+        let label = match filter.toughness_reference {
+            ironsmith_core::PtReference::Effective => "toughness",
+            ironsmith_core::PtReference::Base => "base toughness",
+        };
+        return Some(format!(
+            "{possessive} {label} {}",
+            describe_filter_comparison_clause(toughness)
+        ));
+    }
+    if let Some(total) = &filter.total_power_toughness {
+        return Some(format!(
+            "{possessive} total power and toughness {}",
+            describe_filter_comparison_clause(total)
+        ));
+    }
+
+    None
+}
+
+fn describe_filter_comparison_clause(comparison: &ironsmith_core::FilterComparison) -> String {
+    match comparison {
+        ironsmith_core::FilterComparison::GreaterThan(n) => format!("is greater than {n}"),
+        ironsmith_core::FilterComparison::GreaterThanOrEqual(n) => format!("is {n} or greater"),
+        ironsmith_core::FilterComparison::Equal(n) => format!("is {n}"),
+        ironsmith_core::FilterComparison::LessThan(n) => format!("is less than {n}"),
+        ironsmith_core::FilterComparison::LessThanOrEqual(n) => format!("is {n} or less"),
+        ironsmith_core::FilterComparison::NotEqual(n) => format!("is not {n}"),
+        ironsmith_core::FilterComparison::OneOf(values) => {
+            let values = values.iter().map(i32::to_string).collect::<Vec<_>>();
+            format!("is {}", join_with_or(&values))
+        }
+        ironsmith_core::FilterComparison::LessThanExpr(value) => {
+            format!("is less than {}", describe_value(value))
+        }
+        ironsmith_core::FilterComparison::LessThanOrEqualExpr(value) => {
+            format!("is less than or equal to {}", describe_value(value))
+        }
+        ironsmith_core::FilterComparison::GreaterThanExpr(value) => {
+            format!("is greater than {}", describe_value(value))
+        }
+        ironsmith_core::FilterComparison::GreaterThanOrEqualExpr(value) => {
+            format!("is greater than or equal to {}", describe_value(value))
+        }
+        ironsmith_core::FilterComparison::EqualExpr(value) => {
+            format!("is equal to {}", describe_value(value))
+        }
+        ironsmith_core::FilterComparison::NotEqualExpr(value) => {
+            format!("is not equal to {}", describe_value(value))
+        }
+    }
+}
+
+fn describe_implicit_tagged_object_fallback_condition(subject: &str, desc: &str) -> String {
+    if desc.contains("object-predicate-debug") {
+        return if subject == "it" {
+            "it has the stated quality".to_string()
+        } else {
+            "that object has the stated quality".to_string()
+        };
+    }
+    let phrase = ensure_indefinite_article(desc);
+    if subject == "it" {
+        format!("it's {phrase}")
+    } else {
+        format!("{subject} is {phrase}")
+    }
 }
 
 fn tagged_condition_is_known_card_reference(tag: &crate::TagKey) -> bool {
@@ -15061,6 +16062,45 @@ mod tests {
         let condition = Condition::TaggedObjectMatches(TagKey::from("triggering"), filter);
 
         assert_eq!(describe_condition(&condition), "that object is a Spider");
+    }
+
+    #[test]
+    fn describe_triggering_graveyard_origin_uses_event_object_pronoun() {
+        let mut filter = ObjectFilter::default();
+        filter.any_of = vec![
+            ObjectFilter::permanent().owned_by(PlayerFilter::You),
+            ObjectFilter::permanent()
+                .owned_by(PlayerFilter::You)
+                .cast_by(PlayerFilter::You),
+        ];
+        let condition = Condition::TaggedObjectMatches(TagKey::from("triggering"), filter);
+
+        assert_eq!(
+            describe_condition(&condition),
+            "that object entered from your graveyard or you cast it from your graveyard"
+        );
+    }
+
+    #[test]
+    fn describe_triggering_historic_check_uses_event_object_pronoun() {
+        let condition = Condition::TaggedObjectMatches(
+            TagKey::from("triggering"),
+            ObjectFilter::permanent().historic(),
+        );
+
+        assert_eq!(describe_condition(&condition), "that object was historic");
+    }
+
+    #[test]
+    fn describe_triggering_power_check_uses_event_object_pronoun() {
+        let mut filter = ObjectFilter::permanent();
+        filter.power = Some(ironsmith_core::FilterComparison::GreaterThanOrEqual(3));
+        let condition = Condition::TaggedObjectMatches(TagKey::from("triggering"), filter);
+
+        assert_eq!(
+            describe_condition(&condition),
+            "that object's power is 3 or greater"
+        );
     }
 
     #[test]
@@ -15782,6 +16822,140 @@ mod tests {
         assert_eq!(
             describe_token_blueprint(&token),
             "1/1 colorless Snake artifact creature token. It has \"Whenever this token deals combat damage to a player, that player gets a poison counter\" and \"Whenever this token deals damage to a player, you get a poison counter\""
+        );
+    }
+
+    #[test]
+    fn normalize_recent_regression_surfaces() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "This enchantment enters with X hope counters on it, where X is the number of a creature you control. Then if this enchantment has no hope counters on it, sacrifice this enchantment, then gain 4 life."
+            ),
+            "This enchantment enters with a hope counter on it for each creature you control. Then if this enchantment has no hope counters on it, sacrifice it and you gain 4 life."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing("Then if that object is a Villain, draw a card."),
+            "If that creature was a Villain, draw a card."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "This creature has trample as long as it has two or fewer oil counters on it otherwise it has hexproof. Then if it has no oil counters on it, sacrifice this creature."
+            ),
+            "This creature has trample as long as it has two or fewer oil counters on it. Otherwise, it has hexproof. Then if it has no oil counters on it, sacrifice it."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{7}: This creature gets +2/+0 until end of turn, this creature gains trample until end of turn and can attack this turn as though it didn't have defender."
+            ),
+            "{7}: This creature gets +2/+0 and gains trample until end of turn. It can attack this turn as though it didn't have defender."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever you cast a black spell, if that object is a tapped permanent, you may destroy target creature."
+            ),
+            "Whenever you cast a black spell, you may destroy target creature if it's tapped."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever you cast your second spell each turn, choose target creature an opponent controls. Then if it's a tapped permanent, put a stun counter on it. Otherwise, tap it."
+            ),
+            "Whenever you cast your second spell each turn, choose target creature an opponent controls. If it's tapped, put a stun counter on it. Otherwise, tap it."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "For each opponent, gain control of up to one target creature that player controls until end of turn, untap that creature, then it gains haste until end of turn."
+            ),
+            "For each opponent, gain control of up to one target creature that player controls until end of turn. Untap those creatures. They gain haste until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "When this creature enters, for each opponent, gain control of up to one target creature that player controls until end of turn. Untap that creature. It gains haste until end of turn."
+            ),
+            "When this creature enters, for each opponent, gain control of up to one target creature that player controls until end of turn. Untap those creatures. They gain haste until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "IV — For each opponent, Gain control of up to one target creature that player controls until end of turn. Untap that creature. It gains haste until end of turn. The Ring tempts you."
+            ),
+            "IV — For each opponent, gain control of up to one target creature that player controls until end of turn. Untap those creatures. They gain haste until end of turn. The Ring tempts you."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever this creature blocks or becomes blocked by a creature, this creature deals 3 damage to it. This creature deals 3 damage to that object's controller."
+            ),
+            "Whenever this creature blocks or becomes blocked by a creature, this creature deals 3 damage to that creature and 3 damage to that creature's controller."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Breath of Darigaaz deals 1 damage to each creature without flying. Breath of Darigaaz deals 1 damage to each player. If this spell was kicked, Breath of Darigaaz deals 4 damage to each creature without flying. Breath of Darigaaz deals 4 damage to each player instead."
+            ),
+            "Breath of Darigaaz deals 1 damage to each creature without flying and each player. If this spell was kicked, Breath of Darigaaz deals 4 damage to each creature without flying and each player instead."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "When this creature enters, this creature deals 1 damage to target creature, then this creature deals 1 damage to you."
+            ),
+            "When this creature enters, this creature deals 1 damage to target creature and 1 damage to you."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Landfall — Whenever a land you control enters, this creature deals 1 damage to any target. If it's a Mountain, this creature deals 2 damage instead."
+            ),
+            "Landfall — Whenever a land you control enters, this creature deals 1 damage to any target. If that land is a Mountain, this creature deals 2 damage instead."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Slaying Fire deals 3 damage to any target. If at least three {R} mana was spent to cast this spell, Slaying Fire deals 4 damage instead."
+            ),
+            "Slaying Fire deals 3 damage to any target. Adamant — If at least three red mana was spent to cast this spell, it deals 4 damage instead."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Goblin Barrage deals 4 damage to target creature. Then if this spell was kicked, Goblin Barrage deals 4 damage to target player or planeswalker."
+            ),
+            "Goblin Barrage deals 4 damage to target creature. If this spell was kicked, it also deals 4 damage to target player or planeswalker."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Quenchable Fire deals 3 damage to target player or planeswalker. At the beginning of your next upkeep, Quenchable Fire deals 3 damage to a planeswalker unless that player or that object's controller pays {U}."
+            ),
+            "Quenchable Fire deals 3 damage to target player or planeswalker. It deals an additional 3 damage to that player or planeswalker at the beginning of your next upkeep step unless that player or that planeswalker's controller pays {U} before that step."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Vibro-shock gauntlets — When Shocker enters, Shocker deals 2 damage to target creature and 2 damage to that creature's controller."
+            ),
+            "Vibro-Shock Gauntlets — When Shocker enters, Shocker deals 2 damage to target creature and 2 damage to that creature's controller."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Serpentine Spike deals 2 damage to target creature. Serpentine Spike deals 4 damage to another target creature. Then if a creature dealt damage this way would die this turn, exile it instead."
+            ),
+            "Serpentine Spike deals 2 damage to target creature, 3 damage to another target creature, and 4 damage to a third target creature. If a creature dealt damage this way would die this turn, exile it instead."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever this creature attacks, choose target creature defending player controls. Target permanent must block target permanent if able this turn."
+            ),
+            "Whenever this creature attacks, target creature defending player controls blocks it this combat if able."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target creature gets +2/+2 until end of turn. If it's a Human, it gets +3/+3 and gains indestructible until end of turn instead."
+            ),
+            "Target creature gets +2/+2 until end of turn. If it's a Human, instead it gets +3/+3 and gains indestructible until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target creature gets +2/+2 until end of turn. If you had a land enter under your control this turn, it gets +4/+4 until end of turn instead."
+            ),
+            "Target creature gets +2/+2 until end of turn. If you had a land enter under your control this turn, it gets +4/+4 until end of turn instead."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Magma Burst deals 3 damage to any target. Then if this spell was kicked, Magma Burst deals 3 damage to any other target."
+            ),
+            "Magma Burst deals 3 damage to any target. If this spell was kicked, it deals 3 damage to another target."
         );
     }
 }

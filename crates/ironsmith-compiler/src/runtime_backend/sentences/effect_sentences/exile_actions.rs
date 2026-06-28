@@ -820,24 +820,38 @@ fn parse_exile_dynamic_count_from_top_library_clause(
 ) -> Option<EffectAst> {
     let tokens = trim_commas(tokens);
     let words = crate::runtime_backend::token_word_refs(&tokens);
-    if !words
-        .first()
-        .is_some_and(|word| EXILE_CARD_OR_CARDS_WORDS.contains(word))
+    let starts_with_that_many_cards = words.len() >= 3
+        && words[0] == "that"
+        && words[1] == "many"
+        && EXILE_CARD_OR_CARDS_WORDS.contains(&words[2]);
+    if !starts_with_that_many_cards
+        && !words
+            .first()
+            .is_some_and(|word| EXILE_CARD_OR_CARDS_WORDS.contains(word))
     {
         return None;
     }
 
-    let from_word_idx = find_index(&words, |word| **word == *"from")?;
-    if from_word_idx <= 1 {
-        return None;
-    }
-    let count_start = token_index_for_word_index(&tokens, 1)?;
-    let from_token_idx = token_index_for_word_index(&tokens, from_word_idx)?;
-    let count_tokens = trim_commas(&tokens[count_start..from_token_idx]);
-    let count =
-        crate::runtime_backend::front_end::grammar::values::parse_add_mana_equal_amount_value_lexed(
+    let (count, from_word_idx) = if words.len() >= 4
+        && words[0] == "that"
+        && words[1] == "many"
+        && EXILE_CARD_OR_CARDS_WORDS.contains(&words[2])
+        && words[3] == "from"
+    {
+        (Value::EventValue(EventValueSpec::Amount), 3)
+    } else {
+        let from_word_idx = find_index(&words, |word| **word == *"from")?;
+        if from_word_idx <= 1 {
+            return None;
+        }
+        let count_start = token_index_for_word_index(&tokens, 1)?;
+        let from_token_idx = token_index_for_word_index(&tokens, from_word_idx)?;
+        let count_tokens = trim_commas(&tokens[count_start..from_token_idx]);
+        let count = crate::runtime_backend::front_end::grammar::values::parse_add_mana_equal_amount_value_lexed(
             &count_tokens,
         )?;
+        (count, from_word_idx)
+    };
 
     let after_from = &words[from_word_idx + 1..];
     let owner_word_idx = if after_from.len() >= 3

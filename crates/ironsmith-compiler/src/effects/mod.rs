@@ -82,7 +82,8 @@ pub use ironsmith_core::{
     TagTriggeringSourceEffect, TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource,
     TakeInitiativeEffect, TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect,
     UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect,
-    VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect, WinTheGameEffect,
+    VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect,
+    VillainousChoiceEffect as CoreVillainousChoiceEffect, WinTheGameEffect,
     WithIdEffect as CoreWithIdEffect,
 };
 
@@ -110,6 +111,7 @@ pub type RepeatProcessEffect = ironsmith_core::RepeatProcessEffect<Effect>;
 pub type BidLifeEffect = CoreBidLifeEffect<Effect>;
 pub type VoteChoice = ironsmith_core::VoteChoice<Effect>;
 pub type VoteEffect = ironsmith_core::VoteEffect<Effect>;
+pub type VillainousChoiceEffect = CoreVillainousChoiceEffect<Effect>;
 pub type GrantEffect = CoreGrantEffect<crate::grant::Grantable, crate::grant::GrantDuration>;
 pub type GrantBySpecEffect =
     CoreGrantBySpecEffect<crate::grant::GrantSpec, crate::grant::GrantDuration>;

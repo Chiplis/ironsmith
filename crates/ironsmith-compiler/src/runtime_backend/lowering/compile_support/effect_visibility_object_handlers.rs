@@ -126,6 +126,19 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                         && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                 })
             });
+            if chooses_revealed_pool && resolved_filter.zone.is_none() {
+                resolved_filter.zone = ctx.last_revealed_zone;
+            }
+            if chooses_revealed_pool
+                && resolved_filter.zone == Some(Zone::Hand)
+                && resolved_filter.owner.is_none()
+                && resolved_filter.controller.is_none()
+            {
+                resolved_filter.owner = ctx
+                    .last_revealed_player_filter
+                    .clone()
+                    .or_else(|| ctx.last_player_filter.clone());
+            }
             let cross_zone_choices = hand_or_graveyard_choice_zones(&resolved_filter);
             if let Some(zones) = &cross_zone_choices {
                 strip_choice_zones_from_filter(&mut resolved_filter, zones);
@@ -156,6 +169,15 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     count_value.clone(),
                     tag.clone(),
                     Zone::Exile,
+                )
+            } else if chooses_tagged_pool && let Some(choice_zone) = resolved_filter.zone {
+                compile_choose_objects_with_subject(
+                    subject,
+                    resolved_filter,
+                    *count,
+                    count_value.clone(),
+                    tag.clone(),
+                    choice_zone,
                 )
             } else if chooses_tagged_pool {
                 compile_choose_objects_across_zones_with_subject(

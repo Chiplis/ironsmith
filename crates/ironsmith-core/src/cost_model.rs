@@ -797,6 +797,7 @@ impl OptionalCostKind {
             "tribute" => Self::Tribute,
             "surge" => Self::Surge,
             "spectacle" => Self::Spectacle,
+            "additional" | "additional cost" => Self::Additional,
             _ if lower.starts_with("kicker ") => Self::Kicker,
             _ if lower.starts_with("gift ") => Self::Gift,
             _ if lower.starts_with("conspire") => Self::Conspire,
@@ -849,7 +850,10 @@ impl OptionalCostKind {
                     | (Self::Gift, Self::Gift)
                     | (Self::Conspire, Self::Conspire)
                     | (Self::Behold, Self::Behold)
-                    | (Self::Additional, Self::Additional | Self::Behold)
+                    | (
+                        Self::Additional,
+                        Self::Additional | Self::Behold | Self::Waterbend
+                    )
             )
     }
 }

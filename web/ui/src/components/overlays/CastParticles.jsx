@@ -59,7 +59,7 @@ function CastBurst({ burst }) {
           ref={(node) => {
             particleRefs.current[index] = node;
           }}
-          className="absolute rounded-full"
+          className="absolute rounded-none"
           style={{
             width: particle.size,
             height: particle.size,
@@ -70,7 +70,7 @@ function CastBurst({ burst }) {
       ))}
       <div
         ref={flashRef}
-        className="absolute rounded-full"
+        className="absolute rounded-none"
         style={{
           width: 16,
           height: 16,

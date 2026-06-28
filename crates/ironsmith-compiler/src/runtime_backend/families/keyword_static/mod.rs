@@ -3298,7 +3298,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_play_from_permission_with_enter_counter_this_way_line
         ),
         single_static_ability_ast_rule!(parse_play_from_permission_with_enter_tapped_this_way_line),
-        single_static_ability_ast_rule!(parse_you_may_static_grant_line),
+        multi_static_ability_ast_rule!(parse_you_may_static_grant_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_during_your_turn_prevent_all_damage_to_source_line),
@@ -10760,7 +10760,7 @@ pub(crate) fn parse_surveilled_graveyard_play_life_cost_line(
 
 pub(crate) fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
-) -> Result<Option<StaticAbility>, CardTextError> {
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause = LexedClause::new(tokens);
     if SOURCE_LINKED_EXILE_CAST_PREFIX_PATTERN.matches(clause)
         && ANY_MANA_CAST_SUFFIX_PATTERN.matches(clause)
@@ -10774,10 +10774,22 @@ pub(crate) fn parse_you_may_static_grant_line(
                 tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
                 relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
             });
-        return Ok(Some(StaticAbility::grants(
-            crate::grant::GrantSpec::new(crate::grant::Grantable::play_from(), filter, Zone::Exile)
-                .with_beneficiary(PlayerFilter::Any),
-        )));
+        let grant = StaticAbility::grants(
+            crate::grant::GrantSpec::new(
+                crate::grant::Grantable::play_from(),
+                filter.clone(),
+                Zone::Exile,
+            )
+            .with_beneficiary(PlayerFilter::Any),
+        );
+        let mana_permission = StaticAbility::mana_spend_permission(
+            crate::effect::ManaSpendPermission::any_color_for_casting_matching(
+                PlayerFilter::Any,
+                filter,
+            ),
+            "Mana of any type can be spent to cast it",
+        );
+        return Ok(Some(vec![grant, mana_permission]));
     }
 
     match parse_permission_clause_spec(tokens)? {
@@ -10800,7 +10812,7 @@ pub(crate) fn parse_you_may_static_grant_line(
                 return Ok(None);
             }
             Ok(static_grant_beneficiary(player)
-                .map(|beneficiary| StaticAbility::grants(spec.with_beneficiary(beneficiary))))
+                .map(|beneficiary| vec![StaticAbility::grants(spec.with_beneficiary(beneficiary))]))
         }
         _ => Ok(None),
     }

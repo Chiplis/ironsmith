@@ -105,7 +105,7 @@ export default function StackPanel({
             type="button"
             onClick={onToggleExpanded}
             aria-label={expanded ? "Collapse stack panel" : "Expand stack panel"}
-            className="w-6 h-6 rounded border border-[#32445a] bg-[#111927] text-[#8ec4ff] hover:text-[#c6e4ff] hover:border-[#4f6f90] grid place-items-center transition-colors"
+            className="w-6 h-6 rounded-none border border-[#32445a] bg-[#111927] text-[#8ec4ff] hover:text-[#c6e4ff] hover:border-[#4f6f90] grid place-items-center transition-colors"
           >
             {expanded ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
           </button>

@@ -5,6 +5,7 @@ use crate::runtime_backend::front_end::lex_patterns::{
 use crate::runtime_backend::lexer::TokenKind;
 
 const PUT_STICKER_WORDS: &[&str] = &["put", "puts"];
+const THEN_BECOMES_WORDS: &[&str] = &["then", "it", "becomes"];
 const STICKER_KIND_PHRASES: &[(&[&str], crate::events::KeywordActionKind)] = &[
     (
         &["name", "sticker"],
@@ -677,6 +678,19 @@ pub(crate) fn parse_sentence_put_sticker_on_matched(
         return Ok(None);
     }
 
+    if let Some((sticker_target, aura_target, attachment_filter)) =
+        parse_put_sticker_then_becomes_aura(target_clause)?
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_put_sticker(sticker_target, action),
+            EffectAst::subject_verb_become_aura_enchantment(
+                aura_target,
+                attachment_filter,
+                crate::effect::Until::Forever,
+            ),
+        ]));
+    }
+
     if target_reference_head_matches(target_clause) {
         let target = parse_target_phrase(target_clause.tokens())?;
         return Ok(Some(vec![EffectAst::subject_verb_put_sticker(
@@ -692,6 +706,76 @@ pub(crate) fn parse_sentence_put_sticker_on_matched(
         TargetAst::Object(filter, None, None),
         action,
     )]))
+}
+
+fn parse_put_sticker_then_becomes_aura(
+    target_clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<(TargetAst, TargetAst, ObjectFilter)>, CardTextError> {
+    let words = target_clause.word_refs();
+    let Some(then_idx) = words
+        .windows(THEN_BECOMES_WORDS.len())
+        .position(|window| window == THEN_BECOMES_WORDS)
+    else {
+        return Ok(None);
+    };
+    if then_idx == 0 {
+        return Ok(None);
+    }
+
+    let Some(then_token_idx) = token_index_for_word_index(target_clause.tokens(), then_idx) else {
+        return Ok(None);
+    };
+    let sticker_target_tokens = trim_commas(&target_clause.tokens()[..then_token_idx]);
+    if sticker_target_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(tail_token_idx) =
+        token_index_for_word_index(target_clause.tokens(), then_idx + THEN_BECOMES_WORDS.len())
+    else {
+        return Ok(None);
+    };
+    let tail_tokens = trim_commas(&target_clause.tokens()[tail_token_idx..]);
+    let tail_words = words
+        .get(then_idx + THEN_BECOMES_WORDS.len()..)
+        .unwrap_or_default();
+    let enchant_idx = tail_words
+        .windows(3)
+        .position(|window| {
+            matches!(
+                window,
+                ["an" | "a", "aura", "with"] | ["aura", "with", "enchant"]
+            )
+        })
+        .and_then(|idx| {
+            if tail_words.get(idx) == Some(&"aura") {
+                Some(idx + 2)
+            } else if tail_words.get(idx + 3) == Some(&"enchant") {
+                Some(idx + 3)
+            } else {
+                None
+            }
+        });
+    let Some(enchant_idx) = enchant_idx else {
+        return Ok(None);
+    };
+    let Some(enchant_filter_token_idx) = token_index_for_word_index(&tail_tokens, enchant_idx + 1)
+    else {
+        return Ok(None);
+    };
+    let enchant_filter_tokens = trim_commas(&tail_tokens[enchant_filter_token_idx..]);
+    if enchant_filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some((
+        parse_target_phrase(&sticker_target_tokens)?,
+        TargetAst::Tagged(
+            TagKey::from(IT_TAG),
+            span_from_tokens(&sticker_target_tokens),
+        ),
+        parse_object_filter(&enchant_filter_tokens, false)?,
+    )))
 }
 
 pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(

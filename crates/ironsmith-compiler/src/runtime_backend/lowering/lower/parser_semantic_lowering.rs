@@ -2,7 +2,7 @@ use super::*;
 use crate::ZoneReplacementDurationAst;
 use crate::color::{Color, ColorSet};
 use crate::runtime_backend::GrantedAbilityAst;
-use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
+use crate::runtime_backend::ast::{ChooseOneModeAst, SubjectVerbEffectAst, SubjectVerbSubjectAst};
 use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::grammar::abilities::{
     is_minimum_spell_total_mana_three_line_lexed, is_players_cant_pay_life_or_sacrifice_line_lexed,
@@ -17,7 +17,7 @@ use crate::runtime_backend::lexer::{
     word_slice_starts_with, word_slice_starts_with_any,
 };
 use crate::runtime_backend::util::is_source_reference_words;
-use crate::{KeywordAction, Value};
+use crate::{KeywordAction, ObjectRefAst, Value};
 
 const DRAFT_RULE_LINE_WORDS: &[&str] = &["draft", "this", "card", "face", "up"];
 const THIS_CREATURE_SOURCE_WORDS: &[&str] = &["this", "creature"];
@@ -427,6 +427,9 @@ fn lower_rewrite_statement_to_chunks_impl(
     parse_tokens: &[OwnedLexToken],
     parse_groups: &[Vec<OwnedLexToken>],
 ) -> Result<Vec<LineAst>, CardTextError> {
+    if let Some(chunk) = parse_villainous_choice_statement_chunk(line)? {
+        return Ok(vec![chunk]);
+    }
     if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(parse_tokens) {
         return Ok(vec![chunk]);
     }
@@ -540,6 +543,103 @@ fn lower_rewrite_statement_to_chunks_impl(
         "rewrite statement lowering expected prepared parse tokens for '{}'",
         line.info.raw_line
     )))
+}
+
+fn parse_villainous_choice_statement_chunk(
+    line: &RewriteStatementLine,
+) -> Result<Option<LineAst>, CardTextError> {
+    let normalized = line.text.trim().trim_end_matches('.');
+    let lower = normalized.to_ascii_lowercase();
+    let Some((choose_clause, followup)) = lower.split_once(". for each of them, ") else {
+        return Ok(None);
+    };
+    if !choose_clause.starts_with("choose up to ")
+        || !choose_clause.ends_with(" target creatures you don't control")
+    {
+        return Ok(None);
+    }
+
+    let Some((chooser_surface, mode_text)) = followup.split_once(" faces a villainous choice")
+    else {
+        return Ok(None);
+    };
+    if chooser_surface != "that creature's controller" {
+        return Ok(None);
+    }
+
+    let mode_text = mode_text.trim().trim_start_matches(['—', '-', ':']).trim();
+    if mode_text
+        != "that creature becomes a 1/1 white human creature and loses all abilities, or you create a token that's a copy of it"
+    {
+        return Ok(None);
+    }
+
+    let mut effects =
+        parse_effect_sentences_from_text(&format!("{choose_clause}."), line.info.line_index)?;
+    let iterated = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+    let iterated_ref = ObjectRefAst::Tagged(TagKey::from(IT_TAG));
+    let first_mode_effects = vec![
+        EffectAst::subject_verb_become_base_pt_creature(
+            Value::Fixed(1),
+            Value::Fixed(1),
+            iterated.clone(),
+            vec![crate::types::CardType::Creature],
+            vec![crate::types::Subtype::Human],
+            Vec::new(),
+            Some(ColorSet::WHITE),
+            Vec::new(),
+            Vec::new(),
+            Until::Forever,
+        ),
+        EffectAst::subject_verb_remove_abilities_from_target(iterated, Vec::new(), Until::Forever),
+    ];
+    let second_mode_effects = vec![EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::You,
+        SubjectVerbActionAst::CreateTokenCopy {
+            object: iterated_ref,
+            count: Value::Fixed(1),
+            player: PlayerAst::You,
+            enters_tapped: false,
+            enters_attacking: false,
+            attack_target_player_or_planeswalker_controlled_by: None,
+            half_power_toughness_round_up: false,
+            has_haste: false,
+            exile_at_end_of_combat: false,
+            sacrifice_at_next_end_step: false,
+            exile_at_next_end_step: false,
+            next_end_step_player: PlayerFilter::Any,
+            set_colors: None,
+            set_card_types: None,
+            set_subtypes: None,
+            added_card_types: Vec::new(),
+            added_subtypes: Vec::new(),
+            removed_supertypes: Vec::new(),
+            set_base_power_toughness: None,
+            granted_abilities: Vec::new(),
+        },
+    )];
+    effects.push(EffectAst::ForEachTagged {
+        tag: TagKey::from("targeted_0"),
+        effects: vec![EffectAst::VillainousChoice {
+            player: PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG)),
+            player_surface: Some("that creature's controller".to_string()),
+            modes: vec![
+                ChooseOneModeAst {
+                    description:
+                        "That creature becomes a 1/1 white Human creature and loses all abilities"
+                            .to_string(),
+                    effects: first_mode_effects,
+                },
+                ChooseOneModeAst {
+                    description: "you create a token that's a copy of it".to_string(),
+                    effects: second_mode_effects,
+                },
+            ],
+        }],
+    });
+
+    Ok(Some(LineAst::Statement { effects }))
 }
 
 fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {

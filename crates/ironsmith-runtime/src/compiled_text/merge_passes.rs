@@ -2269,6 +2269,40 @@ pub(super) fn merge_conditioned_spell_and_activation_tax_lines(lines: Vec<String
     merged
 }
 
+pub(super) fn merge_cast_permission_any_mana_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && is_cast_permission_line(&lines[idx])
+            && lines[idx + 1]
+                .trim()
+                .trim_end_matches('.')
+                .eq_ignore_ascii_case("mana of any type can be spent to cast it")
+        {
+            let permission = lines[idx].trim().trim_end_matches('.');
+            merged.push(format!(
+                "{permission}, and mana of any type can be spent to cast it"
+            ));
+            idx += 2;
+            continue;
+        }
+
+        merged.push(lines[idx].clone());
+        idx += 1;
+    }
+
+    merged
+}
+
+fn is_cast_permission_line(line: &str) -> bool {
+    let lower = line.trim().trim_end_matches('.').to_ascii_lowercase();
+    lower.contains(" may cast ")
+        && (lower.contains(" from among ") || lower.contains(" from "))
+        && !lower.contains("mana of any type can be spent")
+}
+
 #[derive(Debug, Clone)]
 struct SameTrueKeywordGrant {
     event: String,

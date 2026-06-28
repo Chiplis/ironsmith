@@ -889,7 +889,7 @@ function PriorityActionStrip({
         setHoveredPillKey(null);
       }}
     >
-      <div className="flex w-max min-w-full min-h-[32px] items-stretch gap-1.5 pr-2">
+      <div className="decision-strip-options-row flex w-max min-w-full min-h-[32px] items-stretch gap-1.5 pr-2">
         {displayGroups.map(({ key, cycle, group }) => {
           const isPrimaryCycle = cycle === PRIORITY_ACTION_PRIMARY_CYCLE;
           const linkedActive = isGroupHoveredLinked(group) || isGroupSelectedLinked(group);
@@ -2885,6 +2885,25 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             <div className="action-strip-decision-stack flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 py-1">
               <div className="action-strip-decision-toolbar flex min-w-0 items-stretch gap-2">
                 <div className="flex min-w-0 flex-1 items-stretch gap-2">
+                  {!triggerOrderingDecision && (
+                    <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center px-1">
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <div className="action-strip-decision-title text-[11px] font-bold uppercase tracking-[0.14em]">
+                          {resolveDecisionTitle(decision)}
+                        </div>
+                        {toolbarDecisionSummary && (
+                          <div className="action-strip-decision-inline-summary truncate text-[11px]">
+                            {toolbarDecisionSummary}
+                          </div>
+                        )}
+                      </div>
+                      {!toolbarDecisionSummary && decision?.source_name && (
+                        <div className="action-strip-decision-source truncate text-[11px]">
+                          {normalizeDecisionText(decision.source_name)}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex min-w-0 max-w-[320px] shrink-0 items-stretch gap-2">
                     <PeerWaitPopover peerWait={peerWait}>
                       <Button
@@ -2925,44 +2944,25 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                         )}
                       </Button>
                     </PeerWaitPopover>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide"
-                        disabled={!canCancelDecision}
-                        onPointerDown={(event) => {
-                          if (!canCancelDecision || event.button !== 0) return;
-                          event.preventDefault();
-                          cancelDecision();
-                        }}
-                        onClick={(event) => {
-                          if (!canCancelDecision || event.detail !== 0) return;
-                          cancelDecision();
-                        }}
-                      >
-                        Cancel
-                      </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide"
+                      disabled={!canCancelDecision}
+                      onPointerDown={(event) => {
+                        if (!canCancelDecision || event.button !== 0) return;
+                        event.preventDefault();
+                        cancelDecision();
+                      }}
+                      onClick={(event) => {
+                        if (!canCancelDecision || event.detail !== 0) return;
+                        cancelDecision();
+                      }}
+                    >
+                      Cancel
+                    </Button>
                   </div>
-                  {!triggerOrderingDecision && (
-                    <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center px-1">
-                      <div className="flex min-w-0 items-baseline gap-2">
-                        <div className="action-strip-decision-title text-[11px] font-bold uppercase tracking-[0.14em]">
-                          {resolveDecisionTitle(decision)}
-                        </div>
-                        {toolbarDecisionSummary && (
-                          <div className="action-strip-decision-inline-summary truncate text-[11px]">
-                            {toolbarDecisionSummary}
-                          </div>
-                        )}
-                      </div>
-                      {!toolbarDecisionSummary && decision?.source_name && (
-                        <div className="action-strip-decision-source truncate text-[11px]">
-                          {normalizeDecisionText(decision.source_name)}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
                 <PriorityControlStack
                   holdEnabled={holdRule === "always"}
@@ -3160,63 +3160,77 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             <>
               <div className="action-strip-decision-stack flex min-w-0 w-full flex-col gap-y-1">
                 <div className="action-strip-decision-toolbar flex min-h-[46px] items-stretch gap-2">
-                  <PeerWaitPopover peerWait={peerWait}>
+                  {!triggerOrderingDecision && (
+                    <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center py-1.5">
+                      <div className="action-strip-decision-title truncate text-[11px] font-bold uppercase tracking-[0.14em]">
+                        {resolveDecisionTitle(decision)}
+                      </div>
+                      {decision?.source_name && (
+                        <div className="action-strip-decision-source mt-0.5 truncate text-[11px]">
+                          {normalizeDecisionText(decision.source_name)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex min-w-0 max-w-[320px] shrink-0 items-stretch gap-2">
+                    <PeerWaitPopover peerWait={peerWait}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="decision-neon-button decision-main-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
+                        style={decisionButtonStyle}
+                        data-local-action={localDecisionButton ? "true" : "false"}
+                        aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
+                        disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
+                        onPointerDown={(event) => {
+                          if (peerWaitLocked) return;
+                          if (showViewedCardsStep) {
+                            if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+                            event.preventDefault();
+                            completeViewedCardsStep();
+                            return;
+                          }
+                          if (!canSubmitFocused || event.button !== 0) return;
+                          event.preventDefault();
+                          effectiveSubmitAction.onSubmit();
+                        }}
+                        onClick={(event) => {
+                          if (peerWaitLocked) return;
+                          if (showViewedCardsStep) {
+                            if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
+                            completeViewedCardsStep();
+                            return;
+                          }
+                          if (!canSubmitFocused || event.detail !== 0) return;
+                          effectiveSubmitAction.onSubmit();
+                        }}
+                      >
+                        {peerWaiting ? (
+                          <PeerWaitButtonContent />
+                        ) : (
+                          showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")
+                        )}
+                      </Button>
+                    </PeerWaitPopover>
                     <Button
+                      type="button"
                       variant="ghost"
                       size="sm"
-                      className="decision-neon-button decision-main-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
-                      style={decisionButtonStyle}
-                      data-local-action={localDecisionButton ? "true" : "false"}
-                      aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
-                      disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
+                      className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide"
+                      disabled={!canCancelDecision}
                       onPointerDown={(event) => {
-                        if (peerWaitLocked) return;
-                        if (showViewedCardsStep) {
-                          if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                          event.preventDefault();
-                          completeViewedCardsStep();
-                          return;
-                        }
-                        if (!canSubmitFocused || event.button !== 0) return;
-                        event.preventDefault();
-                        effectiveSubmitAction.onSubmit();
-                      }}
-                      onClick={(event) => {
-                        if (peerWaitLocked) return;
-                        if (showViewedCardsStep) {
-                          if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                          completeViewedCardsStep();
-                          return;
-                        }
-                        if (!canSubmitFocused || event.detail !== 0) return;
-                        effectiveSubmitAction.onSubmit();
-                      }}
-                    >
-                      {peerWaiting ? (
-                        <PeerWaitButtonContent />
-                      ) : (
-                        showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")
-                      )}
-                    </Button>
-                  </PeerWaitPopover>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide"
-                    disabled={!canCancelDecision}
-                    onPointerDown={(event) => {
-                      if (!canCancelDecision || event.button !== 0) return;
+                        if (!canCancelDecision || event.button !== 0) return;
                         event.preventDefault();
                         cancelDecision();
-                    }}
-                    onClick={(event) => {
-                      if (!canCancelDecision || event.detail !== 0) return;
-                      cancelDecision();
-                    }}
-                  >
-                    Cancel
-                  </Button>
+                      }}
+                      onClick={(event) => {
+                        if (!canCancelDecision || event.detail !== 0) return;
+                        cancelDecision();
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                   <PriorityControlStack
                     holdEnabled={holdRule === "always"}
                     onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
@@ -3225,18 +3239,6 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   />
                 </div>
               </div>
-              {!triggerOrderingDecision && (
-                <div className="action-strip-decision-meta self-stretch flex min-w-0 flex-col justify-center py-1.5">
-                  <div className="action-strip-decision-title truncate text-[11px] font-bold uppercase tracking-[0.14em]">
-                    {resolveDecisionTitle(decision)}
-                  </div>
-                  {decision?.source_name && (
-                    <div className="action-strip-decision-source mt-0.5 truncate text-[11px]">
-                      {normalizeDecisionText(decision.source_name)}
-                    </div>
-                  )}
-                </div>
-              )}
             </>
           )}
         </div>

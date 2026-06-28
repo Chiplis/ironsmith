@@ -391,7 +391,7 @@ export default function Shell() {
         ) : (
           <span className="text-[18px] font-bold uppercase tracking-wider">{phaseLabel}</span>
         )}
-        <div className="w-64 h-2 bg-[#1a2433] border border-game-line rounded-sm overflow-hidden">
+        <div className="w-64 h-2 bg-[#1a2433] border border-game-line rounded-none overflow-hidden">
           <div
             className="h-full bg-primary"
             style={{ width: `${widthPct}%` }}

@@ -25,28 +25,28 @@ export default function TurnPane() {
         Turn Summary
       </h4>
       <div className="border border-[#203247] bg-[#0a1118] p-1.5 flex flex-wrap gap-1.5 text-[12px] text-[#d3e5fb]">
-        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">
+        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
           Turn {state.turn_number}
         </span>
-        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">
+        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
           {formatPhase(state.phase)}
         </span>
-        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">
+        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
           {formatStep(state.step)}
         </span>
-        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">
+        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
           Active: {playerDisplayName(players, activePlayer)}
         </span>
         {decisionOwnerDiffersFromPriority ? (
-          <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">
+          <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
             Decision: {playerDisplayName(players, decisionPlayer)}
           </span>
         ) : priorityPlayer && (
-          <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">
+          <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
             Priority: {playerDisplayName(players, priorityPlayer)}
           </span>
         )}
-        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-sm">
+        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
           Stack: {state.stack_size}
         </span>
       </div>

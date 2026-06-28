@@ -19,7 +19,7 @@ export default function ManaPool({
       <span
         key={key}
         className={cn(
-          "mana-pool-chip inline-flex items-center gap-0.5 bg-background/70 rounded-full px-1 py-px",
+          "mana-pool-chip inline-flex items-center gap-0.5 bg-background/70 rounded-none px-1 py-px",
           safeAmount <= 0 && "mana-pool-chip--empty",
           compact && "mana-pool-chip--compact"
         )}

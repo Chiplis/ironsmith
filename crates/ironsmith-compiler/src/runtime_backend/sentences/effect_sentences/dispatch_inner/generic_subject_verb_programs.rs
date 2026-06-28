@@ -879,6 +879,12 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
             effects,
         )));
     }
+    if let Some(effects) = parse_target_gets_unblockable_subject_verb(tokens)? {
+        return Ok(Some((
+            "subject-verb verb=Get subject=target recognizer=target-pump-unblockable",
+            effects,
+        )));
+    }
     if let Some(effects) = parse_source_gets_filter_gains_subject_verb(tokens)? {
         return Ok(Some((
             "subject-verb verb=Get subject=source recognizer=source-pump-filter-gain",
@@ -1054,6 +1060,63 @@ fn parse_source_gets_unblockable_subject_verb(
         ),
         EffectAst::subject_verb_cant(
             crate::effect::Restriction::be_blocked(ObjectFilter::source()),
+            Until::EndOfTurn,
+            None,
+        ),
+    ]))
+}
+
+fn parse_target_gets_unblockable_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = SOURCE_GETS_UNBLOCKABLE_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(subject_clause) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
+    else {
+        return Ok(None);
+    };
+    let Some(modifier_clause) = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)
+    else {
+        return Ok(None);
+    };
+    let Some(tail_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
+    let subject_tokens = subject_clause.trimmed().tokens();
+    if !starts_with_target_indicator(subject_tokens) {
+        return Ok(None);
+    }
+    let target = parse_target_phrase(subject_tokens)?;
+    let mut blocked_filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported target pump-unblockable subject (clause: '{}')",
+            crate::runtime_backend::lexer::render_token_slice(subject_tokens)
+        ))
+    })?;
+    if !blocked_filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+    {
+        blocked_filter = blocked_filter.match_tagged(
+            TagKey::from(IT_TAG),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+    }
+    let Some((power, toughness)) = parse_pt_modifier_capture(modifier_clause) else {
+        return Ok(None);
+    };
+
+    if !UNTIL_END_OF_TURN_CANT_BE_BLOCKED_TAIL_PATTERN.matches_clause(tail_clause.trimmed()) {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_pump(power, toughness, target, Until::EndOfTurn, None),
+        EffectAst::subject_verb_cant(
+            crate::effect::Restriction::be_blocked(blocked_filter),
             Until::EndOfTurn,
             None,
         ),
@@ -1293,10 +1356,6 @@ fn put_counted_top_cards_owner(
     } else {
         None
     }
-}
-
-fn generic_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    !phrase.is_empty() && words.windows(phrase.len()).any(|window| window == phrase)
 }
 
 pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(

@@ -75,7 +75,7 @@ export default function DragOverlay() {
         }}
       >
         <div
-          className="w-[180px] h-[140px] rounded-lg font-bold text-[15px] text-[#d8e8ff] overflow-hidden relative"
+          className="w-[180px] h-[140px] font-bold text-[15px] text-[#d8e8ff] overflow-hidden relative"
           style={{
             background: "linear-gradient(180deg, rgba(13,20,30,0.92), rgba(7,12,18,0.95))",
             border: `1.5px solid ${colors.border}`,

@@ -82,7 +82,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         // resizes/replaces the Vec (retain + whole-Vec rewrites), which the
         // slice-exposing helper cannot express. New wrapper variants must be
         // added here and kept in sync with the traversal macro.
-        EffectAst::ChooseOneOf { modes } => {
+        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
             for mode in modes {
                 normalize_effects_vec(&mut mode.effects);
             }

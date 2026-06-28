@@ -11592,7 +11592,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             displays.iter().any(|display| {
-                display.contains("has Haste")
+                display.contains("has haste")
                     && display.contains("as long as you control another multicolored permanent")
             }),
             "expected conditional haste ability, got: {displays:?}"
@@ -11661,7 +11661,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             displays.iter().any(|display| {
-                display.contains("has Reach")
+                display.contains("has reach")
                     && display.contains("as long as enchanted permanent is a creature")
             }),
             "expected conditional attached reach grant, got: {displays:?}"
@@ -11866,7 +11866,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             displays.iter().any(|display| {
                 display.contains("as long as this creature is untapped")
-                    && display.contains("has Vigilance")
+                    && display.contains("has vigilance")
             }),
             "expected untapped-gated vigilance grant, got: {displays:?}"
         );
@@ -11892,7 +11892,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             displays.iter().any(|display| {
                 display.contains("as long as you own a card exiled with a brain counter")
-                    && display.contains("has Vigilance")
+                    && display.contains("has vigilance")
             }),
             "expected ownership-gated vigilance grant, got: {displays:?}"
         );

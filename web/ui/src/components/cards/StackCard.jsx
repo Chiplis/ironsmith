@@ -156,7 +156,7 @@ export default function StackCard({
 
       {scryfallUrl && !hasReorderControls && (
         <a
-          className="absolute top-1 right-1 bg-[#0a1118] text-[#9ec3ea] no-underline uppercase text-[12px] tracking-wide px-1 py-px rounded-sm leading-tight z-2 opacity-0 hover:opacity-100 transition-opacity"
+          className="absolute top-1 right-1 bg-[#0a1118] text-[#9ec3ea] no-underline uppercase text-[12px] tracking-wide px-1 py-px rounded-none leading-tight z-2 opacity-0 hover:opacity-100 transition-opacity"
           href={scryfallUrl}
           target="_blank"
           rel="noopener noreferrer"
@@ -209,7 +209,7 @@ export default function StackCard({
           )}
         />
         <div className="flex items-start gap-2">
-          <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-md bg-[#0b121b]">
+          <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-none bg-[#0b121b]">
             {artUrl && (
               <img
                 className="h-full w-full object-cover opacity-100 saturate-[1.06] brightness-[1.08]"
@@ -241,7 +241,7 @@ export default function StackCard({
         </div>
         <div className="mt-auto flex items-center gap-2 pt-2">
           {pt && (
-            <span className="shrink-0 rounded-sm border border-[#f5d08b]/35 bg-[rgba(245,208,139,0.08)] px-1.5 py-0.5 text-[12px] font-bold leading-none tracking-wide text-[#f5d08b]">
+            <span className="shrink-0 rounded-none border border-[#f5d08b]/35 bg-[rgba(245,208,139,0.08)] px-1.5 py-0.5 text-[12px] font-bold leading-none tracking-wide text-[#f5d08b]">
               {pt}
             </span>
           )}

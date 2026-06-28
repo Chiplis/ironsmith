@@ -231,6 +231,12 @@ fn retarget_spell_cast_mana_spent_predicate(
 
     fn retarget(predicate: PredicateAst) -> PredicateAst {
         match predicate {
+            PredicateAst::TargetSpellNoManaSpentToCast => PredicateAst::Not(Box::new(
+                PredicateAst::TriggeringSpellManaSpentToCastAtLeast {
+                    amount: 1,
+                    symbol: None,
+                },
+            )),
             PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
                 PredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol }
             }
@@ -766,10 +772,21 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
                 }
                 return Ok(LineAst::Ability(parsed));
             }
+            let mut reference_imports = parsed.reference_imports.clone();
+            let default_last_object_tag = reference_imports.last_object_tag.clone().or_else(|| {
+                parsed
+                    .trigger_spec
+                    .as_ref()
+                    .and_then(super::super::lowering_support::default_trigger_last_object_tag)
+                    .map(TagKey::from)
+            });
+            if reference_imports.last_object_tag.is_none() {
+                reference_imports.last_object_tag = default_last_object_tag.clone();
+            }
             let compiled_condition = compile_condition_from_predicate_ast_with_env(
                 &predicate,
-                &ReferenceEnv::from_imports(&parsed.reference_imports, false, false, false, None),
-                None,
+                &ReferenceEnv::from_imports(&reference_imports, false, false, false, None),
+                default_last_object_tag.as_ref(),
             );
             if let Ok(condition) = compiled_condition {
                 if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {

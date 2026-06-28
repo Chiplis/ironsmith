@@ -736,7 +736,7 @@ export default function TargetsDecision({
       )}>
         <div className={cn(
           stripLayout && !compactStripLayout
-            ? "flex min-w-max items-center gap-1.5"
+            ? "decision-strip-options-row flex min-w-max items-center gap-1.5"
             : "grid gap-1.5"
         )}>
           {requirements.map((req, reqIdx) => {
@@ -780,7 +780,7 @@ export default function TargetsDecision({
                 key={reqIdx}
                 className={cn(
                   stripLayout && !compactStripLayout
-                    ? "flex min-w-max items-center gap-1.5"
+                    ? "decision-strip-options-row flex min-w-max items-center gap-1.5"
                     : "decision-target-requirement px-1.5 py-1",
                   (!stripLayout || compactStripLayout) && isActive && "is-active"
                 )}

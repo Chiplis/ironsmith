@@ -995,6 +995,19 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i32)
         }
+        Value::StaticAbilitiesAmong { filter, abilities } => {
+            let mut seen = std::collections::HashSet::new();
+            for object in game.objects_in_deterministic_order() {
+                if filter.matches(object, ctx, game) {
+                    for ability_id in abilities {
+                        if game.current_has_static_ability_id(object.id, *ability_id) {
+                            seen.insert(*ability_id);
+                        }
+                    }
+                }
+            }
+            Some(seen.len() as i32)
+        }
         Value::DistinctPowers(filter) => {
             let mut seen = std::collections::HashSet::new();
             for object in game.objects_in_deterministic_order() {

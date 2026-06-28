@@ -785,7 +785,7 @@ function SingleSelectDecision({
           <div
             className={cn(
               stripLayout && !compactStripLayout
-                ? "flex w-max min-w-full flex-nowrap items-center gap-1.5 overflow-visible py-0.5 pr-1"
+                ? "decision-strip-options-row flex w-max min-w-full flex-nowrap items-center gap-1.5 overflow-visible py-0.5 pr-1"
                 : mobileOverlayLayout
                   ? "w-full divide-y divide-[rgba(128,107,78,0.28)] overflow-y-auto"
                   : "w-full divide-y divide-[rgba(128,107,78,0.28)] max-h-[220px] overflow-y-auto",
@@ -1020,7 +1020,7 @@ function MultiSelectDecision({
           <div
             className={cn(
               stripLayout
-                ? "flex w-max min-w-full flex-nowrap items-center gap-1.5 py-0.5 pr-1"
+                ? "decision-strip-options-row flex w-max min-w-full flex-nowrap items-center gap-1.5 py-0.5 pr-1"
                 : "w-full divide-y divide-[rgba(128,107,78,0.28)]",
             )}
           >
@@ -1283,7 +1283,7 @@ function OrderingDecision({
     >
       {stripLayout ? (
         <div className="min-w-0 overflow-x-auto overflow-y-hidden">
-          <div className="flex w-max min-w-full items-center gap-1.5">
+          <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">
                 <Description
@@ -1439,7 +1439,7 @@ function DistributeDecision({
     >
       {stripLayout ? (
         <div className="min-w-0 overflow-x-auto overflow-y-hidden">
-          <div className="flex w-max min-w-full items-center gap-1.5">
+          <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">
                 <Description
@@ -1595,7 +1595,7 @@ function CountersDecision({
     >
       {stripLayout ? (
         <div className="min-w-0 overflow-x-auto overflow-y-hidden">
-          <div className="flex w-max min-w-full items-center gap-1.5">
+          <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">
                 <Description
@@ -1752,7 +1752,7 @@ function RepeatableDecision({
     >
       {stripLayout ? (
         <div className="min-w-0 overflow-x-auto overflow-y-hidden">
-          <div className="flex w-max min-w-full items-center gap-1.5">
+          <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">
                 <Description

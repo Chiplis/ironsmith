@@ -3109,7 +3109,8 @@ pub(crate) fn parse_keyword_mechanic_clause(
         }
         return Ok(Some(EffectAst::subject_verb_put_counters(
             crate::object::CounterType::MinusOneMinusOne,
-            Value::Fixed(amount as i32),
+            Value::Fixed(amount as i32)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::BlightKeywordAction),
             TargetAst::Object(ObjectFilter::creature().you_control(), None, None),
             None,
             false,

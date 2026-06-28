@@ -471,7 +471,7 @@ export default function AttackersDecision({
           <Button
             variant="ghost"
             size="sm"
-            className="decision-neon-button decision-main-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
+            className="decision-neon-button decision-main-button decision-submit-button h-9 w-full rounded-none px-2 text-[16px] font-bold uppercase"
             style={decisionButtonStyle}
             data-local-action={localDecisionButton ? "true" : "false"}
             data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}

@@ -1368,6 +1368,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::BasicLandTypesAmong(_)
         | Value::CreatureTypesAmong(_)
         | Value::CardTypesAmong(_)
+        | Value::StaticAbilitiesAmong { .. }
         | Value::ColorsAmong(_)
         | Value::DistinctNames(_)
         | Value::DistinctPowers(_)

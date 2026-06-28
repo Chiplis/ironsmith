@@ -11,7 +11,8 @@ use self::subject_verb_followups::{
 };
 use super::super::activation_and_restrictions::{
     parse_choose_card_type_phrase_words, parse_mana_usage_restriction_sentence_lexed,
-    parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
+    parse_single_word_keyword_action, parse_target_player_choose_objects_clause,
+    parse_you_choose_objects_clause,
 };
 use super::super::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
@@ -40,7 +41,7 @@ use super::super::token_primitives::{
     word_view_has_any_prefix, word_view_has_prefix,
 };
 use super::super::util::{
-    helper_tag_for_tokens, is_article, mana_pips_from_token, parse_counter_type_words,
+    helper_tag_for_tokens, is_article, mana_pips_from_token, parse_color, parse_counter_type_words,
     parse_number, parse_number_word_refs, parse_subject, parse_target_phrase, span_from_tokens,
     token_index_for_word_index, trim_commas, words,
 };
@@ -56,8 +57,8 @@ use super::sequence_rules::{subject_verb_sequence_route, try_parse_subject_verb_
 use super::zone_handlers::parse_exile_top_library_clause;
 use super::{
     SubjectVerbPrimitiveClause, find_verb, parse_effect_sentence_lexed, parse_restriction_duration,
-    parse_search_library_disjunction_filter, parse_token_copy_modifier_sentence,
-    trim_edge_punctuation, try_build_unless,
+    parse_search_library_disjunction_filter, parse_subtype_word,
+    parse_token_copy_modifier_sentence, trim_edge_punctuation, try_build_unless,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -68,6 +69,7 @@ use crate::cards::builders::{
     SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, TokenCopyFollowup, Verb,
     ZoneReplacementDurationAst,
 };
+use crate::color::ColorSet;
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::filter::Comparison;
 use crate::mana::ManaSymbol;
@@ -1337,6 +1339,123 @@ fn parse_effect_sentences_from_sentence_inputs(
             .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
     }
 
+    fn parse_leading_flip_result_sentence(
+        tokens: &[OwnedLexToken],
+    ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+        let word_view = TokenWordView::new(tokens);
+        let words = word_view.word_refs();
+        let (predicate, consumed_words) = if words
+            .get(..5)
+            .is_some_and(|prefix| prefix == ["if", "you", "win", "the", "flip"])
+        {
+            (IfResultPredicate::Did, 5)
+        } else if words
+            .get(..5)
+            .is_some_and(|prefix| prefix == ["if", "you", "lose", "the", "flip"])
+        {
+            (IfResultPredicate::DidNot, 5)
+        } else {
+            return Ok(None);
+        };
+
+        let Some(rest_token_idx) = token_index_for_word_index(tokens, consumed_words) else {
+            return Ok(None);
+        };
+        let rest_tokens = trim_commas(&tokens[rest_token_idx..]);
+        if rest_tokens.is_empty() {
+            return Ok(None);
+        }
+        let effects = parse_effect_sentences_lexed(&rest_tokens)?;
+        Ok(Some(vec![EffectAst::IfResult { predicate, effects }]))
+    }
+
+    fn parse_tagged_characteristics_and_keyword_sentence(
+        tokens: &[OwnedLexToken],
+    ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+        let word_view = TokenWordView::new(tokens);
+        let words = word_view.word_refs();
+        let consumed_prefix_words = if words
+            .first()
+            .is_some_and(|word| matches!(*word, "they're" | "they’re" | "theyre"))
+        {
+            1
+        } else if words
+            .get(..2)
+            .is_some_and(|prefix| prefix == ["they", "are"])
+        {
+            2
+        } else {
+            return Ok(None);
+        };
+        let words = &words[consumed_prefix_words..];
+        let Some(gain_idx) = words
+            .windows(3)
+            .position(|window| window == ["and", "they", "gain"])
+        else {
+            return Ok(None);
+        };
+        let descriptor_words = &words[..gain_idx];
+        let ability_words = &words[gain_idx + 3..];
+        let [ability_word] = ability_words else {
+            return Ok(None);
+        };
+        let Some(keyword) = parse_single_word_keyword_action(ability_word) else {
+            return Ok(None);
+        };
+
+        let descriptor_end = descriptor_words
+            .windows(3)
+            .position(|window| window == ["in", "addition", "to"])
+            .unwrap_or(descriptor_words.len());
+        let descriptor_words = &descriptor_words[..descriptor_end];
+        if descriptor_words.is_empty() {
+            return Ok(None);
+        }
+
+        let mut colors = ColorSet::new();
+        let mut subtypes = Vec::new();
+        for word in descriptor_words {
+            if matches!(*word, "and" | "or") {
+                continue;
+            }
+            if let Some(color) = parse_color(word) {
+                colors = colors.union(color);
+                continue;
+            }
+            let subtype = parse_subtype_word(word)
+                .or_else(|| word.strip_suffix('s').and_then(parse_subtype_word));
+            let Some(subtype) = subtype else {
+                return Ok(None);
+            };
+            if !subtypes.contains(&subtype) {
+                subtypes.push(subtype);
+            }
+        }
+
+        let target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+        let mut effects = Vec::new();
+        if !colors.is_empty() {
+            effects.push(EffectAst::subject_verb_add_colors(
+                target.clone(),
+                colors,
+                Until::Forever,
+            ));
+        }
+        if !subtypes.is_empty() {
+            effects.push(EffectAst::subject_verb_add_subtypes(
+                target.clone(),
+                subtypes,
+                Until::Forever,
+            ));
+        }
+        effects.push(EffectAst::subject_verb_grant_abilities_to_target(
+            target,
+            vec![GrantedAbilityAst::from(keyword)],
+            Until::Forever,
+        ));
+        Ok(Some(effects))
+    }
+
     if let Some(effects) = try_parse_divvy_sentence_sequence(&sentences)? {
         return Ok(effects);
     }
@@ -1480,6 +1599,22 @@ fn parse_effect_sentences_from_sentence_inputs(
             TIME_TRAVEL_WORDS,
         ) {
             effects.push(time_travel_effect_ast());
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
+        if let Some(flip_result_effects) = parse_leading_flip_result_sentence(&sentence_tokens)? {
+            effects.extend(flip_result_effects);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
+        if let Some(characteristic_effects) =
+            parse_tagged_characteristics_and_keyword_sentence(&sentence_tokens)?
+        {
+            effects.extend(characteristic_effects);
             carried_context = None;
             sentence_idx += 1;
             continue;
@@ -3485,6 +3620,38 @@ pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(
     let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
         .map(|(before, _after)| grammar::contains_phrase(before, &["this", "way"]))
         .unwrap_or(false);
+    let action_result_followup = grammar::strip_lexed_prefix_phrase(tokens, &["when", "you"])
+        .or_else(|| grammar::strip_lexed_prefix_phrase(tokens, &["whenever", "you"]))
+        .is_some_and(|rest| {
+            rest.first()
+                .and_then(OwnedLexToken::as_word)
+                .is_some_and(|word| matches!(word, "discard" | "exile" | "mill" | "sacrifice"))
+                && grammar::strip_lexed_prefix_phrase(&rest[1..], &["one", "or", "more"]).is_some()
+        });
+    if action_result_followup && this_way_in_prefix {
+        let Some((_before, after)) =
+            grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+        else {
+            return tokens.to_vec();
+        };
+        let mut rewritten = Vec::new();
+
+        let mut when_token = tokens[0].clone();
+        when_token.replace_word("when");
+        rewritten.push(when_token);
+
+        let mut you_token = tokens.get(1).cloned().unwrap_or_else(|| tokens[0].clone());
+        you_token.replace_word("you");
+        rewritten.push(you_token);
+
+        let mut do_token = tokens.get(2).cloned().unwrap_or_else(|| tokens[0].clone());
+        do_token.replace_word("do");
+        rewritten.push(do_token);
+
+        rewritten.push(OwnedLexToken::comma(tokens[0].span()));
+        rewritten.extend_from_slice(after);
+        return rewritten;
+    }
     if (grammar::strip_lexed_prefix_phrase(tokens, &["when", "one", "or", "more"]).is_some()
         || grammar::strip_lexed_prefix_phrase(tokens, &["whenever", "one", "or", "more"]).is_some())
         && this_way_in_prefix

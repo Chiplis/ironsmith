@@ -1,6 +1,6 @@
 use crate::effects::{
     ChooseModeEffect, ConditionalEffect, DealDamageEffect, HauntExileEffect, IfEffect,
-    PutCountersEffect, SearchLibrarySlotsEffect, WithIdEffect,
+    PutCountersEffect, SearchLibrarySlotsEffect, VillainousChoiceEffect, WithIdEffect,
 };
 pub use ironsmith_core::{
     ChoiceCount, Comparison, Condition, DelayedTriggerSpec, EffectId, EffectMode as CoreEffectMode,
@@ -514,6 +514,9 @@ impl Effect {
         if let Some(payload) = self.as_put_counters() {
             return Some(&payload.target);
         }
+        if let Some(payload) = self.as_apply_continuous() {
+            return payload.target_spec.as_ref();
+        }
         if let Some(payload) = self.downcast_ref::<crate::effects::DestroyEffect>() {
             return Some(&payload.target);
         }
@@ -583,6 +586,12 @@ impl Effect {
         if let Some(payload) = self.downcast_ref::<crate::effects::TransformEffect>() {
             return Some(&payload.target);
         }
+        if let Some(payload) = self.downcast_ref::<crate::effects::PhaseOutEffect>() {
+            return Some(&payload.target);
+        }
+        if let Some(payload) = self.downcast_ref::<crate::effects::PhaseInEffect>() {
+            return Some(&payload.target);
+        }
         if let Some(payload) = self.downcast_ref::<crate::effects::IncubateEffect>() {
             return payload.controller_target.as_ref();
         }
@@ -611,6 +620,18 @@ impl Effect {
             Value::Fixed(1),
             false,
         ))
+    }
+
+    pub fn villainous_choice(
+        player: crate::target::PlayerFilter,
+        player_surface: Option<String>,
+        modes: Vec<EffectMode>,
+    ) -> Self {
+        let mut effect = VillainousChoiceEffect::new(player, modes);
+        if let Some(surface) = player_surface {
+            effect = effect.with_player_surface(surface);
+        }
+        Self::new(effect)
     }
 
     pub fn choose_up_to(max: Value, modes: Vec<EffectMode>) -> Self {

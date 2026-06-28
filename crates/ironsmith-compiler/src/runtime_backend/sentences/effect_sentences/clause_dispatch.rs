@@ -1467,7 +1467,8 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     if starts_with_target_indicator(tokens)
-        && find_negation_span(tokens).is_some()
+        && find_negation_span(tokens)
+            .is_some_and(|(neg_start, _)| find_verb(&tokens[..neg_start]).is_none())
         && let (duration, clause_tokens) =
             parse_restriction_duration(tokens)?.unwrap_or((Until::Forever, tokens.to_vec()))
         && let Some(restrictions) = parse_cant_restrictions(&clause_tokens)?
@@ -2081,6 +2082,12 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                 rest_words.iter().any(|word| *word == COLORLESS_WORD),
             ));
         }
+    }
+    if matches!(verb, Verb::Gain)
+        && let Some(effects) =
+            super::fanout_family::parse_shared_color_target_fanout_sentence(tokens)?
+    {
+        return Ok(EffectAst::Sequence { effects });
     }
     if matches!(verb, Verb::Gain)
         && let Some(effect) = parse_simple_gain_ability_clause(tokens)?

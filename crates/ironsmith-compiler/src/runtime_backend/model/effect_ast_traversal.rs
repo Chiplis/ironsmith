@@ -138,6 +138,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ChooseTaggedObjectsInZone { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
         EffectAst::ChooseOneOf { .. } => {}
+        EffectAst::VillainousChoice { .. } => {}
         EffectAst::IfEffectDidNotHappen { .. } => {}
         EffectAst::TagAffected { .. } => {}
         EffectAst::DirectionalAdjacentPlayerControl { .. } => {}
@@ -193,7 +194,7 @@ pub(crate) fn for_each_nested_effects(
             visit(if_true);
             visit(if_false);
         }
-        EffectAst::ChooseOneOf { modes } => {
+        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
             for mode in modes {
                 visit(&mode.effects);
             }
@@ -238,7 +239,7 @@ pub(crate) fn for_each_nested_effects_mut(
             visit(if_true);
             visit(if_false);
         }
-        EffectAst::ChooseOneOf { modes } => {
+        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
             for mode in modes {
                 visit(&mut mode.effects);
             }
@@ -283,7 +284,7 @@ pub(crate) fn try_for_each_nested_effects_mut<E>(
             visit(if_true)?;
             visit(if_false)?;
         }
-        EffectAst::ChooseOneOf { modes } => {
+        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
             for mode in modes {
                 visit(&mut mode.effects)?;
             }

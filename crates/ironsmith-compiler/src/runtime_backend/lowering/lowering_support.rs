@@ -299,6 +299,40 @@ fn replace_it_count_with_event_count(effect: &mut EffectAst) {
     for_each_nested_effects_mut(effect, false, replace_in_effects);
 }
 
+fn death_trigger_counts_counters_on_triggering_object(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => {
+            death_trigger_counts_counters_on_triggering_object(trigger)
+        }
+        TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
+            filter.with_counter.is_some()
+        }
+        TriggerSpec::DiesDuringTurn { filter, .. } => filter.with_counter.is_some(),
+        _ => false,
+    }
+}
+
+fn replace_exile_top_event_count_with_triggering_counter_count(effect: &mut EffectAst) {
+    fn replace_in_effects(effects: &mut [EffectAst]) {
+        for effect in effects {
+            replace_exile_top_event_count_with_triggering_counter_count(effect);
+        }
+    }
+
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::ExileTopOfLibrary { count, .. } = &mut subject_verb.action
+        && matches!(
+            count.unhinted(),
+            Value::EventValue(EventValueSpec::Amount)
+                | Value::EventValue(EventValueSpec::LifeAmount)
+        )
+    {
+        *count = Value::CountersOn(Box::new(ChooseSpec::Tagged("triggering".into())), None);
+    }
+
+    for_each_nested_effects_mut(effect, false, replace_in_effects);
+}
+
 fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool {
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return phase_step_trigger_has_no_object_reference(trigger);
@@ -314,7 +348,7 @@ fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool {
     )
 }
 
-fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&'static str> {
+pub(crate) fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&'static str> {
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return default_trigger_last_object_tag(trigger);
     }
@@ -393,6 +427,12 @@ fn retarget_spell_cast_mana_spent_predicate(
     }
 
     match predicate {
+        PredicateAst::TargetSpellNoManaSpentToCast => PredicateAst::Not(Box::new(
+            PredicateAst::TriggeringSpellManaSpentToCastAtLeast {
+                amount: 1,
+                symbol: None,
+            },
+        )),
         PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
             PredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol }
         }
@@ -423,6 +463,9 @@ fn retarget_spell_cast_mana_spent_condition(
     }
 
     match condition {
+        Condition::TargetSpellManaSpentToCastAtLeast { amount, symbol } => {
+            Condition::TriggeringSpellManaSpentToCastAtLeast { amount, symbol }
+        }
         Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
             Condition::TriggeringSpellManaSpentToCastAtLeast { amount, symbol }
         }
@@ -767,6 +810,21 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         }
     }
 
+    fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
+        match predicate {
+            PredicateAst::ItIsLandCard
+            | PredicateAst::ItIsSoulbondPaired
+            | PredicateAst::ItMatches(_)
+            | PredicateAst::TargetMatches(_) => true,
+            PredicateAst::Not(inner) => predicate_uses_implicit_object_reference(inner),
+            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+                predicate_uses_implicit_object_reference(left)
+                    || predicate_uses_implicit_object_reference(right)
+            }
+            _ => false,
+        }
+    }
+
     let mut imports = imports.into();
     let mut trigger = trigger;
     ensure_concrete_trigger_spec(&trigger)?;
@@ -821,6 +879,11 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
             replace_it_count_with_event_count(effect);
         }
     }
+    if death_trigger_counts_counters_on_triggering_object(&trigger) {
+        for effect in &mut body_effects {
+            replace_exile_top_event_count_with_triggering_counter_count(effect);
+        }
+    }
     imports.source_object_antecedent |= intervening_if
         .as_ref()
         .is_some_and(PredicateAst::establishes_source_object_antecedent);
@@ -869,8 +932,13 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         }
     }
 
+    let intervening_if_uses_trigger_object = intervening_if
+        .as_ref()
+        .is_some_and(predicate_uses_implicit_object_reference);
     let (default_last_object_tag, default_last_object_prelude) = if !has_local_target_prelude
-        && (effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized))
+        && (effects_reference_it_tag(&normalized)
+            || effects_reference_its_controller(&normalized)
+            || intervening_if_uses_trigger_object)
     {
         let default_tag = if matches!(&trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1))
             || matches!(

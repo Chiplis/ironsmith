@@ -54,6 +54,7 @@ mod target_metadata;
 mod target_only;
 mod unless_action;
 mod unless_pays;
+mod villainous_choice;
 mod vote;
 mod vote_runtime;
 mod with_id;
@@ -100,6 +101,7 @@ pub use tagged::{TagAllEffect, TaggedEffect};
 pub use target_only::TargetOnlyEffect;
 pub use unless_action::UnlessActionEffect;
 pub use unless_pays::UnlessPaysEffect;
+pub use villainous_choice::VillainousChoiceEffect;
 pub use vote::{
     VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult,
 };

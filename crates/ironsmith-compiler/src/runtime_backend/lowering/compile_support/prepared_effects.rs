@@ -99,18 +99,42 @@ fn materialize_trailing_self_replacement(
             .iter()
             .all(|effect| !matches!(effect, EffectAst::SelfReplacement { .. }))
     {
-        let prefix_lowered =
-            compile_statement_effects_with_imports(prefix_effects, &prepared.imports)?;
         let default_lowered = compile_statement_effects_with_imports(if_false, &prepared.imports)?;
         let replacement_lowered =
             compile_statement_effects_with_imports(if_true, &prepared.imports)?;
-        let condition = compile_condition_from_predicate_ast_with_env(
-            predicate,
-            &prepared.initial_env,
-            prepared.imports.last_object_tag.as_ref(),
-        )?;
+        let prefix_lowered =
+            compile_statement_effects_with_imports(prefix_effects, &prepared.imports)?;
         let mut default_effects = prefix_lowered.effects.flattened_default_effects().to_vec();
         default_effects.extend(default_lowered.effects.flattened_default_effects().to_vec());
+        let mut condition_env = if prefix_effects.is_empty() {
+            prepared.initial_env.clone()
+        } else {
+            prepared.annotated.effects[prefix_effects.len() - 1]
+                .out_env
+                .clone()
+        };
+        let implicit_condition_tag = if condition_env.known_last_object_tag().is_none()
+            && predicate_uses_implicit_object_reference(predicate)
+        {
+            last_tagged_default_target(&default_effects).map(|(tag, _)| tag)
+        } else {
+            None
+        };
+        if condition_env.known_last_object_tag().is_none()
+            && implicit_condition_tag.is_none()
+            && predicate_uses_implicit_object_reference(predicate)
+        {
+            condition_env.source_object_antecedent = true;
+        }
+        let condition_imports = ReferenceExports::from_env(&condition_env).to_imports();
+        let condition_tag = implicit_condition_tag
+            .as_ref()
+            .or(condition_imports.last_object_tag.as_ref());
+        let condition = compile_condition_from_predicate_ast_with_env(
+            predicate,
+            &condition_env,
+            condition_tag,
+        )?;
         let replacement_effects = replacement_lowered
             .effects
             .flattened_default_effects()
@@ -150,6 +174,58 @@ fn materialize_trailing_self_replacement(
         }));
     }
     Ok(None)
+}
+
+fn last_tagged_default_target(default_effects: &[Effect]) -> Option<(TagKey, ChooseSpec)> {
+    default_effects
+        .iter()
+        .rev()
+        .find_map(last_tagged_target_in_effect)
+}
+
+fn last_tagged_target_in_effect(effect: &Effect) -> Option<(TagKey, ChooseSpec)> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        if let Some(target) = tagged.effect.target_spec() {
+            return Some((tagged.tag.clone(), target.clone()));
+        }
+        return last_tagged_target_in_effect(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return last_tagged_target_in_effect(&with_id.effect);
+    }
+    if let Some(local_rewrite) = effect.downcast_ref::<crate::effects::LocalRewriteEffect>() {
+        return last_tagged_target_in_effect(&local_rewrite.effect);
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        return sequence
+            .effects
+            .iter()
+            .rev()
+            .find_map(last_tagged_target_in_effect);
+    }
+    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<Effect>>() {
+        return may
+            .effects
+            .iter()
+            .rev()
+            .find_map(last_tagged_target_in_effect);
+    }
+    None
+}
+
+fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
+    match predicate {
+        PredicateAst::ItIsLandCard
+        | PredicateAst::ItIsSoulbondPaired
+        | PredicateAst::ItMatches(_)
+        | PredicateAst::TargetMatches(_) => true,
+        PredicateAst::Not(inner) => predicate_uses_implicit_object_reference(inner),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            predicate_uses_implicit_object_reference(left)
+                || predicate_uses_implicit_object_reference(right)
+        }
+        _ => false,
+    }
 }
 
 pub(crate) fn materialize_prepared_triggered_effects(

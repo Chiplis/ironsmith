@@ -875,6 +875,14 @@ pub(crate) fn parse_reveal(
                         token_index_for_word_index(tokens, equal_idx).unwrap_or(equal_idx);
                     let count_value = if word_slice_starts_with(tail, PARTY_SIZE_EQUAL_TO_PREFIX) {
                         Some(Value::PartySize(PlayerFilter::You))
+                    } else if let Some(value) =
+                        parse_devotion_value_from_add_clause(&tokens[equal_token_idx..])?
+                    {
+                        Some(value)
+                    } else if let Some(value) =
+                        parse_equal_to_number_of_filter_value(&tokens[equal_token_idx..])
+                    {
+                        Some(value)
                     } else {
                         parse_dynamic_cost_modifier_value(&tokens[equal_token_idx..])?
                     };

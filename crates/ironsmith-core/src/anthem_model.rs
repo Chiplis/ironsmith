@@ -1,4 +1,7 @@
-use crate::{CounterType, ManaSymbol, ObjectFilter, PlayerFilter, SourceReferenceSurface, Value};
+use crate::{
+    CounterType, KeywordActionKind, ManaSymbol, ObjectFilter, PlayerFilter, SourceReferenceSurface,
+    Value,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnthemCountExpression {
@@ -12,6 +15,11 @@ pub enum AnthemCountExpression {
     CountersOnSourceWithSurface {
         counter_type: CounterType,
         surface: SourceReferenceSurface,
+    },
+    StickersOnSource {
+        action: KeywordActionKind,
+        surface: Option<SourceReferenceSurface>,
+        max_name_letters: Option<u32>,
     },
     CountersOnAffected(CounterType),
     CountersAmong(ObjectFilter, CounterType),

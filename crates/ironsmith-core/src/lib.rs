@@ -143,8 +143,8 @@ pub use effect::{
     TagTriggeringSourceEffect, TaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect,
     TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect, TurnFaceUpEffect,
     UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect, Until,
-    VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect, VoteChoice, VoteEffect,
-    VoteOption, WinTheGameEffect, WithIdEffect,
+    VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect, VillainousChoiceEffect,
+    VoteChoice, VoteEffect, VoteOption, WinTheGameEffect, WithIdEffect,
 };
 pub use effect_model::{Comparison, EventValueSpec, ValueComparisonOperator};
 pub use event_model::KeywordActionKind;

@@ -668,6 +668,60 @@ pub(crate) fn compile_if_do_with_player_did(
     Ok(Some((effects, choices)))
 }
 
+pub(crate) fn compile_result_followup(
+    first: &EffectAst,
+    second: &EffectAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    let (predicate, followup_effects, reflexive) = match second {
+        EffectAst::IfResult { predicate, effects } => (*predicate, effects, false),
+        EffectAst::WhenResult { predicate, effects } => (*predicate, effects, true),
+        _ => return Ok(None),
+    };
+    if matches!(
+        first,
+        EffectAst::IfResult { .. }
+            | EffectAst::WhenResult { .. }
+            | EffectAst::ResolvedIfResult { .. }
+            | EffectAst::ResolvedWhenResult { .. }
+    ) {
+        return Ok(None);
+    }
+
+    let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
+    let Some(last) = first_effects.pop() else {
+        return Err(CardTextError::ParseError(
+            "missing antecedent effect for result follow-up".to_string(),
+        ));
+    };
+    let id = ctx.next_effect_id();
+    first_effects.push(Effect::with_id(id.0, last));
+
+    let (inner_effects, inner_choices) = with_preserved_lowering_context(
+        ctx,
+        |ctx| {
+            ctx.last_effect_id = Some(id);
+        },
+        |ctx| compile_effects(followup_effects, ctx),
+    )?;
+    let predicate = effect_predicate_from_if_result(predicate);
+    if reflexive {
+        first_effects.push(Effect::reflexive_trigger(
+            id,
+            predicate,
+            inner_effects,
+            inner_choices,
+        ));
+    } else {
+        first_effects.push(Effect::if_then(id, predicate, inner_effects));
+        for choice in inner_choices {
+            push_choice(&mut choices, choice);
+        }
+    }
+
+    Ok(Some((first_effects, choices)))
+}
+
 #[derive(Debug, Clone)]
 struct EffectLoweringContextState {
     frame: LoweringFrame,
@@ -719,7 +773,7 @@ pub(crate) fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> E
     match predicate {
         IfResultPredicate::Did => EffectPredicate::Happened,
         IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
-        IfResultPredicate::SearchedLibrary => EffectPredicate::Happened,
+        IfResultPredicate::SearchedLibrary => EffectPredicate::SearchedLibrary,
         IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
         IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
         IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,

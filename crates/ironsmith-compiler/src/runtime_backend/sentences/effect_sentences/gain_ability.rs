@@ -2880,7 +2880,7 @@ mod tests {
         let debug = format!("{def:#?}");
         assert!(
             string_contains(&debug, "ThisSpellPaidLabel")
-                && string_contains(&debug, "\"Gift\"")
+                && string_contains(&debug, "kind: Gift")
                 && string_contains(&debug, "EmitGiftGiven")
                 && string_contains(&debug, "Hexproof")
                 && string_contains(&debug, "Indestructible"),

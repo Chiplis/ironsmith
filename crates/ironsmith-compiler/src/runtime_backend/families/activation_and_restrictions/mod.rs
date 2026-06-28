@@ -122,8 +122,7 @@ use keyword_action_costs::*;
 pub(crate) use keyword_action_costs::{
     find_payment_alternative_or, normalize_cant_words, parse_ability_phrase,
     parse_dynamic_soulshift_keyword_action, parse_payment_clause_as_total_cost,
-    parse_single_word_keyword_action,
-    target_ast_to_object_filter,
+    parse_single_word_keyword_action, target_ast_to_object_filter,
 };
 use keyword_activated_lines::*;
 pub(crate) use keyword_activated_lines::{

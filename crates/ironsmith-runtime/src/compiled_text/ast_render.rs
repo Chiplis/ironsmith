@@ -688,7 +688,8 @@ fn describe_single_self_replacement_segment(
     }
     let default_text = describe_effect_list(&segment.default_effects);
     let replacement_text = describe_effect_list(&branch.replacement_effects);
-    let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    let raw_condition_text = super::normalize_common::describe_condition(&branch.condition);
+    let condition_text = normalize_target_quality_condition(&default_text, &raw_condition_text);
     if let Some(looked_cards_text) = describe_looked_cards_non_hand_self_replacement(
         &segment.default_effects,
         &branch.replacement_effects,
@@ -726,6 +727,11 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(draw_discard_text);
     }
+    if let Some(phase_out_text) =
+        describe_phase_out_exile_self_replacement(&default_text, &replacement_text, &condition_text)
+    {
+        return Some(phase_out_text);
+    }
     if let Some(damage_text) =
         describe_rendered_damage_self_replacement(&default_text, &replacement_text, &condition_text)
     {
@@ -738,6 +744,14 @@ fn describe_single_self_replacement_segment(
         &condition_text,
     ) {
         return Some(counter_unless_text);
+    }
+    if let Some(counter_bonus_text) = describe_counter_bonus_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &default_text,
+        &condition_text,
+    ) {
+        return Some(counter_bonus_text);
     }
     if let Some(token_life_text) = describe_token_life_self_replacement(
         &segment.default_effects,
@@ -754,10 +768,95 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(void_text);
     }
+    let mut replacement =
+        rewrite_self_replacement_referent_phrase(&default_text, &replacement_text);
+    if condition_text.starts_with("that creature is ")
+        && replacement.starts_with("that creature gets ")
+    {
+        replacement = replacement.replacen("that creature", "it", 1);
+    }
+    if condition_text.starts_with("that creature has ") {
+        if replacement.starts_with("that creature gets ") {
+            replacement = replacement.replacen("that creature", "it", 1);
+        } else if replacement.starts_with("that creature you control gets ") {
+            replacement = replacement.replacen("that creature you control", "it", 1);
+        }
+    }
     Some(format!(
-        "{default_text}. If {condition_text}, {} instead",
-        rewrite_self_replacement_referent_phrase(&default_text, &replacement_text)
+        "{default_text}. If {condition_text}, {replacement} instead"
     ))
+}
+
+fn describe_phase_out_exile_self_replacement(
+    default_text: &str,
+    replacement_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let target = default_text.strip_prefix("Phase out ")?;
+    let replacement_target = replacement_text.strip_prefix("Exile ")?;
+    if !target.eq_ignore_ascii_case(replacement_target) {
+        return None;
+    }
+    let condition = condition_text
+        .strip_prefix("it's a ")
+        .and_then(|quality| quality.strip_suffix(" permanent"))
+        .map(|quality| format!("that permanent is {quality}"))
+        .unwrap_or_else(|| condition_text.to_string());
+    Some(format!(
+        "{} phases out. If {condition}, exile it instead",
+        capitalize_first(target)
+    ))
+}
+
+fn normalize_target_quality_condition(default_text: &str, condition_text: &str) -> String {
+    let mut creature_quality = None;
+    if let Some(quality) = condition_text.strip_prefix("it's a ") {
+        creature_quality = Some(quality);
+    }
+    let Some(quality) = condition_text
+        .strip_prefix("it's a ")
+        .and_then(|rest| rest.strip_suffix(" permanent"))
+    else {
+        let default_lower = default_text.to_ascii_lowercase();
+        if default_lower.contains("target") && default_lower.contains("creature") {
+            if let Some(quality) = creature_quality {
+                if let Some(rest) = quality.strip_prefix("creature with ") {
+                    return format!("that creature has {rest}");
+                }
+                if let Some(rest) = quality.strip_prefix("permanent with ") {
+                    return format!("that creature has {rest}");
+                }
+                if default_lower.starts_with("target creature gets")
+                    || default_lower.starts_with("target creature you control gets")
+                {
+                    return condition_text.to_string();
+                }
+                return format!("that creature is a {quality}");
+            }
+        }
+        return condition_text.to_string();
+    };
+    if !quality.split(" or ").all(is_color_quality_word) {
+        return condition_text.to_string();
+    }
+    let default_lower = default_text.to_ascii_lowercase();
+    let subject = if default_lower.contains("target creature or planeswalker")
+        || default_lower.contains("target permanent")
+    {
+        "that permanent"
+    } else if default_lower.contains("target creature") {
+        "that creature"
+    } else {
+        return condition_text.to_string();
+    };
+    format!("{subject} is {quality}")
+}
+
+fn is_color_quality_word(word: &str) -> bool {
+    matches!(
+        word.trim(),
+        "white" | "blue" | "black" | "red" | "green" | "colorless" | "multicolored"
+    )
 }
 
 fn describe_void_self_replacement(
@@ -1071,8 +1170,77 @@ fn describe_counter_unless_self_replacement(
     ))
 }
 
+fn normalize_counter_bonus_condition(condition_text: &str) -> String {
+    for prefix in [
+        "it's a permanent that targets ",
+        "it's a spell that targets ",
+        "it targets ",
+    ] {
+        if let Some(rest) = condition_text.strip_prefix(prefix) {
+            return format!(
+                "that spell targets {}",
+                rest.replace("commander permanent", "commander")
+            );
+        }
+    }
+    condition_text.to_string()
+}
+
+fn describe_counter_bonus_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    default_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let [default_effect] = default_effects else {
+        return None;
+    };
+    let default_counter_target = counter_effect_target(default_effect)?;
+    let replacement_counter_target = counter_effect_target(replacement_effects.first()?)?;
+    if replacement_counter_target != default_counter_target {
+        return None;
+    }
+
+    let referent = counter_replacement_referent(default_counter_target)?;
+    let condition = normalize_counter_bonus_condition(condition_text);
+    let mut replacement_text = format!("instead counter {referent}");
+    if replacement_effects.len() > 1 {
+        let followup_text = describe_effect_list(&replacement_effects[1..]);
+        replacement_text.push_str(", ");
+        replacement_text.push_str(&super::normalize_common::lowercase_first(&followup_text));
+    }
+
+    Some(format!(
+        "{default_text}. If {condition}, {replacement_text}"
+    ))
+}
+
 fn rewrite_self_replacement_referent_phrase(default_text: &str, replacement_text: &str) -> String {
     let mut replacement = super::normalize_common::lowercase_first(replacement_text);
+    if default_text
+        .to_ascii_lowercase()
+        .contains("target creature")
+    {
+        for prefix in ["put ", "you may put "] {
+            let needle = format!("{prefix}target creature on");
+            if replacement.starts_with(&needle) {
+                replacement = replacement.replacen("target creature", "it", 1);
+                break;
+            }
+        }
+    }
+    if default_text
+        .to_ascii_lowercase()
+        .contains("target permanent")
+    {
+        for prefix in ["put ", "you may put "] {
+            let needle = format!("{prefix}target permanent on");
+            if replacement.starts_with(&needle) {
+                replacement = replacement.replacen("target permanent", "it", 1);
+                break;
+            }
+        }
+    }
     if default_text
         .to_ascii_lowercase()
         .contains("target creature")
@@ -1308,8 +1476,15 @@ fn describe_rendered_damage_self_replacement(
     if base_target != replacement_target {
         return None;
     }
+    let base_target_lower = base_target.to_ascii_lowercase();
+    let replacement_recipient =
+        if base_target_lower.contains("target") && base_target_lower.contains("creature") {
+            " to it"
+        } else {
+            ""
+        };
     Some(format!(
-        "Deal {base_amount} damage to {base_target}. It deals {replacement_amount} damage instead if {condition_text}"
+        "Deal {base_amount} damage to {base_target}. If {condition_text}, deal {replacement_amount} damage{replacement_recipient} instead"
     ))
 }
 

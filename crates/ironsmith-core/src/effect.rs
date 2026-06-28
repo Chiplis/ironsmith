@@ -81,6 +81,7 @@ pub enum EffectPredicate {
     Failed,
     Happened,
     DidNotHappen,
+    SearchedLibrary,
     HappenedNotReplaced,
     ExcessDamageDealt,
     Value(crate::effect_model::Comparison),
@@ -948,6 +949,28 @@ impl<E> ChooseModeEffect<E> {
     pub fn with_previously_unchosen_modes_only_this_turn(mut self) -> Self {
         self.disallow_previously_chosen_modes = true;
         self.disallow_previously_chosen_modes_this_turn = true;
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VillainousChoiceEffect<E> {
+    pub player: PlayerFilter,
+    pub player_surface: Option<String>,
+    pub modes: Vec<EffectMode<E>>,
+}
+
+impl<E> VillainousChoiceEffect<E> {
+    pub fn new(player: PlayerFilter, modes: Vec<EffectMode<E>>) -> Self {
+        Self {
+            player,
+            player_surface: None,
+            modes,
+        }
+    }
+
+    pub fn with_player_surface(mut self, surface: impl Into<String>) -> Self {
+        self.player_surface = Some(surface.into());
         self
     }
 }

@@ -2,6 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use crate::effect::EffectId;
 use crate::filter::PlayerFilter;
+use crate::zone::Zone;
 
 use super::reference_model::ReferenceEnv;
 
@@ -50,6 +51,8 @@ pub(crate) struct LoweringFrame {
     /// even after a later `ChooseObjects` clobbers `last_object_tag`.
     pub(crate) snapshot_tag_aliases: Vec<(String, String)>,
     pub(crate) last_revealed_tag: Option<String>,
+    pub(crate) last_revealed_zone: Option<Zone>,
+    pub(crate) last_revealed_player_filter: Option<PlayerFilter>,
     pub(crate) last_exiled_collection_tag: Option<String>,
     /// True when the most recent exile/choose that bound an exiled-collection
     /// tag set aside more than one card (a dynamic or fixed >1 count). Drives
