@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { fetchScryfallCardMeta } from "@/lib/scryfall";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
-import { ManaCostIcons } from "@/lib/mana-symbols";
 
 const semanticScoreCache = new Map();
 
@@ -663,37 +662,6 @@ function renderBattlefieldBadgeGraphic(symbolId, options) {
   return clipPathId ? <g clipPath={`url(#${clipPathId})`}>{shape}</g> : shape;
 }
 
-function handCardFooterStat(card) {
-  if (card?.power_toughness) {
-    return {
-      label: card.power_toughness,
-      className: "text-[#f5d08b]",
-      title: `Power/Toughness ${card.power_toughness}`,
-    };
-  }
-  if (card?.loyalty != null) {
-    return {
-      label: `L${card.loyalty}`,
-      className: "text-[#f2be6b]",
-      title: `Loyalty ${card.loyalty}`,
-    };
-  }
-  if (card?.defense != null) {
-    return {
-      label: `D${card.defense}`,
-      className: "text-[#8fd8ff]",
-      title: `Defense ${card.defense}`,
-    };
-  }
-  return null;
-}
-
-function hasVisibleManaCost(card) {
-  const manaCost = card?.mana_cost;
-  if (manaCost == null) return false;
-  return String(manaCost).trim().length > 0;
-}
-
 function battlefieldPrimaryInfo(card) {
   if (card?.power_toughness) {
     return {
@@ -947,9 +915,6 @@ export default function GameCard({
   const battlefieldMainRightClipId = `${battlefieldSvgIdBase}-main-right-clip`;
   const battlefieldSideLeftClipId = `${battlefieldSvgIdBase}-side-left-clip`;
   const battlefieldSideRightClipId = `${battlefieldSvgIdBase}-side-right-clip`;
-  const handFooterStat = variant === "hand" ? handCardFooterStat(card) : null;
-  const handHasVisibleManaCost = variant === "hand" && hasVisibleManaCost(card);
-  const showHandFooter = variant === "hand";
   const debugSimilarityLabel = semanticScore != null ? formatSemanticScore(semanticScore) : null;
   const showDebugSimilarityBadge = (
     inspectorDebug
@@ -1362,8 +1327,6 @@ export default function GameCard({
         variant === "battlefield" && "field-card",
         useTokenBattlefield && "battlefield-token-card",
         variant === "hand" && "hand-card",
-        variant === "hand" && !handHasVisibleManaCost && "hand-card-no-visible-mana-cost",
-        variant === "hand" && handFooterStat && "hand-card-has-footer-stat",
         compact && "w-[96px] min-w-[96px] min-h-[134px] p-1 text-[14px]",
         !compact && variant === "hand" && "flex-1 basis-0 min-w-0 max-w-[124px] min-h-[100px]",
         !compact && variant !== "hand" && "w-[124px] min-w-[124px] min-h-[172px]",
@@ -1629,19 +1592,14 @@ export default function GameCard({
             ) : null}
           </div>
         ) : variant === "hand" ? (
-          <div className="hand-card-header absolute top-0 left-0 right-0 z-2 px-1.5 py-1">
-            <div className="hand-card-title whitespace-nowrap overflow-hidden text-ellipsis text-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">
-              {displayName}
-            </div>
-            {showDebugSimilarityBadge && (
-              <span
-                className="absolute right-1.5 top-1 rounded-none border border-[#6aa6d5]/50 bg-[rgba(7,13,20,0.88)] px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-[#bfe5ff] shadow-[0_2px_6px_rgba(0,0,0,0.32)]"
-                title={`Similarity score: ${debugSimilarityLabel}`}
-              >
-                {debugSimilarityLabel}
-              </span>
-            )}
-          </div>
+          showDebugSimilarityBadge ? (
+            <span
+              className="absolute right-1.5 top-1 z-2 rounded-none border border-[#6aa6d5]/50 bg-[rgba(7,13,20,0.88)] px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-[#bfe5ff] shadow-[0_2px_6px_rgba(0,0,0,0.32)]"
+              title={`Similarity score: ${debugSimilarityLabel}`}
+            >
+              {debugSimilarityLabel}
+            </span>
+          ) : null
         ) : showBattlefieldHeaderOverlay ? (
           <div className="battlefield-header">
             <span className="battlefield-header-copy">
@@ -1688,29 +1646,6 @@ export default function GameCard({
             <span className="battlefield-pt-badge">
               {card.power_toughness}
             </span>
-          </div>
-        )}
-
-        {/* Mana cost + P/T bar (hand cards) */}
-        {showHandFooter && (
-          <div className="hand-card-bottom-bar absolute bottom-0 left-0 right-0 z-2 flex items-center justify-between px-1 py-0.5 bg-[rgba(6,10,16,0.92)]">
-            {handHasVisibleManaCost ? (
-              <span className="inline-flex items-center gap-px">
-                <ManaCostIcons cost={card.mana_cost} size={14} />
-              </span>
-            ) : <span className="hand-card-empty-cost-slot" aria-hidden="true" />}
-            {handFooterStat && (
-              <span
-                className={cn(
-                  "text-[12px] font-bold leading-none tracking-wide",
-                  !handHasVisibleManaCost && "ml-auto",
-                  handFooterStat.className,
-                )}
-                title={handFooterStat.title}
-              >
-                {handFooterStat.label}
-              </span>
-            )}
           </div>
         )}
 

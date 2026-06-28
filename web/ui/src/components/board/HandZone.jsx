@@ -21,6 +21,8 @@ const HAND_ROULETTE_CENTER_CYCLE = 1;
 const HAND_SELECTED_LAYOUT_Z_INDEX = 20000;
 const HAND_DRAG_START_DISTANCE_SQ = 14 * 14;
 const DRAW_TO_HAND_REVEAL_DELAY_MS = 1080;
+// Keep in sync with the card-flight stagger in GameEffectAnimations.
+const DRAW_TO_HAND_REVEAL_STAGGER_MS = 150;
 const HAND_ACTION_HOVER_EVENT = "ironsmith:hand-action-hover";
 
 /** Map card_types array to a glow kind for hand display. */
@@ -239,6 +241,16 @@ function elevateHandCardWrapperStyle(wrapperStyle, isInspected) {
   };
 }
 
+function addValuesToSet(current, values) {
+  let next = current;
+  for (const value of values) {
+    if (next.has(value)) continue;
+    if (next === current) next = new Set(current);
+    next.add(value);
+  }
+  return next;
+}
+
 export default function HandZone({
   player,
   selectedObjectId,
@@ -262,10 +274,10 @@ export default function HandZone({
   const mobileSelectedPreviewRafRef = useRef(null);
   const drawRevealTimersRef = useRef(new Map());
   const tuckHideTimersRef = useRef(new Map());
-  const seenHandTransitionIdsRef = useRef(new Set());
-  const handTransitionsHydratedRef = useRef(false);
   const [persistHiddenDrawCardIds, setPersistHiddenDrawCardIds] = useState(() => new Set());
   const [departingTuckCardIds, setDepartingTuckCardIds] = useState(() => new Set());
+  const [seenHandTransitionIds, setSeenHandTransitionIds] = useState(() => new Set());
+  const [handTransitionsHydrated, setHandTransitionsHydrated] = useState(false);
   const [menuHoveredHandObjectId, setMenuHoveredHandObjectId] = useState(null);
   const rawHandCards = useMemo(
     () => (player?.can_view_hand && player?.hand_cards) || [],
@@ -320,38 +332,56 @@ export default function HandZone({
     () => rawHandCards.map((card) => String(card.id)).join("|"),
     [rawHandCards]
   );
+  const rawHandCardIdSet = useMemo(
+    () => new Set(rawHandCards.map((card) => String(card.id))),
+    [rawHandCards]
+  );
+  const pendingDrawCardIds = useMemo(() => {
+    if (!player?.can_view_hand || !handTransitionsHydrated) return new Set();
+    const ids = new Set();
+    for (const item of drawTransitionItems) {
+      if (seenHandTransitionIds.has(item.transitionId)) continue;
+      if (!rawHandCardIdSet.has(item.objectId)) continue;
+      ids.add(item.objectId);
+    }
+    return ids;
+  }, [drawTransitionItems, handTransitionsHydrated, player?.can_view_hand, rawHandCardIdSet, seenHandTransitionIds]);
   useLayoutEffect(() => {
     void rawHandCardIdsSignature;
     if (!player?.can_view_hand) return undefined;
 
     const transitionItems = [...drawTransitionItems, ...tuckTransitionItems];
-    if (!handTransitionsHydratedRef.current) {
-      for (const item of transitionItems) {
-        seenHandTransitionIdsRef.current.add(item.transitionId);
-      }
-      handTransitionsHydratedRef.current = true;
+    if (!handTransitionsHydrated) {
+      const transitionIds = transitionItems.map((item) => item.transitionId);
+      queueMicrotask(() => {
+        setSeenHandTransitionIds((current) => addValuesToSet(current, transitionIds));
+        setHandTransitionsHydrated(true);
+      });
       return undefined;
     }
 
     const addedHiddenIds = [];
     const departingHiddenIds = [];
+    const newlySeenTransitionIds = [];
     const visibleHandIds = new Set(rawHandCards.map((card) => String(card.id)));
     for (const item of drawTransitionItems) {
-      if (seenHandTransitionIdsRef.current.has(item.transitionId)) continue;
-      seenHandTransitionIdsRef.current.add(item.transitionId);
+      if (seenHandTransitionIds.has(item.transitionId)) continue;
+      newlySeenTransitionIds.push(item.transitionId);
       if (!visibleHandIds.has(item.objectId) || drawRevealTimersRef.current.has(item.objectId)) continue;
       addedHiddenIds.push(item.objectId);
     }
     for (const item of tuckTransitionItems) {
-      if (seenHandTransitionIdsRef.current.has(item.transitionId)) continue;
-      seenHandTransitionIdsRef.current.add(item.transitionId);
+      if (seenHandTransitionIds.has(item.transitionId)) continue;
+      newlySeenTransitionIds.push(item.transitionId);
       if (!visibleHandIds.has(item.objectId) || tuckHideTimersRef.current.has(item.objectId)) continue;
       departingHiddenIds.push(item.objectId);
     }
-    if (addedHiddenIds.length === 0 && departingHiddenIds.length === 0) return undefined;
+    if (newlySeenTransitionIds.length === 0 && addedHiddenIds.length === 0 && departingHiddenIds.length === 0) {
+      return undefined;
+    }
 
     addedHiddenIds.forEach((id, index) => {
-      const delay = DRAW_TO_HAND_REVEAL_DELAY_MS + (index * 90);
+      const delay = DRAW_TO_HAND_REVEAL_DELAY_MS + (index * DRAW_TO_HAND_REVEAL_STAGGER_MS);
       const timerId = window.setTimeout(() => {
         drawRevealTimersRef.current.delete(id);
         setPersistHiddenDrawCardIds((current) => {
@@ -376,6 +406,7 @@ export default function HandZone({
       tuckHideTimersRef.current.set(id, timerId);
     });
     queueMicrotask(() => {
+      setSeenHandTransitionIds((current) => addValuesToSet(current, newlySeenTransitionIds));
       setPersistHiddenDrawCardIds((current) => {
         let next = current;
         for (const id of addedHiddenIds) {
@@ -397,7 +428,15 @@ export default function HandZone({
     });
 
     return undefined;
-  }, [drawTransitionItems, player?.can_view_hand, rawHandCardIdsSignature, rawHandCards, tuckTransitionItems]);
+  }, [
+    drawTransitionItems,
+    handTransitionsHydrated,
+    player?.can_view_hand,
+    rawHandCardIdsSignature,
+    rawHandCards,
+    seenHandTransitionIds,
+    tuckTransitionItems,
+  ]);
   useEffect(() => {
     const visibleIds = new Set(rawHandCards.map((card) => String(card.id)));
     const staleDrawIds = [];
@@ -443,8 +482,11 @@ export default function HandZone({
     for (const id of persistHiddenDrawCardIds) {
       ids.add(id);
     }
+    for (const id of pendingDrawCardIds) {
+      ids.add(id);
+    }
     return ids;
-  }, [departingTuckCardIds, persistHiddenDrawCardIds]);
+  }, [departingTuckCardIds, pendingDrawCardIds, persistHiddenDrawCardIds]);
   useEffect(() => () => {
     for (const timerId of drawRevealTimersRef.current.values()) {
       window.clearTimeout(timerId);
@@ -529,6 +571,7 @@ export default function HandZone({
       ? menuHoveredHandObjectId
       : null
   );
+  const selectedObjectIdKey = selectedObjectId != null ? String(selectedObjectId) : null;
   const handLayoutSignature = useMemo(
     () => [
       handCards.map((card) => card.id).join("|"),
@@ -709,6 +752,49 @@ export default function HandZone({
       hoverClearTimerRef.current = null;
     }, 110);
   }, [clearHover]);
+
+  const resolveHandHoverObjectId = useCallback((clientX, clientY) => {
+    const handList = handListRef.current;
+    if (!handList || typeof document === "undefined" || typeof document.elementsFromPoint !== "function") {
+      return null;
+    }
+
+    let selectedCandidate = null;
+    for (const element of document.elementsFromPoint(clientX, clientY)) {
+      const cardEl = element?.closest?.(".game-card.hand-card");
+      if (!cardEl || !handList.contains(cardEl)) continue;
+
+      const objectId = cardEl.getAttribute("data-object-id");
+      if (!objectId || !hoverableHandObjectIds.has(objectId)) continue;
+      if (selectedObjectIdKey != null && objectId === selectedObjectIdKey) {
+        selectedCandidate = objectId;
+        continue;
+      }
+      return objectId;
+    }
+
+    return selectedCandidate;
+  }, [hoverableHandObjectIds, selectedObjectIdKey]);
+
+  const handleHandPointerMove = useCallback((event) => {
+    if (event.pointerType === "touch" || activePointerIdRef.current != null) return;
+
+    const objectId = resolveHandHoverObjectId(event.clientX, event.clientY);
+    if (objectId == null) return;
+
+    if (hoverClearTimerRef.current) {
+      clearTimeout(hoverClearTimerRef.current);
+      hoverClearTimerRef.current = null;
+    }
+    if (hoveredObjectId == null || String(hoveredObjectId) !== objectId) {
+      hoverCard(objectId);
+    }
+  }, [hoverCard, hoveredObjectId, resolveHandHoverObjectId]);
+
+  const handleHandPointerLeave = useCallback((event) => {
+    if (event.pointerType === "touch") return;
+    handleHoverLeave();
+  }, [handleHoverLeave]);
 
   const recenterRouletteIfNeeded = useCallback(() => {
     if (!isRoulette) return;
@@ -913,8 +999,10 @@ export default function HandZone({
         const glowKind = isMenuActionPreview
           ? baseGlowKind
           : isActionLinkedHover ? "action-link" : baseGlowKind;
+        const cardObjectId = String(card.id);
+        const isHovered = hoveredObjectId != null && String(hoveredObjectId) === cardObjectId;
         const isInspected = (
-          (selectedObjectId != null && String(card.id) === String(selectedObjectId))
+          (selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
           || isMenuActionPreview
         );
         const isNew = newIds.has(card.id);
@@ -936,6 +1024,7 @@ export default function HandZone({
             bumpDirection={bumpDir}
             handCircuitMode="full"
             suppressTooltip={isMobileFan}
+            isHovered={isHovered}
             isInspected={isInspected}
             onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
             onPointerDown={isPlayable ? (event) => handlePointerDown(event, card, plays, glowKind) : undefined}
@@ -970,8 +1059,10 @@ export default function HandZone({
       const glowKind = isMenuActionPreview
         ? baseGlowKind
         : isActionLinkedHover ? "action-link" : baseGlowKind;
+      const extraObjectId = String(extra.id);
+      const isHovered = hoveredObjectId != null && String(hoveredObjectId) === extraObjectId;
       const isInspected = (
-        (selectedObjectId != null && String(extra.id) === String(selectedObjectId))
+        (selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
         || isMenuActionPreview
       );
       return (
@@ -983,6 +1074,7 @@ export default function HandZone({
           glowKind={glowKind}
           handCircuitMode="full"
           suppressTooltip={isMobileFan}
+          isHovered={isHovered}
           isInspected={isInspected}
           onClick={plays.length === 0
             ? (event) => handleCardClick(event, card)
@@ -1031,8 +1123,10 @@ export default function HandZone({
         const glowKind = isMenuActionPreview
           ? baseGlowKind
           : isActionLinkedHover ? "action-link" : baseGlowKind;
+        const cardObjectId = String(card.id);
+        const isHovered = hoveredObjectId != null && String(hoveredObjectId) === cardObjectId;
         const isInspected = (
-          (selectedObjectId != null && String(card.id) === String(selectedObjectId))
+          (selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
           || isMenuActionPreview
         );
         const isNew = isPrimaryCycle && newIds.has(card.id);
@@ -1050,7 +1144,7 @@ export default function HandZone({
         return (
           <div
             key={`${cycleIndex}-${entry.key}`}
-            className={`hand-layout-item shrink-0 overflow-visible${isInspected ? " hand-layout-item--selected" : ""}`}
+            className={`hand-layout-item shrink-0 overflow-visible${isInspected ? " hand-layout-item--selected" : ""}${isHovered && !isInspected ? " hand-layout-item--hovered" : ""}`}
             style={wrapperStyle}
           >
             <GameCard
@@ -1063,6 +1157,7 @@ export default function HandZone({
               bumpDirection={bumpDir}
               handCircuitMode={isExpanded ? "full" : "top"}
               suppressTooltip={isMobileFan}
+              isHovered={isHovered}
               isInspected={isInspected}
               onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
               onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
@@ -1092,8 +1187,10 @@ export default function HandZone({
       const glowKind = isMenuActionPreview
         ? baseGlowKind
         : isActionLinkedHover ? "action-link" : baseGlowKind;
+      const extraObjectId = String(extra.id);
+      const isHovered = hoveredObjectId != null && String(hoveredObjectId) === extraObjectId;
       const isInspected = (
-        (selectedObjectId != null && String(extra.id) === String(selectedObjectId))
+        (selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
         || isMenuActionPreview
       );
       const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
@@ -1104,7 +1201,7 @@ export default function HandZone({
       return (
         <div
           key={`${cycleIndex}-${entry.key}`}
-          className={`hand-layout-item shrink-0 overflow-visible${isInspected ? " hand-layout-item--selected" : ""}`}
+          className={`hand-layout-item shrink-0 overflow-visible${isInspected ? " hand-layout-item--selected" : ""}${isHovered && !isInspected ? " hand-layout-item--hovered" : ""}`}
           style={wrapperStyle}
         >
           <GameCard
@@ -1115,6 +1212,7 @@ export default function HandZone({
             isNew={isPrimaryCycle}
             handCircuitMode={isExpanded ? "full" : "top"}
             suppressTooltip={isMobileFan}
+            isHovered={isHovered}
             isInspected={isInspected}
             onClick={plays.length === 0
               ? (e) => handleCardClick(e, card)
@@ -1159,6 +1257,8 @@ export default function HandZone({
             ref={handScrollRef}
             className={`hand-zone-scroll min-h-0 h-full w-full min-w-0 -mx-2 px-2 overflow-x-auto overflow-y-hidden overscroll-x-contain ${isRoulette ? "hand-zone-scroll-roulette" : ""} ${isMobileFan ? "hand-zone-scroll-mobile-fan" : ""}`}
             onScroll={handleRouletteScroll}
+            onPointerMove={handleHandPointerMove}
+            onPointerLeave={handleHandPointerLeave}
           >
             <div
               ref={handListRef}

@@ -2036,7 +2036,6 @@
 }
 
 .game-card.hand-card {
-  --hand-card-footer-height: 20px;
   --aura-glow-radius: 18px;
   --aura-scale-1-min: 0.96;
   --aura-scale-1-max: 1.01;
@@ -2045,48 +2044,16 @@
 }
 
 .game-card.hand-card .game-card-surface {
-  transition:
-    inset 180ms ease,
-    aspect-ratio 180ms ease,
-    min-height 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.game-card.hand-card .hand-card-bottom-bar {
-  min-height: var(--hand-card-footer-height);
-  transition:
-    opacity 160ms ease,
-    transform 180ms ease,
-    border-color 180ms ease;
-}
-
-.game-card.hand-card.hand-card-no-visible-mana-cost:not(.hand-card-has-footer-stat):not(:hover):not(.hovered):not(.inspected) .hand-card-bottom-bar {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.game-card.hand-card.hand-card-no-visible-mana-cost .hand-card-bottom-bar {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  transition: box-shadow 180ms ease;
 }
 
 .game-card.hand-card:hover .game-card-surface,
 .game-card.hand-card.hovered .game-card-surface,
 .game-card.hand-card.inspected .game-card-surface {
-  inset: auto 0 var(--hand-card-footer-height) 0;
-  aspect-ratio: 5 / 7;
-  min-height: calc(100% - var(--hand-card-footer-height));
   overflow: visible;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.12),
     0 12px 26px rgba(0, 0, 0, 0.48);
-}
-
-.game-card.hand-card:hover .hand-card-bottom-bar,
-.game-card.hand-card.hovered .hand-card-bottom-bar,
-.game-card.hand-card.inspected .hand-card-bottom-bar {
-  bottom: calc(-1 * var(--hand-card-footer-height));
-  transform: translate3d(0, 0, 0);
-  opacity: 1;
 }
 
 .game-card.hand-card .game-card-surface::before {
@@ -5103,17 +5070,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   top: -18px;
 }
 
-.hand-card-header {
-  border-radius: 0;
-  background: linear-gradient(180deg, rgba(10, 16, 25, 0.9) 0%, rgba(10, 16, 25, 0.72) 78%, rgba(10, 16, 25, 0.34) 100%);
-}
-
-.hand-card-title {
-  font-size: 11px;
-  line-height: 1.05;
-  color: #e2eefc;
-}
-
 .hand-reveal-shell .hand-zone-surface {
   background: transparent;
   padding-top: 0.2rem;
@@ -5168,14 +5124,15 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   overflow: visible;
 }
 
-.hand-layout-item:has(> .game-card.hand-card:hover),
-.hand-layout-item:has(> .game-card.hand-card.hovered) {
-  z-index: 19000 !important;
-}
-
 .hand-layout-item--selected,
 .hand-layout-item:has(> .game-card.hand-card.inspected) {
   z-index: 20000 !important;
+}
+
+.hand-layout-item--hovered:not(.hand-layout-item--selected),
+.hand-layout-item:has(> .game-card.hand-card:hover:not(.inspected)),
+.hand-layout-item:has(> .game-card.hand-card.hovered:not(.inspected)) {
+  z-index: 21000 !important;
 }
 
 .hand-reveal-shell .hand-zone-cycle-gap {
@@ -5202,18 +5159,31 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   min-height: 46px;
 }
 
-.hand-reveal-shell[data-open="false"] .hand-card-header {
-  padding-top: 0.18rem;
-  padding-bottom: 0.08rem;
+.hand-reveal-shell[data-open="false"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected {
+  transform:
+    translate3d(
+      calc(var(--card-translate-x) + var(--card-return-x) + var(--card-jolt-x)),
+      calc(var(--card-translate-y) - 22px + var(--card-return-y) + var(--card-jolt-y)),
+      0
+    )
+    rotate(calc(var(--card-rotate) + var(--card-return-rotate) + var(--card-jolt-rotate)))
+    scale(1.09)
+    scale(var(--card-return-scale))
+    scale(var(--card-jolt-scale));
+  z-index: 60 !important;
 }
 
-.hand-reveal-shell[data-open="false"] .hand-card-title {
-  font-size: 10px;
+.hand-reveal-shell[data-open="false"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected .game-card-surface {
+  top: auto !important;
+  bottom: 0 !important;
+  height: 100px !important;
+  min-height: 100px !important;
 }
 
-.hand-reveal-shell[data-open="false"] .hand-card-bottom-bar {
-  padding-top: 0.08rem;
-  padding-bottom: 0.08rem;
+.hand-reveal-shell[data-open="false"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected .game-card-surface > img {
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .hand-reveal-shell[data-open="false"] .hand-zone-surface {
@@ -5296,7 +5266,8 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   --card-scale: 1;
 }
 
-.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.hovered {
+.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.hovered,
+.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected {
   transform:
     translate3d(
       calc(var(--card-translate-x) + var(--card-return-x) + var(--card-jolt-x)),
@@ -8220,6 +8191,24 @@ textarea,
 .inspector-banner--stats,
 .inspector-chip-count {
   color: #f4de9a !important;
+}
+
+.inspector-banner--identity {
+  clip-path: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.inspector-banner--identity .inspector-banner--mana {
+  clip-path: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .inspector-oracle-scroll {
@@ -11812,14 +11801,6 @@ select::-ms-expand {
     z-index: 220 !important;
   }
 
-  .mobile-battle-self-hand .hand-card-header {
-    padding-top: 4px;
-  }
-
-  .mobile-battle-self-hand .hand-card-title {
-    font-size: 9px;
-  }
-
   .mobile-battle-self-hand .game-card.hand-card .card-frame {
     border-radius: 0;
   }
@@ -13813,19 +13794,6 @@ select::-ms-expand {
   .mobile-hand-rail-card,
   .mobile-hand-rail-card * {
     -webkit-user-drag: none;
-  }
-
-  .mobile-hand-rail-card .hand-card-header {
-    padding: 2px 3px 0 !important;
-  }
-
-  .mobile-hand-rail-card .hand-card-title {
-    font-size: 8px !important;
-    line-height: 0.95 !important;
-  }
-
-  .mobile-hand-rail-card .hand-card-bottom-bar {
-    display: none !important;
   }
 
   .mobile-hand-rail-card .card-circuit-strip-set {

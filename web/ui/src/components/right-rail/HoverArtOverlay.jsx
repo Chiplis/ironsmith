@@ -37,9 +37,9 @@ const INSPECTOR_RULES_COMFORT_WRAP_WIDTH = 680;
 const INSPECTOR_HEADER_HORIZONTAL_PADDING = 24;
 const INSPECTOR_ORACLE_ART_WIDTH_ALLOWANCE = 72;
 const INSPECTOR_LEFT_ART_HEADER_ALLOWANCE = 188;
-const INSPECTOR_ORACLE_TOP_PADDING = 54;
-const INSPECTOR_HEADER_RULES_GAP = 12;
-const INSPECTOR_LOW_PROFILE_HEADER_RULES_GAP = 8;
+const INSPECTOR_ORACLE_TOP_PADDING = 40;
+const INSPECTOR_HEADER_RULES_GAP = -2;
+const INSPECTOR_LOW_PROFILE_HEADER_RULES_GAP = 2;
 const INSPECTOR_ORACLE_BOTTOM_PADDING = 10;
 const INSPECTOR_ORACLE_HORIZONTAL_PADDING = 28;
 const INSPECTOR_ORACLE_EARLY_WRAP_WIDTH = 640;
@@ -48,6 +48,7 @@ const INSPECTOR_TRANSITION_CHIP_BOTTOM_RESERVE = 24;
 const INSPECTOR_ART_ASPECT_RATIO = 626 / 457;
 const INSPECTOR_ART_SAFE_GAP = 36;
 const INSPECTOR_RULES_FALLBACK_SAFE_WIDTH = "54%";
+const HIDDEN_TYPE_LINE_BADGES = new Set(["All creature types"]);
 
 function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -824,7 +825,7 @@ export default function HoverArtOverlay({
   const typeLineBadges = Array.isArray(details?.type_line_badges)
     ? details.type_line_badges
       .map((badge) => String(badge || "").trim())
-      .filter(Boolean)
+      .filter((badge) => badge && !HIDDEN_TYPE_LINE_BADGES.has(badge))
     : [];
   const zoneLine = formatInspectorZoneLabel(details?.zone || previewZoneLine || hoveredStackObject?.zone, t);
   const countersLine = useMemo(
@@ -1011,14 +1012,15 @@ export default function HoverArtOverlay({
   const displayCountersLine = debugInspector ? null : countersLine;
   const displayManaCost = debugInspector ? null : manaCost;
   const displayStatsText = debugInspector || transitionTitle ? null : statsText;
+  const displayTypeZoneLine = useMemo(
+    () => [displayZoneLine, displayTypeLine].filter(Boolean).join(" - ") || null,
+    [displayTypeLine, displayZoneLine]
+  );
   const displayTopLeftDetailLines = useMemo(
-    () => [displayTypeLine].filter(Boolean),
-    [displayTypeLine]
+    () => [displayTypeZoneLine].filter(Boolean),
+    [displayTypeZoneLine]
   );
-  const displayTopLeftZoneLines = useMemo(
-    () => [displayZoneLine].filter(Boolean),
-    [displayZoneLine]
-  );
+  const displayTopLeftZoneLines = useMemo(() => [], []);
   const hasTopLeftInlineMetadata = Boolean(
     displayTopLeftDetailLines.length > 0
     || displayTopLeftZoneLines.length > 0
@@ -1139,14 +1141,11 @@ export default function HoverArtOverlay({
     const manaWidth = manaSymbolCount > 0
       ? (manaSymbolCount * 23) + 18
       : 0;
-    const gapWidth = (
-      (displayObjectName && displayManaCost ? 8 : 0)
-      + ((displayObjectName || displayManaCost) && metadataWidth > 0 ? 8 : 0)
-    );
+    const identityRowWidth = nameWidth + manaWidth + (displayObjectName && displayManaCost ? 8 : 0);
     const chromeWidth = 40;
 
     return Math.ceil(clampNumber(
-      nameWidth + manaWidth + metadataWidth + gapWidth + chromeWidth,
+      Math.max(identityRowWidth, metadataWidth) + chromeWidth,
       INSPECTOR_RULES_MIN_WIDTH,
       INSPECTOR_RULES_MAX_LINE_WIDTH
     ));
@@ -1394,7 +1393,7 @@ export default function HoverArtOverlay({
       const metadataNaturalWidth = hasTopLeftInlineMetadata && metadataContent
         ? metadataContent.scrollWidth
         : 0;
-      const metadataMinimumWidth = hasTopLeftInlineMetadata
+      const metadataMinimumWidth = compact && hasTopLeftInlineMetadata
         ? metadataNaturalWidth + 8
         : 0;
       const headerChromeWidth = compact ? 30 : 36;
@@ -1973,7 +1972,7 @@ export default function HoverArtOverlay({
       16
       + inspectorHeaderRowReserve
       + (displayTypeLineBadges.length > 0 ? ((18 * inspectorScale) + 10) : 0)
-      + (hasTopLeftMetadata ? 10 * inspectorScale : 0)
+      + (hasTopLeftMetadata ? 4 * inspectorScale : 0)
     );
   const inspectorOracleTopPadding = debugInspector
     ? 52
@@ -2075,7 +2074,7 @@ export default function HoverArtOverlay({
     ? Math.ceil(inspectorArtSafeWidth)
     : 0;
   const fallbackOracleTopPadding = lowProfileInspector
-    ? (displayObjectName ? (hasTopLeftInlineMetadata ? 58 : 38) : INSPECTOR_LOW_PROFILE_ORACLE_TOP_PADDING)
+    ? (displayObjectName ? (hasTopLeftInlineMetadata ? 50 : 34) : INSPECTOR_LOW_PROFILE_ORACLE_TOP_PADDING)
     : inspectorOracleTopPadding * inspectorScale;
   const inspectorOracleContainerStyle = compact ? undefined : {
     // Prefer the measured header bottom: the header is sized by the title
@@ -2472,51 +2471,53 @@ export default function HoverArtOverlay({
               {(displayObjectName || displayManaCost || hasTopLeftInlineMetadata) && (
                 <div className="flex min-w-0 max-w-full items-start gap-1">
                   <div
-                    className="inspector-banner inspector-banner--identity flex w-max max-w-full min-w-0 items-start gap-2 overflow-visible rounded-none bg-[linear-gradient(90deg,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.44)_82%,rgba(0,0,0,0.12)_100%)] text-[#f3f8ff] backdrop-blur-[2px]"
+                    className="inspector-banner inspector-banner--identity flex w-max max-w-full min-w-0 flex-col items-start gap-0.5 overflow-visible rounded-none bg-[linear-gradient(90deg,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.44)_82%,rgba(0,0,0,0.12)_100%)] text-[#f3f8ff] backdrop-blur-[2px]"
                     style={inspectorIdentityHeaderStyle}
                   >
-                    {displayObjectName && (
-                      <div
-                        ref={inspectorTitleRef}
-                        className="min-w-0 shrink-0 font-extrabold leading-[1.02] tracking-[0.02em] text-[#f3f8ff]"
-                        style={inspectorTitleStyle}
-                      >
-                        <span className="inline-flex items-center gap-2 whitespace-nowrap">
-                          {groupedCardCount > 1 && (
-                            <span className="inspector-chip-count inline-flex h-5 min-w-5 items-center justify-center rounded-none border border-[#f5d08b]/70 bg-[rgba(0,0,0,0.45)] px-1 text-[12px] font-bold leading-none tracking-wide text-[#f5d08b]">
-                              x{groupedCardCount}
-                            </span>
-                          )}
-                          <span>{displayObjectName}</span>
-                        </span>
-                      </div>
-                    )}
-                    {displayManaCost && (
-                      <div className="inspector-banner inspector-banner--mana inline-flex shrink-0 items-center rounded-none bg-[rgba(0,0,0,0.4)] px-1.5 py-0.5">
-                        <ManaCostIcons cost={displayManaCost} size={inspectorHeaderManaIconSize} />
-                      </div>
-                    )}
+                    <div className="flex max-w-full min-w-0 items-start gap-2 overflow-visible">
+                      {displayObjectName && (
+                        <div
+                          ref={inspectorTitleRef}
+                          className="min-w-0 shrink-0 font-extrabold leading-[1.02] tracking-[0.02em] text-[#f3f8ff]"
+                          style={inspectorTitleStyle}
+                        >
+                          <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                            {groupedCardCount > 1 && (
+                              <span className="inspector-chip-count inline-flex h-5 min-w-5 items-center justify-center rounded-none border border-[#f5d08b]/70 bg-[rgba(0,0,0,0.45)] px-1 text-[12px] font-bold leading-none tracking-wide text-[#f5d08b]">
+                                x{groupedCardCount}
+                              </span>
+                            )}
+                            <span>{displayObjectName}</span>
+                          </span>
+                        </div>
+                      )}
+                      {displayManaCost && (
+                        <div className="inspector-banner inspector-banner--mana inline-flex shrink-0 items-center rounded-none bg-[rgba(0,0,0,0.4)] px-1.5 py-0.5">
+                          <ManaCostIcons cost={displayManaCost} size={inspectorHeaderManaIconSize} />
+                        </div>
+                      )}
+                    </div>
                     {hasTopLeftInlineMetadata && (
-                      <div ref={headerMetadataRef} className="flex min-w-0 shrink items-start overflow-visible pt-[2px]">
+                      <div ref={headerMetadataRef} className="-mt-1 flex min-w-0 shrink items-start overflow-visible">
                         <div ref={headerMetadataContentRef} className="flex w-max max-w-none flex-col items-start gap-0.5">
-                        <InspectorMetadataBlock
-                          lines={displayTopLeftDetailLines}
-                          className={cn(
-                            "w-max max-w-none self-start text-left font-semibold leading-none text-[#d1e2f6]",
-                            topMetadataTextClassName
-                          )}
-                          lineClassName="whitespace-nowrap text-left leading-none"
-                          style={headerInlineMetadataStyle}
-                        />
-                        <InspectorMetadataBlock
-                          lines={displayTopLeftZoneLines}
-                          className={cn(
-                            "w-max max-w-none self-start text-left font-semibold leading-none text-[#d1e2f6]",
-                            topMetadataTextClassName
-                          )}
-                          lineClassName="whitespace-nowrap text-left leading-none"
-                          style={headerInlineMetadataStyle}
-                        />
+                          <InspectorMetadataBlock
+                            lines={displayTopLeftDetailLines}
+                            className={cn(
+                              "w-max max-w-none self-start text-left font-semibold leading-none text-[#d1e2f6]",
+                              topMetadataTextClassName
+                            )}
+                            lineClassName="whitespace-nowrap text-left leading-none"
+                            style={headerInlineMetadataStyle}
+                          />
+                          <InspectorMetadataBlock
+                            lines={displayTopLeftZoneLines}
+                            className={cn(
+                              "w-max max-w-none self-start text-left font-semibold leading-none text-[#d1e2f6]",
+                              topMetadataTextClassName
+                            )}
+                            lineClassName="whitespace-nowrap text-left leading-none"
+                            style={headerInlineMetadataStyle}
+                          />
                         </div>
                       </div>
                     )}
