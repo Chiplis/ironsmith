@@ -10,6 +10,11 @@ import { normalizeDecisionText, translateKnownDecisionText } from "@/components/
 import { KeywordHelpersProvider, SymbolText } from "@/lib/mana-symbols";
 import { currentPriorityPhaseLabel, isMainPhase, nextPriorityAdvanceLabel } from "@/lib/constants";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
+import {
+  buildBattlefieldFamilies,
+  buildPriorityActionGroups,
+  formatPriorityActionLabel,
+} from "@/lib/priority-action-groups";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,44 +29,6 @@ const PRIORITY_ACTION_GROUPS = [
   { key: "activate", label: "Activate", kinds: ["activate_ability"] },
 ];
 const BATTLEFIELD_HOVER_SUPPRESSED_KINDS = new Set(["activate_mana_ability", "activate_ability"]);
-
-function zoneLabelFromAction(zone) {
-  if (!zone) return "Unknown";
-  switch (String(zone).toLowerCase()) {
-    case "library": return "Library";
-    case "hand": return "Hand";
-    case "battlefield": return "Battlefield";
-    case "graveyard": return "GY";
-    case "exile": return "Exile";
-    case "stack": return "Stack";
-    case "command": return "CZ";
-    default:
-      return String(zone)
-        .split(/[_\s]+/)
-        .filter(Boolean)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ");
-  }
-}
-
-function formatPriorityActionLabel(action) {
-  const label = action?.label || "";
-  if (action?.kind === "play_land") {
-    return `Play ${zoneLabelFromAction(action.from_zone)}`;
-  }
-  if (action?.kind === "cast_spell") {
-    return `From ${zoneLabelFromAction(action.from_zone)}`;
-  }
-  if (action?.kind === "untap_land") {
-    return "Untap";
-  }
-  if (action?.kind === "activate_ability" || action?.kind === "activate_mana_ability") {
-    // "Activate Black Lotus: Add {R}{R}{R}." -> "Add {R}{R}{R}."
-    const match = label.match(/^Activate\s+.+?:\s*(.+)$/i);
-    if (match) return match[1];
-  }
-  return label;
-}
 
 function isBattlefieldObject(players, hoveredObjectId) {
   if (hoveredObjectId == null) return false;
@@ -80,7 +47,7 @@ function isBattlefieldObject(players, hoveredObjectId) {
   return false;
 }
 
-function hoveredPriorityActionGroups(decision, hoveredObjectId, suppressBattlefieldAbilityOptions) {
+function hoveredPriorityActionGroups(decision, hoveredObjectId, suppressBattlefieldAbilityOptions, players) {
   if (!decision || decision.kind !== "priority" || !hoveredObjectId) return [];
 
   const filtered = (decision.actions || []).filter(
@@ -96,16 +63,30 @@ function hoveredPriorityActionGroups(decision, hoveredObjectId, suppressBattlefi
     : filtered;
   if (visibleActions.length === 0) return [];
 
+  const actionGroups = buildPriorityActionGroups(
+    visibleActions,
+    buildBattlefieldFamilies(players)
+  );
   const grouped = PRIORITY_ACTION_GROUPS
     .map((group) => ({
       key: group.key,
       label: group.label,
-      actions: visibleActions.filter((action) => group.kinds.includes(action.kind)),
+      actions: actionGroups
+        .filter((actionGroup) => group.kinds.includes(actionGroup.firstAction?.kind))
+        .map((actionGroup) => ({
+          ...actionGroup.firstAction,
+          label: actionGroup.label,
+        })),
     }))
     .filter((group) => group.actions.length > 0);
 
   const groupedKinds = new Set(PRIORITY_ACTION_GROUPS.flatMap((group) => group.kinds));
-  const otherActions = visibleActions.filter((action) => !groupedKinds.has(action.kind));
+  const otherActions = actionGroups
+    .filter((actionGroup) => !groupedKinds.has(actionGroup.firstAction?.kind))
+    .map((actionGroup) => ({
+      ...actionGroup.firstAction,
+      label: actionGroup.label,
+    }));
   if (otherActions.length > 0) {
     grouped.push({
       key: "other",
@@ -235,9 +216,10 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     () => hoveredPriorityActionGroups(
       decision,
       hoveredObjectId,
-      suppressBattlefieldAbilityOptions
+      suppressBattlefieldAbilityOptions,
+      players
     ),
-    [decision, hoveredObjectId, suppressBattlefieldAbilityOptions]
+    [decision, hoveredObjectId, players, suppressBattlefieldAbilityOptions]
   );
   const showHoverOptions = hoverGroups.length > 0;
 

@@ -1161,6 +1161,50 @@ fn activation_timing_allows(
     }
 }
 
+fn loyalty_activation_special_rules_allow(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    activated: &crate::ability::ActivatedAbility,
+) -> bool {
+    if !activated.is_loyalty_ability() {
+        return true;
+    }
+
+    game.turn.active_player == controller
+        && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
+        && game.stack_is_empty()
+        && !game.loyalty_ability_activated_this_turn(source)
+}
+
+fn loyalty_remove_counters_cost_amount(cost: &crate::costs::Cost) -> Option<u32> {
+    let effect = cost
+        .effect_ref()?
+        .downcast_ref::<crate::effects::RemoveCountersEffect>()?;
+    if effect.counter_type != crate::CounterType::Loyalty {
+        return None;
+    }
+    if !matches!(effect.target.base(), crate::target::ChooseSpec::Source) {
+        return None;
+    }
+    let crate::effect::Value::Fixed(count) = &effect.count else {
+        return None;
+    };
+    Some((*count).max(0) as u32)
+}
+
+fn loyalty_negative_costs_payable(
+    game: &GameState,
+    source: ObjectId,
+    costs: &[crate::costs::Cost],
+) -> bool {
+    let required = costs
+        .iter()
+        .filter_map(loyalty_remove_counters_cost_amount)
+        .sum::<u32>();
+    required == 0 || game.counter_count(source, crate::CounterType::Loyalty) >= required
+}
+
 fn is_equip_ability(
     game: &GameState,
     source: ObjectId,
@@ -1379,6 +1423,13 @@ fn activation_precheck_with_view(
         source_facts.controller
     };
 
+    if activated.is_loyalty_ability() && controller != source_facts.controller {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
+    }
+
     if game.object(source).is_some() && !game.can_activate_non_mana_abilities(controller) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
@@ -1451,6 +1502,13 @@ fn activation_precheck_with_view(
     }
 
     if activated_ability_uses_simple_precheck(activated) {
+        if !loyalty_activation_special_rules_allow(game, controller, source, activated) {
+            if let Some(perf_ctx) = perf_ctx {
+                perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+            }
+            return None;
+        }
+
         if !activation_timing_allows(
             game,
             controller,
@@ -1477,6 +1535,12 @@ fn activation_precheck_with_view(
 
         let reason = crate::costs::PaymentReason::ActivateAbility;
         let costs = activated.mana_cost.costs();
+        if activated.is_loyalty_ability() && !loyalty_negative_costs_payable(game, source, costs) {
+            if let Some(perf_ctx) = perf_ctx {
+                perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+            }
+            return None;
+        }
         if !activation_printed_costs_precheck_with_view(
             game, controller, source, costs, reason, view,
         ) {
@@ -1504,6 +1568,13 @@ fn activation_precheck_with_view(
         ability_index: Some(ability_index),
         options: Default::default(),
     };
+
+    if !loyalty_activation_special_rules_allow(game, controller, source, activated) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
+    }
 
     if !activation_timing_allows(
         game,
@@ -1543,6 +1614,12 @@ fn activation_precheck_with_view(
 
     let reason = crate::costs::PaymentReason::ActivateAbility;
     let costs = activated.mana_cost.costs();
+    if activated.is_loyalty_ability() && !loyalty_negative_costs_payable(game, source, costs) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
+    }
     if !activation_printed_costs_precheck_with_view(game, controller, source, costs, reason, view) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
@@ -1691,6 +1768,12 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
         perf_ctx.add_cost_build_ms(cost_started_at.elapsed_ms());
     }
     let components = total_cost.costs();
+    if activated.is_loyalty_ability() && !loyalty_negative_costs_payable(game, source, components) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_total_ms(total_started_at.elapsed_ms());
+        }
+        return false;
+    }
     let mut idx = 0usize;
     while idx < components.len() {
         if let Some(choose) = components[idx]

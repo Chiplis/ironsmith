@@ -194,6 +194,25 @@ pub(crate) fn apply_processed_damage_assignment(
                 return AppliedDamageAssignment::default();
             }
 
+            if is_planeswalker {
+                let source_controller = game
+                    .object(source)
+                    .map(|obj| {
+                        game.current_controller(source)
+                            .unwrap_or_else(|| game.controller_of(obj))
+                    })
+                    .or(cause.source_controller);
+                if let Some((_, event)) = game.remove_counters(
+                    object_id,
+                    crate::CounterType::Loyalty,
+                    amount,
+                    Some(source),
+                    source_controller,
+                ) {
+                    game.queue_trigger_event(event.provenance(), event);
+                }
+            }
+
             if is_creature && (keywords.has_infect || keywords.has_wither) {
                 let final_count = crate::events::processing::process_put_counters_with_event(
                     game,
@@ -218,7 +237,7 @@ pub(crate) fn apply_processed_damage_assignment(
                 ) {
                     game.queue_trigger_event(event.provenance(), event);
                 }
-            } else {
+            } else if is_creature {
                 game.mark_damage(object_id, amount);
             }
 
@@ -731,6 +750,43 @@ mod tests {
 
         assert!(result.applied);
         assert_eq!(game.damage_on(land_id), 2);
+    }
+
+    #[test]
+    fn test_damage_to_planeswalker_removes_loyalty_counters() {
+        let mut game = test_game_state();
+        let source = make_creature("Pinger", 1, 1);
+        let source_id = source.id;
+        game.add_object(source);
+
+        let mut planeswalker = make_creature("Test Planeswalker", 0, 0);
+        planeswalker.card_types = vec![CardType::Planeswalker];
+        planeswalker.base_power = None;
+        planeswalker.base_toughness = None;
+        planeswalker.base_loyalty = Some(5);
+        planeswalker.counters.insert(crate::CounterType::Loyalty, 5);
+        let planeswalker_id = planeswalker.id;
+        game.add_object(planeswalker);
+
+        let result = apply_processed_damage_assignment(
+            &mut game,
+            source_id,
+            crate::events::DamageTarget::Object(planeswalker_id),
+            3,
+            SourceDamageKeywords::default(),
+            crate::events::cause::EventCause::from_effect(source_id, PlayerId::from_index(0)),
+        );
+
+        assert!(result.applied);
+        assert_eq!(
+            game.counter_count(planeswalker_id, crate::CounterType::Loyalty),
+            2
+        );
+        assert_eq!(
+            game.damage_on(planeswalker_id),
+            0,
+            "planeswalker damage should not be marked as creature damage"
+        );
     }
 
     #[test]

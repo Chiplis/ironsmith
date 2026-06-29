@@ -596,26 +596,6 @@ pub(super) fn deal_damage_to_defender(
                 for assignment in processed.assignments {
                     match assignment.target {
                         EventDamageTarget::Object(object_id) => {
-                            if object_id == *pw_id {
-                                if let Some(pw) = game.object_mut(*pw_id) {
-                                    let current_loyalty = pw
-                                        .counters
-                                        .get(&CounterType::Loyalty)
-                                        .copied()
-                                        .unwrap_or(0);
-                                    let new_loyalty =
-                                        current_loyalty.saturating_sub(assignment.amount);
-                                    if new_loyalty == 0 {
-                                        pw.counters.remove(&CounterType::Loyalty);
-                                    } else {
-                                        pw.counters.insert(CounterType::Loyalty, new_loyalty);
-                                    }
-                                }
-                                final_damage = final_damage.saturating_add(assignment.amount);
-                                total_damage_dealt =
-                                    total_damage_dealt.saturating_add(assignment.amount);
-                                continue;
-                            }
                             let applied = crate::rules::damage::apply_processed_damage_assignment(
                                 game,
                                 attacker_id,
@@ -627,6 +607,9 @@ pub(super) fn deal_damage_to_defender(
                             if applied.applied {
                                 total_damage_dealt =
                                     total_damage_dealt.saturating_add(assignment.amount);
+                                if object_id == *pw_id {
+                                    final_damage = final_damage.saturating_add(assignment.amount);
+                                }
                             }
                         }
                         EventDamageTarget::Player(_) => {

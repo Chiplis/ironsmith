@@ -731,6 +731,7 @@ pub fn apply_priority_response_with_dm(
                 base_cost,
                 effects,
                 is_turn_capped,
+                is_loyalty_ability,
                 source_stable_id,
                 source_name,
                 source_snapshot,
@@ -745,10 +746,12 @@ pub fn apply_priority_response_with_dm(
                 if let Some(ability) = game.current_ability(*source, *ability_index) {
                     if let AbilityKind::Activated(activated) = &ability.kind {
                         let is_turn_capped = activated.max_activations_per_turn().is_some();
+                        let is_loyalty_ability = activated.is_loyalty_ability();
                         (
                             activated.mana_cost.clone(),
                             activated.effects.clone(),
                             is_turn_capped,
+                            is_loyalty_ability,
                             stable_id,
                             name,
                             snapshot,
@@ -759,6 +762,7 @@ pub fn apply_priority_response_with_dm(
                         (
                             crate::cost::TotalCost::free(),
                             crate::resolution::ResolutionProgram::default(),
+                            false,
                             false,
                             stable_id,
                             name,
@@ -771,6 +775,7 @@ pub fn apply_priority_response_with_dm(
                     (
                         crate::cost::TotalCost::free(),
                         crate::resolution::ResolutionProgram::default(),
+                        false,
                         false,
                         stable_id,
                         name,
@@ -900,6 +905,7 @@ pub fn apply_priority_response_with_dm(
                     std::collections::HashMap::new(),
                     0,
                     is_turn_capped,
+                    is_loyalty_ability,
                     source_stable_id,
                     source_snapshot,
                     source_name,
@@ -916,6 +922,9 @@ pub fn apply_priority_response_with_dm(
                 // No choices needed - put ability on stack directly
                 if is_turn_capped {
                     game.record_ability_activation(*source, *ability_index);
+                }
+                if is_loyalty_ability {
+                    game.record_loyalty_ability_activation(*source);
                 }
 
                 let entry = StackEntry::ability(*source, player, effects.to_vec())

@@ -23,6 +23,10 @@ import {
   withoutManaAbilityActionGroups,
 } from "@/lib/priority-action-filter";
 import {
+  buildBattlefieldFamilies,
+  buildPriorityActionGroups,
+} from "@/lib/priority-action-groups";
+import {
   buildObjectControllerById,
   buildObjectNameById,
 } from "@/lib/decision-object-meta";
@@ -331,88 +335,6 @@ function priorityAnchorStyle(anchor) {
   const left = clamp(anchor.x - (width * 0.5), 8, viewportWidth - width - 8);
   const top = clamp(anchor.y - 124, 74, viewportHeight - 102);
   return { left: `${left}px`, top: `${top}px`, width: `${width}px` };
-}
-
-function formatPriorityInlineActionLabel(action) {
-  const label = String(action?.label || "").trim();
-  if (!label) return "Action";
-
-  if (action?.kind === "activate_ability" || action?.kind === "activate_mana_ability") {
-    const activateMatch = label.match(/^Activate\s+.+?:\s*(.+)$/i);
-    if (activateMatch) return activateMatch[1];
-    const tapMatch = label.match(/^Tap\s+.+?:\s*(.+)$/i);
-    if (tapMatch) return tapMatch[1];
-  }
-
-  return label;
-}
-
-function buildBattlefieldFamilies(players) {
-  const familyIdByObjectId = new Map();
-  const familyMembersByFamilyId = new Map();
-
-  for (const player of players || []) {
-    for (const card of player?.battlefield || []) {
-      const rootId = card?.id != null ? String(card.id) : null;
-      if (!rootId) continue;
-
-      const memberIds = Array.isArray(card?.member_ids)
-        ? card.member_ids.map((memberId) => String(memberId))
-        : [];
-      const familyMembers = Array.from(new Set([rootId, ...memberIds]));
-
-      for (const id of familyMembers) {
-        familyIdByObjectId.set(id, rootId);
-      }
-      familyMembersByFamilyId.set(rootId, familyMembers);
-    }
-  }
-
-  return { familyIdByObjectId, familyMembersByFamilyId };
-}
-
-function buildPriorityActionGroups(actions, families) {
-  const { familyIdByObjectId, familyMembersByFamilyId } = families;
-  const groups = [];
-  const byKey = new Map();
-
-  for (const action of actions || []) {
-    const label = formatPriorityInlineActionLabel(action);
-    const objectId = action?.object_id != null ? String(action.object_id) : null;
-    const familyId = objectId != null ? (familyIdByObjectId.get(objectId) || objectId) : "";
-    const key = `${action.kind || ""}|${action.from_zone || ""}|${familyId}|${label}`;
-
-    let group = byKey.get(key);
-    if (!group) {
-      group = {
-        key,
-        label,
-        count: 0,
-        firstAction: action,
-        actionIndices: new Set(),
-        hoverObjectId: objectId != null ? (familyIdByObjectId.get(objectId) || objectId) : null,
-        linkedObjectIds: new Set(),
-      };
-      byKey.set(key, group);
-      groups.push(group);
-    }
-
-    group.count += 1;
-    group.actionIndices.add(action.index);
-
-    if (objectId != null) {
-      const actionFamilyId = familyIdByObjectId.get(objectId);
-      if (actionFamilyId && familyMembersByFamilyId.has(actionFamilyId)) {
-        for (const id of familyMembersByFamilyId.get(actionFamilyId)) {
-          group.linkedObjectIds.add(id);
-        }
-      } else {
-        group.linkedObjectIds.add(objectId);
-      }
-    }
-  }
-
-  return groups;
 }
 
 function dispatchHandActionHover(objectId = null) {

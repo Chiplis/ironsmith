@@ -8354,12 +8354,16 @@ impl GameState {
         }
     }
 
-    /// Clears the tracking for OncePerTurn activated abilities.
+    /// Clears turn-scoped activated ability tracking.
     /// Called at the beginning of each turn.
     pub fn clear_activated_abilities_tracking(&mut self) {
         self.turn_store
             .turn_history
             .activated_abilities_this_turn
+            .clear();
+        self.turn_store
+            .turn_history
+            .loyalty_abilities_activated_this_turn
             .clear();
     }
 
@@ -8622,6 +8626,22 @@ impl GameState {
         ability_index: usize,
     ) -> u32 {
         self.named_turn_counter(&activated_ability_turn_counter_name(source, ability_index))
+    }
+
+    /// Records that a loyalty ability of this permanent was activated this turn.
+    pub fn record_loyalty_ability_activation(&mut self, source: ObjectId) {
+        self.turn_store
+            .turn_history
+            .loyalty_abilities_activated_this_turn
+            .insert(source);
+    }
+
+    /// Check if any loyalty ability of this permanent has been activated this turn.
+    pub fn loyalty_ability_activated_this_turn(&self, source: ObjectId) -> bool {
+        self.turn_store
+            .turn_history
+            .loyalty_abilities_activated_this_turn
+            .contains(&source)
     }
 
     /// Check if an exhaust ability has already been activated by this object instance.

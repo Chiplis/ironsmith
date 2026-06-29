@@ -32,6 +32,7 @@ pub struct TurnEventRecord {
 #[derive(Debug, Clone, Default)]
 pub struct TurnHistory {
     pub activated_abilities_this_turn: HashSet<(ObjectId, usize)>,
+    pub loyalty_abilities_activated_this_turn: HashSet<ObjectId>,
     pub activated_abilities_resolved_this_turn: HashMap<(ObjectId, usize), u32>,
     pub chosen_modes_by_ability_this_turn: HashMap<(ObjectId, usize), HashSet<usize>>,
     pub triggers_fired_this_turn: HashMap<(ObjectId, TriggerIdentity), u32>,
@@ -57,6 +58,7 @@ impl TurnHistory {
         let spells_cast_last_turn_total = self.total_spells_cast_this_turn();
 
         self.activated_abilities_this_turn.clear();
+        self.loyalty_abilities_activated_this_turn.clear();
         self.activated_abilities_resolved_this_turn.clear();
         self.chosen_modes_by_ability_this_turn.clear();
         self.triggers_fired_this_turn.clear();

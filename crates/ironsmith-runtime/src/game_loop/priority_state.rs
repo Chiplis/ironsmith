@@ -717,6 +717,8 @@ pub struct PendingActivation {
     pub next_sacrifice_cost_tag_index: usize,
     /// Whether this ability is once per turn (needs recording).
     pub is_once_per_turn: bool,
+    /// Whether this activation is a loyalty ability and must be tracked per permanent.
+    pub is_loyalty_ability: bool,
     /// Stable instance ID of the source (persists across zone changes).
     pub source_stable_id: StableId,
     /// Last known information for the source at activation time.
@@ -763,6 +765,7 @@ impl PendingActivation {
         tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
         next_sacrifice_cost_tag_index: usize,
         is_once_per_turn: bool,
+        is_loyalty_ability: bool,
         source_stable_id: StableId,
         source_snapshot: ObjectSnapshot,
         source_name: String,
@@ -793,6 +796,7 @@ impl PendingActivation {
             tagged_objects,
             next_sacrifice_cost_tag_index,
             is_once_per_turn,
+            is_loyalty_ability,
             source_stable_id,
             source_snapshot,
             source_name,

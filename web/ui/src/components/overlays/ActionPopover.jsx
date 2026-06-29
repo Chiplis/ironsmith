@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHoverActions } from "@/context/HoverContext";
 import { SymbolText } from "@/lib/mana-symbols";
+import { buildPriorityActionGroups } from "@/lib/priority-action-groups";
 
 /** Strip "Activate CardName: " or "Cast CardName" prefix for compact display. */
 function stripActionPrefix(label) {
@@ -97,7 +98,11 @@ export default function ActionPopover({
   const popoverWidth = variant === "game" ? 318 : 260;
   const rowHeight = variant === "game" ? 38 : 34;
   const headerHeight = (title || subtitle) ? (subtitle ? 58 : 40) : 0;
-  const popoverHeight = (actions.length * rowHeight) + headerHeight + 16;
+  const actionGroups = useMemo(
+    () => buildPriorityActionGroups(actions),
+    [actions]
+  );
+  const popoverHeight = (actionGroups.length * rowHeight) + headerHeight + 16;
   const anchorCenterX = anchorRect.left + anchorRect.width / 2;
   const maxLeft = window.innerWidth - 16;
   const left = Math.max(8, Math.min(anchorCenterX - popoverWidth / 2, maxLeft - popoverWidth));
@@ -163,13 +168,16 @@ export default function ActionPopover({
             )}
           </div>
         )}
-        {actions.map((action, i) => {
-          const objId = action.object_id != null ? String(action.object_id) : null;
+        {actionGroups.map((group, i) => {
+          const action = group.firstAction;
+          const objId = group.hoverObjectId != null
+            ? String(group.hoverObjectId)
+            : action?.object_id != null ? String(action.object_id) : null;
           const isFirst = i === 0;
           const showDivider = !isFirst || Boolean(title || subtitle);
           return (
             <div
-              key={action.index}
+              key={group.key}
               className="px-3 py-2 text-[14px] font-bold cursor-pointer select-none transition-all duration-200"
               style={{
                 color: palette.rowText,
@@ -220,7 +228,7 @@ export default function ActionPopover({
                   transition: "color 180ms ease",
                 }}
               >
-                <SymbolText text={stripActionPrefix(action.label)} />
+                <SymbolText text={stripActionPrefix(group.label || action.label)} />
               </div>
             </div>
           );

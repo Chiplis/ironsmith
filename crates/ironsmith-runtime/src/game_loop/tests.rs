@@ -36026,6 +36026,182 @@ fn test_once_per_turn_in_legal_actions() {
 }
 
 #[test]
+fn test_loyalty_activation_is_tracked_per_permanent_without_text_cap() {
+    use crate::ability::{AbilityKind, ActivatedAbility, ActivationTiming};
+    use crate::cost::TotalCost;
+    use crate::costs::Cost;
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let chandra = CardBuilder::new(CardId::from_raw(72_980), "Chandra Test")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(6)
+        .build();
+    let chandra_id = game.create_object_from_card(&chandra, alice, Zone::Battlefield);
+
+    game.object_mut(chandra_id)
+        .expect("Chandra should exist")
+        .abilities
+        .extend([
+            Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: TotalCost::from_cost(Cost::add_counters(CounterType::Loyalty, 1)),
+                    effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                        Effect::draw(1),
+                    ]),
+                    choices: vec![],
+                    timing: ActivationTiming::SorcerySpeed,
+                    additional_restrictions: vec![],
+                    activation_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
+                    mana_usage_restrictions: vec![],
+                    is_loyalty_ability: true,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            },
+            Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: TotalCost::from_cost(Cost::remove_counters(CounterType::Loyalty, 3)),
+                    effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                        Effect::draw(1),
+                    ]),
+                    choices: vec![],
+                    timing: ActivationTiming::SorcerySpeed,
+                    additional_restrictions: vec![],
+                    activation_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
+                    mana_usage_restrictions: vec![],
+                    is_loyalty_ability: true,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            },
+        ]);
+
+    let actions_before = compute_legal_actions(&game, alice);
+    assert!(
+        actions_before.iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateAbility {
+                source,
+                ability_index
+            } if *source == chandra_id && *ability_index == 0
+        )),
+        "the +1 loyalty ability should be legal before any loyalty activation"
+    );
+    assert!(
+        actions_before.iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateAbility {
+                source,
+                ability_index
+            } if *source == chandra_id && *ability_index == 1
+        )),
+        "a different loyalty ability should also be legal before any loyalty activation"
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source: chandra_id,
+            ability_index: 0,
+        }),
+        &mut dm,
+    )
+    .expect("loyalty activation should complete");
+
+    assert!(
+        game.loyalty_ability_activated_this_turn(chandra_id),
+        "activating a loyalty ability should record the permanent immediately"
+    );
+    assert_eq!(
+        game.counter_count(chandra_id, CounterType::Loyalty),
+        7,
+        "the +1 loyalty cost should still be paid"
+    );
+
+    game.stack.clear();
+    game.turn.phase = Phase::FirstMain;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let actions_after = compute_legal_actions(&game, alice);
+    assert!(
+        !actions_after.iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateAbility { source, .. } if *source == chandra_id
+        )),
+        "no loyalty ability of that permanent should be legal after one was activated this turn"
+    );
+}
+
+#[test]
+fn test_negative_loyalty_cost_requires_enough_loyalty_in_legal_actions() {
+    use crate::ability::{AbilityKind, ActivatedAbility, ActivationTiming};
+    use crate::cost::TotalCost;
+    use crate::costs::Cost;
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let planeswalker = CardBuilder::new(CardId::from_raw(72_981), "Low Loyalty Walker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(2)
+        .build();
+    let planeswalker_id = game.create_object_from_card(&planeswalker, alice, Zone::Battlefield);
+
+    game.object_mut(planeswalker_id)
+        .expect("planeswalker should exist")
+        .abilities
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: TotalCost::from_cost(Cost::remove_counters(CounterType::Loyalty, 3)),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
+                choices: vec![],
+                timing: ActivationTiming::SorcerySpeed,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: true,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateAbility {
+                source,
+                ability_index
+            } if *source == planeswalker_id && *ability_index == 0
+        )),
+        "a -3 loyalty ability should not be legal with only two loyalty counters"
+    );
+}
+
+#[test]
 fn elvish_refueler_exhaust_permission_allows_one_used_exhaust_on_your_turn() {
     use crate::ability::{ActivatedAbility, ActivationTiming};
     use crate::cost::TotalCost;

@@ -3554,6 +3554,9 @@ pub(super) fn continue_activation(
             if pending.is_once_per_turn {
                 game.record_ability_activation(pending.source, pending.ability_index);
             }
+            if pending.is_loyalty_ability {
+                game.record_loyalty_ability_activation(pending.source);
+            }
 
             // Create ability stack entry with targets
             let mut entry =
