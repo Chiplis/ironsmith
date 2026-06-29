@@ -15601,6 +15601,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if filtered.len() == 2
+        && let Some(compact) =
+            describe_player_or_planeswalker_damage_then_controlled_creature_damage(
+                filtered[0],
+                filtered[1],
+            )
+    {
+        return compact;
+    }
+    if filtered.len() == 2
         && let Some(compact) = describe_phase_in_out_pair(filtered[0], filtered[1])
     {
         return compact;
@@ -26098,6 +26107,43 @@ fn describe_joint_subject_pair(first: &Effect, second: &Effect) -> Option<String
     None
 }
 
+fn describe_player_or_planeswalker_damage_then_controlled_creature_damage(
+    first: &Effect,
+    second: &Effect,
+) -> Option<String> {
+    let first_damage = deal_damage_effect_view(first)?;
+    if describe_choose_spec(&first_damage.target) != "target player or planeswalker" {
+        return None;
+    }
+
+    let for_each =
+        unwrap_basic_tag_wrappers(second).downcast_ref::<crate::effects::ForEachObject>()?;
+    let mut expected_filter = ObjectFilter::creature();
+    expected_filter.controller = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+    if for_each.filter != expected_filter {
+        return None;
+    }
+
+    let [inner] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let second_damage = deal_damage_effect_view(inner)?;
+    if second_damage.amount != first_damage.amount
+        || !matches!(second_damage.target, ChooseSpec::Iterated)
+    {
+        return None;
+    }
+
+    let (amount_text, where_x) = describe_damage_amount_clause(&first_damage.amount);
+    let mut text = format!(
+        "Deal {amount_text} to target player or planeswalker and each creature that player or that planeswalker's controller controls"
+    );
+    if let Some(where_x) = where_x {
+        text.push_str(&format!(", where X is {where_x}"));
+    }
+    Some(text)
+}
+
 pub(super) fn describe_false_only_conditional(
     condition: &crate::effect::Condition,
     false_branch: &str,
@@ -26990,6 +27036,7 @@ fn removed_counters_this_way_x_phrase(costs: &[crate::costs::Cost]) -> Option<St
         if let Some(remove_among) =
             effect.downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
             && remove_among.dynamic_count
+            && !remove_among.display_x
         {
             return Some(format!(
                 "the number of {} removed this way",
@@ -26999,6 +27046,9 @@ fn removed_counters_this_way_x_phrase(costs: &[crate::costs::Cost]) -> Option<St
         if let Some(remove_from_source) =
             effect.downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
         {
+            if remove_from_source.display_x {
+                continue;
+            }
             return Some(format!(
                 "the number of {} removed this way",
                 counter_phrase(remove_from_source.counter_type)
@@ -30867,6 +30917,50 @@ mod tests {
     }
 
     #[test]
+    fn display_x_counter_removal_cost_preserves_x_damage_surface() {
+        let ability = Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: crate::cost::TotalCost::from_cost(
+                    crate::costs::Cost::remove_any_counters_from_source(
+                        Some(CounterType::Loyalty),
+                        true,
+                    ),
+                ),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::deal_damage(Value::X, ChooseSpec::target_creature()),
+                ]),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                is_loyalty_ability: true,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+
+        assert_eq!(
+            describe_ability(0, &ability, "Chandra Nalaar", false),
+            vec!["−X: Chandra Nalaar deals X damage to target creature".to_string()]
+        );
+    }
+
+    #[test]
+    fn non_display_x_counter_removal_cost_still_expands_x_damage_surface() {
+        let effects = "This creature deals X damage to any target".to_string();
+        let costs = vec![crate::costs::Cost::remove_all_counters_from_source(Some(
+            CounterType::PlusOnePlusOne,
+        ))];
+
+        assert_eq!(
+            rewrite_cost_bound_x_phrases(effects, &costs),
+            "This creature deals damage equal to the number of +1/+1 counters removed this way to any target"
+        );
+    }
+
+    #[test]
     fn commander_identity_mana_uses_oracle_color_identity_surface() {
         let effect = Effect::new(
             crate::effects::AddManaFromCommanderColorIdentityEffect::you(Value::Fixed(1)),
@@ -31306,6 +31400,30 @@ mod tests {
         assert_eq!(
             describe_effect_list(&effects),
             "Deal X damage to target creature and you gain X life, where X is the number of Swamps you control"
+        );
+    }
+
+    #[test]
+    fn player_or_planeswalker_damage_then_controlled_creature_damage_uses_planeswalker_surface() {
+        let mut controlled_creatures = ObjectFilter::creature();
+        controlled_creatures.controller = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+        let effects = vec![
+            Effect::deal_damage(
+                Value::Fixed(10),
+                ChooseSpec::PlayerOrPlaneswalker(PlayerFilter::Any),
+            ),
+            Effect::new(crate::effects::ForEachObject::new(
+                controlled_creatures,
+                vec![
+                    Effect::deal_damage(Value::Fixed(10), ChooseSpec::Iterated)
+                        .tag(TagKey::from("damaged_0")),
+                ],
+            )),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Deal 10 damage to target player or planeswalker and each creature that player or that planeswalker's controller controls"
         );
     }
 

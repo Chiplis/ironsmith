@@ -2555,6 +2555,31 @@ fn nicol_bolas_dragon_god_strict_parser_compiled_text_and_model_regression() {
     );
 }
 
+#[test]
+fn chandra_nalaar_minus_x_compiled_text_preserves_x_damage_surface() {
+    let def = parse_oracle_card_definition("Chandra Nalaar");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("−X: Chandra Nalaar deals X damage to target creature"),
+        "expected Chandra's -X ability to preserve X damage wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("loyalty counters removed this way to target creature"),
+        "Chandra's -X ability should not expand X damage to counters-removed wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "−8: Chandra Nalaar deals 10 damage to target player or planeswalker and each creature that player or that planeswalker's controller controls"
+        ),
+        "expected Chandra's -8 ability to preserve player-or-planeswalker controller wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("that player or that object's controller controls"),
+        "Chandra's -8 ability should not collapse planeswalker controller wording to object-controller wording, got {rendered}"
+    );
+}
+
 fn nicol_bolas_test_planeswalker_with_loyalty_and_nonloyalty_abilities() -> CardDefinition {
     let mut loyalty_gain_life = crate::ability::Ability::activated(
         crate::cost::TotalCost::free(),
