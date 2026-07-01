@@ -39,7 +39,7 @@ pub use blocks_or_becomes_blocked::BlocksOrBecomesBlockedTrigger;
 pub use deals_combat_damage_to_player::DealsCombatDamageToPlayerTrigger;
 pub use deals_damage::DealsDamageTrigger;
 pub use deals_damage_to::DealsDamageToTrigger;
-pub use this_attacks::ThisAttacksTrigger;
+pub use this_attacks::{ThisAttacksPlayerWhoControlsAtLeastTrigger, ThisAttacksTrigger};
 pub use this_attacks_and_isnt_blocked::ThisAttacksAndIsntBlockedTrigger;
 pub use this_attacks_player_with_most_life::ThisAttacksPlayerWithMostLifeTrigger;
 pub use this_attacks_while_saddled::ThisAttacksWhileSaddledTrigger;

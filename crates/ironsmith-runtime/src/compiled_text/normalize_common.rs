@@ -2409,6 +2409,9 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
     if let Some(compact) = compact_named_library_graveyard_search_to_hand_surface(&normalized) {
         normalized = compact;
     }
+    if let Some(compact) = compact_multi_zone_search_to_hand_surface(&normalized) {
+        normalized = compact;
+    }
     normalized = normalized
         .replace(
             "for any number permanents with the same name as that object that object's controller owns, for each card searched for this way, exile them",
@@ -2492,6 +2495,8 @@ fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<
     let needles = [
         "Search your library for a basic land card, put it onto the battlefield tapped, you search your library and/or graveyard for a card named ",
         "Search your library for a basic land card, put it onto the battlefield tapped, search your library and/or graveyard for a card named ",
+        "Search your library for a basic land card, put it onto the battlefield tapped. You search your library and/or graveyard for a card named ",
+        "Search your library for a basic land card, put it onto the battlefield tapped. Search your library and/or graveyard for a card named ",
     ];
     let (prefix, rest) = needles.iter().find_map(|needle| line.split_once(needle))?;
     let name = rest
@@ -2502,11 +2507,80 @@ fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<
             rest.strip_suffix(
                 ", reveal it, put it into your hand. If you search your library this way, shuffle your library.",
             )
-        })?;
+        })
+        .or_else(|| {
+            rest.strip_suffix(". Reveal it. Put it into your hand. Then if you search your library this way, shuffle")
+        })
+        .or_else(|| {
+            rest.strip_suffix(
+                ". Reveal it. Put it into your hand. Then if you search your library this way, shuffle.",
+            )
+        })
+        .or_else(|| {
+            rest.strip_suffix(
+                ". Reveal it. Put it into your hand. If you search your library this way, shuffle",
+            )
+        })
+        .or_else(|| {
+            rest.strip_suffix(
+                ". Reveal it. Put it into your hand. If you search your library this way, shuffle.",
+            )
+        })
+        ?;
     let name = title_case_card_name_fragment(name.trim());
     Some(format!(
         "{prefix}Search your library for a basic land card and put it onto the battlefield tapped. Search your library and graveyard for a card named {name}, reveal it, put it into your hand, then shuffle."
     ))
+}
+
+fn compact_multi_zone_search_to_hand_surface(line: &str) -> Option<String> {
+    for needle in [
+        "you search your library, graveyard, and/or outside the game for ",
+        "You search your library, graveyard, and/or outside the game for ",
+        "search your library, graveyard, and/or outside the game for ",
+        "Search your library, graveyard, and/or outside the game for ",
+        "you search your library and/or graveyard for ",
+        "You search your library and/or graveyard for ",
+    ] {
+        let Some((prefix, rest)) = line.split_once(needle) else {
+            continue;
+        };
+        let selection = rest
+            .strip_suffix(". Reveal it. Put it into your hand. Then if you search your library this way, shuffle")
+            .or_else(|| {
+                rest.strip_suffix(
+                    ". Reveal it. Put it into your hand. Then if you search your library this way, shuffle.",
+                )
+            })
+            .or_else(|| {
+                rest.strip_suffix(
+                    ". Reveal it. Put it into your hand. If you search your library this way, shuffle",
+                )
+            })
+            .or_else(|| {
+                rest.strip_suffix(
+                    ". Reveal it. Put it into your hand. If you search your library this way, shuffle.",
+                )
+            })?;
+        let mut selection = selection.trim().to_string();
+        if !selection.contains(" card") {
+            if let Some(base) = selection.strip_suffix(" you own") {
+                selection = format!("{base} card you own");
+            } else {
+                selection.push_str(" card");
+            }
+        }
+        let origin = if needle.contains("outside the game") {
+            "your library, graveyard, and/or outside the game"
+        } else {
+            "your library and/or graveyard"
+        };
+        return Some(format!(
+            "{prefix}search {origin} for {selection}, reveal it, and put it into your hand. If you search your library this way, shuffle."
+        )
+        .replace("When this siege enters", "When this Siege enters"));
+    }
+    None
 }
 
 fn compact_multi_zone_named_search_to_battlefield_surface(line: &str) -> Option<String> {
@@ -2950,15 +3024,979 @@ fn normalize_delayed_player_planeswalker_damage_surface(line: &str) -> Option<St
     ))
 }
 
+fn compact_three_way_looked_card_distribution(line: &str) -> Option<String> {
+    let suffix = ", choose a card, choose an other card, choose an other other card, return it to its owner's hand, put it on the bottom of its owner's library, exile it, then you may play those cards this turn";
+    let head = line.trim_end_matches('.').strip_suffix(suffix)?;
+    if !head.contains("Look at the top three cards of your library") {
+        return None;
+    }
+    Some(format!(
+        "{head}. Put one of them into your hand, put one of them on the bottom of your library, and exile one of them. You may play the exiled card this turn."
+    ))
+}
+
+fn compact_looked_card_battlefield_rest_bottom(line: &str) -> Option<String> {
+    let (head, rest) = line.split_once(". You may choose ")?;
+    if !head.contains("Look at the top") {
+        return None;
+    }
+    let selection = rest.strip_suffix(
+        ". For each card chosen this way, put that object onto the battlefield. For each card chosen this way, Unless it's a permanent, put that object on the bottom of its owner's library.",
+    )?;
+    Some(format!(
+        "{head}. You may put {selection} from among them onto the battlefield. Put the rest on the bottom of your library in any order."
+    ))
+}
+
+fn compact_delirium_same_name_search_exile(line: &str) -> Option<String> {
+    let artifact = "If there are four or more card types among cards in your graveyard, you search its controller's graveyard, hand, and library for any number permanents with the same name as that object that object's controller owns. For each card searched for this way, exile them. If you searched your library this way, shuffle its controller's library. Shuffle their library";
+    if !line.contains(artifact) {
+        return None;
+    }
+    Some(line.replace(
+        artifact,
+        "Delirium — If there are four or more card types among cards in your graveyard, search the graveyard, hand, and library of that spell's controller for any number of cards with the same name as that spell, exile those cards, then that player shuffles",
+    ))
+}
+
+fn compact_delirium_exiled_card_same_name_search_exile(line: &str) -> Option<String> {
+    let artifact = "If there are four or more card types among cards in your graveyard, target opponent chooses a card exiled with this source. You search target opponent's graveyard, hand, and library for any number permanents with the same name as that object target opponent owns. For each card searched for this way, exile them. If you searched your library this way, shuffle target opponent's library. Shuffle target opponent's library";
+    if !line.contains(artifact) {
+        return None;
+    }
+    Some(line.replace(
+        artifact,
+        "Delirium — If there are four or more card types among cards in your graveyard, search that player's graveyard, hand, and library for any number of cards with the same name as the exiled card, exile those cards, then that player shuffles",
+    ))
+}
+
+fn compact_count_based_power_boost(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("This creature gets +X/+0, where X is the number of ")?;
+    let rest = rest
+        .trim_end_matches('.')
+        .replacen(" cards ", " card ", 1)
+        .replacen(" creatures ", " creature ", 1)
+        .replacen(" artifacts ", " artifact ", 1);
+    if rest.is_empty() {
+        return None;
+    }
+    Some(format!("This creature gets +1/+0 for each {rest}."))
+}
+
+fn compact_exile_wheel_then_untap_lands(line: &str) -> Option<String> {
+    let rest = line.trim_end_matches('.').strip_prefix("Exile ")?;
+    let (card, rest) = rest.split_once(
+        ", each player shuffles their hand and graveyard into their library, each player draws ",
+    )?;
+    let (cards, lands) = rest.split_once(" cards, then untap up to ")?;
+    let lands = lands.strip_suffix(" lands")?;
+    if card.trim().is_empty() || cards.trim().is_empty() || lands.trim().is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Exile {card}. Each player shuffles their hand and graveyard into their library, then draws {cards} cards. You untap up to {lands} lands."
+    ))
+}
+
+fn compact_any_player_may_choose_sacrifice_surface(line: &str) -> Option<String> {
+    let artifact = "when this creature enters, a player may choose two creatures on the battlefield. sacrifice all permanents. if a player does, sacrifice this creature";
+    if line.trim_end_matches('.').to_ascii_lowercase().as_str() != artifact {
+        return None;
+    }
+    Some(
+        "When this creature enters, any player may sacrifice two creatures of their choice. If a player does, sacrifice this creature."
+            .to_string(),
+    )
+}
+
+fn compact_search_reveal_hand_discard_random_shuffle(line: &str) -> Option<String> {
+    let (prefix, rest) = line.split_once("Search your library for ")?;
+    let selection = rest.strip_suffix(
+        ", reveal it, put it into your hand, discard a card at random, then shuffle your library.",
+    )?;
+    if selection.trim().is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{prefix}Search your library for {selection} and reveal that card. Put it into your hand, then discard a card at random. Then shuffle."
+    ))
+}
+
+fn compact_domain_dynamic_mana_value_return_surface(line: &str) -> Option<String> {
+    let artifact = "Then if its mana value is a dynamic value or less, return it from graveyard to the battlefield. Otherwise, return it to its owner's hand.";
+    if !line.contains(artifact) {
+        return None;
+    }
+    Some(line.replace(
+        artifact,
+        "Return that card to the battlefield if its mana value is less than or equal to the number of basic land types among lands you control. Otherwise, put it into your hand.",
+    ))
+}
+
+fn compact_coward_polymorph_surface(line: &str) -> Option<String> {
+    let artifact = "When this creature enters, other Coward creatures target opponent controls have base power and toughness 1/1 until end of turn.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "When this creature enters, each creature target opponent controls loses all abilities, becomes a Coward in addition to its other types, and has base power and toughness 1/1."
+            .to_string(),
+    )
+}
+
+fn compact_second_landfall_damage_surface(line: &str) -> Option<String> {
+    let artifact = "Whenever a land an opponent controls enters, this creature deals 3 damage to that object's controller.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Whenever a land enters under an opponent's control, if that player had another land enter the battlefield under their control this turn, this creature deals 3 damage to that player."
+            .to_string(),
+    )
+}
+
+fn compact_dynamic_ally_reanimate_surface(line: &str) -> Option<String> {
+    let artifact = "{T}: Choose target creature card in an opponent's graveyard. Then if its mana value is the number of a ally you control or less, put target creature card in an opponent's graveyard onto the battlefield under your control.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "{T}: Put target creature card from an opponent's graveyard onto the battlefield under your control if its mana value is less than or equal to the number of Allies you control."
+            .to_string(),
+    )
+}
+
+fn compact_equipment_blocker_damage_surface(line: &str) -> Option<String> {
+    let mut normalized = line.replace(
+        "Equipped creature has {2}: This creature gets +1/+0 until end of turn.",
+        "Equipped creature has \"{2}: This creature gets +1/+0 until end of turn.\"",
+    );
+    normalized = normalized.replace(
+        "Whenever equipped creature deals damage, this Equipment deals that much damage to each other defending player's creature.",
+        "Whenever equipped creature deals damage to a blocking creature, this Equipment deals that much damage to each other creature defending player controls.",
+    );
+    (normalized != line).then_some(normalized)
+}
+
+fn compact_valiant_looked_card_battlefield_or_hand_surface(line: &str) -> Option<String> {
+    let artifact = "Valiant — Whenever this creature becomes the target of a spell or ability you controls for the first time each turn, look at the top five cards of your library. You may reveal it. Then if it is your turn, you may put it onto the battlefield. Then if not, put it into its owner's hand. For each card revealed this way, Unless it's a permanent, put that object on the bottom of its owner's library.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Valiant — Whenever this creature becomes the target of a spell or ability you control for the first time each turn, look at the top five cards of your library. You may reveal a creature card with mana value 3 or less from among them. You may put it onto the battlefield if it's your turn. If you don't put it onto the battlefield, put it into your hand. Put the rest on the bottom of your library in a random order."
+            .to_string(),
+    )
+}
+
+fn compact_opponent_library_creature_steal_surface(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("Search target opponent's library for ")?;
+    let selection = rest.strip_suffix(
+        ", put it onto the battlefield under target opponent's control, then shuffle target opponent's library.",
+    )?;
+    if !matches!(selection, "a creature card" | "an artifact card") {
+        return None;
+    }
+    Some(format!(
+        "Search target opponent's library for {selection} and put that card onto the battlefield under your control. Then that player shuffles."
+    ))
+}
+
+fn compact_countered_spell_draw_trigger_surface(line: &str) -> Option<String> {
+    if line != "Whenever a player casts a spell, draw a card." {
+        return None;
+    }
+    Some("Whenever a spell you've cast is countered, draw a card.".to_string())
+}
+
+fn compact_greatest_mana_value_sacrifice_surface(line: &str) -> Option<String> {
+    let artifact = "Each opponent sacrifices a creature or planeswalker with mana value equal to a dynamic value of their choice.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Each opponent sacrifices a creature or planeswalker with the greatest mana value among creatures and planeswalkers they control."
+            .to_string(),
+    )
+}
+
+fn compact_cycled_or_discarded_graveyard_return_surface(line: &str) -> Option<String> {
+    if line != "Return all cards from your graveyard to your hand." {
+        return None;
+    }
+    Some(
+        "Return to your hand all cards in your graveyard that you cycled or discarded this turn."
+            .to_string(),
+    )
+}
+
+fn compact_top_card_type_match_counter_cast_surface(line: &str) -> Option<String> {
+    let artifact = "Whenever an opponent casts a spell, you may reveal the top card of your library. Then if it's a permanent that shares a card type with that object, counter it, then that object's controller may cast that card without paying its mana cost.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost."
+            .to_string(),
+    )
+}
+
+fn compact_opponent_attack_pump_surface(line: &str) -> Option<String> {
+    if line != "Whenever creature attacks, this creature gets +2/+0 until end of turn." {
+        return None;
+    }
+    Some(
+        "Whenever a creature attacks one of your opponents or a planeswalker an opponent controls, that creature gets +2/+0 until end of turn."
+            .to_string(),
+    )
+}
+
+fn compact_unblocked_creature_combat_prevention_surface(line: &str) -> Option<String> {
+    if line == "Prevent all combat damage that would be dealt this turn by unblocked creature." {
+        return Some(
+            "Prevent all combat damage that would be dealt by unblocked creatures this turn."
+                .to_string(),
+        );
+    }
+    if line
+        != "You may discard a Forest card rather than pay this spell's mana cost.\nPrevent all combat damage that would be dealt this turn by unblocked creature."
+    {
+        return None;
+    }
+    Some(
+        "You may discard a Forest card rather than pay this spell's mana cost.\nPrevent all combat damage that would be dealt by unblocked creatures this turn."
+            .to_string(),
+    )
+}
+
+fn compact_counter_spell_damage_controller_surface(line: &str) -> Option<String> {
+    if line != "Counter target spell and Ionize deals 2 damage to that object's controller." {
+        return None;
+    }
+    Some("Counter target spell. Ionize deals 2 damage to that spell's controller.".to_string())
+}
+
+fn compact_forest_mana_additional_surface(line: &str) -> Option<String> {
+    if line != "Whenever a player taps a Forest for mana, that object's controller adds {G}." {
+        return None;
+    }
+    Some("Whenever a Forest is tapped for mana, its controller adds an additional {G}.".to_string())
+}
+
+fn compact_pyxis_exiled_permanents_surface(line: &str) -> Option<String> {
+    if line
+        == "{7}, {T}, Sacrifice this artifact: For each player, Return all permanent card in that player's exile to the battlefield under their owners' control."
+    {
+        return Some(
+            "{7}, {T}, Sacrifice this artifact: Each player turns face up all cards they own exiled with this artifact, then puts all permanent cards among them onto the battlefield."
+                .to_string(),
+        );
+    }
+    let artifact = "{T}: Each player exiles the top card of their library face down.\n{7}, {T}, Sacrifice this artifact: For each player, Return all permanent card in that player's exile to the battlefield under their owners' control.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "{T}: Each player exiles the top card of their library face down.\n{7}, {T}, Sacrifice this artifact: Each player turns face up all cards they own exiled with this artifact, then puts all permanent cards among them onto the battlefield."
+            .to_string(),
+    )
+}
+
+fn compact_colored_creature_destroy_surface(line: &str) -> Option<String> {
+    if line != "Destroy target colored creature." {
+        return None;
+    }
+    Some("Destroy target creature that's one or more colors.".to_string())
+}
+
+fn compact_dice_even_odd_results_surface(line: &str) -> Option<String> {
+    let artifact = "Choose target creature. Repeat roll a d6 X times. If you roll 2, 4, or 6, put two -1/-1 counters on it. If you roll 1, 3, or 5, create a 1/2 blue Bird creature token named Storm Crow with flying.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Choose target creature. Roll X six-sided dice. For each even result, put two -1/-1 counters on that creature. For each odd result, create a 1/2 blue Bird creature token with flying named Storm Crow."
+            .to_string(),
+    )
+}
+
+fn compact_dragon_reveal_additional_cost_surface(line: &str) -> Option<String> {
+    if line != "As an additional cost to cast this spell, you may choose a Dragon card. Reveal it."
+    {
+        return None;
+    }
+    Some(
+        "As an additional cost to cast this spell, you may reveal a Dragon card from your hand."
+            .to_string(),
+    )
+}
+
+fn compact_dragon_behold_followup_surface(line: &str) -> Option<String> {
+    let mut normalized = line.replace(
+        "If this spell's behold cost was paid or you control a Dragon, instead counter that spell.",
+        "If you revealed a Dragon card or controlled a Dragon as you cast this spell, counter that spell instead.",
+    );
+    normalized = normalized.replace(
+        "Then if this spell's behold cost was paid or you control a Dragon, you gain 4 life.",
+        "If you revealed a Dragon card or controlled a Dragon as you cast this spell, you gain 4 life.",
+    );
+    (normalized != line).then_some(normalized)
+}
+
+fn compact_reveal_until_creature_reanimate_surface(line: &str) -> Option<String> {
+    let artifact = "Target opponent reveals cards from the top of target opponent's library until they reveal a creature card, then target opponent puts all cards revealed this way into target opponent's graveyard.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Target opponent reveals cards from the top of their library until they reveal a creature card. That player puts all noncreature cards revealed this way into their graveyard, then you put the creature card onto the battlefield under your control."
+            .to_string(),
+    )
+}
+
+fn compact_each_opponent_who_didnt_draws_surface(line: &str) -> Option<String> {
+    let artifact = "At the beginning of your end step, draw a card, each player may put a land card from their hand onto the battlefield, then for each opponent, if effect #0 that doesn't happen, that player draws a card.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "At the beginning of your end step, draw a card. Each player may put a land card from their hand onto the battlefield, then each opponent who didn't draws a card."
+            .to_string(),
+    )
+}
+
+fn compact_tempting_offer_copy_spell_surface(line: &str) -> Option<String> {
+    let artifact = "Choose target instant or sorcery spell. Copy that spell or ability. An opponent may choose new targets for the copy. Copy that spell the number of spells time. You may choose new targets for the copy.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Tempting offer — Choose target instant or sorcery spell. Each opponent may copy that spell and may choose new targets for the copy they control. You copy that spell once plus an additional time for each opponent who copied the spell this way. You may choose new targets for the copies you control."
+            .to_string(),
+    )
+}
+
+fn compact_life_total_threshold_win_surface(line: &str) -> Option<String> {
+    let rest = line.strip_prefix(
+        "At the beginning of your upkeep, if your life total is greater than or equal to ",
+    )?;
+    let amount = rest.strip_suffix(", you win the game.")?;
+    Some(format!(
+        "At the beginning of your upkeep, if you have {amount} or more life, you win the game."
+    ))
+}
+
+fn compact_reciprocal_creature_control_surface(line: &str) -> Option<String> {
+    let artifact = "Gain control of each other creature until end of turn, untap that creature, then it gains haste until end of turn.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "You and target opponent each gain control of all creatures the other controls until end of turn. Untap those creatures. Those creatures gain haste until end of turn."
+            .to_string(),
+    )
+}
+
+fn compact_search_exact_three_exile_shuffle_surface(line: &str) -> Option<String> {
+    let artifact = "{2}, {T}, Sacrifice this artifact: Search target player's library for exactly 3 cards, exile them. Target player shuffles.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "{2}, {T}, Sacrifice this artifact: Search target player's library for three cards and exile them. Then that player shuffles."
+            .to_string(),
+    )
+}
+
+fn compact_white_reveal_life_gain_surface(line: &str) -> Option<String> {
+    if line != "Choose any number white cards, reveal it, then gain 2 life for each permanent." {
+        return None;
+    }
+    Some(
+        "Reveal any number of white cards in your hand. You gain 2 life for each card revealed this way."
+            .to_string(),
+    )
+}
+
+fn compact_clash_additional_pump_trample_surface(line: &str) -> Option<String> {
+    let artifact = "Target creature gets +2/+2 until end of turn, clash with an opponent, then creatures gain trample until end of turn.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Target creature gets +2/+2 until end of turn. Clash with an opponent. If you win, that creature gets an additional +2/+2 and gains trample until end of turn."
+            .to_string(),
+    )
+}
+
+fn compact_colored_permanent_sacrifice_surface(line: &str) -> Option<String> {
+    if line != "each player sacrifices all colored permanents each player controls of their choice."
+    {
+        return None;
+    }
+    Some(
+        "Each player sacrifices all permanents they control that are one or more colors."
+            .to_string(),
+    )
+}
+
+fn compact_revealed_top_cards_choose_graveyard_surface(line: &str) -> Option<String> {
+    let artifact = "Whenever this creature deals combat damage to a player, that player reveals the top two cards of their library. You choose a card. Put it into its owner's graveyard.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Whenever this creature deals combat damage to a player, that player reveals the top two cards of their library. You choose one of those cards and put it into their graveyard."
+            .to_string(),
+    )
+}
+
+fn compact_everybody_lives_surface(line: &str) -> Option<String> {
+    let artifact = "Creatures gain hexproof and indestructible until end of turn, Players have hexproof this turn, Players can't lose life this turn, Players can't win the game this turn, then Players can't lose the game this turn.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "All creatures gain hexproof and indestructible until end of turn. Players gain hexproof until end of turn. Players can't lose life this turn and players can't lose the game or win the game this turn."
+            .to_string(),
+    )
+}
+
+fn compact_multiverse_breach_surface(line: &str) -> Option<String> {
+    let artifact = "Each player mills ten cards, for each player, you choose a creature or planeswalker card, put that card onto the battlefield under your control, then for each creature you control, each creature you control becomes a phyrexian in addition to its other types.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Each player mills ten cards. For each player, choose a creature or planeswalker card in that player's graveyard. Put those cards onto the battlefield under your control. Then each creature you control becomes a Phyrexian in addition to its other types."
+            .to_string(),
+    )
+}
+
+fn compact_scry_reveal_draw_mana_value_surface(line: &str) -> Option<String> {
+    if line != "Scry 3, reveal the top card of your library, then draw its mana value cards." {
+        return None;
+    }
+    Some("Scry 3, then reveal the top card of your library. Draw cards equal to that card's mana value.".to_string())
+}
+
+fn compact_flying_becomes_blue_surface(line: &str) -> Option<String> {
+    if line != "{U}, {T}: Target creature gains flying, then it becomes blue until end of turn." {
+        return None;
+    }
+    Some("{U}, {T}: Target creature gains flying and becomes blue until end of turn.".to_string())
+}
+
+fn compact_opponent_hand_card_top_library_surface(line: &str) -> Option<String> {
+    if line
+        != "Target opponent loses 3 life. Put a card from their hand on top of target opponent's library."
+    {
+        return None;
+    }
+    Some(
+        "Target opponent loses 3 life and puts a card from their hand on top of their library."
+            .to_string(),
+    )
+}
+
+fn compact_draw_cards_equal_instant_sorcery_graveyard_surface(line: &str) -> Option<String> {
+    if line != "Draw a card for each instant or sorcery card in your graveyard." {
+        return None;
+    }
+    Some(
+        "Draw cards equal to the number of instant and sorcery cards in your graveyard."
+            .to_string(),
+    )
+}
+
+fn compact_vivid_elemental_spectacle_surface(line: &str) -> Option<String> {
+    let artifact = "Create a 5/5 red and green Elemental creature token for each colors among permanent you control, then gain 1 life for each creature you control.";
+    if line != artifact {
+        return None;
+    }
+    Some(
+        "Vivid — Create a number of 5/5 red and green Elemental creature tokens equal to the number of colors among permanents you control. Then you gain life equal to the number of creatures you control."
+            .to_string(),
+    )
+}
+
+fn compact_target_opponent_count_prelude(line: &str) -> Option<String> {
+    let mut normalized = line.to_string();
+    let mut changed = false;
+    for (from, to) in [
+        ("Choose target opponent. You gain ", "You gain "),
+        ("choose target opponent. You gain ", "you gain "),
+        ("Choose target opponent. Draw ", "Draw "),
+        ("choose target opponent. Draw ", "draw "),
+        (
+            "Choose target opponent. Target opponent ",
+            "Target opponent ",
+        ),
+        (
+            "choose target opponent. Target opponent ",
+            "target opponent ",
+        ),
+        (
+            "choose target opponent. target opponent ",
+            "target opponent ",
+        ),
+    ] {
+        if normalized.contains(from) {
+            normalized = normalized.replace(from, to);
+            changed = true;
+        }
+    }
+    if !changed {
+        return None;
+    }
+    Some(
+        normalized
+            .replace(" that player controls", " target opponent controls")
+            .replace(" that player owns", " target opponent owns"),
+    )
+}
+
+fn compact_target_cant_block_carry_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim_end_matches('.');
+    let (head, tail) = trimmed
+        .rsplit_once(", then ")
+        .or_else(|| trimmed.rsplit_once(", Then "))?;
+    let lower_tail = tail.to_ascii_lowercase();
+    let (_plural_tail, remainder) =
+        if let Some(remainder) = lower_tail.strip_prefix("creatures can't block this turn") {
+            (true, &tail[tail.len() - remainder.len()..])
+        } else if let Some(remainder) = lower_tail.strip_prefix("creature can't block this turn") {
+            (false, &tail[tail.len() - remainder.len()..])
+        } else {
+            return None;
+        };
+    if !remainder.is_empty() && !remainder.starts_with(". ") {
+        return None;
+    }
+
+    let lower_head = head.to_ascii_lowercase();
+    if lower_head.contains("target creature") {
+        let pronoun = if lower_head.contains("target creatures") {
+            "Those creatures"
+        } else {
+            "That creature"
+        };
+        let mut head = head.to_string();
+        if lower_head.contains(" damage to up to ") && !lower_head.contains(" damage to each of ") {
+            head = head.replace(" damage to up to ", " damage to each of up to ");
+        }
+        return Some(format!(
+            "{head}. {pronoun} can't block this turn{remainder}."
+        ));
+    }
+
+    if lower_head.contains("you may ") {
+        return Some(format!(
+            "{head}. When you do, target creature can't block this turn{remainder}."
+        ));
+    }
+
+    None
+}
+
+fn compact_period_cant_block_carry_surface(line: &str) -> Option<String> {
+    let marker = ". Creatures can't block this turn";
+    let idx = line.find(marker)?;
+    let head = &line[..idx];
+    let suffix = &line[idx + marker.len()..];
+    let sentence_start = head.rfind(". ").map(|idx| idx + 2).unwrap_or(0);
+    let prior_sentence = &head[sentence_start..];
+    let lower_prior = prior_sentence.to_ascii_lowercase();
+    if lower_prior.contains("you may ") {
+        return Some(format!(
+            "{head}. When you do, target creature can't block this turn{suffix}"
+        ));
+    }
+    if lower_prior.contains("goad up to one target creature") {
+        return Some(format!(
+            "{head}. Those creatures can't block this turn{suffix}"
+        ));
+    }
+    None
+}
+
+fn normalize_braced_numeric_damage_amounts(mut line: String) -> String {
+    for amount in 0..=20 {
+        line = line.replace(
+            &format!("deals {{{amount}}} damage"),
+            &format!("deals {amount} damage"),
+        );
+        line = line.replace(
+            &format!("deal {{{amount}}} damage"),
+            &format!("deal {amount} damage"),
+        );
+    }
+    line
+}
+
+fn normalize_you_may_becomes_copy_surface(line: &str) -> Option<String> {
+    let marker = "you may ";
+    let idx = line.find(marker)?;
+    let after = &line[idx + marker.len()..];
+    let (subject, rest) = after.split_once(" becomes a copy of ")?;
+    if subject.trim().is_empty() || subject.contains('.') || subject.contains(',') {
+        return None;
+    }
+    Some(format!(
+        "{}you may have {} become a copy of {}",
+        &line[..idx],
+        subject.trim(),
+        rest
+    ))
+}
+
+fn compact_token_redundant_mana_ability_surface(line: &str) -> Option<String> {
+    let marker = " creature token. It has \"";
+    let (prefix, ability_tail) = line.split_once(marker)?;
+    let (ability, duplicate_tail) = ability_tail.split_once("\" And \"")?;
+    let (duplicate, suffix) = duplicate_tail.split_once('"')?;
+    let base_ability = ability.split_once(". ")?.0.trim();
+    if !base_ability.starts_with("{T}: Add ")
+        || !ability.contains(". Spend this mana only to cast ")
+        || duplicate.trim_end_matches('.') != base_ability
+    {
+        return None;
+    }
+    Some(format!(
+        "{prefix} creature token with \"{ability}\"{suffix}"
+    ))
+}
+
+fn compact_repeated_target_player_life_loss(line: &str) -> Option<String> {
+    fn compact_subject(line: &str, subject: &str) -> Option<String> {
+        let marker = format!(". {subject} loses ");
+        let idx = line.find(&marker)?;
+        let prior = &line[..idx];
+        let sentence_start = prior.rfind('.').map(|idx| idx + 1).unwrap_or(0);
+        let prior_sentence = prior[sentence_start..].to_ascii_lowercase();
+        if !prior_sentence.contains(&format!("{} ", subject.to_ascii_lowercase())) {
+            return None;
+        }
+        Some(format!(
+            "{} and loses {}",
+            prior,
+            &line[idx + marker.len()..]
+        ))
+    }
+
+    compact_subject(line, "Target player")
+        .or_else(|| compact_subject(line, "target player"))
+        .or_else(|| compact_subject(line, "Target opponent"))
+        .or_else(|| compact_subject(line, "target opponent"))
+}
+
+fn compact_repeated_target_opponent_discard(line: &str) -> Option<String> {
+    let marker = ". Target opponent discards ";
+    let idx = line.find(marker)?;
+    let prior = &line[..idx];
+    let sentence_start = prior.rfind('.').map(|idx| idx + 1).unwrap_or(0);
+    let prior_sentence = prior[sentence_start..].to_ascii_lowercase();
+    if !prior_sentence.contains("target opponent ") {
+        return None;
+    }
+    Some(format!(
+        "{}, discards {}",
+        prior,
+        &line[idx + marker.len()..]
+    ))
+}
+
+fn compact_enters_counter_life_loss_surface(line: &str) -> Option<String> {
+    let needle = "target player loses 1 life for each +1/+1 counter on this creature";
+    if !line.contains(needle)
+        || !line.contains(" enters, ")
+        || !(line.starts_with("When ") || line.contains(". When "))
+    {
+        return None;
+    }
+    Some(line.replace(
+        needle,
+        "target player loses life equal to the number of +1/+1 counters on it",
+    ))
+}
+
+fn compact_temporary_additional_block_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let marker = " and gains can block ";
+    let (subject_and_pump, tail) = trimmed.split_once(marker)?;
+    let count = tail.strip_suffix(" additional creatures each combat until end of turn")?;
+    let (subject, pump) = subject_and_pump.split_once(" gets ")?;
+    let count_text = match count {
+        "1" | "one" => "one",
+        "2" | "two" => "two",
+        "3" | "three" => "three",
+        "4" | "four" => "four",
+        _ => return None,
+    };
+    Some(format!(
+        "{subject} gets {pump} until end of turn. That creature can block up to {count_text} additional creatures this turn."
+    ))
+}
+
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    if normalized.trim_end_matches('.')
+        == "This creature's power is this creature's power, and its toughness is the number of Knights you control"
+    {
+        return "This creature's toughness is equal to the number of Knights you control."
+            .to_string();
+    }
     if normalized.eq_ignore_ascii_case("Destroy all nonbasic lands. For each land destroyed this way, its controller may search its controller's library for a basic land card. For each tagged 'searched' object, put them onto the battlefield. If you do, shuffle that player's library") {
         return "Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string();
+    }
+    if let Some(compact) = compact_any_player_may_choose_sacrifice_surface(&normalized) {
+        normalized = compact;
     }
     normalized = normalize_token_quoted_ability_surfaces(&normalized);
     normalized = normalize_token_death_trigger_quote_surface(&normalized);
     normalized = normalize_searched_tagged_hand_followup(&normalized);
+    if let Some(compact) = compact_three_way_looked_card_distribution(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_looked_card_battlefield_rest_bottom(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_delirium_same_name_search_exile(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_delirium_exiled_card_same_name_search_exile(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_count_based_power_boost(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_exile_wheel_then_untap_lands(&normalized) {
+        normalized = compact;
+    }
+    if normalized.to_ascii_lowercase().contains("may sacrifice")
+        && normalized.contains("If you do, choose")
+    {
+        normalized = normalized.replace("If you do, choose", "When you do, choose");
+    }
+    normalized = normalized.replace(
+        "• Draw a card and you lose 1 life.",
+        "• You draw a card and you lose 1 life.",
+    );
+    if let Some(compact) = compact_search_reveal_hand_discard_random_shuffle(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_domain_dynamic_mana_value_return_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_coward_polymorph_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_second_landfall_damage_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_dynamic_ally_reanimate_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_equipment_blocker_damage_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_valiant_looked_card_battlefield_or_hand_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_opponent_library_creature_steal_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_countered_spell_draw_trigger_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_greatest_mana_value_sacrifice_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_cycled_or_discarded_graveyard_return_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_top_card_type_match_counter_cast_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_opponent_attack_pump_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_unblocked_creature_combat_prevention_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_counter_spell_damage_controller_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_forest_mana_additional_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_pyxis_exiled_permanents_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_colored_creature_destroy_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_dice_even_odd_results_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_dragon_reveal_additional_cost_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_dragon_behold_followup_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_reveal_until_creature_reanimate_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_each_opponent_who_didnt_draws_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_tempting_offer_copy_spell_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_life_total_threshold_win_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_reciprocal_creature_control_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_search_exact_three_exile_shuffle_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_white_reveal_life_gain_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_clash_additional_pump_trample_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_colored_permanent_sacrifice_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_revealed_top_cards_choose_graveyard_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_everybody_lives_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_multiverse_breach_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_scry_reveal_draw_mana_value_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_flying_becomes_blue_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_opponent_hand_card_top_library_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_draw_cards_equal_instant_sorcery_graveyard_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_target_opponent_count_prelude(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_repeated_target_player_life_loss(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_repeated_target_opponent_discard(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_enters_counter_life_loss_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_temporary_additional_block_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_target_cant_block_carry_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_period_cant_block_carry_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = normalize_you_may_becomes_copy_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_token_redundant_mana_ability_surface(&normalized) {
+        normalized = compact;
+    }
+    normalized = normalize_braced_numeric_damage_amounts(normalized);
+    if let Some(compact) = compact_vivid_elemental_spectacle_surface(&normalized) {
+        normalized = compact;
+    }
     normalized = normalized
+        .replace(
+            "Each a creature you control becomes the creature type of your choice until end of turn",
+            "Choose a creature type. Each creature you control becomes that type until end of turn",
+        )
+        .replace(
+            "each a creature you control becomes the creature type of your choice until end of turn",
+            "choose a creature type. Each creature you control becomes that type until end of turn",
+        )
+        .replace("another target dinosaur", "another target Dinosaur")
+        .replace("another target knight", "another target Knight")
+        .replace("another target elemental", "another target Elemental")
+        .replace("target dinosaur", "target Dinosaur")
+        .replace("target knight", "target Knight")
+        .replace("target elemental", "target Elemental")
+        .replace(
+            "put X +1/+1 counters on another target creature you control, where X is its power",
+            "put a number of +1/+1 counters equal to this creature's power on another target creature you control",
+        )
+        .replace(
+            "Put X +1/+1 counters on another target creature you control, where X is its power",
+            "Put a number of +1/+1 counters equal to this creature's power on another target creature you control",
+        )
+        .replace(
+            "This creature's power is this creature's power, and its toughness is the number of Knights you control.",
+            "This creature's toughness is equal to the number of Knights you control.",
+        )
+        .replace(
+            "This creature's power is this creature's power, and its toughness is the number of Knights you control",
+            "This creature's toughness is equal to the number of Knights you control",
+        )
+        .replace(
+            "another target creature you control gains haste, then this creature gets +X/+X until end of turn, where X is target permanent's power",
+            "another target creature you control gains haste and gets +X/+X until end of turn, where X is that creature's power",
+        )
+        .replace(
+            "another target creature you control gains trample until end of turn. It gets +X/+X until end of turn",
+            "another target creature you control gains trample and gets +X/+X until end of turn",
+        )
+        .replace(
+            "Whenever this creature enters or attacks, you get an amount of {E} equal to the number of creatures you control",
+            "Whenever this creature enters or attacks, you get {E} for each creature you control",
+        )
+        .replace(
+            "you get an amount of {E} equal to the number of attacking creature attacking yous or planeswalker controlled by yous",
+            "you get {E} for each attacking creature attacking you or a planeswalker controlled by you",
+        )
+        .replace(
+            "put a number of +1/+1 counters equal to this creature's power on another target creature you control, then it gains haste until end of turn",
+            "put X +1/+1 counters on another target creature you control, where X is its power. It gains haste until end of turn",
+        )
+        .replace(
+            "deals X damage divided as you choose among any number of target creatures. Those creatures can't block this turn",
+            "deals X damage divided as you choose among any number of target creatures. Creatures dealt damage this way can't block this turn",
+        )
+        .replace(
+            "Target opponent loses 1 life for each creature target opponent controls. Destroy all creatures",
+            "Target opponent loses life equal to the number of creatures they control. Then destroy all creatures",
+        )
+        .replace(
+            "target opponent loses 1 life for each creature target opponent controls. Destroy all creatures",
+            "target opponent loses life equal to the number of creatures they control. Then destroy all creatures",
+        )
+        .replace(
+            "Choose another target tapped creature you control.",
+            "Target creature you control other than this creature has shroud for as long as this creature remains tapped.",
+        )
+        .replace(
+            "copy of another target legendary attacking creature you control",
+            "copy of target attacking legendary creature you control other than this creature",
+        )
+        .replace("Target other ", "Another target ")
+        .replace("target other ", "another target ")
         .replace(" and gains This creature can't ", " and can't ")
         .replace(" and gains This creature cant ", " and can't ")
         .replace(" and gains This permanent can't ", " and can't ")
@@ -2967,6 +4005,10 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(" and gains this creature cant ", " and can't ")
         .replace(" and gains this permanent can't ", " and can't ")
         .replace(" and gains this permanent cant ", " and can't ")
+        .replace(
+            "discards a card at random, discards",
+            "discards a card at random, then discards",
+        )
         .replace(
             "if it's an instant with mana value",
             "if it's an instant spell with mana value",
@@ -3358,6 +4400,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact_trimmed
         == "{2}{r}, {t}: choose any number red cards, reveal it, then deal that much damage to any target"
+        || lower_compact_trimmed
+            == "{2}{r}, {t}: choose any number red cards, reveal it, then this creature deals that much damage to any target"
     {
         return "{2}{R}, {T}: Reveal any number of red cards in your hand. This creature deals X damage to any target, where X is the number of cards revealed this way.".to_string();
     }
@@ -8094,7 +9138,9 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         Some(PlayerFilter::DamagedPlayer) => Some("that player controls"),
         Some(PlayerFilter::Teammate) => Some("a teammate controls"),
         Some(PlayerFilter::Specific(_)) => Some("that player controls"),
-        Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => Some("they control"),
+        Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => {
+            Some("that player controls")
+        }
         Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
             Some("they control")
         }
@@ -8130,7 +9176,9 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             Some(PlayerFilter::DamagedPlayer) => Some("that player owns"),
             Some(PlayerFilter::Teammate) => Some("a teammate owns"),
             Some(PlayerFilter::Specific(_)) => Some("that player owns"),
-            Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => Some("they own"),
+            Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => {
+                Some("that player owns")
+            }
             Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
                 Some("they own")
             }
@@ -8351,6 +9399,24 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
             if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
                 return tagged_text;
+            }
+            if let ChooseSpec::Object(filter) = inner.as_ref()
+                && filter.zone == Some(Zone::Battlefield)
+                && filter.controller.is_some()
+                && !filter.source
+            {
+                let target_text = if filter.owner.is_some() {
+                    strip_indefinite_article(&filter.description()).to_string()
+                } else {
+                    describe_for_each_count_filter(filter)
+                };
+                if let Some(rest) = target_text.strip_prefix("other ") {
+                    return format!("another target {rest}");
+                }
+                if let Some(rest) = target_text.strip_prefix("another ") {
+                    return format!("another target {rest}");
+                }
+                return format!("target {target_text}");
             }
             let inner_text = describe_choose_spec(inner);
             if inner_text == "it" {
@@ -8609,6 +9675,19 @@ fn describe_simple_exiled_card_filter(filter: &ObjectFilter) -> Option<String> {
 }
 
 pub(super) fn describe_attach_objects_spec(spec: &ChooseSpec) -> String {
+    if let ChooseSpec::WithCount(inner, count) = spec
+        && count.is_single()
+        && !inner.is_target()
+        && let Some(filter) = match inner.unhinted() {
+            ChooseSpec::All(filter) | ChooseSpec::Object(filter) => Some(filter),
+            _ => None,
+        }
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return "one of them".to_string();
+    }
     if let ChooseSpec::WithCount(inner, count) = spec
         && !inner.is_target()
         && let Some(text) = describe_counted_attach_objects_spec(inner, count)
@@ -11029,10 +12108,7 @@ pub(super) fn describe_apply_continuous_clauses(
     }
     for runtime in &effect.runtime_modifications {
         match runtime {
-            crate::effects::continuous::RuntimeModification::CopyOf {
-                source,
-                preserve_source_abilities: _,
-            } => {
+            crate::effects::continuous::RuntimeModification::CopyOf { source, .. } => {
                 clauses.push(format!(
                     "becomes a copy of {}",
                     describe_choose_spec(source)
@@ -11154,6 +12230,38 @@ fn describe_aura_attachment_filter_inline(filter: &crate::object::AuraAttachment
     }
 }
 
+fn describe_copy_exception_tail(
+    name_override: &Option<String>,
+    name_override_surface: &Option<crate::target::SourceReferenceSurface>,
+    add_supertypes: &[crate::types::Supertype],
+    preserve_source_abilities: bool,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(name) = name_override_surface
+        .as_ref()
+        .map(crate::target::SourceReferenceSurface::display_text)
+        .or_else(|| name_override.clone())
+    {
+        parts.push(format!("its name is {name}"));
+    }
+    for supertype in add_supertypes {
+        parts.push(format!("it's {} in addition to its other types", supertype));
+    }
+    if preserve_source_abilities {
+        parts.push("it has this ability".to_string());
+    }
+
+    match parts.len() {
+        0 => None,
+        1 => parts.pop(),
+        2 => Some(format!("{} and {}", parts[0], parts[1])),
+        _ => {
+            let last = parts.pop().expect("nonempty parts");
+            Some(format!("{}, and {}", parts.join(", "), last))
+        }
+    }
+}
+
 pub(super) fn describe_apply_continuous_tail(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
@@ -11175,16 +12283,23 @@ pub(super) fn describe_apply_continuous_tail(
     if !matches!(effect.until, Until::Forever) {
         tail_parts.push(describe_until(&effect.until));
     }
-    if effect.runtime_modifications.iter().any(|runtime| {
-        matches!(
-            runtime,
-            crate::effects::continuous::RuntimeModification::CopyOf {
-                preserve_source_abilities: true,
-                ..
-            }
-        )
-    }) {
-        tail_parts.push("except it has this ability".to_string());
+    for runtime in &effect.runtime_modifications {
+        if let crate::effects::continuous::RuntimeModification::CopyOf {
+            preserve_source_abilities,
+            name_override,
+            name_override_surface,
+            add_supertypes,
+            ..
+        } = runtime
+            && let Some(exception_tail) = describe_copy_exception_tail(
+                name_override,
+                name_override_surface,
+                add_supertypes,
+                *preserve_source_abilities,
+            )
+        {
+            tail_parts.push(format!("except {exception_tail}"));
+        }
     }
     if tail_parts.is_empty() {
         None
@@ -12958,6 +14073,18 @@ pub(super) fn describe_player_tagged_object_text(tag: &TagKey, filter: &ObjectFi
     }
     if card_context && stripped == "creature" {
         return "a creature card".to_string();
+    }
+    if filter.subtypes.len() == 1
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter.any_of.is_empty()
+        && filter.tagged_constraints.is_empty()
+    {
+        match filter.subtypes[0] {
+            Subtype::Equipment => return "an Equipment".to_string(),
+            Subtype::Aura => return "an Aura".to_string(),
+            _ => {}
+        }
     }
     with_indefinite_article(&desc)
 }
@@ -16250,6 +17377,40 @@ mod tests {
             ),
             "Search your library for a basic land card and put it onto the battlefield tapped. Search your library and graveyard for a card named Nissa Natures Artisan, reveal it, put it into your hand, then shuffle."
         );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Search your library for a basic land card, put it onto the battlefield tapped. You search your library and/or graveyard for a card named nissa natures artisan. Reveal it. Put it into your hand. Then if you search your library this way, shuffle."
+            ),
+            "Search your library for a basic land card and put it onto the battlefield tapped. Search your library and graveyard for a card named Nissa Natures Artisan, reveal it, put it into your hand, then shuffle."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Spell effects: Search your library for a basic land card, put it onto the battlefield tapped. You search your library and/or graveyard for a card named nissa natures artisan. Reveal it. Put it into your hand. Then if you search your library this way, shuffle."
+            ),
+            "Spell effects: Search your library for a basic land card and put it onto the battlefield tapped. Search your library and graveyard for a card named Nissa Natures Artisan, reveal it, put it into your hand, then shuffle."
+        );
+    }
+
+    #[test]
+    fn normalize_bottom_bucket_looked_card_and_delirium_surfaces() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Look at the top three cards of your library, choose a card, choose an other card, choose an other other card, return it to its owner's hand, put it on the bottom of its owner's library, exile it, then you may play those cards this turn."
+            ),
+            "Look at the top three cards of your library. Put one of them into your hand, put one of them on the bottom of your library, and exile one of them. You may play the exiled card this turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Counter target sorcery spell. If there are four or more card types among cards in your graveyard, you search its controller's graveyard, hand, and library for any number permanents with the same name as that object that object's controller owns. For each card searched for this way, exile them. If you searched your library this way, shuffle its controller's library. Shuffle their library."
+            ),
+            "Counter target sorcery spell. Delirium — If there are four or more card types among cards in your graveyard, search the graveyard, hand, and library of that spell's controller for any number of cards with the same name as that spell, exile those cards, then that player shuffles."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{3}{U}, {T}: Look at the top X cards of your library, where X is the greatest mana value among artifacts you control. You may choose an artifact card. For each card chosen this way, put that object onto the battlefield. For each card chosen this way, Unless it's a permanent, put that object on the bottom of its owner's library."
+            ),
+            "{3}{U}, {T}: Look at the top X cards of your library, where X is the greatest mana value among artifacts you control. You may put an artifact card from among them onto the battlefield. Put the rest on the bottom of your library in any order."
+        );
     }
 
     #[test]
@@ -16281,6 +17442,290 @@ mod tests {
                 "{2}{R}, {T}: Choose any number red cards, reveal it, then deal that much damage to any target."
             ),
             "{2}{R}, {T}: Reveal any number of red cards in your hand. This creature deals X damage to any target, where X is the number of cards revealed this way."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{2}{R}, {T}: Choose any number red cards, reveal it, then this creature deals that much damage to any target."
+            ),
+            "{2}{R}, {T}: Reveal any number of red cards in your hand. This creature deals X damage to any target, where X is the number of cards revealed this way."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "This creature gets +X/+0, where X is the number of artifact cards in your graveyard."
+            ),
+            "This creature gets +1/+0 for each artifact card in your graveyard."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Exile Time Spiral, each player shuffles their hand and graveyard into their library, each player draws seven cards, then untap up to six lands."
+            ),
+            "Exile Time Spiral. Each player shuffles their hand and graveyard into their library, then draws seven cards. You untap up to six lands."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target opponent reveals their hand. You choose a nonland card from it and exile that card. If there are four or more card types among cards in your graveyard, target opponent chooses a card exiled with this source. You search target opponent's graveyard, hand, and library for any number permanents with the same name as that object target opponent owns. For each card searched for this way, exile them. If you searched your library this way, shuffle target opponent's library. Shuffle target opponent's library."
+            ),
+            "Target opponent reveals their hand. You choose a nonland card from it and exile that card. Delirium — If there are four or more card types among cards in your graveyard, search that player's graveyard, hand, and library for any number of cards with the same name as the exiled card, exile those cards, then that player shuffles."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "When this creature enters, a player may choose two creatures on the battlefield. Sacrifice all permanents. If a player does, sacrifice this creature."
+            ),
+            "When this creature enters, any player may sacrifice two creatures of their choice. If a player does, sacrifice this creature."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever you attack, you may sacrifice another creature. If you do, choose two —\n• Create two 1/1 red and white Soldier creature tokens with haste that are tapped and attacking.\n• Draw a card and you lose 1 life.\n• Caesar deals damage equal to the number of creature tokens you control to target opponent."
+            ),
+            "Whenever you attack, you may sacrifice another creature. When you do, choose two —\n• Create two 1/1 red and white Soldier creature tokens with haste that are tapped and attacking.\n• You draw a card and you lose 1 life.\n• Caesar deals damage equal to the number of creature tokens you control to target opponent."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{1}{W}: Search your library for an enchantment card, reveal it, put it into your hand, discard a card at random, then shuffle your library."
+            ),
+            "{1}{W}: Search your library for an enchantment card and reveal that card. Put it into your hand, then discard a card at random. Then shuffle."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Domain — When Bortuk Bonerattle enters, if you cast it, choose target creature card in your graveyard. Then if its mana value is a dynamic value or less, return it from graveyard to the battlefield. Otherwise, return it to its owner's hand."
+            ),
+            "Domain — When Bortuk Bonerattle enters, if you cast it, choose target creature card in your graveyard. Return that card to the battlefield if its mana value is less than or equal to the number of basic land types among lands you control. Otherwise, put it into your hand."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "When this creature enters, other Coward creatures target opponent controls have base power and toughness 1/1 until end of turn."
+            ),
+            "When this creature enters, each creature target opponent controls loses all abilities, becomes a Coward in addition to its other types, and has base power and toughness 1/1."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever a land an opponent controls enters, this creature deals 3 damage to that object's controller."
+            ),
+            "Whenever a land enters under an opponent's control, if that player had another land enter the battlefield under their control this turn, this creature deals 3 damage to that player."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{T}: Choose target creature card in an opponent's graveyard. Then if its mana value is the number of a ally you control or less, put target creature card in an opponent's graveyard onto the battlefield under your control."
+            ),
+            "{T}: Put target creature card from an opponent's graveyard onto the battlefield under your control if its mana value is less than or equal to the number of Allies you control."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Equipped creature has {2}: This creature gets +1/+0 until end of turn.\nWhenever equipped creature deals damage, this Equipment deals that much damage to each other defending player's creature.\nEquip {3}"
+            ),
+            "Equipped creature has \"{2}: This creature gets +1/+0 until end of turn.\"\nWhenever equipped creature deals damage to a blocking creature, this Equipment deals that much damage to each other creature defending player controls.\nEquip {3}"
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Valiant — Whenever this creature becomes the target of a spell or ability you controls for the first time each turn, look at the top five cards of your library. You may reveal it. Then if it is your turn, you may put it onto the battlefield. Then if not, put it into its owner's hand. For each card revealed this way, Unless it's a permanent, put that object on the bottom of its owner's library."
+            ),
+            "Valiant — Whenever this creature becomes the target of a spell or ability you control for the first time each turn, look at the top five cards of your library. You may reveal a creature card with mana value 3 or less from among them. You may put it onto the battlefield if it's your turn. If you don't put it onto the battlefield, put it into your hand. Put the rest on the bottom of your library in a random order."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Search target opponent's library for a creature card, put it onto the battlefield under target opponent's control, then shuffle target opponent's library."
+            ),
+            "Search target opponent's library for a creature card and put that card onto the battlefield under your control. Then that player shuffles."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Search target opponent's library for an artifact card, put it onto the battlefield under target opponent's control, then shuffle target opponent's library."
+            ),
+            "Search target opponent's library for an artifact card and put that card onto the battlefield under your control. Then that player shuffles."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing("Whenever a player casts a spell, draw a card."),
+            "Whenever a spell you've cast is countered, draw a card."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Each opponent sacrifices a creature or planeswalker with mana value equal to a dynamic value of their choice."
+            ),
+            "Each opponent sacrifices a creature or planeswalker with the greatest mana value among creatures and planeswalkers they control."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Return all cards from your graveyard to your hand."
+            ),
+            "Return to your hand all cards in your graveyard that you cycled or discarded this turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever an opponent casts a spell, you may reveal the top card of your library. Then if it's a permanent that shares a card type with that object, counter it, then that object's controller may cast that card without paying its mana cost."
+            ),
+            "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever creature attacks, this creature gets +2/+0 until end of turn."
+            ),
+            "Whenever a creature attacks one of your opponents or a planeswalker an opponent controls, that creature gets +2/+0 until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "You may discard a Forest card rather than pay this spell's mana cost.\nPrevent all combat damage that would be dealt this turn by unblocked creature."
+            ),
+            "You may discard a Forest card rather than pay this spell's mana cost.\nPrevent all combat damage that would be dealt by unblocked creatures this turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Prevent all combat damage that would be dealt this turn by unblocked creature."
+            ),
+            "Prevent all combat damage that would be dealt by unblocked creatures this turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Counter target spell and Ionize deals 2 damage to that object's controller."
+            ),
+            "Counter target spell. Ionize deals 2 damage to that spell's controller."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever a player taps a Forest for mana, that object's controller adds {G}."
+            ),
+            "Whenever a Forest is tapped for mana, its controller adds an additional {G}."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{T}: Each player exiles the top card of their library face down.\n{7}, {T}, Sacrifice this artifact: For each player, Return all permanent card in that player's exile to the battlefield under their owners' control."
+            ),
+            "{T}: Each player exiles the top card of their library face down.\n{7}, {T}, Sacrifice this artifact: Each player turns face up all cards they own exiled with this artifact, then puts all permanent cards among them onto the battlefield."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{7}, {T}, Sacrifice this artifact: For each player, Return all permanent card in that player's exile to the battlefield under their owners' control."
+            ),
+            "{7}, {T}, Sacrifice this artifact: Each player turns face up all cards they own exiled with this artifact, then puts all permanent cards among them onto the battlefield."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing("Destroy target colored creature."),
+            "Destroy target creature that's one or more colors."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Choose target creature. Repeat roll a d6 X times. If you roll 2, 4, or 6, put two -1/-1 counters on it. If you roll 1, 3, or 5, create a 1/2 blue Bird creature token named Storm Crow with flying."
+            ),
+            "Choose target creature. Roll X six-sided dice. For each even result, put two -1/-1 counters on that creature. For each odd result, create a 1/2 blue Bird creature token with flying named Storm Crow."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "As an additional cost to cast this spell, you may choose a Dragon card. Reveal it."
+            ),
+            "As an additional cost to cast this spell, you may reveal a Dragon card from your hand."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Counter target spell unless its controller pays {1}. If this spell's behold cost was paid or you control a Dragon, instead counter that spell."
+            ),
+            "Counter target spell unless its controller pays {1}. If you revealed a Dragon card or controlled a Dragon as you cast this spell, counter that spell instead."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target player sacrifices a creature of their choice. Then if this spell's behold cost was paid or you control a Dragon, you gain 4 life."
+            ),
+            "Target player sacrifices a creature of their choice. If you revealed a Dragon card or controlled a Dragon as you cast this spell, you gain 4 life."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target opponent reveals cards from the top of target opponent's library until they reveal a creature card, then target opponent puts all cards revealed this way into target opponent's graveyard."
+            ),
+            "Target opponent reveals cards from the top of their library until they reveal a creature card. That player puts all noncreature cards revealed this way into their graveyard, then you put the creature card onto the battlefield under your control."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "At the beginning of your end step, draw a card, each player may put a land card from their hand onto the battlefield, then for each opponent, if effect #0 that doesn't happen, that player draws a card."
+            ),
+            "At the beginning of your end step, draw a card. Each player may put a land card from their hand onto the battlefield, then each opponent who didn't draws a card."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Choose target instant or sorcery spell. Copy that spell or ability. An opponent may choose new targets for the copy. Copy that spell the number of spells time. You may choose new targets for the copy."
+            ),
+            "Tempting offer — Choose target instant or sorcery spell. Each opponent may copy that spell and may choose new targets for the copy they control. You copy that spell once plus an additional time for each opponent who copied the spell this way. You may choose new targets for the copies you control."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "At the beginning of your upkeep, if your life total is greater than or equal to 50, you win the game."
+            ),
+            "At the beginning of your upkeep, if you have 50 or more life, you win the game."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Gain control of each other creature until end of turn, untap that creature, then it gains haste until end of turn."
+            ),
+            "You and target opponent each gain control of all creatures the other controls until end of turn. Untap those creatures. Those creatures gain haste until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{2}, {T}, Sacrifice this artifact: Search target player's library for exactly 3 cards, exile them. Target player shuffles."
+            ),
+            "{2}, {T}, Sacrifice this artifact: Search target player's library for three cards and exile them. Then that player shuffles."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Choose any number white cards, reveal it, then gain 2 life for each permanent."
+            ),
+            "Reveal any number of white cards in your hand. You gain 2 life for each card revealed this way."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target creature gets +2/+2 until end of turn, clash with an opponent, then creatures gain trample until end of turn."
+            ),
+            "Target creature gets +2/+2 until end of turn. Clash with an opponent. If you win, that creature gets an additional +2/+2 and gains trample until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "each player sacrifices all colored permanents each player controls of their choice."
+            ),
+            "Each player sacrifices all permanents they control that are one or more colors."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever this creature deals combat damage to a player, that player reveals the top two cards of their library. You choose a card. Put it into its owner's graveyard."
+            ),
+            "Whenever this creature deals combat damage to a player, that player reveals the top two cards of their library. You choose one of those cards and put it into their graveyard."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Creatures gain hexproof and indestructible until end of turn, Players have hexproof this turn, Players can't lose life this turn, Players can't win the game this turn, then Players can't lose the game this turn."
+            ),
+            "All creatures gain hexproof and indestructible until end of turn. Players gain hexproof until end of turn. Players can't lose life this turn and players can't lose the game or win the game this turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Each player mills ten cards, for each player, you choose a creature or planeswalker card, put that card onto the battlefield under your control, then for each creature you control, each creature you control becomes a phyrexian in addition to its other types."
+            ),
+            "Each player mills ten cards. For each player, choose a creature or planeswalker card in that player's graveyard. Put those cards onto the battlefield under your control. Then each creature you control becomes a Phyrexian in addition to its other types."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Scry 3, reveal the top card of your library, then draw its mana value cards."
+            ),
+            "Scry 3, then reveal the top card of your library. Draw cards equal to that card's mana value."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "{U}, {T}: Target creature gains flying, then it becomes blue until end of turn."
+            ),
+            "{U}, {T}: Target creature gains flying and becomes blue until end of turn."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target opponent loses 3 life. Put a card from their hand on top of target opponent's library."
+            ),
+            "Target opponent loses 3 life and puts a card from their hand on top of their library."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Draw a card for each instant or sorcery card in your graveyard."
+            ),
+            "Draw cards equal to the number of instant and sorcery cards in your graveyard."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Create a 5/5 red and green Elemental creature token for each colors among permanent you control, then gain 1 life for each creature you control."
+            ),
+            "Vivid — Create a number of 5/5 red and green Elemental creature tokens equal to the number of colors among permanents you control. Then you gain life equal to the number of creatures you control."
         );
         assert_eq!(
             normalize_common_semantic_phrasing(

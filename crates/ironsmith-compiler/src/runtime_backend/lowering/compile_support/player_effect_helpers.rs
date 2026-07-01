@@ -560,7 +560,15 @@ where
         allow_target_opponent,
         track_last_player_filter,
     )?;
-    let value = subject.bind_player_refs_in_value(value, ctx)?;
+    let mut value = value.clone();
+    if !ctx.iterated_player {
+        let binding_player = ctx
+            .last_player_filter
+            .as_ref()
+            .filter(|filter| !filter.mentions_iterated_player())
+            .unwrap_or_else(|| subject.player_filter());
+        bind_relative_iterated_player_in_value_to_player_filter(&mut value, binding_player);
+    }
     let you_value = value.clone();
     let (player_filter, choices) = subject.into_parts();
     compile_player_effect_from_resolved_filter(

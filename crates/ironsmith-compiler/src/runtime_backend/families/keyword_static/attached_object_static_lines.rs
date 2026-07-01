@@ -190,6 +190,225 @@ fn attached_find_prefix_shape_start(words: &[&str], shape: &ClauseShape<'static>
     (0..words.len()).find(|&idx| attached_shape_matches_words(&words[idx..], *shape))
 }
 
+fn split_attached_keyword_condition_suffix(
+    ability_tokens: &[OwnedLexToken],
+) -> Result<(Vec<OwnedLexToken>, Option<crate::ConditionExpr>), CardTextError> {
+    let ability_tokens = trim_edge_punctuation(ability_tokens);
+    let words = crate::runtime_backend::lexer::TokenWordView::new(&ability_tokens);
+    let word_refs = words.word_refs();
+
+    if let Some(as_long_idx) =
+        attached_find_prefix_shape_start(&word_refs, &ATTACHED_AS_LONG_AS_PREFIX_PATTERN)
+    {
+        let Some(as_long_token_idx) = words.token_index_for_word_index(as_long_idx) else {
+            return Ok((ability_tokens, None));
+        };
+        let Some(condition_start_idx) = words.token_index_for_word_index(as_long_idx + 3) else {
+            return Ok((ability_tokens, None));
+        };
+        let ability_head = trim_edge_punctuation(&ability_tokens[..as_long_token_idx]);
+        let condition_tokens = trim_edge_punctuation(&ability_tokens[condition_start_idx..]);
+        if ability_head.is_empty() || condition_tokens.is_empty() {
+            return Ok((ability_tokens, None));
+        }
+        return Ok((
+            ability_head,
+            Some(parse_static_condition_clause(&condition_tokens)?),
+        ));
+    }
+
+    let suffix_condition = if word_refs.ends_with(&["during", "your", "turn"]) {
+        Some((word_refs.len() - 3, crate::ConditionExpr::YourTurn))
+    } else if word_refs.ends_with(&["during", "turns", "other", "than", "yours"]) {
+        Some((
+            word_refs.len() - 5,
+            crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::YourTurn)),
+        ))
+    } else {
+        None
+    };
+
+    let Some((suffix_start_word, condition)) = suffix_condition else {
+        return Ok((ability_tokens, None));
+    };
+    let Some(suffix_start_token) = words.token_index_for_word_index(suffix_start_word) else {
+        return Ok((ability_tokens, None));
+    };
+    let ability_head = trim_edge_punctuation(&ability_tokens[..suffix_start_token]);
+    if ability_head.is_empty() {
+        return Ok((ability_tokens, None));
+    }
+    Ok((ability_head, Some(condition)))
+}
+
+fn negate_attached_keyword_condition(condition: crate::ConditionExpr) -> crate::ConditionExpr {
+    match condition {
+        crate::ConditionExpr::Not(inner) => *inner,
+        other => crate::ConditionExpr::Not(Box::new(other)),
+    }
+}
+
+fn parse_attached_keyword_action_grants(
+    subject: &str,
+    ability_tokens: &[OwnedLexToken],
+    condition: Option<crate::ConditionExpr>,
+    clause_text: &str,
+    prefer_equipment_grant_for_unconditional_equipped: bool,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(actions) = parse_ability_line(ability_tokens) else {
+        return Ok(None);
+    };
+
+    let mut actions_to_grant = Vec::new();
+    let mut out = Vec::new();
+    for action in actions {
+        reject_unimplemented_keyword_actions(std::slice::from_ref(&action), clause_text)?;
+        if let KeywordAction::Annihilator(amount) = action {
+            out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+                ability: parsed_ability_from_ability(annihilator_granted_ability(amount)),
+                display: format!("{subject} has annihilator {amount}"),
+                condition: condition.clone(),
+            });
+            continue;
+        }
+        if let KeywordAction::CumulativeUpkeep { total_cost, text } = action {
+            out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+                ability: parsed_ability_from_ability(cumulative_upkeep_granted_ability(total_cost)),
+                display: format!("{subject} has {}", text.to_ascii_lowercase()),
+                condition: condition.clone(),
+            });
+            continue;
+        }
+        if action.lowers_to_static_ability() {
+            actions_to_grant.push(action);
+        }
+    }
+
+    if actions_to_grant.is_empty() && out.is_empty() {
+        return Ok(None);
+    }
+
+    if prefer_equipment_grant_for_unconditional_equipped && condition.is_none() {
+        if !actions_to_grant.is_empty() {
+            out.insert(
+                0,
+                StaticAbilityAst::EquipmentKeywordActionsGrant {
+                    actions: actions_to_grant,
+                },
+            );
+        }
+    } else {
+        for action in actions_to_grant {
+            let display = format!(
+                "{subject} has {}",
+                action.display_text().to_ascii_lowercase()
+            );
+            out.push(StaticAbilityAst::AttachedKeywordActionGrant {
+                action,
+                display,
+                condition: condition.clone(),
+            });
+        }
+    }
+
+    Ok(Some(out))
+}
+
+fn parse_attached_has_keyword_condition_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(String, crate::ConditionExpr, Vec<StaticAbilityAst>)>, CardTextError> {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
+    let subject = if words.len() >= 4
+        && attached_shape_matches_words(&words, ATTACHED_EQUIPPED_CREATURE_HAS_PREFIX_PATTERN)
+    {
+        "equipped creature"
+    } else if words.len() >= 4
+        && ATTACHED_ENCHANTED_WORD_PATTERN.matches_first_word(&words)
+        && words
+            .get(2)
+            .is_some_and(|word| attached_word_is(word, ATTACHED_HAS_WORD))
+    {
+        match words.get(1).copied() {
+            Some("creature") => "enchanted creature",
+            Some("permanent") => "enchanted permanent",
+            _ => return Ok(None),
+        }
+    } else {
+        return Ok(None);
+    };
+
+    let ability_tokens = trim_edge_punctuation(&tokens[3..]);
+    if ability_tokens.is_empty() {
+        return Ok(None);
+    }
+    let (ability_tokens, condition) = split_attached_keyword_condition_suffix(&ability_tokens)?;
+    let Some(condition) = condition else {
+        return Ok(None);
+    };
+    let clause_text = words.join(" ");
+    let Some(grants) =
+        parse_attached_keyword_action_grants(
+            subject,
+            &ability_tokens,
+            Some(condition.clone()),
+            &clause_text,
+            false,
+        )?
+    else {
+        return Ok(None);
+    };
+    Ok(Some((subject.to_string(), condition, grants)))
+}
+
+fn parse_attached_otherwise_has_keyword_sentence(
+    tokens: &[OwnedLexToken],
+    subject: &str,
+    condition: crate::ConditionExpr,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let words = crate::runtime_backend::lexer::TokenWordView::new(tokens);
+    if !words.starts_with(&["otherwise", "it", "has"]) {
+        return Ok(None);
+    }
+    let Some(ability_start) = words.token_index_for_word_index(3) else {
+        return Ok(None);
+    };
+    let ability_tokens = trim_edge_punctuation(&tokens[ability_start..]);
+    if ability_tokens.is_empty() {
+        return Ok(None);
+    }
+    let clause_text = words.join(" ");
+    parse_attached_keyword_action_grants(
+        subject,
+        &ability_tokens,
+        Some(condition),
+        &clause_text,
+        false,
+    )
+}
+
+pub(crate) fn parse_attached_conditional_keyword_otherwise_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = crate::runtime_backend::lexer::split_lexed_sentences(tokens);
+    let [first, second] = sentences.as_slice() else {
+        return Ok(None);
+    };
+
+    let Some((subject, condition, mut grants)) =
+        parse_attached_has_keyword_condition_sentence(first)?
+    else {
+        return Ok(None);
+    };
+    let otherwise_condition = negate_attached_keyword_condition(condition);
+    let Some(mut otherwise_grants) =
+        parse_attached_otherwise_has_keyword_sentence(second, &subject, otherwise_condition)?
+    else {
+        return Ok(None);
+    };
+    grants.append(&mut otherwise_grants);
+    Ok(Some(grants))
+}
+
 pub(crate) fn annihilator_granted_ability(amount: u32) -> Ability {
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
@@ -509,47 +728,14 @@ pub(crate) fn parse_equipped_creature_has_line(
     if ability_tokens.is_empty() {
         return Ok(None);
     }
-
-    let mut actions_to_grant = Vec::new();
-    let mut extra_grants: Vec<StaticAbilityAst> = Vec::new();
-    let Some(actions) = parse_ability_line(&ability_tokens) else {
-        return Ok(None);
-    };
-    for action in actions {
-        reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
-        if let KeywordAction::Annihilator(amount) = action {
-            extra_grants.push(StaticAbilityAst::AttachedObjectAbilityGrant {
-                ability: parsed_ability_from_ability(annihilator_granted_ability(amount)),
-                display: format!("equipped creature has annihilator {amount}"),
-                condition: None,
-            });
-            continue;
-        }
-        if let KeywordAction::CumulativeUpkeep { total_cost, text } = action {
-            extra_grants.push(StaticAbilityAst::AttachedObjectAbilityGrant {
-                ability: parsed_ability_from_ability(cumulative_upkeep_granted_ability(total_cost)),
-                display: format!("equipped creature has {}", text.to_ascii_lowercase()),
-                condition: None,
-            });
-            continue;
-        }
-        if action.lowers_to_static_ability() {
-            actions_to_grant.push(action);
-        }
-    }
-
-    if actions_to_grant.is_empty() && extra_grants.is_empty() {
-        return Ok(None);
-    }
-
-    let mut out = Vec::new();
-    if !actions_to_grant.is_empty() {
-        out.push(StaticAbilityAst::EquipmentKeywordActionsGrant {
-            actions: actions_to_grant,
-        });
-    }
-    out.extend(extra_grants);
-    Ok(Some(out))
+    let (ability_tokens, condition) = split_attached_keyword_condition_suffix(&ability_tokens)?;
+    parse_attached_keyword_action_grants(
+        "equipped creature",
+        &ability_tokens,
+        condition,
+        &clause_text,
+        true,
+    )
 }
 
 pub(crate) fn parse_enchanted_creature_has_line(

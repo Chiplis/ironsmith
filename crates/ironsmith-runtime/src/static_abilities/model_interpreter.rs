@@ -892,6 +892,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PlayersSkipUpkeep { player } => {
                 StaticAbility::players_skip_upkeep_for(player.clone())
             }
+            ironsmith_core::StaticAbilityPayload::ConditionalSpellKeyword(spec) => {
+                StaticAbility::conditional_spell_keyword(*spec)
+            }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 let converted = StaticAbility::from_model((**ability).clone());
                 converted.with_condition(condition.clone()).unwrap_or_else(|| {

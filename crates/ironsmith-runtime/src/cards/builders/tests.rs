@@ -23157,6 +23157,42 @@ fn parse_crystalline_resonance_becomes_copy_until_your_next_turn() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_sarkhan_becomes_copy_with_name_and_legendary_exception() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sarkhan, Soul Aflame")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+        ]))
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Shaman])
+        .power_toughness(PowerToughness::fixed(2, 4))
+        .parse_text(
+            "Dragon spells you cast cost {1} less to cast.\nWhenever a Dragon you control enters, you may have Sarkhan become a copy of it until end of turn, except its name is Sarkhan, Soul Aflame and it's legendary in addition to its other types.",
+        )
+        .expect("Sarkhan copy exception should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Whenever a Dragon you control enters, you may have this creature become a copy of it until end of turn, except its name is Sarkhan, Soul Aflame and it's legendary in addition to its other types."
+        ),
+        "expected Sarkhan's copy name and legendary exception to survive rendering, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("name_override")
+            && debug.contains("Sarkhan, Soul Aflame")
+            && debug.contains("add_supertypes")
+            && debug.contains("Legendary"),
+        "expected Sarkhan lowering to carry modeled copy exceptions, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_treasure_nabber_keeps_next_turn_end_control_duration() {
     let def = parse_oracle_card_definition("Treasure Nabber");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
@@ -38909,6 +38945,42 @@ fn parse_spells_cost_modifier_target_clause_does_not_add_spell_type() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_spells_cost_modifier_keeps_shared_creature_type_with_source_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mistform Warchief Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Illusion])
+        .parse_text(
+            "Creature spells you cast that share a creature type with this creature cost {1} less to cast.\n\
+             {T}: This creature becomes the creature type of your choice until end of turn.",
+        )
+        .expect("parse shared-creature-type creature spell cost reduction");
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.cost_reduction(),
+            _ => None,
+        })
+        .expect("expected CostReduction static ability");
+
+    assert_eq!(reduction.filter.card_types, vec![CardType::Creature]);
+    assert_eq!(reduction.filter.cast_by, Some(PlayerFilter::You));
+    assert!(reduction.filter.shares_creature_type_with_source);
+
+    let joined = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        joined.contains(
+            "Creature spells you cast that share a creature type with this creature cost {1} less to cast."
+        ) && joined.contains(
+            "{T}: This creature becomes the creature type of your choice until end of turn."
+        ),
+        "expected shared-creature-type reduction and choice wording, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_semblance_anvil_keeps_shared_exiled_card_type_cost_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Semblance Anvil")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
@@ -50964,6 +51036,91 @@ fn parse_target_creature_cant_block_this_turn() {
         .card_types(vec![CardType::Instant])
         .parse_text("Target creature can't block this turn.")
         .expect("target cant-block-this-turn clause should parse");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_target_player_energy_count_binds_that_player_controls() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Energy Surveyor Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, choose target opponent. You get an amount of {E} equal to the number of nonbasic lands that player controls.",
+        )
+        .expect("target-player energy count clause should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected enters trigger");
+    let energy = triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::EnergyCountersEffect>())
+        .expect("expected energy counter effect");
+    let Value::Count(filter) = &energy.count else {
+        panic!(
+            "expected energy count to be object-count based, got {:?}",
+            energy.count
+        );
+    };
+    assert_eq!(filter.card_types, vec![CardType::Land]);
+    assert!(filter.excluded_supertypes.contains(&Supertype::Basic));
+    assert_eq!(filter.controller, Some(PlayerFilter::target_opponent()));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_destroy_target_then_creatures_cant_block_splits_card_type_tail() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Demolition Wave Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Destroy target nonbasic land defending player controls, and creatures that player controls without flying can't block this turn.",
+        )
+        .expect("destroy plus cant-block clause should parse");
+
+    let spell_effect = def.spell_effect.as_ref().expect("expected spell effect");
+    let effects = spell_effect.flattened_default_effects();
+    let destroy = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<DestroyEffect>())
+        .expect("expected destroy effect");
+    let ChooseSpec::Object(destroy_filter) = destroy.spec.base() else {
+        panic!(
+            "expected destroy target object filter, got {:?}",
+            destroy.spec
+        );
+    };
+    assert_eq!(destroy_filter.card_types, vec![CardType::Land]);
+    assert!(!destroy_filter.card_types.contains(&CardType::Creature));
+    assert_eq!(destroy_filter.controller, Some(PlayerFilter::Defending));
+    assert!(
+        destroy_filter
+            .excluded_supertypes
+            .contains(&Supertype::Basic)
+    );
+
+    let cant = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::CantEffect>())
+        .expect("expected cant-block effect");
+    match &cant.restriction {
+        crate::effect::Restriction::Block(filter) => {
+            assert_eq!(filter.card_types, vec![CardType::Creature]);
+            assert_eq!(filter.controller, Some(PlayerFilter::Defending));
+            assert!(
+                filter
+                    .excluded_static_abilities
+                    .contains(&StaticAbilityId::Flying),
+                "expected cant-block filter to exclude flying creatures, got {filter:?}"
+            );
+        }
+        other => panic!("expected block restriction, got {other:?}"),
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

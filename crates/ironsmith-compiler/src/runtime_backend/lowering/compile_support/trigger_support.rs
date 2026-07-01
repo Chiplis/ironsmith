@@ -19,6 +19,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             }),
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
+        TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast { count, filter } => {
+            Trigger::this_attacks_player_who_controls_at_least(count as usize, filter)
+        }
         TriggerSpec::ThisAttacksWithNOthers {
             other_count,
             display_subject,
@@ -660,6 +663,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
         TriggerSpec::ThisAttacks
+        | TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast { .. }
         | TriggerSpec::ThisBecomesBlocked
         | TriggerSpec::BecomesBlocked(_) => Some(PlayerFilter::Defending),
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)

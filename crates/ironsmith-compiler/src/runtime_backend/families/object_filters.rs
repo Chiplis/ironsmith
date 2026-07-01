@@ -1245,6 +1245,7 @@ pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.target_count.is_some()
         || filter.could_be_targeted_by.is_some()
         || filter.alternative_cast.is_some()
+        || filter.shares_creature_type_with_source
         || !filter.tagged_constraints.is_empty()
         || !filter.any_of.is_empty()
 }
@@ -1312,6 +1313,7 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     if base.could_be_targeted_by.is_none() {
         base.could_be_targeted_by = extra.could_be_targeted_by;
     }
+    base.shares_creature_type_with_source |= extra.shares_creature_type_with_source;
     for constraint in extra.tagged_constraints {
         crate::slice_primitives::push_unique(&mut base.tagged_constraints, constraint);
     }

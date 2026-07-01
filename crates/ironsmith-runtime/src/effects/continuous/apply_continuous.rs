@@ -12,8 +12,8 @@ use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::target::ChooseSpec;
-use crate::types::CardType;
+use crate::target::{ChooseSpec, SourceReferenceSurface};
+use crate::types::{CardType, Supertype};
 use crate::zone::Zone;
 
 /// Runtime-resolved continuous modification templates.
@@ -27,6 +27,9 @@ pub enum RuntimeModification {
     CopyOf {
         source: ChooseSpec,
         preserve_source_abilities: bool,
+        name_override: Option<String>,
+        name_override_surface: Option<SourceReferenceSurface>,
+        add_supertypes: Vec<Supertype>,
     },
     /// Resolve power/toughness deltas at execution, then apply layer 7c modification.
     ModifyPowerToughness { power: Value, toughness: Value },
@@ -261,6 +264,9 @@ fn resolve_runtime_modification(
         RuntimeModification::CopyOf {
             source,
             preserve_source_abilities,
+            name_override,
+            name_override_surface,
+            add_supertypes,
         } => {
             let source = resolve_objects_for_effect(game, ctx, source)?
                 .into_iter()
@@ -269,6 +275,9 @@ fn resolve_runtime_modification(
             Ok(Modification::CopyOf {
                 target_id: source,
                 preserve_source_abilities: *preserve_source_abilities,
+                name_override: name_override.clone(),
+                name_override_surface: name_override_surface.clone(),
+                add_supertypes: add_supertypes.clone(),
             })
         }
         RuntimeModification::ModifyPowerToughness { power, toughness } => {
@@ -598,7 +607,7 @@ mod tests {
     use crate::snapshot::ObjectSnapshot;
     use crate::tag::TagKey;
     use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
-    use crate::types::CardType;
+    use crate::types::{CardType, Supertype};
     use crate::zone::Zone;
 
     fn setup_game() -> GameState {
@@ -651,6 +660,38 @@ mod tests {
         game.untap(source);
         assert_eq!(game.calculated_power(target), Some(2));
         assert_eq!(game.calculated_toughness(target), Some(2));
+    }
+
+    #[test]
+    fn copy_runtime_exception_overrides_name_and_adds_supertype() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let copy_target = create_creature(&mut game, "Sarkhan", alice);
+        let copied_dragon = create_creature(&mut game, "Dragon Stand-In", alice);
+
+        let mut ctx = ExecutionContext::new_default(copy_target, alice);
+        let effect = Effect::new(ApplyContinuousEffect::new_runtime(
+            EffectTarget::Specific(copy_target),
+            RuntimeModification::CopyOf {
+                source: ChooseSpec::SpecificObject(copied_dragon),
+                preserve_source_abilities: false,
+                name_override: Some("Sarkhan, Soul Aflame".to_string()),
+                name_override_surface: None,
+                add_supertypes: vec![Supertype::Legendary],
+            },
+            Until::EndOfTurn,
+        ));
+
+        execute_effect(&mut game, &effect, &mut ctx).expect("execute copy effect");
+
+        let current = game
+            .current_characteristics(copy_target)
+            .expect("current characteristics");
+        assert_eq!(current.name, "Sarkhan, Soul Aflame");
+        assert!(current.supertypes.contains(&Supertype::Legendary));
+        assert_eq!(current.power, Some(2));
+        assert_eq!(current.toughness, Some(2));
     }
 
     #[test]

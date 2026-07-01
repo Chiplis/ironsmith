@@ -3018,6 +3018,7 @@ fn compile_subject_verb_effect(
             battlefield_controller,
             battlefield_tapped,
             battlefield_attacking,
+            battlefield_attack_target_player_or_planeswalker_controlled_by,
             battlefield_face_down,
             attached_to,
             all,
@@ -3085,6 +3086,18 @@ fn compile_subject_verb_effect(
                 };
                 let move_effect = if *zone == Zone::Battlefield && *battlefield_attacking {
                     move_effect.attacking()
+                } else {
+                    move_effect
+                };
+                let move_effect = if *zone == Zone::Battlefield
+                    && let Some(attack_player) =
+                        battlefield_attack_target_player_or_planeswalker_controlled_by
+                {
+                    let attack_player_filter = resolve_non_target_player_filter(
+                        *attack_player,
+                        &current_reference_env(ctx),
+                    )?;
+                    move_effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter)
                 } else {
                     move_effect
                 };
@@ -3173,6 +3186,16 @@ fn compile_subject_verb_effect(
             };
             let move_effect = if *zone == Zone::Battlefield && *battlefield_attacking {
                 move_effect.attacking()
+            } else {
+                move_effect
+            };
+            let move_effect = if *zone == Zone::Battlefield
+                && let Some(attack_player) =
+                    battlefield_attack_target_player_or_planeswalker_controlled_by
+            {
+                let attack_player_filter =
+                    resolve_non_target_player_filter(*attack_player, &current_reference_env(ctx))?;
+                move_effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter)
             } else {
                 move_effect
             };
@@ -3650,6 +3673,9 @@ fn compile_subject_verb_effect(
             source,
             duration,
             preserve_source_abilities,
+            name_override,
+            name_override_surface,
+            add_supertypes,
         } => {
             let refs = current_reference_env(ctx);
             let (target_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
@@ -3663,6 +3689,9 @@ fn compile_subject_verb_effect(
                 crate::effects::continuous::RuntimeModification::CopyOf {
                     source: source_spec,
                     preserve_source_abilities: *preserve_source_abilities,
+                    name_override: name_override.clone(),
+                    name_override_surface: name_override_surface.clone(),
+                    add_supertypes: add_supertypes.clone(),
                 },
                 duration.clone(),
             ));
@@ -6280,7 +6309,15 @@ where
         allow_target_opponent,
         track_last_player_filter,
     )?;
-    let value = subject.bind_player_refs_in_value(value, ctx)?;
+    let mut value = value.clone();
+    if !ctx.iterated_player {
+        let binding_player = ctx
+            .last_player_filter
+            .as_ref()
+            .filter(|filter| !filter.mentions_iterated_player())
+            .unwrap_or_else(|| subject.player_filter());
+        bind_relative_iterated_player_in_value_to_player_filter(&mut value, binding_player);
+    }
     let value = if resolve_it_tags {
         resolve_value_it_tag(&value, &current_reference_env(ctx))?
     } else {

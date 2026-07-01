@@ -27,8 +27,8 @@ use crate::runtime_backend::lexer::{
 };
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::token_primitives::{
-    LeadingMayActor, parse_count_range_prefix, parse_leading_may_action_lexed, slice_contains,
-    slice_ends_with, slice_starts_with, strip_leading_if_you_do_lexed,
+    LeadingMayActor, parse_leading_may_action_lexed, slice_contains, slice_ends_with,
+    slice_starts_with, strip_leading_if_you_do_lexed,
 };
 use crate::runtime_backend::util::{
     helper_tag_for_tokens, non_article_word_refs, parse_choice_count_token_prefix_consumed,
@@ -54,34 +54,10 @@ fn looked_cards_choice_count(
     tokens: &[OwnedLexToken],
 ) -> Option<(ChoiceCount, Vec<OwnedLexToken>)> {
     let trimmed = trim_commas(tokens);
-    let words = TokenWordView::new(&trimmed);
-    if word_slice_starts_with(&words.word_refs(), &["any", "number", "of"])
-        && let Some(rest_start) = words.token_index_after_words(3)
-    {
-        return Some((
-            ChoiceCount::any_number(),
-            trim_commas(&trimmed[rest_start..]),
-        ));
+    if let Some((count, used)) = parse_choice_count_token_prefix_consumed(&trimmed) {
+        return Some((count, trim_commas(&trimmed[used..])));
     }
-    let Some(((min, max), rest)) = parse_count_range_prefix(&trimmed) else {
-        return Some((ChoiceCount::up_to(1), trimmed));
-    };
-    let count = match (min, max) {
-        (Some(Value::Fixed(0)), Some(Value::Fixed(max))) if max >= 0 => {
-            ChoiceCount::up_to(max as usize)
-        }
-        (Some(Value::Fixed(min)), Some(Value::Fixed(max))) if min >= 0 && max >= min => {
-            ChoiceCount {
-                min: min as usize,
-                max: Some(max as usize),
-                dynamic_x: false,
-                up_to_x: false,
-                random: false,
-            }
-        }
-        _ => return None,
-    };
-    Some((count, trim_commas(rest)))
+    Some((ChoiceCount::up_to(1), trimmed))
 }
 
 const ABUNDANT_HARVEST_CHOICE_WORDS: &[&str] = &["choose", "land", "or", "nonland"];
@@ -1993,33 +1969,34 @@ fn compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
     effects
 }
 
-pub(crate) fn parse_any_number_from_looked_cards_action(
+pub(crate) fn parse_counted_from_looked_cards_action(
     tokens: &[OwnedLexToken],
-) -> Option<(ObjectFilter, Zone, bool)> {
+) -> Option<(
+    ChoiceCount,
+    ObjectFilter,
+    Zone,
+    bool,
+    bool,
+    Option<PlayerAst>,
+)> {
     let action_tokens = trim_commas(tokens);
-    let action_words = TokenWordView::new(&action_tokens);
+    let (count, filter_tokens) = looked_cards_choice_count(&action_tokens)?;
+    let action_words = TokenWordView::new(&filter_tokens);
     let action_word_refs = action_words.word_refs();
-    let Some((count, count_used)) = parse_choice_count_token_prefix_consumed(&action_tokens) else {
-        return None;
-    };
-    if count != ChoiceCount::any_number() {
-        return None;
-    }
 
     let Some((from_among_word_idx, from_among_len)) =
         effect_sentences::find_from_among_looked_cards_phrase(&action_words)
     else {
         return None;
     };
-    if from_among_word_idx <= count_used {
+    if from_among_word_idx == 0 {
         return None;
     }
-    let filter_start = count_used;
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(action_tokens.len());
-    let filter_tokens = trim_commas(&action_tokens[filter_start..filter_end]);
-    let mut filter = effect_sentences::parse_looked_card_choice_filter(&filter_tokens)?;
+        .unwrap_or(filter_tokens.len());
+    let choice_filter_tokens = trim_commas(&filter_tokens[..filter_end]);
+    let mut filter = effect_sentences::parse_looked_card_choice_filter(&choice_filter_tokens)?;
     effect_sentences::normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
@@ -2033,8 +2010,17 @@ pub(crate) fn parse_any_number_from_looked_cards_action(
     } else {
         return None;
     };
+    let attacking =
+        zone == Zone::Battlefield && word_slice_contains_phrase(after_from_words, &["attacking"]);
+    let attack_target_player = if attacking
+        && word_slice_contains_phrase(after_from_words, &["attacking", "that", "player"])
+    {
+        Some(PlayerAst::Defending)
+    } else {
+        None
+    };
 
-    Some((filter, zone, tapped))
+    Some((count, filter, zone, tapped, attacking, attack_target_player))
 }
 
 pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
@@ -2052,11 +2038,17 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         return Ok(None);
     };
     let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, player);
-    let Some((filter, zone, tapped)) =
-        parse_any_number_from_looked_cards_action(action_match.tail_tokens)
+    let Some((mut choice_count, filter, zone, tapped, attacking, attack_target_player)) =
+        parse_counted_from_looked_cards_action(action_match.tail_tokens)
     else {
         return Ok(None);
     };
+    if reveal_top && choice_count != ChoiceCount::any_number() {
+        return Ok(None);
+    }
+    if action_match.actor != LeadingMayActor::Default && choice_count == ChoiceCount::exactly(1) {
+        choice_count = ChoiceCount::up_to(1);
+    }
 
     let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
     let third_word_refs = third_words.word_refs();
@@ -2108,19 +2100,22 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
     }
     effects.push(EffectAst::ChooseObjects {
         filter: choose_filter,
-        count: ChoiceCount::any_number(),
+        count: choice_count,
         count_value: None,
         player: chooser,
         tag: chosen_tag.clone(),
     });
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
-        effects: vec![EffectAst::subject_verb_move_to_zone(
+        effects: vec![EffectAst::subject_verb_move_to_zone_with_attack_target(
             TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
             zone,
             false,
             crate::cards::builders::ReturnControllerAst::Preserve,
             tapped,
+            attacking,
+            attack_target_player,
+            false,
             None,
         )],
     });

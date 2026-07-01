@@ -114,6 +114,10 @@ pub(crate) enum TriggerSpec {
         display: String,
     },
     ThisAttacks,
+    ThisAttacksPlayerWhoControlsAtLeast {
+        count: u32,
+        filter: ObjectFilter,
+    },
     ThisAttacksWithNOthers {
         other_count: u32,
         display_subject: Option<String>,
@@ -1264,6 +1268,7 @@ pub(crate) enum SubjectVerbActionAst {
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
         battlefield_attacking: bool,
+        battlefield_attack_target_player_or_planeswalker_controlled_by: Option<PlayerAst>,
         battlefield_face_down: bool,
         attached_to: Option<TargetAst>,
         all: bool,
@@ -1406,6 +1411,9 @@ pub(crate) enum SubjectVerbActionAst {
         source: TargetAst,
         duration: Until,
         preserve_source_abilities: bool,
+        name_override: Option<String>,
+        name_override_surface: Option<SourceReferenceSurface>,
+        add_supertypes: Vec<Supertype>,
     },
     GrantAbilitiesAll {
         filter: ObjectFilter,
@@ -2618,6 +2626,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
+                battlefield_attack_target_player_or_planeswalker_controlled_by,
                 battlefield_face_down,
                 attached_to,
                 all,
@@ -2629,6 +2638,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("battlefield_controller", battlefield_controller)
                 .field("battlefield_tapped", battlefield_tapped)
                 .field("battlefield_attacking", battlefield_attacking)
+                .field(
+                    "battlefield_attack_target_player_or_planeswalker_controlled_by",
+                    battlefield_attack_target_player_or_planeswalker_controlled_by,
+                )
                 .field("battlefield_face_down", battlefield_face_down)
                 .field("attached_to", attached_to)
                 .field("all", all)
@@ -2878,12 +2891,18 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 source,
                 duration,
                 preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
             } => f
                 .debug_struct("BecomeCopy")
                 .field("target", target)
                 .field("source", source)
                 .field("duration", duration)
                 .field("preserve_source_abilities", preserve_source_abilities)
+                .field("name_override", name_override)
+                .field("name_override_surface", name_override_surface)
+                .field("add_supertypes", add_supertypes)
                 .finish(),
             Self::GrantAbilitiesAll {
                 filter,
@@ -4480,13 +4499,14 @@ impl EffectAst {
         battlefield_tapped: bool,
         attached_to: Option<TargetAst>,
     ) -> Self {
-        Self::subject_verb_move_to_zone_with_attacking(
+        Self::subject_verb_move_to_zone_with_attack_target(
             target,
             zone,
             to_top,
             battlefield_controller,
             battlefield_tapped,
             false,
+            None,
             false,
             attached_to,
         )
@@ -4502,6 +4522,31 @@ impl EffectAst {
         battlefield_face_down: bool,
         attached_to: Option<TargetAst>,
     ) -> Self {
+        Self::subject_verb_move_to_zone_with_attack_target(
+            target,
+            zone,
+            to_top,
+            battlefield_controller,
+            battlefield_tapped,
+            battlefield_attacking,
+            None,
+            battlefield_face_down,
+            attached_to,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn subject_verb_move_to_zone_with_attack_target(
+        target: TargetAst,
+        zone: Zone,
+        to_top: bool,
+        battlefield_controller: ReturnControllerAst,
+        battlefield_tapped: bool,
+        battlefield_attacking: bool,
+        battlefield_attack_target_player_or_planeswalker_controlled_by: Option<PlayerAst>,
+        battlefield_face_down: bool,
+        attached_to: Option<TargetAst>,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4512,6 +4557,7 @@ impl EffectAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
+                battlefield_attack_target_player_or_planeswalker_controlled_by,
                 battlefield_face_down,
                 attached_to,
                 all: false,
@@ -4537,6 +4583,7 @@ impl EffectAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking: false,
+                battlefield_attack_target_player_or_planeswalker_controlled_by: None,
                 battlefield_face_down: false,
                 attached_to,
                 all: true,
@@ -4944,6 +4991,9 @@ impl EffectAst {
         source: TargetAst,
         duration: Until,
         preserve_source_abilities: bool,
+        name_override: Option<String>,
+        name_override_surface: Option<SourceReferenceSurface>,
+        add_supertypes: Vec<Supertype>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4953,6 +5003,9 @@ impl EffectAst {
                 source,
                 duration,
                 preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
             },
         )
     }

@@ -837,6 +837,10 @@ fn parse_effect_sentence_lexed_inner(
     }
 
     let sentence_words = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(effects) = super::parse_destroy_then_temporary_cant_attack_block_chain_lexed(tokens)?
+    {
+        return Ok(effects);
+    }
     // "If <player refs> would gain life this turn, that player gains no life
     // instead." == a can't-gain-life window for those players (Flames of the
     // Blood Hand). Intercept before leading-if splitting since the would-gain

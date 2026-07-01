@@ -1329,6 +1329,9 @@ fn test_clone_copies_base_not_modifications() {
         Modification::CopyOf {
             target_id: bear_id,
             preserve_source_abilities: false,
+            name_override: None,
+            name_override_surface: None,
+            add_supertypes: Vec::new(),
         },
     );
     game.effect_store.continuous_effects.add_effect(copy_effect);

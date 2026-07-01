@@ -713,6 +713,7 @@ pub(super) fn parse_object_filter_inner(
         &mut filter,
         &mut all_words,
     );
+    try_apply_shared_creature_type_with_source_clause(&mut filter, &mut all_words);
 
     try_apply_could_be_targeted_by_that_spell_clause(&mut filter, &mut all_words);
 
@@ -1967,6 +1968,7 @@ pub(super) fn parse_object_filter_inner(
         || !filter.ability_markers.is_empty()
         || !filter.excluded_ability_markers.is_empty()
         || !filter.no_shared_creature_types_with.is_empty()
+        || filter.shares_creature_type_with_source
         || filter.chosen_color
         || filter.chosen_creature_type
         || filter.excluded_chosen_creature_type
@@ -2321,6 +2323,51 @@ fn try_apply_no_shared_creature_type_with_your_creatures_or_graveyard_clause(
                 .in_zone(Zone::Graveyard)
                 .owned_by(PlayerFilter::You),
         );
+        all_words.drain(idx..idx + phrase.len());
+        return true;
+    }
+    false
+}
+
+fn try_apply_shared_creature_type_with_source_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    for phrase in [
+        [
+            "that", "share", "creature", "type", "with", "this", "creature",
+        ]
+        .as_slice(),
+        [
+            "that", "shares", "creature", "type", "with", "this", "creature",
+        ]
+        .as_slice(),
+        [
+            "that",
+            "share",
+            "creature",
+            "type",
+            "with",
+            "this",
+            "permanent",
+        ]
+        .as_slice(),
+        [
+            "that",
+            "shares",
+            "creature",
+            "type",
+            "with",
+            "this",
+            "permanent",
+        ]
+        .as_slice(),
+    ] {
+        let Some(idx) = find_phrase_start(all_words, phrase) else {
+            continue;
+        };
+
+        filter.shares_creature_type_with_source = true;
         all_words.drain(idx..idx + phrase.len());
         return true;
     }

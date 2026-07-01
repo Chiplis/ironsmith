@@ -772,6 +772,9 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         Some(PlayerFilter::Opponent) => description.push_str(" your opponents cast"),
         _ => {}
     }
+    if filter.shares_creature_type_with_source {
+        description.push_str(" that share a creature type with this creature");
+    }
     for constraint in &filter.tagged_constraints {
         match constraint.relation {
             TaggedOpbjectRelation::SharesCardType => {

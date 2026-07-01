@@ -1500,8 +1500,12 @@ fn replace_named_source_aliases_with_options(
         let end_word = word_idx + alias_words.len();
         let start = pieces[word_idx].span.start;
         let end = pieces[end_word - 1].span.end;
-        let preserve_surface = preserve_surface_hints
-            && source_alias_occurrence_should_preserve_surface_lexed(&pieces, word_idx, end_word);
+        let preserve_surface =
+            source_alias_occurrence_is_name_override_surface_lexed(&pieces, word_idx, end_word)
+                || (preserve_surface_hints
+                    && source_alias_occurrence_should_preserve_surface_lexed(
+                        &pieces, word_idx, end_word,
+                    ));
         if !preserve_surface {
             rewritten.push_str(&lower[cursor..start]);
             rewritten.push_str(replacement);
@@ -1568,6 +1572,10 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
         return false;
     }
 
+    if previous_word == Some("is") && previous_previous_word == Some("name") {
+        return true;
+    }
+
     if previous_word == Some("for") && matches!(previous_previous_word, Some("vote" | "votes")) {
         return true;
     }
@@ -1610,6 +1618,23 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
                     | "toughness"
             )
         })
+}
+
+fn source_alias_occurrence_is_name_override_surface_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+    _end_word: usize,
+) -> bool {
+    let previous_word = start_word
+        .checked_sub(1)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
+    let previous_previous_word = start_word
+        .checked_sub(2)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
+
+    previous_word == Some("is") && previous_previous_word == Some("name")
 }
 
 fn normalize_named_source_enter_agreement(text: &str, subject: &str) -> String {

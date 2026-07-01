@@ -1062,6 +1062,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         let mut saw_library = false;
         let mut saw_graveyard = false;
         let mut saw_hand = false;
+        let mut saw_outside_game = false;
         for word in zone_words {
             match *word {
                 "graveyard" | "graveyards" if !saw_graveyard => {
@@ -1075,6 +1076,10 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
                 "library" | "libraries" if !saw_library => {
                     zones.push(Zone::Library);
                     saw_library = true;
+                }
+                "outside" if !saw_outside_game && zone_words.contains(&"game") => {
+                    zones.push(Zone::OutsideGame);
+                    saw_outside_game = true;
                 }
                 _ => {}
             }

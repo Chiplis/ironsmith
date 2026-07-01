@@ -1,17 +1,22 @@
 //! Move to zone effect implementation.
 
 use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
+use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
+use crate::effects::helpers::{
+    resolve_objects_for_effect, resolve_player_filter, resolve_tagged_object_id,
+};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::filter::FilterContext;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
+use crate::ids::PlayerId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::SOURCE_EXILED_TAG;
 use crate::target::{ChooseSpec, ObjectFilter};
+use crate::types::CardType;
 use crate::zone::Zone;
 
 use super::{
@@ -20,7 +25,80 @@ use super::{
     take_recorded_zone_change,
 };
 pub use ironsmith_core::BattlefieldController;
+pub type MoveToZoneAttackTargetMode = ironsmith_core::MoveToZoneAttackTargetMode;
 pub type MoveToZoneEffect = ironsmith_core::MoveToZoneEffect;
+
+fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<AttackTarget> {
+    let mut targets = Vec::new();
+    if game
+        .player(player_id)
+        .is_some_and(|player| player.is_in_game())
+    {
+        targets.push(AttackTarget::Player(player_id));
+    }
+
+    for &object_id in &game.battlefield {
+        if let Some(object) = game.object(object_id)
+            && game.controller_of(object) == player_id
+            && object.has_card_type(CardType::Planeswalker)
+        {
+            targets.push(AttackTarget::Planeswalker(object_id));
+        }
+    }
+
+    targets
+}
+
+fn choose_attack_target_for_player(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    player_id: PlayerId,
+    targets: &[AttackTarget],
+) -> Option<AttackTarget> {
+    if targets.len() == 1 {
+        return Some(targets[0].clone());
+    }
+
+    let player_name = game
+        .player(player_id)
+        .map(|player| player.name.clone())
+        .unwrap_or_else(|| "that player".to_string());
+    let options: Vec<SelectableOption> = targets
+        .iter()
+        .enumerate()
+        .map(|(index, target)| {
+            let description = match target {
+                AttackTarget::Player(_) => format!("Attack {player_name}"),
+                AttackTarget::Planeswalker(planeswalker_id) => {
+                    let walker_name = game
+                        .object(*planeswalker_id)
+                        .map(|object| object.name.clone())
+                        .unwrap_or_else(|| "a planeswalker".to_string());
+                    format!("Attack {walker_name} controlled by {player_name}")
+                }
+            };
+            SelectableOption::new(index, description)
+        })
+        .collect();
+    let choice_ctx = SelectOptionsContext::new(
+        ctx.controller,
+        Some(ctx.source),
+        format!("Choose attack target for creature entering attacking {player_name}"),
+        options,
+        1,
+        1,
+    );
+    let chosen = ctx.decision_maker.decide_options(game, &choice_ctx);
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
+    chosen
+        .first()
+        .copied()
+        .filter(|selected| *selected < targets.len())
+        .and_then(|index| targets.get(index))
+        .cloned()
+}
 
 fn fixed_cost_filter(effect: &MoveToZoneEffect) -> Option<(&ObjectFilter, usize)> {
     let ChooseSpec::Object(filter) = effect.target.base() else {
@@ -195,6 +273,12 @@ impl EffectExecutor for MoveToZoneEffect {
         if object_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());
         }
+        let configured_attack_player = match &self.attack_target_mode {
+            Some(MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => {
+                Some(resolve_player_filter(game, player_filter, ctx)?)
+            }
+            None => None,
+        };
 
         let mut moved_ids = Vec::new();
         let mut affected_ids = Vec::new();
@@ -260,15 +344,28 @@ impl EffectExecutor for MoveToZoneEffect {
                         }
                         match move_to_battlefield_with_options(game, ctx, object_id, options) {
                             BattlefieldEntryOutcome::Moved(new_id) => {
-                                if self.enters_attacking
-                                    && let Some(target) =
-                                        choose_enters_attacking_target(game, ctx, new_id)
-                                    && let Some(combat) = game.combat.as_mut()
-                                {
-                                    combat.attackers.push(AttackerInfo {
-                                        creature: new_id,
-                                        target,
-                                    });
+                                if self.enters_attacking {
+                                    let target =
+                                        if let Some(attack_player) = configured_attack_player {
+                                            let targets =
+                                                attack_targets_for_player(game, attack_player);
+                                            choose_attack_target_for_player(
+                                                game,
+                                                ctx,
+                                                attack_player,
+                                                &targets,
+                                            )
+                                        } else {
+                                            choose_enters_attacking_target(game, ctx, new_id)
+                                        };
+                                    if let Some(target) = target
+                                        && let Some(combat) = game.combat.as_mut()
+                                    {
+                                        combat.attackers.push(AttackerInfo {
+                                            creature: new_id,
+                                            target,
+                                        });
+                                    }
                                 }
                                 ctx.refresh_target_snapshot(target_lki_before_move.clone());
                                 affected_memory.push(OutcomeObjectMemory::from_snapshot(

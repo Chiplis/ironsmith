@@ -464,6 +464,7 @@ pub struct ObjectFilter {
     pub ability_markers: Vec<String>,
     pub excluded_ability_markers: Vec<String>,
     pub no_shared_creature_types_with: Vec<ObjectFilter>,
+    pub shares_creature_type_with_source: bool,
     pub is_commander: bool,
     pub noncommander: bool,
     pub tagged_constraints: Vec<TaggedObjectConstraint>,
@@ -535,6 +536,7 @@ impl ObjectFilter {
             || !self.ability_markers.is_empty()
             || !self.excluded_ability_markers.is_empty()
             || !self.no_shared_creature_types_with.is_empty()
+            || self.shares_creature_type_with_source
             || !self.tagged_constraints.is_empty()
             || self
                 .any_of
@@ -1431,6 +1433,9 @@ impl ObjectFilter {
             post_noun_qualifiers.push(format!(
                 "that doesn't share a creature type with {comparison}"
             ));
+        }
+        if self.shares_creature_type_with_source {
+            post_noun_qualifiers.push("that shares a creature type with this creature".to_string());
         }
         for constraint in &self.tagged_constraints {
             match constraint.relation {

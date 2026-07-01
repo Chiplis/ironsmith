@@ -460,6 +460,13 @@ impl Trigger {
         Self::new(ThisAttacksTrigger)
     }
 
+    /// Create a "when this creature attacks a player who controls at least N matching permanents" trigger.
+    pub fn this_attacks_player_who_controls_at_least(count: usize, filter: ObjectFilter) -> Self {
+        Self::new(ThisAttacksPlayerWhoControlsAtLeastTrigger::new(
+            count, filter,
+        ))
+    }
+
     /// Create a "when this creature attacks the player with the most life or tied for most life" trigger.
     pub fn this_attacks_player_with_most_life() -> Self {
         Self::new(ThisAttacksPlayerWithMostLifeTrigger)

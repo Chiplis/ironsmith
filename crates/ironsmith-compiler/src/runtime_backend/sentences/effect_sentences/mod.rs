@@ -60,6 +60,7 @@ pub(crate) enum TokenCopyFollowup {
     GainHasteUntilEndOfTurn,
     EnterTappedAndAttacking,
     SacrificeAtNextEndStep,
+    SacrificeAtNextUpkeep,
     ExileAtNextEndStep,
     ExileAtEndOfCombat,
     SacrificeAtEndOfCombat,

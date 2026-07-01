@@ -3667,6 +3667,9 @@ pub(crate) fn parse_static_ability_ast_line_lexed(
     {
         return Ok(Some(vec![StaticAbilityAst::from(ability)]));
     }
+    if let Some(abilities) = parse_attached_conditional_keyword_otherwise_line(tokens)? {
+        return Ok(Some(abilities));
+    }
 
     let sentences = split_lexed_sentences(tokens);
     if sentences.len() > 1 {

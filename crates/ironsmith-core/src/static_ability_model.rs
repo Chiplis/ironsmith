@@ -517,6 +517,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         additional: i32,
         display: String,
     },
+    ConditionalSpellKeyword(ConditionalSpellKeywordSpec),
     KeywordActionReplacement {
         action: KeywordActionKind,
         source_filter: ObjectFilter,
@@ -879,6 +880,9 @@ where
         {
             let payload = match ability.payload {
             StaticAbilityPayload::None => StaticAbilityPayload::None,
+            StaticAbilityPayload::ConditionalSpellKeyword(spec) => {
+                StaticAbilityPayload::ConditionalSpellKeyword(spec)
+            }
             StaticAbilityPayload::PlayersSkipUpkeep { player } => {
                 StaticAbilityPayload::PlayersSkipUpkeep { player }
             }
@@ -3280,11 +3284,11 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
-    pub fn conditional_spell_keyword(_spec: ConditionalSpellKeywordSpec) -> Self {
+    pub fn conditional_spell_keyword(spec: ConditionalSpellKeywordSpec) -> Self {
         Self {
             id: Some(StaticAbilityId::ConditionalSpellKeyword),
             label: "conditional spell keyword".into(),
-            payload: StaticAbilityPayload::None,
+            payload: StaticAbilityPayload::ConditionalSpellKeyword(spec),
         }
     }
     pub fn damage_not_removed_during_cleanup() -> Self {

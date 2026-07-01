@@ -176,6 +176,9 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
                     source: TargetAst::Tagged(source_tag, _),
                     duration,
                     preserve_source_abilities,
+                    name_override,
+                    name_override_surface,
+                    add_supertypes,
                 },
             ..
         }),
@@ -215,6 +218,9 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
         TargetAst::Tagged(prior_choice_tag, None),
         duration.clone(),
         *preserve_source_abilities,
+        name_override.clone(),
+        name_override_surface.clone(),
+        add_supertypes.clone(),
     );
     Ok(Some(compile_effect(&rewritten, ctx)?))
 }

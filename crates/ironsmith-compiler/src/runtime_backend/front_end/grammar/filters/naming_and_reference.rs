@@ -818,9 +818,25 @@ pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
     apply_spell_filter_word_atoms(&mut filter, words);
     apply_spell_filter_comparisons(&mut filter, words, words);
     apply_spell_filter_tagged_relations(&mut filter, words);
+    apply_spell_filter_source_creature_type_relation(&mut filter, words);
     apply_spell_filter_parity_phrases(words, &mut filter);
 
     build_spell_filter_power_or_toughness_disjunction(&filter, words, words).unwrap_or(filter)
+}
+
+fn apply_spell_filter_source_creature_type_relation(filter: &mut ObjectFilter, words: &[&str]) {
+    let shares_creature_type = words_contain_all(words, &["creature", "type"])
+        && words_contain_any_word(words, SHARE_WORDS);
+    let references_source = contains_any_phrase(
+        words,
+        &[
+            &["with", "this", "creature"],
+            &["with", "this", "permanent"],
+        ],
+    );
+    if shares_creature_type && references_source {
+        filter.shares_creature_type_with_source = true;
+    }
 }
 
 fn apply_spell_filter_tagged_relations(filter: &mut ObjectFilter, words: &[&str]) {

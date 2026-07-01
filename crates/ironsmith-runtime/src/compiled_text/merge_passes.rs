@@ -862,6 +862,8 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             let plain = |text: &str| {
                 let lower = text.to_ascii_lowercase();
                 !lower.contains(", if ")
+                    && !lower.contains(". ")
+                    && !lower.contains("otherwise")
                     && !lower.contains("as long as")
                     && !lower.contains(" until ")
                     && !lower.contains(" unless ")
@@ -965,6 +967,15 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 idx += 1;
                 continue;
             }
+            let has_sentence_branch = |text: &str| {
+                let lower = text.to_ascii_lowercase();
+                lower.contains("otherwise")
+            };
+            if has_sentence_branch(&lines[idx]) || has_sentence_branch(&lines[idx + 1]) {
+                merged.push(lines[idx].clone());
+                idx += 1;
+                continue;
+            }
             let left_raw = left_rest.trim_end_matches('.').trim();
             let right_raw = right_rest.trim_end_matches('.').trim();
             let has_conditional_tail = |text: &str| {
@@ -990,8 +1001,10 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                     continue;
                 }
             }
-            let left_rest = normalize_keyword_predicate_case(left_raw);
-            let right_rest = normalize_keyword_predicate_case(right_raw);
+            let left_rest =
+                quote_granted_triggered_ability(&normalize_keyword_predicate_case(left_raw));
+            let right_rest =
+                quote_granted_triggered_ability(&normalize_keyword_predicate_case(right_raw));
             if is_trait(left_verb)
                 && is_trait(right_verb)
                 && left_verb.eq_ignore_ascii_case(right_verb)
@@ -1035,6 +1048,21 @@ fn trim_quoted_ability_sentence_end(text: &str) -> Option<String> {
 
 fn quoted_ability_text(text: &str) -> Option<String> {
     quoted_ability_inner_text(text).map(|inner| format!("\"{inner}\""))
+}
+
+fn quote_granted_triggered_ability(text: &str) -> String {
+    let trimmed = text.trim();
+    if quoted_ability_text(trimmed).is_some() {
+        return trimmed.to_string();
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("whenever ")
+        || lower.starts_with("when ")
+        || lower.starts_with("at the beginning ")
+    {
+        return format!("\"{}\"", capitalize_first(trimmed));
+    }
+    trimmed.to_string()
 }
 
 fn quoted_ability_inner_text(text: &str) -> Option<&str> {
@@ -1731,6 +1759,68 @@ fn merge_line_conditions_compatible(left: &str, right: &str) -> bool {
     }
 }
 
+fn parse_during_your_turn_keyword_grant(line: &str) -> Option<(String, String)> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let body = if let Some(body) = trimmed.strip_prefix("During your turn, ") {
+        body
+    } else {
+        trimmed
+    };
+    let (subject, verb, predicate) = split_subject_predicate_clause(body)?;
+    if !matches!(verb, "has" | "have" | "gains" | "gain") {
+        return None;
+    }
+    let predicate = if body == trimmed {
+        predicate.strip_suffix(" as long as it's your turn")?
+    } else {
+        predicate
+    };
+    let keyword = normalize_keyword_predicate_case(predicate.trim());
+    if !is_keyword_phrase(&keyword) {
+        return None;
+    }
+    Some((subject.trim().to_string(), keyword))
+}
+
+fn parse_other_turns_keyword_grant(line: &str) -> Option<(String, String)> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (subject, verb, predicate) = split_subject_predicate_clause(trimmed)?;
+    if !matches!(verb, "has" | "have" | "gains" | "gain") {
+        return None;
+    }
+    let predicate = predicate
+        .trim()
+        .strip_suffix(" during turns other than yours")?;
+    let keyword = normalize_keyword_predicate_case(predicate.trim());
+    if !is_keyword_phrase(&keyword) {
+        return None;
+    }
+    Some((subject.trim().to_string(), keyword))
+}
+
+fn merge_complementary_turn_keyword_grants(left: &str, right: &str) -> Option<String> {
+    let (left_subject, left_keyword) = parse_during_your_turn_keyword_grant(left)?;
+    let (right_subject, right_keyword) = parse_other_turns_keyword_grant(right)?;
+    if !conditioned_subjects_equivalent(&left_subject, &right_subject) {
+        return None;
+    }
+    let subject = capitalize_first(&left_subject);
+    let verb = have_verb_for_subject(&left_subject);
+    let otherwise_subject = if subject_is_plural(&left_subject) {
+        "they"
+    } else {
+        "it"
+    };
+    let otherwise_verb = if subject_is_plural(&left_subject) {
+        "have"
+    } else {
+        "has"
+    };
+    Some(format!(
+        "{subject} {verb} {left_keyword} during your turn. Otherwise, {otherwise_subject} {otherwise_verb} {right_keyword}."
+    ))
+}
+
 pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String> {
     let mut merged = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
@@ -1738,6 +1828,11 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
         if idx + 1 < lines.len() {
             let left = lines[idx].trim();
             let right = lines[idx + 1].trim();
+            if let Some(compact) = merge_complementary_turn_keyword_grants(left, right) {
+                merged.push(compact);
+                idx += 2;
+                continue;
+            }
             if let (Some(left_conditional), Some(right_conditional)) = (
                 parse_conditional_subject_predicate(left),
                 parse_conditional_subject_predicate(right),
@@ -2626,6 +2721,38 @@ mod tests {
             merged,
             vec![
                 "Hellbent \u{2014} As long as you have no cards in hand, this creature gets +1/+0 and has \"{B}: Regenerate this creature.\"".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn merge_subject_has_keyword_lines_compacts_complementary_turn_grants() {
+        let merged = merge_subject_has_keyword_lines(vec![
+            "During your turn, equipped creature has deathtouch.".to_string(),
+            "Equipped creature has reach during turns other than yours.".to_string(),
+        ]);
+        assert_eq!(
+            merged,
+            vec![
+                "Equipped creature has deathtouch during your turn. Otherwise, it has reach."
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn merge_adjacent_subject_predicate_lines_does_not_merge_otherwise_branch() {
+        let merged = merge_adjacent_subject_predicate_lines(vec![
+            "Equipped creature gets +1/+1.".to_string(),
+            "Equipped creature has deathtouch during your turn. Otherwise, it has reach."
+                .to_string(),
+        ]);
+        assert_eq!(
+            merged,
+            vec![
+                "Equipped creature gets +1/+1.".to_string(),
+                "Equipped creature has deathtouch during your turn. Otherwise, it has reach."
+                    .to_string(),
             ]
         );
     }

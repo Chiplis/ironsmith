@@ -415,10 +415,10 @@ pub(crate) fn parse_may_put_filtered_looked_card_onto_battlefield_and_filtered_i
     let second_clause = after_first_clause
         .after_words(second_start_words)
         .unwrap_or_else(|| after_first_clause.from(after_first_clause.len()));
-    let hand_filter = parse_filtered_looked_card_into_hand_clause(second_clause.tokens())
-        .ok_or_else(|| {
-            CardTextError::ParseError("unable to parse second looked-card hand filter".to_string())
-        })?;
+    let Some(hand_filter) = parse_filtered_looked_card_into_hand_clause(second_clause.tokens())
+    else {
+        return Ok(None);
+    };
     Ok(Some((chooser, battlefield_filter, tapped, hand_filter)))
 }
 
@@ -611,6 +611,50 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
         }
         return Some(filter);
     }
+    if non_article_words.len() >= 4
+        && non_article_words[0] == "noncreature"
+        && non_article_words[1] == "nonland"
+        && non_article_words[2] == "permanent"
+        && LOOKED_CARD_WORDS.contains(&non_article_words[3])
+    {
+        let mut elided_tokens = Vec::new();
+        let mut skipped_noncreature = false;
+        let mut skipped_nonland = false;
+        for token in &filter_tokens {
+            if token.is_comma() {
+                continue;
+            }
+            if !skipped_noncreature && token_is_word(token, "noncreature") {
+                skipped_noncreature = true;
+                continue;
+            }
+            if !skipped_nonland && token_is_word(token, "nonland") {
+                skipped_nonland = true;
+                continue;
+            }
+            elided_tokens.push(token.clone());
+        }
+
+        let mut filter = parse_object_filter_lexed(&elided_tokens, false)
+            .ok()
+            .unwrap_or_else(ObjectFilter::permanent_card);
+        if filter.card_types.is_empty() && filter.all_card_types.is_empty() {
+            filter.card_types = ObjectFilter::permanent_card().card_types;
+        }
+        if !filter.excluded_card_types.contains(&CardType::Creature) {
+            filter.excluded_card_types.push(CardType::Creature);
+        }
+        if !filter.excluded_card_types.contains(&CardType::Land) {
+            filter.excluded_card_types.push(CardType::Land);
+        }
+        if same_name_suffix {
+            filter = filter.match_tagged(
+                TagKey::from(CHOSEN_NAME_TAG),
+                TaggedOpbjectRelation::SameNameAsTagged,
+            );
+        }
+        return Some(filter);
+    }
 
     let land_legendary_permanent_prefix_len = match non_article_words.as_slice() {
         ["land", "and/or", "legendary", "permanent", card, ..]
@@ -760,6 +804,25 @@ fn apply_shared_looked_card_disjunction_qualifiers(filter: &mut ObjectFilter, wo
         filter.distinct_creature_types = true;
         for branch in &mut filter.any_of {
             branch.distinct_creature_types = false;
+        }
+    }
+
+    let has_explicit_shared_and_or = words.iter().any(|word| *word == "and/or")
+        || word_slice_contains_phrase(words, &["and", "or"]);
+    if has_explicit_shared_and_or
+        && word_slice_contains_phrase(words, &["with", "mana", "value"])
+        && let Some(shared_mana_value) = filter
+            .any_of
+            .iter()
+            .find_map(|branch| branch.mana_value.clone())
+        && filter.any_of.iter().all(|branch| {
+            branch.mana_value.is_none() || branch.mana_value.as_ref() == Some(&shared_mana_value)
+        })
+    {
+        for branch in &mut filter.any_of {
+            if branch.mana_value.is_none() {
+                branch.mana_value = Some(shared_mana_value.clone());
+            }
         }
     }
 }

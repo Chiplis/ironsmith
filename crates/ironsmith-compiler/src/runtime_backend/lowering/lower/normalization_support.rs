@@ -70,6 +70,7 @@ fn apply_trigger_intro_surface(trigger: TriggerSpec, full_tokens: &[OwnedLexToke
     };
     match trigger {
         TriggerSpec::ThisAttacks
+        | TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast { .. }
         | TriggerSpec::ThisAttacksWithNOthers { .. }
         | TriggerSpec::ThisAttacksWithExactlyNOthers(_)
         | TriggerSpec::ThisAttacksAndIsntBlocked

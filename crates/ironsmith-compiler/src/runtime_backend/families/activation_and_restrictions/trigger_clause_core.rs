@@ -647,6 +647,22 @@ const ENTER_OR_ENTERS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["enter"], &["enters"]]);
 const ATTACK_OR_ATTACKS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["attack"], &["attacks"]]);
+
+fn parse_attacks_player_who_controls_at_least_tail(words: &[&str]) -> Option<(u32, ObjectFilter)> {
+    if words.len() == 8
+        && words[0] == "a"
+        && words[1] == "player"
+        && words[2] == "who"
+        && words[3] == "controls"
+        && words[5] == "or"
+        && words[6] == "more"
+        && matches!(words[7], "land" | "lands")
+    {
+        let count = parse_number_word_u32(words[4]).or_else(|| words[4].parse::<u32>().ok())?;
+        return Some((count, ObjectFilter::land()));
+    }
+    None
+}
 const ALONE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["alone"]);
 const WHILE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["while"]);
 const SADDLED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["saddled"]);
@@ -4604,6 +4620,16 @@ pub(crate) fn parse_trigger_clause_lexed(
                 ))
             })?;
             return Ok(TriggerSpec::ThisBlocksObject(blocked_filter));
+        }
+    }
+
+    if let Some(attacks_word_idx) = ATTACK_OR_ATTACKS_PATTERN.find_word(&words) {
+        let subject_words = &words[..attacks_word_idx];
+        let tail = &words[attacks_word_idx + 1..];
+        if matches!(subject_words.first(), Some(&"this") | Some(&"it"))
+            && let Some((count, filter)) = parse_attacks_player_who_controls_at_least_tail(tail)
+        {
+            return Ok(TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast { count, filter });
         }
     }
 

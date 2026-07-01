@@ -307,6 +307,25 @@ impl ZoneChangeTrigger {
                 }
                 return format!("another {subject}");
             }
+            if filter.all_card_types.is_empty()
+                && filter.card_types.is_empty()
+                && filter.subtypes.len() == 1
+            {
+                let description = filter.description();
+                match filter.subtypes[0] {
+                    crate::types::Subtype::Equipment => {
+                        return description
+                            .replace("equipment", "Equipment")
+                            .replace("a Equipment", "an Equipment");
+                    }
+                    crate::types::Subtype::Aura => {
+                        return description
+                            .replace("aura", "Aura")
+                            .replace("a Aura", "an Aura");
+                    }
+                    _ => {}
+                }
+            }
             filter.description()
         }
 

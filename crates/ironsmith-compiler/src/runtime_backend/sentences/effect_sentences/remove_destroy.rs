@@ -37,6 +37,8 @@ const EXCEPT_WORD: &str = "except";
 const IF_WORD: &str = "if";
 const INSTEAD_WORD: &str = "instead";
 const AND_WORD: &str = "and";
+const CANT_WORDS: &[&str] = &["cant", "can't", "cannot"];
+const ATTACK_OR_BLOCK_WORDS: &[&str] = &["attack", "attacks", "block", "blocks"];
 const NO_WORD: &str = "no";
 const ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
 const TARGET_WORD: &str = "target";
@@ -55,6 +57,18 @@ fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
 
 fn token_is_any_word(token: &OwnedLexToken, expected: &[&str]) -> bool {
     token.as_word().is_some_and(|word| expected.contains(&word))
+}
+
+fn has_trailing_cant_attack_or_block_clause(words: &[&str]) -> bool {
+    words.iter().enumerate().any(|(idx, word)| {
+        if !CANT_WORDS.contains(word) {
+            return false;
+        }
+        let tail = &words[idx + 1..];
+        tail.iter()
+            .any(|tail_word| ATTACK_OR_BLOCK_WORDS.contains(tail_word))
+            && tail.windows(2).any(|window| window == ["this", "turn"])
+    })
 }
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -501,6 +515,12 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     if grammar::contains_word(&core_tokens, "unless") {
         return Err(CardTextError::ParseError(format!(
             "unsupported destroy-unless clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    if has_trailing_cant_attack_or_block_clause(&clause_words) {
+        return Err(CardTextError::ParseError(format!(
+            "compound destroy plus attack/block restriction should be parsed as an effect chain (clause: '{}')",
             clause_words.join(" ")
         )));
     }

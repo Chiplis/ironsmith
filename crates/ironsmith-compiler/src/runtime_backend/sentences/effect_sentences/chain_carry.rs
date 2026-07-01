@@ -142,6 +142,11 @@ const CHAIN_BEGINNING_END_STEP_PHRASES: &[&[&str]] = &[
     &["beginning", "of", "next", "end", "step"],
     &["beginning", "of", "the", "next", "end", "step"],
 ];
+const CHAIN_BEGINNING_UPKEEP_PHRASES: &[&[&str]] = &[
+    &["beginning", "of", "your", "next", "upkeep"],
+    &["beginning", "of", "next", "upkeep"],
+    &["beginning", "of", "the", "next", "upkeep"],
+];
 const CHAIN_NEXT_END_STEP_REPEAT_MARKER_PHRASE: &[&str] = &["next", "end", "step", "repeat"];
 const CHAIN_TOKEN_RULES_TAIL_MARKER_PHRASES: &[&[&str]] = &[
     &["when", "this", "token"],
@@ -484,6 +489,9 @@ pub(crate) fn parse_effect_chain_lexed(
         ))
     }
 
+    if let Some(effects) = parse_destroy_then_temporary_cant_attack_block_chain_lexed(tokens)? {
+        return Ok(effects);
+    }
     if let Some(effects) = parse_exile_library_then_shuffle_graveyard_chain_lexed(tokens)? {
         return Ok(effects);
     }
@@ -618,6 +626,51 @@ pub(crate) fn parse_effect_chain_lexed(
     }
 
     parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
+}
+
+fn tail_has_temporary_cant_attack_block_clause(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    words
+        .iter()
+        .any(|word| matches!(*word, "cant" | "can't" | "cannot"))
+        && words
+            .iter()
+            .any(|word| matches!(*word, "attack" | "attacks" | "block" | "blocks"))
+        && words.windows(2).any(|window| window == ["this", "turn"])
+}
+
+pub(crate) fn parse_destroy_then_temporary_cant_attack_block_chain_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !token_slice_first_is(tokens, "destroy") {
+        return Ok(None);
+    }
+    for idx in 0..tokens.len() {
+        let is_split =
+            matches!(tokens[idx].kind, TokenKind::Comma) || token_slice_at_is(tokens, idx, "and");
+        if !is_split {
+            continue;
+        }
+        let head = trim_lexed_commas(&tokens[..idx]);
+        let mut tail = trim_lexed_commas(&tokens[idx + 1..]);
+        if token_slice_first_is(tail, "and") {
+            tail = trim_lexed_commas(&tail[1..]);
+        }
+        if head.is_empty() || tail.is_empty() || !tail_has_temporary_cant_attack_block_clause(tail)
+        {
+            continue;
+        }
+        let mut effects = vec![parse_effect_clause_lexed(head)?];
+        let Some(tail_effects) = parse_cant_effect_sentence_lexed(tail)? else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported destroy plus attack/block restriction tail (clause: '{}')",
+                token_word_refs(tail).join(" ")
+            )));
+        };
+        effects.extend(tail_effects);
+        return Ok(Some(effects));
+    }
+    Ok(None)
 }
 
 fn clause_may_contain_cast_or_play_permission_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -1834,6 +1887,10 @@ pub(crate) fn is_beginning_of_end_step_words(words: &[&str]) -> bool {
     word_slice_contains_any_phrase(words, CHAIN_BEGINNING_END_STEP_PHRASES)
 }
 
+pub(crate) fn is_beginning_of_upkeep_words(words: &[&str]) -> bool {
+    word_slice_contains_any_phrase(words, CHAIN_BEGINNING_UPKEEP_PHRASES)
+}
+
 pub(crate) fn is_end_of_combat_words(words: &[&str]) -> bool {
     word_slice_contains_phrase(words, CHAIN_END_OF_COMBAT_PHRASE)
 }
@@ -1933,10 +1990,12 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
     if !grammar::contains_word(tokens, "sacrifice")
         || !grammar::contains_word(tokens, "token")
         || (!word_slice_contains_phrase(&chain_words, CHAIN_NEXT_END_STEP_REPEAT_MARKER_PHRASE)
-            && !is_beginning_of_end_step_words(&chain_words))
+            && !is_beginning_of_end_step_words(&chain_words)
+            && !is_beginning_of_upkeep_words(&chain_words))
     {
         return;
     }
+    let is_next_upkeep = is_beginning_of_upkeep_words(&chain_words);
     let next_end_step_player = if word_slice_contains_phrase(
         &chain_words,
         &["beginning", "of", "your", "next", "end", "step"],
@@ -1966,6 +2025,26 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
 
         if !mark_next_end_step_sacrifice {
             idx += 1;
+            continue;
+        }
+
+        if is_next_upkeep {
+            let sacrifice = effects.remove(idx + 1);
+            effects.insert(
+                idx + 1,
+                EffectAst::DelayedUntilNextUpkeep {
+                    player: if word_slice_contains_phrase(
+                        &chain_words,
+                        &["beginning", "of", "your", "next", "upkeep"],
+                    ) {
+                        PlayerAst::You
+                    } else {
+                        PlayerAst::Any
+                    },
+                    effects: vec![sacrifice],
+                },
+            );
+            idx += 2;
             continue;
         }
 

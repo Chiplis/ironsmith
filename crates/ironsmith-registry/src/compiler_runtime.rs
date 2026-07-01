@@ -144,9 +144,15 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             compiler::effects::continuous::RuntimeModification::CopyOf {
                 source,
                 preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
             } => ironsmith::effects::continuous::RuntimeModification::CopyOf {
                 source,
                 preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
             },
             compiler::effects::continuous::RuntimeModification::RemoveAllAbilities => {
                 ironsmith::effects::continuous::RuntimeModification::RemoveAllAbilities

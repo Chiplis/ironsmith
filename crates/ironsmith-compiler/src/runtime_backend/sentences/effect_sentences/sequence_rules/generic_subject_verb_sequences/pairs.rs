@@ -26,7 +26,7 @@ use crate::runtime_backend::lexer::TokenWordView;
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::token_primitives::{
-    find_index, parse_leading_may_action_lexed, word_view_has_any_prefix,
+    LeadingMayActor, find_index, parse_leading_may_action_lexed, word_view_has_any_prefix,
 };
 use crate::runtime_backend::util::{
     helper_tag_for_tokens, is_article, non_article_token_word_refs, non_article_word_refs,
@@ -1937,11 +1937,17 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom_same_sentence
     };
 
     let chooser = leading_may_actor_to_player(action_match.actor, player);
-    let Some((filter, zone, tapped)) =
-        super::triples::parse_any_number_from_looked_cards_action(action_match.tail_tokens)
+    let Some((mut choice_count, filter, zone, tapped, attacking, attack_target_player)) =
+        super::triples::parse_counted_from_looked_cards_action(action_match.tail_tokens)
     else {
         return Ok(None);
     };
+    if reveal_top && choice_count != ChoiceCount::any_number() {
+        return Ok(None);
+    }
+    if action_match.actor != LeadingMayActor::Default && choice_count == ChoiceCount::exactly(1) {
+        choice_count = ChoiceCount::up_to(1);
+    }
 
     let looked_tag = helper_tag_for_tokens(
         sentences[sentence_idx].lowered(),
@@ -1967,19 +1973,22 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom_same_sentence
     }
     effects.push(EffectAst::ChooseObjects {
         filter: choose_filter,
-        count: ChoiceCount::any_number(),
+        count: choice_count,
         count_value: None,
         player: chooser,
         tag: chosen_tag.clone(),
     });
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
-        effects: vec![EffectAst::subject_verb_move_to_zone(
+        effects: vec![EffectAst::subject_verb_move_to_zone_with_attack_target(
             TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
             zone,
             false,
             ReturnControllerAst::Preserve,
             tapped,
+            attacking,
+            attack_target_player,
+            false,
             None,
         )],
     });

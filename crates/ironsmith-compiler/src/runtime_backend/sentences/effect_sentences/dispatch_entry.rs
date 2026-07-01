@@ -3814,6 +3814,30 @@ pub(crate) fn parse_token_copy_followup_sentence(
     ) {
         return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
     }
+    if matches!(
+        filtered.as_slice(),
+        [
+            "sacrifice",
+            "that",
+            "token",
+            "at",
+            "beginning",
+            "of",
+            "next",
+            "upkeep"
+        ] | [
+            "sacrifice",
+            "those",
+            "tokens",
+            "at",
+            "beginning",
+            "of",
+            "next",
+            "upkeep"
+        ]
+    ) {
+        return Some(TokenCopyFollowup::SacrificeAtNextUpkeep);
+    }
 
     parse_token_copy_modifier_sentence(tokens)
         .or_else(|| {
@@ -3864,6 +3888,30 @@ pub(crate) fn parse_token_copy_followup_sentence_lexed(
         ]
     ) {
         return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
+    }
+    if matches!(
+        filtered.as_slice(),
+        [
+            "sacrifice",
+            "that",
+            "token",
+            "at",
+            "beginning",
+            "of",
+            "next",
+            "upkeep"
+        ] | [
+            "sacrifice",
+            "those",
+            "tokens",
+            "at",
+            "beginning",
+            "of",
+            "next",
+            "upkeep"
+        ]
+    ) {
+        return Some(TokenCopyFollowup::SacrificeAtNextUpkeep);
     }
 
     super::parse_token_copy_modifier_sentence_lexed(tokens)
@@ -3986,6 +4034,15 @@ fn apply_unapplied_token_copy_followup(
                 None,
             )],
         }],
+        TokenCopyFollowup::SacrificeAtNextUpkeep => vec![EffectAst::DelayedUntilNextUpkeep {
+            player: PlayerAst::Any,
+            effects: vec![EffectAst::subject_verb_sacrifice(
+                PlayerAst::Implicit,
+                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                1,
+                None,
+            )],
+        }],
         TokenCopyFollowup::ExileAtNextEndStep => vec![EffectAst::DelayedUntilNextEndStep {
             player: PlayerFilter::Any,
             effects: vec![EffectAst::subject_verb_exile(
@@ -4085,6 +4142,7 @@ pub(crate) fn try_apply_token_copy_followup(
                     TokenCopyFollowup::ExileAtNextEndStep => *exile_at_next_end_step = true,
                     TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
                     TokenCopyFollowup::GainHasteUntilEndOfTurn
+                    | TokenCopyFollowup::SacrificeAtNextUpkeep
                     | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
                 }
                 Ok(true)
@@ -4129,6 +4187,7 @@ pub(crate) fn try_apply_token_copy_followup(
                     TokenCopyFollowup::ExileAtNextEndStep => *exile_at_next_end_step = true,
                     TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
                     TokenCopyFollowup::GainHasteUntilEndOfTurn
+                    | TokenCopyFollowup::SacrificeAtNextUpkeep
                     | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
                 }
                 Ok(true)
@@ -4145,6 +4204,7 @@ pub(crate) fn try_apply_token_copy_followup(
                     | TokenCopyFollowup::EnterTappedAndAttacking
                     | TokenCopyFollowup::GainHasteUntilEndOfTurn
                     | TokenCopyFollowup::SacrificeAtNextEndStep
+                    | TokenCopyFollowup::SacrificeAtNextUpkeep
                     | TokenCopyFollowup::ExileAtNextEndStep => return Ok(false),
                 }
                 Ok(true)

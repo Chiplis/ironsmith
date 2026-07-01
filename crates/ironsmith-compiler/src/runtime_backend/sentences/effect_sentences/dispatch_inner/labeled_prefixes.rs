@@ -1094,6 +1094,11 @@ fn parse_token_copy_modifier_words(filtered: &[&str]) -> Option<TokenCopyFollowu
     {
         return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
     }
+    if word_slice_starts_with_any(filtered, LABELED_TOKEN_SACRIFICE_PREFIXES)
+        && word_slice_contains_phrase(filtered, &["next", "upkeep"])
+    {
+        return Some(TokenCopyFollowup::SacrificeAtNextUpkeep);
+    }
     if word_slice_starts_with_any(filtered, LABELED_TOKEN_EXILE_PREFIXES)
         && word_slice_contains_phrase(filtered, LABELED_NEXT_END_STEP_PHRASE)
     {

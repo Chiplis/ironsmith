@@ -22,6 +22,10 @@ pub enum TriggerKind {
         display: String,
     },
     ThisAttacks,
+    ThisAttacksPlayerWhoControlsAtLeast {
+        count: usize,
+        filter: ObjectFilter,
+    },
     ThisAttacksPlayerWithMostLife,
     ThisAttacksWithGreaterPower,
     ThisAttacksWithNOthers {
@@ -422,6 +426,12 @@ impl Trigger {
 
     pub fn this_attacks() -> Self {
         Self::typed("this_attacks", TriggerKind::ThisAttacks)
+    }
+    pub fn this_attacks_player_who_controls_at_least(count: usize, filter: ObjectFilter) -> Self {
+        Self::typed(
+            "this_attacks_player_who_controls_at_least",
+            TriggerKind::ThisAttacksPlayerWhoControlsAtLeast { count, filter },
+        )
     }
     pub fn this_attacks_player_with_most_life() -> Self {
         Self::typed(

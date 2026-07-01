@@ -825,6 +825,20 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_handles_shared_creature_type_with_source_clause() {
+        let tokens = lex_line(
+            "creature spell that shares a creature type with this creature",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.zone, Some(Zone::Stack));
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.shares_creature_type_with_source);
+    }
+
+    #[test]
     fn parse_object_filter_lexed_handles_convoked_it_reference() {
         let tokens = lex_line("creature that convoked it", 0).unwrap();
 

@@ -44,7 +44,8 @@ pub(crate) use super::super::util::{strip_leading_articles, trim_commas, trim_ed
 use super::sentence_helpers::*;
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
 use super::{
-    TokenCopyFollowup, parse_cant_effect_sentence_lexed, parse_effect_chain_lexed,
+    TokenCopyFollowup, parse_cant_effect_sentence_lexed,
+    parse_destroy_then_temporary_cant_attack_block_chain_lexed, parse_effect_chain_lexed,
     parse_search_library_sentence_lexed, parse_simple_gain_ability_clause,
 };
 #[allow(unused_imports)]

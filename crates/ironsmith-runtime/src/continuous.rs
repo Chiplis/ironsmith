@@ -21,7 +21,7 @@ use crate::object_query::candidate_ids_for_filter;
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbility;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -284,6 +284,9 @@ pub enum Modification {
     CopyOf {
         target_id: ObjectId,
         preserve_source_abilities: bool,
+        name_override: Option<String>,
+        name_override_surface: Option<SourceReferenceSurface>,
+        add_supertypes: Vec<Supertype>,
     },
 
     // === Layer 2: Control ===
@@ -1153,6 +1156,26 @@ fn retain_active_static_abilities(
     chars.static_abilities = extract_static_abilities(&chars.abilities);
 }
 
+fn apply_copy_effect_exceptions(
+    chars: &mut CalculatedCharacteristics,
+    name_override: &Option<String>,
+    name_override_surface: &Option<SourceReferenceSurface>,
+    add_supertypes: &[Supertype],
+) {
+    if let Some(name) = name_override_surface
+        .as_ref()
+        .map(SourceReferenceSurface::display_text)
+        .or_else(|| name_override.clone())
+    {
+        chars.name = name.clone();
+    }
+    for supertype in add_supertypes {
+        if !chars.supertypes.contains(supertype) {
+            chars.supertypes.push(*supertype);
+        }
+    }
+}
+
 fn object_has_reconfigure_ability(object: &Object) -> bool {
     object.abilities.iter().any(|ability| {
         if crate::compiled_text::ability_surface_text(ability).starts_with("Reconfigure ") {
@@ -1449,6 +1472,9 @@ fn apply_text_box_modification_to_chars(
         target: &Object,
         chars: &mut CalculatedCharacteristics,
         preserve_source_abilities: bool,
+        name_override: &Option<String>,
+        name_override_surface: &Option<SourceReferenceSurface>,
+        add_supertypes: &[Supertype],
     ) {
         let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
 
@@ -1470,6 +1496,7 @@ fn apply_text_box_modification_to_chars(
             }
         }
 
+        apply_copy_effect_exceptions(chars, name_override, name_override_surface, add_supertypes);
         chars.static_abilities = extract_static_abilities(&chars.abilities);
     }
 
@@ -1477,9 +1504,19 @@ fn apply_text_box_modification_to_chars(
         Modification::CopyOf {
             target_id,
             preserve_source_abilities,
+            name_override,
+            name_override_surface,
+            add_supertypes,
         } => {
             if let Some(target) = objects.get(target_id) {
-                copy_characteristics_from_target(target, chars, *preserve_source_abilities);
+                copy_characteristics_from_target(
+                    target,
+                    chars,
+                    *preserve_source_abilities,
+                    name_override,
+                    name_override_surface,
+                    add_supertypes,
+                );
             }
         }
         Modification::ChangeController(new_controller) => {
@@ -2401,6 +2438,9 @@ fn apply_modification_to_chars(
         target: &Object,
         chars: &mut CalculatedCharacteristics,
         preserve_source_abilities: bool,
+        name_override: &Option<String>,
+        name_override_surface: &Option<SourceReferenceSurface>,
+        add_supertypes: &[Supertype],
     ) {
         let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
 
@@ -2422,6 +2462,7 @@ fn apply_modification_to_chars(
             }
         }
 
+        apply_copy_effect_exceptions(chars, name_override, name_override_surface, add_supertypes);
         chars.static_abilities = extract_static_abilities(&chars.abilities);
     }
 
@@ -2430,9 +2471,19 @@ fn apply_modification_to_chars(
         Modification::CopyOf {
             target_id,
             preserve_source_abilities,
+            name_override,
+            name_override_surface,
+            add_supertypes,
         } => {
             if let Some(target) = objects.get(target_id) {
-                copy_characteristics_from_target(target, chars, *preserve_source_abilities);
+                copy_characteristics_from_target(
+                    target,
+                    chars,
+                    *preserve_source_abilities,
+                    name_override,
+                    name_override_surface,
+                    add_supertypes,
+                );
                 add_abilities_from_counters(object, chars);
             }
         }
@@ -3235,6 +3286,9 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 Modification::CopyOf {
                     target_id,
                     preserve_source_abilities,
+                    name_override,
+                    name_override_surface,
+                    add_supertypes,
                 } => {
                     // Per MTG rule 707.2, copying copies the copiable values:
                     // name, mana cost, color indicator, card type, subtype, supertype,
@@ -3260,6 +3314,12 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                                 }
                             }
                         }
+                        apply_copy_effect_exceptions(
+                            &mut chars,
+                            name_override,
+                            name_override_surface,
+                            add_supertypes,
+                        );
                         chars.static_abilities = extract_static_abilities(&chars.abilities);
                         add_abilities_from_counters(object, &mut chars);
                         // Note: controller is NOT copied - that's determined by who cast the Clone
@@ -4978,6 +5038,9 @@ mod tests {
             Modification::CopyOf {
                 target_id: ObjectId::from_raw(1),
                 preserve_source_abilities: false,
+                name_override: None,
+                name_override_surface: None,
+                add_supertypes: Vec::new(),
             }
             .layer(),
             Layer::Copy

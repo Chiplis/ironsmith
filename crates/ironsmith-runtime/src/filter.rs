@@ -409,6 +409,27 @@ fn subject_shares_creature_type_with_filter(
     false
 }
 
+fn subject_shares_creature_type_with_source(
+    subject: &impl TaggedConstraintSubject,
+    ctx: &FilterContext,
+    game: &GameState,
+) -> bool {
+    let Some(source_id) = ctx.source else {
+        return false;
+    };
+    let Some(source) = game.object(source_id) else {
+        return false;
+    };
+    let subject_subtypes = subject_creature_subtypes(subject, game);
+    if subject_subtypes.is_empty() {
+        return false;
+    }
+    let source_subtypes = object_creature_subtypes(source, game);
+    subject_subtypes
+        .iter()
+        .any(|subtype| source_subtypes.contains(subtype))
+}
+
 fn intrinsic_attachment_tag_constraint_matches_subject(
     subject: &impl TaggedConstraintSubject,
     tag: &TagKey,
@@ -1589,6 +1610,11 @@ impl ObjectFilterExt for ObjectFilter {
             .any(|comparison_filter| {
                 subject_shares_creature_type_with_filter(subject, comparison_filter, ctx, game)
             })
+        {
+            return false;
+        }
+        if self.shares_creature_type_with_source
+            && !subject_shares_creature_type_with_source(subject, ctx, game)
         {
             return false;
         }
@@ -3532,6 +3558,9 @@ impl ObjectFilterExt for ObjectFilter {
             post_noun_qualifiers.push(format!(
                 "that doesn't share a creature type with {comparison}"
             ));
+        }
+        if self.shares_creature_type_with_source {
+            post_noun_qualifiers.push("that shares a creature type with this creature".to_string());
         }
         for constraint in &self.tagged_constraints {
             match constraint.relation {

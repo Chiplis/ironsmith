@@ -97,6 +97,9 @@ pub(crate) fn interpret_trigger_model(
     let interpreted = match trigger.kind {
         TriggerKind::StateBased { display } => crate::triggers::Trigger::state_based(display),
         TriggerKind::ThisAttacks => crate::triggers::Trigger::this_attacks(),
+        TriggerKind::ThisAttacksPlayerWhoControlsAtLeast { count, filter } => {
+            crate::triggers::Trigger::this_attacks_player_who_controls_at_least(count, filter)
+        }
         TriggerKind::ThisAttacksPlayerWithMostLife => {
             crate::triggers::Trigger::this_attacks_player_with_most_life()
         }

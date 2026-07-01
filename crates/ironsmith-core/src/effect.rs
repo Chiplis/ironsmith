@@ -1556,8 +1556,14 @@ pub struct MoveToZoneEffect {
     pub battlefield_controller: BattlefieldController,
     pub enters_tapped: bool,
     pub enters_attacking: bool,
+    pub attack_target_mode: Option<MoveToZoneAttackTargetMode>,
     pub enters_face_down: bool,
     pub transfer_exiled_with_source_links: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MoveToZoneAttackTargetMode {
+    PlayerOrPlaneswalkerControlledBy(PlayerFilter),
 }
 
 impl MoveToZoneEffect {
@@ -1569,6 +1575,7 @@ impl MoveToZoneEffect {
             battlefield_controller: BattlefieldController::Preserve,
             enters_tapped: false,
             enters_attacking: false,
+            attack_target_mode: None,
             enters_face_down: false,
             transfer_exiled_with_source_links: false,
         }
@@ -1613,6 +1620,18 @@ impl MoveToZoneEffect {
     pub fn attacking(mut self) -> Self {
         self.enters_attacking = true;
         self
+    }
+
+    pub fn attack_target_mode(mut self, mode: MoveToZoneAttackTargetMode) -> Self {
+        self.enters_attacking = true;
+        self.attack_target_mode = Some(mode);
+        self
+    }
+
+    pub fn attacking_player_or_planeswalker_controlled_by(self, player: PlayerFilter) -> Self {
+        self.attack_target_mode(
+            MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player),
+        )
     }
 
     pub fn face_down(mut self) -> Self {

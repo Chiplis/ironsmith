@@ -297,6 +297,7 @@ const BLOCK_IF_ABLE_TAIL_PHRASES: &[&[&str]] = &[
     &["block", "this", "turn", "if", "able"],
     &["blocks", "this", "turn", "if", "able"],
 ];
+const CANT_WORDS: &[&str] = &["cant", "can't", "cannot"];
 
 const INLINE_TOKEN_RULES_TAIL_PREFIXES: &[&[&str]] = &[
     &["when"],
@@ -623,6 +624,13 @@ fn starts_with_nonverb_effect_head(words: &[&str]) -> bool {
     }) || words
         .iter()
         .any(|word| KEYWORD_ACTION_EFFECT_HEAD_WORDS.contains(word))
+}
+
+fn is_cant_restriction_clause_words(words: &[&str]) -> bool {
+    words.iter().any(|word| CANT_WORDS.contains(word))
+        && words.iter().any(|word| {
+            ATTACK_OR_ATTACKS_WORDS.contains(word) || BLOCK_OR_BLOCKS_WORDS.contains(word)
+        })
 }
 
 fn starts_with_player_may_clause_lexed(words: &[&str]) -> bool {
@@ -1143,6 +1151,7 @@ pub(crate) fn has_effect_head_without_verb(tokens: &[OwnedLexToken]) -> bool {
             .ok()
             .flatten()
             .is_some()
+        || is_cant_restriction_clause_words(&token_words)
 }
 
 pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -1163,6 +1172,7 @@ pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bo
         || is_must_block_if_able_clause_words_lexed(&token_words)
         || is_phase_clause_words_lexed(&token_words)
         || is_choose_target_prelude_clause_words_lexed(&token_words)
+        || is_cant_restriction_clause_words(&token_words)
 }
 
 pub(crate) fn segment_has_effect_head_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -1423,6 +1433,7 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
                         && after_words
                             .get(1)
                             .is_some_and(|word| TARGET_CARD_TYPE_WORDS.contains(word))))
+                && !is_cant_restriction_clause_words(&after_words)
             {
                 continue;
             }

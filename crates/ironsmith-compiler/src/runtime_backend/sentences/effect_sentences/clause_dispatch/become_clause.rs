@@ -2,13 +2,13 @@ use super::super::super::keyword_static::{
     keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier_values,
 };
 use super::super::super::lexer::{
-    LexedClause, OwnedLexToken, word_slice_eq, word_slice_eq_any, word_slice_starts_with,
-    word_slice_strip_any_suffix,
+    LexedClause, OwnedLexToken, render_token_slice, word_slice_eq, word_slice_eq_any,
+    word_slice_starts_with, word_slice_strip_any_suffix,
 };
 use super::super::super::object_filters::parse_object_filter_lexed;
 use super::super::super::util::{
     parse_card_type, parse_color, parse_subject, parse_target_phrase, parse_value,
-    span_from_tokens, word_refs_except,
+    source_reference_surface_for_words, span_from_tokens, word_refs_except,
 };
 use super::super::clause_pattern_helpers::extract_subject_player;
 use super::super::parse_granted_abilities_for_gain_clause;
@@ -25,7 +25,7 @@ use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value};
 use crate::host::{CardTextError, EffectAst, IT_TAG, TagKey, TargetAst};
 use crate::target::{ChooseSpec, ObjectFilter};
-use crate::types::{CardType, Subtype, SubtypeFamily};
+use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 
 const ADDITION_TAIL_PHRASES: &[&[&str]] = &[
     &["in", "addition", "to", "its", "other", "types"],
@@ -37,6 +37,48 @@ const ARTICLE_PREFIXES: &[&[&str]] = &[&["the"], &["a"], &["an"]];
 const MONARCH_WORDS: &[&str] = &["monarch"];
 const COPY_OF_PREFIX: &[&str] = &["copy", "of"];
 const COPY_PRESERVES_SOURCE_ABILITIES_WORDS: &[&str] = &["it", "has", "this", "ability"];
+const COPY_NAME_PREFIXES: &[&[&str]] = &[&["its", "name", "is"], &["it", "s", "name", "is"]];
+const COPY_PRESERVE_SOURCE_ABILITY_TAILS: &[&[&str]] = &[
+    &["and", "it", "has", "this", "ability"],
+    &["and", "this", "ability"],
+];
+const COPY_LEGENDARY_ADDITION_TAILS: &[&[&str]] = &[
+    &[
+        "and",
+        "its",
+        "legendary",
+        "in",
+        "addition",
+        "to",
+        "its",
+        "other",
+        "types",
+    ],
+    &[
+        "and",
+        "it",
+        "s",
+        "legendary",
+        "in",
+        "addition",
+        "to",
+        "its",
+        "other",
+        "types",
+    ],
+    &[
+        "and",
+        "it",
+        "is",
+        "legendary",
+        "in",
+        "addition",
+        "to",
+        "its",
+        "other",
+        "types",
+    ],
+];
 const IT_THEY_THEM_CLAUSES: &[&[&str]] = &[&["it"], &["they"], &["them"]];
 const THIS_SOURCE_SUBJECT_CLAUSES: &[&[&str]] = &[
     &["this"],
@@ -66,6 +108,14 @@ const SOURCE_POWER_TOUGHNESS_CLAUSES: &[&[&str]] = &[
 const CREATURE_OR_CREATURES_WORDS: &[&str] = &["creature", "creatures"];
 const ALL_CREATURE_TYPES_WORDS: &[&str] = &["all", "creature", "types"];
 const AND_ALL_CREATURE_TYPES_WORDS: &[&str] = &["and", "all", "creature", "types"];
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ParsedCopyException {
+    preserve_source_abilities: bool,
+    name_override: Option<String>,
+    name_override_surface: Option<crate::target::SourceReferenceSurface>,
+    add_supertypes: Vec<Supertype>,
+}
 
 fn split_trailing_except_tokens(
     tokens: &[OwnedLexToken],
@@ -138,11 +188,56 @@ fn recover_leading_duration_target(tokens: &[OwnedLexToken]) -> Option<TargetAst
     parse_target_phrase(&target_tokens).ok()
 }
 
-fn parse_copy_exception_preserves_source_abilities(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_eq(
-        &LexedClause::new(tokens).word_refs(),
-        COPY_PRESERVES_SOURCE_ABILITIES_WORDS,
-    )
+fn parse_become_copy_exception(tokens: &[OwnedLexToken]) -> Option<ParsedCopyException> {
+    let clause = LexedClause::new(tokens).trimmed();
+    let words = clause.word_refs();
+    if word_slice_eq(&words, COPY_PRESERVES_SOURCE_ABILITIES_WORDS) {
+        return Some(ParsedCopyException {
+            preserve_source_abilities: true,
+            ..Default::default()
+        });
+    }
+
+    let prefix_len = COPY_NAME_PREFIXES
+        .iter()
+        .find(|prefix| word_slice_starts_with(&words, prefix))
+        .map(|prefix| prefix.len())?;
+    let mut parsed = ParsedCopyException::default();
+    let mut name_end = words.len();
+
+    if let Some((_tail, head)) =
+        word_slice_strip_any_suffix(&words[..name_end], COPY_PRESERVE_SOURCE_ABILITY_TAILS)
+    {
+        parsed.preserve_source_abilities = true;
+        name_end = head.len();
+    }
+
+    if let Some((_tail, head)) =
+        word_slice_strip_any_suffix(&words[..name_end], COPY_LEGENDARY_ADDITION_TAILS)
+    {
+        parsed.add_supertypes.push(Supertype::Legendary);
+        name_end = head.len();
+    }
+
+    let name_words = words.get(prefix_len..name_end)?;
+    if name_words.is_empty() {
+        return None;
+    }
+    if parsed.add_supertypes.is_empty()
+        && !parsed.preserve_source_abilities
+        && name_words.contains(&"and")
+    {
+        return None;
+    }
+
+    let name_clause = clause.between_words_trimmed(prefix_len, name_end);
+    let rendered_name = render_token_slice(name_clause.tokens()).trim().to_string();
+    if rendered_name.is_empty() {
+        return None;
+    }
+    parsed.name_override_surface = source_reference_surface_for_words(name_words);
+    parsed.name_override = Some(rendered_name);
+    Some(parsed)
 }
 
 fn split_animation_suffix_all_creature_types(
@@ -183,10 +278,10 @@ pub(crate) fn parse_become_clause(
         rest_clause.tokens().to_vec()
     };
     let (rest_core_tokens, copy_exception_tokens) = split_trailing_except_tokens(&rest_tokens);
-    let preserve_source_abilities = copy_exception_tokens
+    let copy_exception = copy_exception_tokens
         .as_deref()
-        .is_some_and(parse_copy_exception_preserves_source_abilities);
-    let become_clause_tokens = if preserve_source_abilities {
+        .and_then(parse_become_copy_exception);
+    let become_clause_tokens = if copy_exception.is_some() {
         rest_core_tokens.as_slice()
     } else {
         rest_tokens.as_slice()
@@ -353,7 +448,19 @@ pub(crate) fn parse_become_clause(
             target,
             source,
             duration,
-            preserve_source_abilities,
+            copy_exception
+                .as_ref()
+                .is_some_and(|exception| exception.preserve_source_abilities),
+            copy_exception
+                .as_ref()
+                .and_then(|exception| exception.name_override.clone()),
+            copy_exception
+                .as_ref()
+                .and_then(|exception| exception.name_override_surface.clone()),
+            copy_exception
+                .as_ref()
+                .map(|exception| exception.add_supertypes.clone())
+                .unwrap_or_default(),
         ));
     }
 

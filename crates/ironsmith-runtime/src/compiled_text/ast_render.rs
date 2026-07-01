@@ -1668,6 +1668,7 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.contains("if this land has ")
         || lower.contains("if this creature has one or more ")
         || lower.contains(" counters on this artifact")
+        || lower.starts_with("whenever this creature enters or attacks")
         || lower.starts_with("whenever this creature attacks")
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.starts_with("whenever this creature or another ")

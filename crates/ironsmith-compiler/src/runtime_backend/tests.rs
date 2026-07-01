@@ -6692,6 +6692,24 @@ fn rewrite_subject_verb_primitives_delayed_next_upkeep_unless_pays_normalizes_pl
 }
 
 #[test]
+fn rewrite_token_copy_followup_recognizes_next_upkeep_sacrifice() {
+    let tokens = lex_line(
+        "Sacrifice that token at the beginning of the next upkeep.",
+        0,
+    )
+    .expect("rewrite lexer should classify token-copy next-upkeep cleanup");
+
+    let followup =
+        crate::runtime_backend::effect_sentences::parse_token_copy_followup_sentence_lexed(&tokens)
+            .expect("token-copy next-upkeep sacrifice should be recognized");
+
+    assert_eq!(
+        followup,
+        super::effect_sentences::TokenCopyFollowup::SacrificeAtNextUpkeep
+    );
+}
+
+#[test]
 fn rewrite_subject_verb_primitives_unless_clause_normalizes_controller_apostrophe_shapes() {
     let tokens = lex_line("Draw a card unless that spell's controller pays {2}.", 0)
         .expect("rewrite lexer should classify unless-controller sentence");
@@ -12792,6 +12810,87 @@ fn rewrite_lexed_effect_sequence_preserves_from_among_battlefield_rest_hand_bund
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_preserves_counted_battlefield_rest_bottom_bundle() {
+    let text = "Look at the top seven cards of your library. Put up to two planeswalker cards from among them onto the battlefield. Put the rest on the bottom of your library in a random order.";
+    let sentences = registry_sentence_inputs(text);
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match counted looked-card battlefield/bottom sequence");
+    let debug = format!("{:?}", matched.effects);
+
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("max: Some(2)"), "{debug}");
+    assert!(debug.contains("ForEachTagged"), "{debug}");
+    assert!(debug.contains("zone: Battlefield"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_preserves_dynamic_battlefield_rest_bottom_bundle() {
+    let text = "Look at the top seven cards of your library. Put up to X artifact and/or creature cards with mana value 3 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.";
+    let sentences = registry_sentence_inputs(text);
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match dynamic looked-card battlefield/bottom sequence");
+    let debug = format!("{:?}", matched.effects);
+
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("dynamic_x: true"), "{debug}");
+    assert!(debug.contains("up_to_x: true"), "{debug}");
+    assert_eq!(
+        debug.matches("mana_value: Some").count(),
+        2,
+        "expected shared mana-value cap on both artifact and creature branches: {debug}"
+    );
+    assert!(debug.contains("ForEachTagged"), "{debug}");
+    assert!(debug.contains("zone: Battlefield"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_preserves_noncreature_nonland_permanent_filter() {
+    let text = "Look at the top seven cards of your library. Put up to two noncreature, nonland permanent cards with mana value 3 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.";
+    let sentences = registry_sentence_inputs(text);
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect(
+            "registry should match restricted permanent looked-card battlefield/bottom sequence",
+        );
+    let debug = format!("{:?}", matched.effects);
+
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(
+        debug.contains("card_types: [Artifact, Creature, Enchantment, Land, Planeswalker, Battle]"),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("excluded_card_types: [Creature, Land]"),
+        "{debug}"
+    );
+    assert!(debug.contains("mana_value: Some"), "{debug}");
+    assert!(debug.contains("zone: Battlefield"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_sequence_registry_matches_from_among_battlefield_rest_graveyard_bundle() {
     let sentences = registry_sentence_inputs(
         "Look at the top X cards of your library. You may put any number of land and/or legendary permanent cards with mana value X or less from among them onto the battlefield. Put the rest into your graveyard.",
@@ -17840,6 +17939,55 @@ fn rewrite_lexed_trigger_clause_accepts_attack_target_tail() {
         parsed,
         crate::cards::builders::TriggerSpec::ThisAttacks
     ));
+}
+
+#[test]
+fn rewrite_lexed_trigger_clause_keeps_attacked_player_land_count_gate() {
+    let tokens = lex_line(
+        "this creature attacks a player who controls eight or more lands",
+        0,
+    )
+    .expect("rewrite lexer should classify attack trigger clause");
+
+    let parsed = super::parse_trigger_clause_lexed(&tokens)
+        .expect("attack trigger clause with defending-player land count should parse");
+
+    match parsed {
+        crate::cards::builders::TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast {
+            count,
+            filter,
+        } => {
+            assert_eq!(count, 8);
+            assert_eq!(filter.card_types, vec![crate::types::CardType::Land]);
+        }
+        other => panic!("expected land-count attack trigger, got {other:?}"),
+    }
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_preserves_attacking_looked_card_bundle() {
+    let text = "Look at the top eight cards of your library. You may put a creature card from among them onto the battlefield tapped and attacking that player. Put the rest on the bottom of your library in a random order.";
+    let sentences = registry_sentence_inputs(text);
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match attacking looked-card battlefield/bottom sequence");
+    let debug = format!("{:?}", matched.effects);
+
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("battlefield_attacking: true"), "{debug}");
+    assert!(
+        debug.contains(
+            "battlefield_attack_target_player_or_planeswalker_controlled_by: Some(Defending)"
+        ),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
 }
 
 #[test]
