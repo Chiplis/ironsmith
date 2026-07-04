@@ -355,6 +355,10 @@ fn resolve_effect_metric(
                 })
                 .unwrap_or(0)
         }
+        EffectMetric::PlayersWithPositiveCount => outcome
+            .player_counts()
+            .map(|counts| counts.iter().filter(|(_, count)| *count > 0).count() as i32)
+            .unwrap_or(0),
         EffectMetric::OtherNumber => outcome
             .execution_facts
             .iter()

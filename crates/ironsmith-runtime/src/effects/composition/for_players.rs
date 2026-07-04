@@ -41,6 +41,8 @@ pub struct ForPlayersEffect {
     pub effects: Vec<Effect>,
     /// Whether iteration should begin with the effect controller and proceed in turn order.
     pub starting_with_controller: bool,
+    /// Whether iteration should stop after the first player whose effects happened.
+    pub stop_after_first_happened: bool,
 }
 
 impl ForPlayersEffect {
@@ -50,6 +52,7 @@ impl ForPlayersEffect {
             filter,
             effects,
             starting_with_controller: false,
+            stop_after_first_happened: false,
         }
     }
 
@@ -58,7 +61,13 @@ impl ForPlayersEffect {
             filter,
             effects,
             starting_with_controller: true,
+            stop_after_first_happened: false,
         }
+    }
+
+    pub fn stop_after_first_happened(mut self) -> Self {
+        self.stop_after_first_happened = true;
+        self
     }
 }
 
@@ -120,7 +129,7 @@ impl EffectExecutor for ForPlayersEffect {
         let mut player_affected_memory = Vec::new();
 
         for player_id in players {
-            ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+            if ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                 let start = outcomes.len();
                 // Execute all inner effects for this player
                 for effect in &self.effects {
@@ -138,8 +147,10 @@ impl EffectExecutor for ForPlayersEffect {
                 {
                     player_affected_memory.push((player_id, memory.to_vec()));
                 }
-                Ok::<(), ExecutionError>(())
-            })?;
+                Ok::<bool, ExecutionError>(self.stop_after_first_happened && count > 0)
+            })? {
+                break;
+            }
         }
 
         Ok(EffectOutcome::aggregate_summing_counts(outcomes)

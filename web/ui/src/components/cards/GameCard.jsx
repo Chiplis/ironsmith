@@ -1422,7 +1422,7 @@ export default function GameCard({
           <img
             className={cn(
               "absolute inset-0 w-full h-full z-0 pointer-events-none",
-              "object-fill",
+              variant === "hand" ? "object-cover object-top" : "object-fill",
               artTreatmentClass,
             )}
             src={artUrl}

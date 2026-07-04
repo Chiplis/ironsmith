@@ -145,6 +145,10 @@ pub enum TriggerKind {
     DealsDamage {
         filter: ObjectFilter,
     },
+    DealsDamageTo {
+        source: ObjectFilter,
+        target: ObjectFilter,
+    },
     DealsDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,
@@ -212,6 +216,9 @@ pub enum TriggerKind {
     PlayerLosesLife {
         player: PlayerFilter,
     },
+    PlayersLoseLifeOneOrMore {
+        player: PlayerFilter,
+    },
     /// "Whenever one or more opponents each lose exactly N life"
     OpponentsEachLoseExactLife {
         amount: u32,
@@ -222,6 +229,10 @@ pub enum TriggerKind {
     PlayerLosesLifeDuringTurn {
         player: PlayerFilter,
         during_turn: PlayerFilter,
+    },
+    SpellCountered {
+        filter: Option<ObjectFilter>,
+        controller: PlayerFilter,
     },
     YouDrawCard,
     PlayerDrawsCard {
@@ -719,6 +730,12 @@ impl Trigger {
     pub fn deals_damage(filter: ObjectFilter) -> Self {
         Self::typed("deals_damage", TriggerKind::DealsDamage { filter })
     }
+    pub fn deals_damage_to(source: ObjectFilter, target: ObjectFilter) -> Self {
+        Self::typed(
+            "deals_damage_to",
+            TriggerKind::DealsDamageTo { source, target },
+        )
+    }
     pub fn deals_damage_to_player(source: ObjectFilter, player: PlayerFilter) -> Self {
         Self::typed(
             "deals_damage_to_player",
@@ -879,6 +896,12 @@ impl Trigger {
     pub fn player_loses_life(player: PlayerFilter) -> Self {
         Self::typed("player_loses_life", TriggerKind::PlayerLosesLife { player })
     }
+    pub fn players_lose_life_one_or_more(player: PlayerFilter) -> Self {
+        Self::typed(
+            "players_lose_life_one_or_more",
+            TriggerKind::PlayersLoseLifeOneOrMore { player },
+        )
+    }
     pub fn opponents_each_lose_exact_life(amount: u32) -> Self {
         Self::typed(
             "opponents_each_lose_exact_life",
@@ -895,6 +918,12 @@ impl Trigger {
                 player,
                 during_turn,
             },
+        )
+    }
+    pub fn spell_countered(filter: Option<ObjectFilter>, controller: PlayerFilter) -> Self {
+        Self::typed(
+            "spell_countered",
+            TriggerKind::SpellCountered { filter, controller },
         )
     }
     pub fn you_draw_card() -> Self {

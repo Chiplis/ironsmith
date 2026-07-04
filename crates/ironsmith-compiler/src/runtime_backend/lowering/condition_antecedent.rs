@@ -13,6 +13,9 @@ pub(crate) enum ConditionAntecedentBinding {
 
 pub(crate) fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<ObjectFilter> {
     match predicate {
+        // "if enchanted creature is untapped, tap it": the tagged condition
+        // subject is the antecedent for "it" in the body effects.
+        PredicateAst::TaggedMatches(tag, _) => Some(ObjectFilter::tagged(tag.clone())),
         PredicateAst::PlayerControls { filter, .. }
         | PredicateAst::PlayerHasAtLeast { filter, .. }
         | PredicateAst::PlayerControlsExactly { filter, .. }
@@ -111,6 +114,11 @@ fn bind_condition_antecedent_in_target(
 ) {
     match target {
         TargetAst::Object(filter, _, _) => bind_condition_filter_antecedent(filter, antecedent),
+        // "if enchanted creature is untapped, tap it": a bare `it` target
+        // binds to the condition subject.
+        TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => {
+            *target = TargetAst::Object(antecedent.clone(), *span, None);
+        }
         TargetAst::WithCount(inner, count) => {
             if matches!(
                 mode,

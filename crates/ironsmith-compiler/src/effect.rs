@@ -941,6 +941,7 @@ impl Effect {
             filter: _filter,
             effects: _effects,
             starting_with_controller: false,
+            stop_after_first_happened: false,
         })
     }
 
@@ -952,6 +953,7 @@ impl Effect {
             filter,
             effects,
             starting_with_controller: true,
+            stop_after_first_happened: false,
         })
     }
 
@@ -960,6 +962,7 @@ impl Effect {
             filter: crate::target::PlayerFilter::Opponent,
             effects,
             starting_with_controller: false,
+            stop_after_first_happened: false,
         })
     }
 

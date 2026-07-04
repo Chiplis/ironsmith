@@ -1314,6 +1314,14 @@ fn evaluate_condition_shared_core(
                     .player_lost_life_this_turn(*opponent)
             }))
         }
+        Condition::OpponentWasDealtDamageThisTurn => {
+            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+            Some(filter_ctx.opponents.iter().any(|opponent| {
+                game.turn_store
+                    .turn_history
+                    .player_was_dealt_damage_this_turn(*opponent)
+            }))
+        }
         Condition::PermanentLeftBattlefieldThisTurn => Some(
             game.turn_store
                 .turn_history
@@ -1545,6 +1553,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::AttackedThisTurn => {}
         Condition::AttackedWithNOrMoreCreaturesThisTurn(..) => {}
         Condition::OpponentLostLifeThisTurn => {}
+        Condition::OpponentWasDealtDamageThisTurn => {}
         Condition::PermanentLeftBattlefieldThisTurn => {}
         Condition::NonlandPermanentLeftBattlefieldThisTurn => {}
         Condition::SpellWasWarpedThisTurn => {}
@@ -2544,6 +2553,7 @@ pub fn evaluate_condition_external(
         | Condition::AttackedThisTurn
         | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
+        | Condition::OpponentWasDealtDamageThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::NonlandPermanentLeftBattlefieldThisTurn
         | Condition::SpellWasWarpedThisTurn
@@ -3335,6 +3345,7 @@ fn evaluate_condition_simple(
         | Condition::AttackedThisTurn
         | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
+        | Condition::OpponentWasDealtDamageThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::NonlandPermanentLeftBattlefieldThisTurn
         | Condition::SpellWasWarpedThisTurn
@@ -4536,6 +4547,7 @@ fn evaluate_condition(
         | Condition::AttackedThisTurn
         | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
+        | Condition::OpponentWasDealtDamageThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::NonlandPermanentLeftBattlefieldThisTurn
         | Condition::SpellWasWarpedThisTurn

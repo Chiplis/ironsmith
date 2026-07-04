@@ -879,6 +879,11 @@ fn parse_effect_sentence_lexed_inner(
             return Ok(effects);
         }
     }
+    if sentence_words.starts_with(&["at", "the", "beginning", "of", "the", "next", "combat"])
+        && let Some(effects) = parse_delayed_next_combat_phase_this_turn_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
     if let Some(effects) = parse_it_is_aura_enchantment_sentence_lexed(tokens)? {
         return Ok(effects);
     }

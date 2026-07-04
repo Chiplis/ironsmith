@@ -18,6 +18,9 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::BeginningOfEndStep(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player.clone()),
         ),
+        TriggerSpec::BeginningOfCombat(player) => Ok(
+            ironsmith_core::DelayedTriggerSpec::BeginningOfCombat(player.clone()),
+        ),
         TriggerSpec::IsDealtDamage(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(ChooseSpec::Object(filter.clone())),
         ),

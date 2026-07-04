@@ -1866,6 +1866,24 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if let Some(player_filter) = &self.discarded_or_cycled_this_turn_by {
+            let matches_player = game.players.iter().any(|player| {
+                player.is_in_game()
+                    && player_filter.matches_player(player.id, ctx)
+                    && game
+                        .turn_store
+                        .turn_history
+                        .object_was_discarded_or_cycled_by_this_turn(
+                            object.id,
+                            object.stable_id,
+                            player.id,
+                        )
+            });
+            if !matches_player {
+                return false;
+            }
+        }
+
         if self.was_dealt_damage_this_turn && !game.creature_was_damaged_this_turn(object.id) {
             return false;
         }
@@ -2226,6 +2244,15 @@ impl ObjectFilterExt for ObjectFilter {
                     return false;
                 }
             } else {
+                return false;
+            }
+        }
+        if self.chosen_land_type {
+            let Some(chosen_type) = ctx.source.and_then(|source| game.chosen_land_type(source))
+            else {
+                return false;
+            };
+            if !object_matches_subtype(object, chosen_type, game) {
                 return false;
             }
         }
@@ -2894,6 +2921,15 @@ impl ObjectFilterExt for ObjectFilter {
                     return false;
                 }
             } else {
+                return false;
+            }
+        }
+        if self.chosen_land_type {
+            let Some(chosen_type) = ctx.source.and_then(|source| game.chosen_land_type(source))
+            else {
+                return false;
+            };
+            if !snapshot_matches_subtype(snapshot, chosen_type, game) {
                 return false;
             }
         }
@@ -3644,19 +3680,11 @@ impl ObjectFilterExt for ObjectFilter {
                         );
                         continue;
                     }
-                    let permanent_type_context = self.zone == Some(Zone::Battlefield)
-                        || (!self.card_types.is_empty()
-                            && self.card_types.iter().all(|card_type| {
-                                matches!(
-                                    card_type,
-                                    CardType::Artifact
-                                        | CardType::Creature
-                                        | CardType::Enchantment
-                                        | CardType::Land
-                                        | CardType::Planeswalker
-                                        | CardType::Battle
-                                )
-                            }));
+                    // Oracle says "permanent type" only for battlefield
+                    // subjects; revealed/searched CARDS use "card type" even
+                    // when the type list happens to be all permanent types
+                    // (Chaotic Transformation).
+                    let permanent_type_context = self.zone == Some(Zone::Battlefield);
                     if permanent_type_context {
                         post_noun_qualifiers
                             .push("that shares a permanent type with that object".to_string());

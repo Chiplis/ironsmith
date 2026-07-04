@@ -144,6 +144,7 @@ pub enum DelayedTriggerSpec {
     BeginningOfUpkeep(PlayerFilter),
     BeginningOfDrawStep(PlayerFilter),
     BeginningOfEndStep(PlayerFilter),
+    BeginningOfCombat(PlayerFilter),
     EndOfCombat,
     SourceControllerLosesControl {
         source_description: String,
@@ -4592,6 +4593,21 @@ impl ChooseColorEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ChooseLandTypeEffect {
+    pub chooser: PlayerFilter,
+    pub exclude_basic: bool,
+}
+
+impl ChooseLandTypeEffect {
+    pub fn new(chooser: PlayerFilter, exclude_basic: bool) -> Self {
+        Self {
+            chooser,
+            exclude_basic,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChooseCreatureTypeEffect {
     pub chooser: PlayerFilter,
     pub excluded_subtypes: Vec<Subtype>,
@@ -6721,6 +6737,7 @@ pub struct ForPlayersEffect<E> {
     pub filter: PlayerFilter,
     pub effects: Vec<E>,
     pub starting_with_controller: bool,
+    pub stop_after_first_happened: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

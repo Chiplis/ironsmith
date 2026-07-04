@@ -391,6 +391,7 @@ pub struct ObjectFilter {
     pub excluded_supertypes: Vec<Supertype>,
     pub colors: Option<ColorSet>,
     pub chosen_color: bool,
+    pub chosen_land_type: bool,
     pub chosen_creature_type: bool,
     pub chosen_card_type: bool,
     pub excluded_chosen_creature_type: bool,
@@ -429,6 +430,7 @@ pub struct ObjectFilter {
     pub entered_graveyard_this_turn: bool,
     pub entered_graveyard_from_battlefield_this_turn: bool,
     pub surveilled_this_turn: bool,
+    pub discarded_or_cycled_this_turn_by: Option<PlayerFilter>,
     pub was_dealt_damage_this_turn: bool,
     pub dealt_damage_by_source_this_turn: Option<crate::DamagedBySource>,
     pub dealt_damage_to_player_this_turn: Option<PlayerFilter>,
@@ -503,6 +505,7 @@ impl ObjectFilter {
             || !self.excluded_supertypes.is_empty()
             || self.colors.is_some()
             || self.chosen_color
+            || self.chosen_land_type
             || self.chosen_creature_type
             || self.chosen_card_type
             || self.excluded_chosen_creature_type
@@ -519,6 +522,7 @@ impl ObjectFilter {
             || self.enlist_eligible
             || self.attached_to_player.is_some()
             || self.surveilled_this_turn
+            || self.discarded_or_cycled_this_turn_by.is_some()
             || self.drawn_this_turn
             || self.mana_value.is_some()
             || self.mana_value_parity.is_some()
@@ -958,8 +962,18 @@ impl ObjectFilter {
         self
     }
 
+    pub fn of_chosen_land_type(mut self) -> Self {
+        self.chosen_land_type = true;
+        self
+    }
+
     pub fn of_chosen_creature_type(mut self) -> Self {
         self.chosen_creature_type = true;
+        self
+    }
+
+    pub fn discarded_or_cycled_this_turn_by(mut self, player: PlayerFilter) -> Self {
+        self.discarded_or_cycled_this_turn_by = Some(player);
         self
     }
 
@@ -1414,6 +1428,9 @@ impl ObjectFilter {
         if self.chosen_color {
             post_noun_qualifiers.push("of the chosen color".to_string());
         }
+        if self.chosen_land_type {
+            post_noun_qualifiers.push("of the chosen land type".to_string());
+        }
         if self.chosen_creature_type {
             post_noun_qualifiers.push("of the chosen type".to_string());
         }
@@ -1519,19 +1536,11 @@ impl ObjectFilter {
                         );
                         continue;
                     }
-                    let permanent_type_context = self.zone == Some(Zone::Battlefield)
-                        || (!self.card_types.is_empty()
-                            && self.card_types.iter().all(|card_type| {
-                                matches!(
-                                    card_type,
-                                    CardType::Artifact
-                                        | CardType::Creature
-                                        | CardType::Enchantment
-                                        | CardType::Land
-                                        | CardType::Planeswalker
-                                        | CardType::Battle
-                                )
-                            }));
+                    // Oracle says "permanent type" only for battlefield
+                    // subjects; revealed/searched CARDS use "card type" even
+                    // when the type list happens to be all permanent types
+                    // (Chaotic Transformation).
+                    let permanent_type_context = self.zone == Some(Zone::Battlefield);
                     if permanent_type_context {
                         post_noun_qualifiers
                             .push("that shares a permanent type with that object".to_string());
@@ -2133,6 +2142,10 @@ impl ObjectFilter {
         }
         if self.surveilled_this_turn {
             parts.push("you've surveilled this turn".to_string());
+        }
+        if let Some(player) = &self.discarded_or_cycled_this_turn_by {
+            let actor = describe_player_filter(player);
+            parts.push(format!("{actor} cycled or discarded this turn"));
         }
 
         if self.was_dealt_damage_this_turn {

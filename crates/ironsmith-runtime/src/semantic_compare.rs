@@ -759,12 +759,9 @@ fn is_internal_compiled_scaffolding_clause(clause: &str) -> bool {
     {
         return true;
     }
-    if lower.starts_with("choose ")
-        && lower.contains("target attacking creature")
-        && !lower.contains(" and ")
-    {
-        return true;
-    }
+    // NOTE: hoisted "Choose target attacking creature." sentences are real
+    // render drift (the choose-hoist family) and now cost score; the render
+    // fix is F4 in architecture/target-mention-inflation-plan.md.
 
     false
 }
@@ -4158,33 +4155,37 @@ fn normalize_word(token: &str) -> Option<String> {
     if token == "isnt" || token == "isn't" {
         return Some("isn't".to_string());
     }
-    if matches!(
-        token,
-        "zero"
-            | "one"
-            | "two"
-            | "three"
-            | "four"
-            | "five"
-            | "six"
-            | "seven"
-            | "eight"
-            | "nine"
-            | "ten"
-    ) {
-        return Some("<num>".to_string());
+    // Numbers, P/T values, and mana symbols compare LITERALLY: collapsing
+    // them to <num>/<pt>/<mana> placeholders made "deals 3" score identical
+    // to "deals 7" and a +1/+1 counter identical to a -1/-1 counter, hiding
+    // real compile drift.  Only the word→digit spelling is canonicalized.
+    if let Some(digit) = match token {
+        "zero" => Some("0"),
+        "one" => Some("1"),
+        "two" => Some("2"),
+        "three" => Some("3"),
+        "four" => Some("4"),
+        "five" => Some("5"),
+        "six" => Some("6"),
+        "seven" => Some("7"),
+        "eight" => Some("8"),
+        "nine" => Some("9"),
+        "ten" => Some("10"),
+        _ => None,
+    } {
+        return Some(digit.to_string());
     }
-    if token == "plusoneplusone" || token == "minusoneminusone" {
-        return Some("<pt>".to_string());
+    if token == "plusoneplusone" {
+        return Some("+1/+1".to_string());
+    }
+    if token == "minusoneminusone" {
+        return Some("-1/-1".to_string());
     }
     if token.starts_with('{') && token.ends_with('}') {
-        return Some("<mana>".to_string());
+        return Some(token.to_string());
     }
-    if is_pt_token(token) {
-        return Some("<pt>".to_string());
-    }
-    if is_number_token(token) {
-        return Some("<num>".to_string());
+    if is_pt_token(token) || is_number_token(token) {
+        return Some(token.to_string());
     }
     let mut base = token.trim_matches('\'').replace('\'', "");
     if base.ends_with("(s") {
@@ -4226,12 +4227,10 @@ fn normalize_word(token: &str) -> Option<String> {
         "has" => "have".to_string(),
         _ => base,
     };
-    if matches!(
-        base.as_str(),
-        "tag" | "tagged" | "object" | "attached" | "match" | "otherwise" | "appropriate"
-    ) {
-        return None;
-    }
+    // NOTE: compiler-scaffolding vocabulary ("tag", "tagged", "object") is
+    // deliberately NOT dropped here: leaking it into compiled text is render
+    // debt and must cost score, not be hidden from the comparator.  Likewise
+    // "attached"/"match"/"otherwise" are real oracle vocabulary.
     if base.is_empty() { None } else { Some(base) }
 }
 
@@ -4268,8 +4267,8 @@ fn is_stopword(token: &str) -> bool {
             | "with"
             | "into"
             | "onto"
-            | "up"
-            | "down"
+            // "up"/"down" are NOT stopwords: "face up" vs "face down" and
+            // "up to three" vs "three" are semantic distinctions.
             | "as"
             | "by"
             | "during"
@@ -4373,6 +4372,116 @@ fn comparison_tokens(clause: &str) -> Vec<String> {
 
 pub fn clause_comparison_tokens(clause: &str) -> Vec<String> {
     comparison_tokens(clause)
+}
+
+/// A suspected and↔or flip between an oracle clause and its best-matching
+/// compiled clause: the same content-word neighbors joined by a different
+/// conjunction.  "and"/"or" are comparison stopwords, so the similarity score
+/// cannot see these — this targeted invariant exists to surface them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConjunctionFlip {
+    pub left: String,
+    pub right: String,
+    pub oracle_conjunction: String,
+    pub compiled_conjunction: String,
+    pub oracle_clause: String,
+    pub compiled_clause: String,
+}
+
+/// Conjunction triples (left-content-word, and|or, right-content-word) in a
+/// clause.  "and/or" and mass-quantified clauses are excluded by the caller.
+fn conjunction_triples(clause: &str) -> Vec<(String, String, String)> {
+    let tokens = tokenize_text(clause);
+    let mut triples = Vec::new();
+    for (idx, token) in tokens.iter().enumerate() {
+        if token != "and" && token != "or" {
+            continue;
+        }
+        let left = tokens[..idx]
+            .iter()
+            .rev()
+            .filter_map(|t| normalize_word(t))
+            .find(|t| !is_stopword(t));
+        let right = tokens[idx + 1..]
+            .iter()
+            .filter_map(|t| normalize_word(t))
+            .find(|t| !is_stopword(t));
+        if let (Some(left), Some(right)) = (left, right) {
+            triples.push((left, token.clone(), right));
+        }
+    }
+    triples
+}
+
+/// True when a clause quantifies over every matching object; in mass contexts
+/// oracle idiom uses "and" for what a filter expresses with "or" ("destroy
+/// all artifacts and enchantments"), so flips there are legitimate variance.
+fn clause_has_mass_quantifier(clause: &str) -> bool {
+    tokenize_text(clause)
+        .iter()
+        .any(|t| matches!(t.as_str(), "all" | "each" | "every"))
+}
+
+/// Detect and↔or flips between oracle text and compiled text.  Clauses are
+/// paired by comparison-token overlap; a flip is reported when the same
+/// (left, right) content-word pair is joined by "and" on one side and "or"
+/// on the other.  Conservative by design: mass-quantified clauses and
+/// "and/or" surfaces are skipped.
+pub fn conjunction_flips_between(oracle: &str, compiled: &str) -> Vec<ConjunctionFlip> {
+    let oracle_clauses = semantic_clauses_for_compare(oracle);
+    let compiled_clauses = semantic_clauses_for_compare(compiled);
+    let oracle_tokens: Vec<std::collections::HashSet<String>> = oracle_clauses
+        .iter()
+        .map(|c| comparison_tokens(c).into_iter().collect())
+        .collect();
+
+    let mut flips = Vec::new();
+    for compiled_clause in &compiled_clauses {
+        if compiled_clause.contains("and/or") {
+            continue;
+        }
+        let compiled_set: std::collections::HashSet<String> =
+            comparison_tokens(compiled_clause).into_iter().collect();
+        if compiled_set.is_empty() {
+            continue;
+        }
+        let best = oracle_clauses
+            .iter()
+            .enumerate()
+            .map(|(idx, clause)| {
+                let inter = oracle_tokens[idx].intersection(&compiled_set).count() as f32;
+                let union = oracle_tokens[idx].union(&compiled_set).count() as f32;
+                (if union > 0.0 { inter / union } else { 0.0 }, clause)
+            })
+            .max_by(|a, b| a.0.total_cmp(&b.0));
+        let Some((overlap, oracle_clause)) = best else {
+            continue;
+        };
+        if overlap < 0.4 || oracle_clause.contains("and/or") {
+            continue;
+        }
+        if clause_has_mass_quantifier(oracle_clause) || clause_has_mass_quantifier(compiled_clause)
+        {
+            continue;
+        }
+        let oracle_triples = conjunction_triples(oracle_clause);
+        for (left, conj, right) in conjunction_triples(compiled_clause) {
+            if let Some((_, oracle_conj, _)) = oracle_triples
+                .iter()
+                .find(|(l, c, r)| *l == left && *r == right && *c != conj)
+            {
+                flips.push(ConjunctionFlip {
+                    left: left.clone(),
+                    right: right.clone(),
+                    oracle_conjunction: oracle_conj.clone(),
+                    compiled_conjunction: conj.clone(),
+                    oracle_clause: oracle_clause.clone(),
+                    compiled_clause: compiled_clause.clone(),
+                });
+            }
+        }
+    }
+    flips
 }
 
 fn collapse_repeated_tokens(tokens: Vec<String>) -> Vec<String> {
@@ -4754,9 +4863,12 @@ fn tokens_match_subsetish_with_threshold(
     if overlapping_tokens.is_empty() {
         return false;
     }
-    let has_non_placeholder_overlap = overlapping_tokens
-        .iter()
-        .any(|token| !matches!(token, &"<mana>" | &"<num>" | &"<pt>"));
+    let has_non_placeholder_overlap = overlapping_tokens.iter().any(|token| {
+        !matches!(token, &"<mana>" | &"<num>" | &"<pt>")
+            && !is_number_token(token)
+            && !is_pt_token(token)
+            && !(token.starts_with('{') && token.ends_with('}'))
+    });
     if !has_non_placeholder_overlap {
         return false;
     }
@@ -5921,9 +6033,9 @@ pub fn compare_card_semantics(
 mod tests {
     use super::{
         EmbeddingConfig, compare_card_semantics_scored, compare_semantics_scored,
-        compiled_comparison_tokens, normalize_card_self_references_for_compare,
-        normalize_trigger_subject_for_compare, reminder_clauses, semantic_clauses,
-        strip_reminder_text_for_comparison,
+        compiled_comparison_tokens, conjunction_flips_between,
+        normalize_card_self_references_for_compare, normalize_trigger_subject_for_compare,
+        reminder_clauses, semantic_clauses, strip_reminder_text_for_comparison,
     };
 
     fn strict_embedding() -> Option<EmbeddingConfig> {
@@ -6104,16 +6216,63 @@ mod tests {
                 strict_embedding(),
             );
 
-        if similarity < 0.9658 {
+        if similarity < 0.965 {
             eprintln!("oracle_clauses={:?}", semantic_clauses(oracle));
             eprintln!(
                 "compiled_clauses={:?}",
                 semantic_clauses(&compiled.join("\n"))
             );
         }
+        // Re-pinned after literal number/pt comparison landed: the trigger
+        // clause split ("create a Food token" / "exile up to one target card")
+        // is real render drift the comparator no longer forgives.
         assert!(
-            similarity >= 0.9658,
+            similarity >= 0.965,
             "similarity={similarity} mismatch={mismatch}"
+        );
+    }
+
+    #[test]
+    fn conjunction_flip_detected_between_filter_clauses() {
+        let flips = conjunction_flips_between(
+            "Destroy target artifact or enchantment.",
+            "Destroy target artifact and enchantment.",
+        );
+        assert_eq!(flips.len(), 1, "expected exactly one flip: {flips:?}");
+        assert_eq!(flips[0].oracle_conjunction, "or");
+        assert_eq!(flips[0].compiled_conjunction, "and");
+        assert_eq!(flips[0].left, "artifact");
+        assert_eq!(flips[0].right, "enchantment");
+    }
+
+    #[test]
+    fn conjunction_flip_ignores_mass_quantified_clauses() {
+        // Oracle idiom: "destroy all artifacts and enchantments" is the mass
+        // rendering of the filter "artifact or enchantment" — not a flip.
+        let flips = conjunction_flips_between(
+            "Destroy all artifacts and enchantments.",
+            "Destroy each artifact or enchantment.",
+        );
+        assert!(flips.is_empty(), "mass context must not flag: {flips:?}");
+    }
+
+    #[test]
+    fn conjunction_flip_ignores_and_or_surfaces_and_matching_conjunctions() {
+        assert!(
+            conjunction_flips_between(
+                "Exile up to two target artifact and/or enchantment cards.",
+                "Exile up to two target artifact or enchantment cards.",
+            )
+            .is_empty(),
+            "and/or surfaces are excluded"
+        );
+        assert!(
+            conjunction_flips_between(
+                "Sacrifice an artifact or creature.",
+                "Sacrifice an artifact or creature.",
+            )
+            .is_empty(),
+            "matching conjunctions must not flag"
         );
     }
 
@@ -6638,11 +6797,19 @@ mod tests {
         )];
         let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
             compare_semantics_scored(oracle, &compiled, strict_embedding());
+        // The "1 time(s)" scaffolding in this surface now costs score by
+        // design (numbers compare literally and scaffolding tokens are no
+        // longer dropped); the remaining wording variance still normalizes.
         assert!(
-            similarity >= 0.99,
-            "expected copy-spell wording normalization to stay above strict threshold, got {similarity}"
+            similarity >= 0.985,
+            "expected copy-spell wording normalization to stay near strict threshold, got {similarity}"
         );
-        assert!(!mismatch, "expected no mismatch for copy-spell wording");
+        // The scaffolding-laden surface is now honestly flagged as a
+        // mismatch; only the score-level tolerance is retained above.
+        assert!(
+            mismatch,
+            "expected scaffolding-laden copy-spell wording to flag a mismatch"
+        );
     }
 
     #[test]

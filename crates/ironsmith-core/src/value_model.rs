@@ -35,6 +35,7 @@ pub enum EffectMetric {
     CardTypesAmong,
     GreatestPlayerCount,
     IteratedPlayerCount,
+    PlayersWithPositiveCount,
     OtherNumber,
 }
 
@@ -811,6 +812,7 @@ pub enum Condition {
     /// "you attacked with N or more creatures this turn"
     AttackedWithNOrMoreCreaturesThisTurn(u32),
     OpponentLostLifeThisTurn,
+    OpponentWasDealtDamageThisTurn,
     PermanentLeftBattlefieldThisTurn,
     NonlandPermanentLeftBattlefieldThisTurn,
     SpellWasWarpedThisTurn,

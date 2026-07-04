@@ -221,6 +221,9 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::this_deals_combat_damage_to_player(player)
         }
         TriggerKind::DealsDamage { filter } => crate::triggers::Trigger::deals_damage(filter),
+        TriggerKind::DealsDamageTo { source, target } => {
+            crate::triggers::Trigger::deals_damage_to(source, target)
+        }
         TriggerKind::DealsDamageToPlayer { source, player } => {
             let mut trigger = crate::triggers::combat::DealsDamageTrigger::new(source);
             trigger.damaged_player = Some(player);
@@ -306,6 +309,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerLosesLife { player } => {
             crate::triggers::Trigger::player_loses_life(player)
         }
+        TriggerKind::PlayersLoseLifeOneOrMore { player } => {
+            crate::triggers::Trigger::players_lose_life_one_or_more(player)
+        }
         TriggerKind::OpponentsEachLoseExactLife { amount } => {
             crate::triggers::Trigger::opponents_each_lose_exact_life(amount)
         }
@@ -316,6 +322,9 @@ pub(crate) fn interpret_trigger_model(
             player,
             during_turn,
         } => crate::triggers::Trigger::player_loses_life_during_turn(player, during_turn),
+        TriggerKind::SpellCountered { filter, controller } => {
+            crate::triggers::Trigger::spell_countered(filter, controller)
+        }
         TriggerKind::YouDrawCard => crate::triggers::Trigger::you_draw_card(),
         TriggerKind::PlayerDrawsCard { player } => {
             crate::triggers::Trigger::player_draws_card(player)
@@ -558,6 +567,9 @@ impl super::Trigger {
             }
             ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player) => {
                 Self::beginning_of_end_step(player)
+            }
+            ironsmith_core::DelayedTriggerSpec::BeginningOfCombat(player) => {
+                Self::beginning_of_combat(player)
             }
             ironsmith_core::DelayedTriggerSpec::EndOfCombat => Self::end_of_combat(),
             ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {

@@ -700,6 +700,11 @@ impl Trigger {
         Self::new(DealsDamageTrigger::new(filter))
     }
 
+    /// Create a "when [source-filter] deals damage to [target-filter]" trigger.
+    pub fn deals_damage_to(source_filter: ObjectFilter, target_filter: ObjectFilter) -> Self {
+        Self::new(DealsDamageToTrigger::new(source_filter, target_filter))
+    }
+
     /// Create a "when [filter] deals noncombat damage to [player]" trigger.
     pub fn deals_noncombat_damage_to_player(
         filter: ObjectFilter,
@@ -733,6 +738,10 @@ impl Trigger {
         Self::new(PlayerLosesLifeTrigger::new(player))
     }
 
+    pub fn players_lose_life_one_or_more(player: PlayerFilter) -> Self {
+        Self::new(PlayerLosesLifeTrigger::one_or_more(player))
+    }
+
     /// "Whenever one or more opponents each lose exactly N life" trigger.
     pub fn opponents_each_lose_exact_life(amount: u32) -> Self {
         Self::new(PlayerLosesLifeTrigger::exact_amount(
@@ -749,6 +758,10 @@ impl Trigger {
     /// Create a "whenever [player] loses life during [turn-filter]'s turn" trigger.
     pub fn player_loses_life_during_turn(player: PlayerFilter, during_turn: PlayerFilter) -> Self {
         Self::new(PlayerLosesLifeTrigger::during_turn(player, during_turn))
+    }
+
+    pub fn spell_countered(filter: Option<ObjectFilter>, controller: PlayerFilter) -> Self {
+        Self::new(SpellCounteredTrigger::new(filter, controller))
     }
 
     /// Create a "when [target] is dealt damage" trigger.

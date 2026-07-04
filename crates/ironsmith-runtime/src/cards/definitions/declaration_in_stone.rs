@@ -88,19 +88,22 @@ mod tests {
 
         let rendered =
             crate::compiled_text::unprocessed_compiled_lines(&declaration_in_stone()).join(" ");
+        // Honest surface (the oracle-verbatim compaction was a hand-written
+        // gate deleted as score laundering; the compact render is F-series
+        // renderer work).
         assert_eq!(
             rendered,
-            "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way.",
-            "expected oracle-like wording for Declaration in Stone"
+            "Exile target creature, exile all other creatures with the same name as that object controlled by that object's controller, then that player investigates for each nontoken creature exiled this way.",
+            "expected honest wording for Declaration in Stone"
         );
 
         let compiled =
             crate::compiled_text::unprocessed_compiled_lines(&declaration_in_stone()).join(" ");
         assert!(
             compiled.contains(
-                "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way"
+                "then that player investigates for each nontoken creature exiled this way"
             ),
-            "expected compiled same-name exile merge and capitalized follow-up, got {compiled}"
+            "expected compiled investigate follow-up, got {compiled}"
         );
     }
 

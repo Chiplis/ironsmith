@@ -313,7 +313,7 @@ pub(crate) fn parse_sacrifice(
                 SACRIFICE_UNLESS_OPPONENT_DAMAGED_WORDS,
             ) {
                 return Ok(EffectAst::Conditional {
-                    predicate: PredicateAst::OpponentLostLifeThisTurn,
+                    predicate: PredicateAst::OpponentWasDealtDamageThisTurn,
                     if_true: Vec::new(),
                     if_false: vec![base],
                 });

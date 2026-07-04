@@ -8882,6 +8882,7 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_exile_then_free_cast_while_exiled_structural(effects))
         .or_else(|| describe_choose_top_exile_then_conditional_cast_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
+        .or_else(|| describe_target_card_then_cast_this_turn_structural(effects))
         .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
 }
@@ -10390,6 +10391,34 @@ fn describe_create_token_attached_to_target(
     Some(format!(
         "Create {token} attached to {}",
         describe_choose_spec(&attach.target)
+    ))
+}
+
+/// "Choose target <card> ... . You may cast that card this turn" for a tagged
+/// single-target selection followed by an until-end-of-turn cast grant on the
+/// same tag. The singular reference is derived from the target count.
+fn describe_target_card_then_cast_this_turn_structural(effects: &[Effect]) -> Option<String> {
+    let [target_effect, grant_effect] = effects else {
+        return None;
+    };
+    let (target_tag, target_only) = tagged_target_only_effect(target_effect)?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    if &grant.tag != target_tag
+        || grant.player != PlayerFilter::You
+        || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        || grant.allow_land
+        || grant.allow_any_color_for_cast
+        || grant.while_on_top_of_library
+        || grant.filter.is_some()
+        || grant.cast_pool_is_plural
+        || choose_spec_is_plural(&target_only.target)
+        || choose_spec_allows_multiple(&target_only.target)
+    {
+        return None;
+    }
+    Some(format!(
+        "Choose {}. You may cast that card this turn",
+        describe_choose_spec(&target_only.target)
     ))
 }
 
@@ -17759,6 +17788,10 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     fn describe_reveal_hand_choose_graveyard_exile_bundle(filtered: &[&Effect]) -> Option<String> {
+        let dbg = std::env::var("IRONSMITH_DBG_BUNDLE").is_ok();
+        if dbg {
+            eprintln!("DBG bundle entry: n={}", filtered.len());
+        }
         let [
             look_effect,
             hand_choose_effect,
@@ -17774,6 +17807,24 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         let graveyard_choose =
             graveyard_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
         let exile = downcast_move_to_zone(exile_effect)?;
+        if dbg {
+            eprintln!(
+                "DBG bundle downcasts ok: reveal={} target_ok={} chooser_ok={} counts={:?}/{:?} zones={:?}/{:?} owners={:?}/{:?} types_eq={} move_ok={} tags_eq={}",
+                look.reveal,
+                matches!(look.target.base(), ChooseSpec::Player(PlayerFilter::Opponent)),
+                hand_choose.chooser == PlayerFilter::You
+                    && graveyard_choose.chooser == PlayerFilter::You,
+                choose_exact_count(hand_choose),
+                choose_exact_count(graveyard_choose),
+                choose_primary_zone(hand_choose),
+                choose_primary_zone(graveyard_choose),
+                hand_choose.filter.owner,
+                graveyard_choose.filter.owner,
+                hand_choose.filter.card_types == graveyard_choose.filter.card_types,
+                move_to_zone_uses_tag(exile, hand_choose.tag.as_str(), Zone::Exile),
+                hand_choose.tag == graveyard_choose.tag
+            );
+        }
 
         if !look.reveal
             || !matches!(
@@ -27777,6 +27828,39 @@ fn describe_add_mana_destination_suffix(player: &PlayerFilter) -> String {
     }
 }
 
+/// When another player adds the mana, the runtime also gives THAT player the
+/// color choice (`choose_mana_colors` is invoked for the resolved player), so
+/// oracle idiom is subject-form: "That player adds one mana of any color they
+/// choose" (Spectral Searchlight, Stadium Vendors).
+fn describe_other_player_adds_any_color(
+    player: &PlayerFilter,
+    amount: &Value,
+    any_one_color: bool,
+) -> Option<String> {
+    if matches!(player, PlayerFilter::You) {
+        return None;
+    }
+    let subject = match player {
+        PlayerFilter::TaggedPlayer(_) | PlayerFilter::ChosenPlayer => "That player".to_string(),
+        PlayerFilter::Target(inner) if matches!(**inner, PlayerFilter::Any) => {
+            "Target player".to_string()
+        }
+        PlayerFilter::Target(inner) if matches!(**inner, PlayerFilter::Opponent) => {
+            "Target opponent".to_string()
+        }
+        _ => return None,
+    };
+    let color_phrase = if any_one_color {
+        "mana of any one color they choose"
+    } else {
+        "mana of any color they choose"
+    };
+    Some(format!(
+        "{subject} adds {} {color_phrase}",
+        describe_mana_amount_for_add_effect(amount)
+    ))
+}
+
 fn describe_mana_amount_for_add_effect(value: &Value) -> String {
     if let Value::Fixed(amount) = value
         && *amount >= 0
@@ -30582,6 +30666,7 @@ mod tests {
                 )),
             ]))],
             starting_with_controller: false,
+            stop_after_first_happened: false,
         })];
 
         assert_eq!(
@@ -31941,6 +32026,7 @@ mod tests {
                     PlayerFilter::IteratedPlayer,
                 ))],
                 starting_with_controller: false,
+                stop_after_first_happened: false,
             }),
             Effect::new(crate::effects::GainLifeEffect::you(party)),
         ];
@@ -48686,6 +48772,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(tag, "sacrificed")
         {
             "For each object sacrificed this way".to_string()
+        } else if tag == crate::tag::SOURCE_EXILED_TAG
+            || tag.starts_with("exiled_")
+            || crate::cards::is_sentence_helper_tag(tag, "exiled")
+        {
+            "For each card exiled this way".to_string()
         } else if tag.is_empty() {
             "For each tagged object".to_string()
         } else {
@@ -49101,6 +49192,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let chooser = describe_player_filter(&choose_color.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
         return format!("{chooser} {choose_verb} a color");
+    }
+    if let Some(choose_land_type) = effect.downcast_ref::<crate::effects::ChooseLandTypeEffect>() {
+        let chooser = describe_player_filter(&choose_land_type.chooser);
+        let choose_verb = player_verb(&chooser, "choose", "chooses");
+        let kind = if choose_land_type.exclude_basic {
+            "a nonbasic land type"
+        } else {
+            "a land type"
+        };
+        return format!("{chooser} {choose_verb} {kind}");
     }
     if let Some(choose_card_type) = effect.downcast_ref::<crate::effects::ChooseCardTypeEffect>() {
         let chooser = describe_player_filter(&choose_card_type.chooser);
@@ -53171,6 +53272,23 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             }
             return format!("{restriction_text} this turn");
         }
+        // An untap restriction scoped to the controller's next untap step is
+        // the skip-step effect; oracle words it "{plural subject} don't untap
+        // during your next untap step" (Bontu's Last Reckoning family).
+        if cant.duration == Until::ControllersNextUntapStep
+            && let crate::effect::Restriction::Untap(filter) = &cant.restriction
+            && !filter.source
+            && filter.tagged_constraints.is_empty()
+            && filter.controller == Some(PlayerFilter::You)
+        {
+            let base = filter.description();
+            let base = base
+                .strip_prefix("a ")
+                .or_else(|| base.strip_prefix("an "))
+                .unwrap_or(&base);
+            let subject = capitalize_first(&pluralize_relative_object_phrase(base));
+            return format!("{subject} don't untap during your next untap step");
+        }
         return format!(
             "{} {}",
             describe_restriction(&cant.restriction),
@@ -53908,6 +54026,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(add_any) = effect.downcast_ref::<crate::effects::AddManaOfAnyColorEffect>() {
+        if !add_any.distinct_colors
+            && add_any
+                .available_colors
+                .as_ref()
+                .is_none_or(|colors| crate::color::Color::ALL.iter().all(|c| colors.contains(c)))
+            && let Some(subject_form) =
+                describe_other_player_adds_any_color(&add_any.player, &add_any.amount, false)
+        {
+            return subject_form;
+        }
         if add_any.distinct_colors {
             return format!(
                 "Add {} mana of different colors{}",
@@ -53983,6 +54111,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_add_mana_destination_suffix(&add_one.player),
                 describe_value(&add_one.amount)
             );
+        }
+        if let Some(subject_form) =
+            describe_other_player_adds_any_color(&add_one.player, &add_one.amount, true)
+        {
+            return subject_form;
         }
         return format!(
             "Add {} mana of any one color{}",
@@ -54620,6 +54753,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         let trigger_display = schedule.trigger.display();
         let mut trigger_text = trigger_display.trim().trim_end_matches('.').to_string();
+        if schedule.one_shot
+            && schedule.until_end_of_turn
+            && schedule
+                .trigger
+                .downcast_ref::<crate::triggers::BeginningOfCombatTrigger>()
+                .is_some_and(|combat| combat.player == crate::target::PlayerFilter::Any)
+        {
+            // A one-shot beginning-of-combat trigger that expires at end of
+            // turn is exactly "the next combat phase this turn".
+            trigger_text = "At the beginning of the next combat phase this turn".to_string();
+        }
         if schedule.until_end_of_turn {
             let trigger_lower = trigger_text.to_ascii_lowercase();
             if !trigger_lower.contains(" this turn") {

@@ -788,7 +788,7 @@ where
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ForPlayersEffect<M::Effect>>(&effect) {
         let effects = convert_effects(payload.effects.iter().cloned(), hooks)?;
-        let converted = if payload.starting_with_controller {
+        let mut converted = if payload.starting_with_controller {
             crate::effects::ForPlayersEffect::new_starting_with_controller(
                 payload.filter.clone(),
                 effects,
@@ -796,6 +796,9 @@ where
         } else {
             crate::effects::ForPlayersEffect::new(payload.filter.clone(), effects)
         };
+        if payload.stop_after_first_happened {
+            converted = converted.stop_after_first_happened();
+        }
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =
@@ -1451,6 +1454,12 @@ where
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseColorEffect>(&effect) {
         return Ok(Effect::new(crate::effects::ChooseColorEffect::new(
             payload.chooser.clone(),
+        )));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseLandTypeEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::ChooseLandTypeEffect::new(
+            payload.chooser.clone(),
+            payload.exclude_basic,
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseCreatureTypeEffect>(&effect) {

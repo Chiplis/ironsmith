@@ -526,6 +526,58 @@ impl TurnHistory {
             })
     }
 
+    pub fn object_was_discarded_or_cycled_by_this_turn(
+        &self,
+        object_id: ObjectId,
+        stable_id: StableId,
+        player: PlayerId,
+    ) -> bool {
+        let discarded = self
+            .projected_records()
+            .filter_map(|record| record.event.downcast::<CardDiscardedEvent>())
+            .filter(|event| event.player == player)
+            .any(|event| {
+                event.card == object_id
+                    || event
+                        .snapshot
+                        .as_ref()
+                        .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                    || event
+                        .batch_snapshots
+                        .iter()
+                        .any(|snapshot| snapshot.stable_id == stable_id)
+                    || event.batch_cards.contains(&object_id)
+            });
+        if discarded {
+            return true;
+        }
+
+        self.projected_records()
+            .filter_map(|record| {
+                record
+                    .event
+                    .downcast::<KeywordActionEvent>()
+                    .map(|event| (record, event))
+            })
+            .filter(|(_, event)| event.action == KeywordActionKind::Cycle && event.player == player)
+            .any(|(record, event)| {
+                event.source == object_id
+                    || event
+                        .snapshot
+                        .as_ref()
+                        .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                    || record
+                        .source_snapshot
+                        .as_ref()
+                        .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                    || event.object_tags.values().any(|snapshots| {
+                        snapshots
+                            .iter()
+                            .any(|snapshot| snapshot.stable_id == stable_id)
+                    })
+            })
+    }
+
     pub fn player_was_dealt_damage_by_creature_this_turn(&self, player: PlayerId) -> bool {
         self.total_creature_damage_to_player(player) > 0
     }

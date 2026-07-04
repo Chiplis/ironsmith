@@ -7,6 +7,7 @@ mod becomes_targeted_by_spell;
 mod becomes_targeted_object;
 mod spell_cast;
 mod spell_copied;
+mod spell_countered;
 mod tap_for_mana;
 mod you_cast_this_spell;
 
@@ -23,5 +24,6 @@ pub use becomes_targeted_by_spell::{
 pub use becomes_targeted_object::BecomesTargetedObjectTrigger;
 pub use spell_cast::SpellCastTrigger;
 pub use spell_copied::SpellCopiedTrigger;
+pub use spell_countered::SpellCounteredTrigger;
 pub use tap_for_mana::TapForManaTrigger;
 pub use you_cast_this_spell::YouCastThisSpellTrigger;

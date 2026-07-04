@@ -14,6 +14,7 @@ mod choose_card_name;
 mod choose_card_type;
 mod choose_color;
 mod choose_creature_type;
+mod choose_land_type;
 mod choose_named_option;
 mod choose_player;
 mod control_combat_choices;
@@ -69,6 +70,7 @@ pub(crate) use choose_card_name::{split_chosen_card_names, synthetic_chosen_name
 pub use choose_card_type::ChooseCardTypeEffect;
 pub use choose_color::ChooseColorEffect;
 pub use choose_creature_type::ChooseCreatureTypeEffect;
+pub use choose_land_type::ChooseLandTypeEffect;
 pub use choose_named_option::ChooseNamedOptionEffect;
 pub use choose_player::ChoosePlayerEffect;
 pub use control_combat_choices::ControlCombatChoicesThisTurnEffect;

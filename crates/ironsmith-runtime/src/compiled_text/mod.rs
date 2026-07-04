@@ -432,11 +432,6 @@ fn normalize_scored_compiled_line(line: String) -> String {
         );
     }
     if lower.trim_end_matches('.')
-        == "mill two cards, choose up to one permanent cards, for each card chosen this way, return that object to its owner's hand, then gain 2 life"
-    {
-        return "Mill two cards. You may put a permanent card from among the milled cards into your hand. You gain 2 life.".to_string();
-    }
-    if lower.trim_end_matches('.')
         == "return target permanent spell to its owner's hand, jeskai revelation deals 4 damage to any target, create two 1/1 white monk creature tokens with prowess, draw two cards, then gain 4 life"
     {
         return "Return target spell or permanent to its owner's hand. Jeskai Revelation deals 4 damage to any target. Create two 1/1 white Monk creature tokens with prowess. Draw two cards. You gain 4 life.".to_string();
@@ -461,11 +456,6 @@ fn normalize_scored_compiled_line(line: String) -> String {
     {
         return "Choose a creature at random. You gain control of that creature until end of turn. Untap it. It gains haste until end of turn. Then destroy all other creatures.".to_string();
     }
-    if lower
-        == "destroy all nonbasic lands. for each land destroyed this way, its controller may search its controller's library for a basic land card. for each tagged 'searched' object, put them onto the battlefield. if you do, shuffle that player's library"
-    {
-        return "Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string();
-    }
     if lower.contains("counter target noncreature spell unless its controller pays")
         && lower.contains("instead counter target noncreature spell")
     {
@@ -474,7 +464,28 @@ fn normalize_scored_compiled_line(line: String) -> String {
             "instead counter that spell",
         );
     }
-    normalize_mass_opponent_controller_surface(line)
+    normalize_mass_opponent_controller_surface(normalize_triggering_object_anaphor(line))
+}
+
+/// A back-reference "that spell or ability" can only denote a spell when
+/// every event mentioned in the line is a cast (and only an ability when the
+/// line only mentions activation).  The copy-effect model is generic over
+/// stack objects, but the line itself pins the referent — resolve the
+/// anaphor from the line alone, with no card-specific knowledge.
+fn normalize_triggering_object_anaphor(line: String) -> String {
+    if !line.contains("that spell or ability") {
+        return line;
+    }
+    let lower = line.to_ascii_lowercase();
+    let mentions_cast = lower.contains("cast");
+    let mentions_activation = lower.contains("activate") || lower.contains("activated");
+    if mentions_cast && !mentions_activation {
+        return line.replace("that spell or ability", "that spell");
+    }
+    if mentions_activation && !mentions_cast {
+        return line.replace("that spell or ability", "that ability");
+    }
+    line
 }
 
 /// Oracle text uses "an opponent controls" for single-object references but
@@ -578,19 +589,7 @@ fn normalize_unprocessed_compiled_line(line: String) -> String {
         );
     }
     if lower.contains("unless an opponent lost life this turn, sacrifice it") {
-        return line
-            .replace(
-                "Unless an opponent lost life this turn, sacrifice it",
-                "Unless an opponent was dealt damage this turn, sacrifice it",
-            )
-            .replace(
-                "unless an opponent lost life this turn, Sacrifice it",
-                "unless an opponent was dealt damage this turn, Sacrifice it",
-            )
-            .replace(
-                "unless an opponent lost life this turn, sacrifice it",
-                "unless an opponent was dealt damage this turn, sacrifice it",
-            );
+        return line;
     }
     if lower.contains("if you dealt combat damage to a player this turn with a assassin or commander, you may pay {2}{r} rather than pay this spell's mana cost")
     {
@@ -602,31 +601,12 @@ fn normalize_unprocessed_compiled_line(line: String) -> String {
     if lower.contains("counter target noncreature spell unless its controller pays")
         && lower.contains("instead counter that spell")
     {
-        return line.replace(
-            "instead counter that spell",
-            "instead counter target noncreature spell",
-        );
+        return line;
     }
     if lower.contains("this equipment gets +x/+0 until end of turn")
         && lower.contains("where x is the number of times this ability has resolved this turn")
     {
-        return line
-            .replace(
-                "This Equipment gets +X/+0 until end of turn",
-                "equipped creature gets +X/+0 until end of turn",
-            )
-            .replace(
-                "This Equipment gets +x/+0 until end of turn",
-                "equipped creature gets +X/+0 until end of turn",
-            )
-            .replace(
-                "this equipment gets +X/+0 until end of turn",
-                "equipped creature gets +X/+0 until end of turn",
-            )
-            .replace(
-                "this equipment gets +x/+0 until end of turn",
-                "equipped creature gets +X/+0 until end of turn",
-            );
+        return line;
     }
     if lower.starts_with("each creature you control gets ")
         && lower.contains(" until end of turn. then if it is not your turn, untap that creature.")
@@ -671,24 +651,6 @@ fn finalize_ast_surface_line(line: String) -> String {
             "Up to one target creature gets +3/+3 and gains trample until end of turn",
         );
     }
-    if line.contains("Unless an opponent lost life this turn, sacrifice it") {
-        line = line.replace(
-            "Unless an opponent lost life this turn, sacrifice it",
-            "Unless an opponent was dealt damage this turn, sacrifice it",
-        );
-    }
-    if line.contains("unless an opponent lost life this turn, Sacrifice it") {
-        line = line.replace(
-            "unless an opponent lost life this turn, Sacrifice it",
-            "unless an opponent was dealt damage this turn, Sacrifice it",
-        );
-    }
-    if line.contains("unless an opponent lost life this turn, sacrifice it") {
-        line = line.replace(
-            "unless an opponent lost life this turn, sacrifice it",
-            "unless an opponent was dealt damage this turn, sacrifice it",
-        );
-    }
     if line.contains(
         "The next face-down creature cast by you spell you cast this turn costs {3} less to cast",
     ) {
@@ -703,47 +665,8 @@ fn finalize_ast_surface_line(line: String) -> String {
     if lower == "{t}: each player draws a card, then each player discards a card." {
         return "{T}: Each player draws a card, then discards a card.".to_string();
     }
-    if lower == "counter target colorless spell or ability." {
-        return "Counter target triggered ability or colorless spell.".to_string();
-    }
-    if lower.contains("counter target colorless spell or ability.") {
-        line = line.replace(
-            "Counter target colorless spell or ability.",
-            "Counter target triggered ability or colorless spell.",
-        );
-    }
     if lower.contains("counter target artifact. then if a permanent's ability is countered this way, destroy that artifact")
     {
-        line = line.replace(
-            "Counter target artifact. Then if a permanent's ability is countered this way, destroy that artifact.",
-            "Counter target activated ability from an artifact source and destroy that artifact if it's on the battlefield.",
-        );
-        line = line.replace(
-            "counter target artifact. then if a permanent's ability is countered this way, destroy that artifact.",
-            "counter target activated ability from an artifact source and destroy that artifact if it's on the battlefield.",
-        );
-    }
-    if lower.contains("until end of turn, you may cast spells from among those cards") {
-        line = line.replace(
-            "Until end of turn, you may cast spells from among those cards",
-            "you may cast that card this turn",
-        );
-    }
-    if lower.starts_with("{t}: you choose any number creature cards with power 5 or greater")
-        && lower.contains("reveal it")
-        && lower.contains("add {g} for each card revealed this way")
-    {
-        return "{T}: Reveal any number of creature cards with power 5 or greater from your hand. Add {G} for each card revealed this way.".to_string();
-    }
-    if (lower.starts_with("{1}, {t}, sacrifice a creature: you search your library for a creature card with color count equal to the number of colors among permanent plus 1")
-        || lower.starts_with("{1}, {t}, sacrifice a creature: search your library for a creature card with color count equal to the number of colors among permanent plus 1"))
-        && lower.contains("you may cast that card")
-    {
-        return "{1}, {T}, sacrifice a creature: Count the colors of the sacrificed creature, then search your library for a creature card that's exactly that many colors plus one. Exile that card, then shuffle. You may cast the exiled card. Activate only as a sorcery.".to_string();
-    }
-    if lower.starts_with("target creature gets -1/-0 until end of turn. it gets -4/-0 until end of turn. draw a card")
-    {
-        return "Target creature gets -1/-0 until end of turn. It gets -4/-0 until end of turn instead if you control an outlaw. Draw a card.".to_string();
     }
     if lower.starts_with(
         "whenever one or more creature attack an opponent or a planeswalker controlled by an opponent",
@@ -773,9 +696,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     }
     if lower == "each player discards their hand, then each player draws seven cards." {
         return "Each player discards their hand, then draws seven cards.".to_string();
-    }
-    if lower == "each player discards their hand, then each player draws 7 cards." {
-        return "Each player discards their hand, then draws 7 cards.".to_string();
     }
     if lower.contains("look at the top x cards of your library")
         && lower.contains("you choose up to two cards")
@@ -810,12 +730,6 @@ fn finalize_ast_surface_line(line: String) -> String {
             "you choose up to X nonland cards from it and exile them",
         );
     }
-    if lower.starts_with("look at the top five cards of your library, you may exile a creature")
-        && lower.contains("for each tagged '__source_exiled__' object")
-        && lower.contains("you may cast that card this turn")
-    {
-        return "Look at the top five cards of your library. You may exile a creature card from among them. Put the rest on the bottom of your library in a random order. You may cast the exiled card this turn. At the beginning of the next combat phase this turn, target creature you control deals damage equal to its power to up to one target creature you don't control.".to_string();
-    }
     if lower.starts_with("when this creature enters, put x +1/+1 counters")
         && lower.contains("draw half x cards, rounded down")
     {
@@ -825,14 +739,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     if lower.contains("this equipment gets +x/+0 until end of turn")
         && lower.contains("where x is the number of times this ability has resolved this turn")
     {
-        line = line.replace(
-            "this equipment gets +X/+0 until end of turn",
-            "equipped creature gets +X/+0 until end of turn",
-        );
-        line = line.replace(
-            "this equipment gets +x/+0 until end of turn",
-            "equipped creature gets +X/+0 until end of turn",
-        );
     }
     if lower.contains("whenever an opponent searches their library")
         && lower.contains("then draw a card")
@@ -840,41 +746,15 @@ fn finalize_ast_surface_line(line: String) -> String {
         line = line.replace(", then draw a card", ". Draw a card");
         line = line.replace(", then Draw a card", ". Draw a card");
     }
-    if (lower.starts_with("look at the top seven cards of your library, reveal it, you choose up to one other cards with flying")
-        || lower.starts_with("look at the top seven cards of your library, reveal it, choose up to one other cards with flying"))
-        && (lower.contains("you choose up to one other cards with first strike")
-            || lower.contains("choose up to one other cards with first strike"))
-        && lower.contains("put it onto the battlefield")
-    {
-        return "Look at the top seven cards of your library. Choose from among them a card with flying, a card with first strike, a card with double strike, a card with deathtouch, a card with haste, a card with hexproof, a card with indestructible, a card with lifelink, a card with menace, a card with reach, a card with trample, and a card with vigilance. Put one of the chosen cards onto the battlefield, the rest into your hand, and the rest of the revealed cards into your graveyard.".to_string();
-    }
     if lower.contains("all nontoken non-auran artifacts, creatures, lands, or enchantments that shares a permanent type with that object")
     {
-        line = line.replace(
-            "phase out all nontoken non-Auran artifacts, creatures, lands, or enchantments that shares a permanent type with that object",
-            "all nontoken permanents of that type phase out",
-        );
-        line = line.replace(
-            "phase out all nontoken non-auran artifacts, creatures, lands, or enchantments that shares a permanent type with that object",
-            "all nontoken permanents of that type phase out",
-        );
     }
     if lower.contains("put a +1/+1 counter on each tapped creature you control, then untap all cards in that player's hand")
     {
-        line = line.replace(
-            "put a +1/+1 counter on each tapped creature you control, then untap all cards in that player's hand",
-            "put a +1/+1 counter on each tapped creature you control. Untap them",
-        );
     }
     if lower.starts_with("creatures with mana value x or less lose all abilities until end of turn, then destroy all creatures with mana value x or less")
     {
         return "Each creature with mana value X or less loses all abilities until end of turn, then destroy those creatures.".to_string();
-    }
-    if lower.starts_with("{1}{u}: this creature's owner shuffles it into their library")
-        && lower.contains("a card named mirror mad phantasm")
-        && lower.contains("put that object into its owner's graveyard")
-    {
-        return "{1}{U}: This creature's owner shuffles it into their library. If that player does, they reveal cards from the top of that library until a card named Mirror Mad Phantasm is revealed. The player puts that card onto the battlefield and all other cards revealed this way into their graveyard.".to_string();
     }
     if lower.contains("sarkhan becomes a dragon in addition to its other types") {
         line = line.replace("sarkhan becomes", "Sarkhan becomes");
@@ -892,16 +772,6 @@ fn finalize_ast_surface_line(line: String) -> String {
             "if this land has a luck counter on it, instead add one mana of any color",
         );
     }
-    if lower.starts_with("exile target creature, exile all other creatures with the same name as that object controlled by that object's controller")
-        && lower.contains("that player investigates for each nontoken creature exiled this way")
-    {
-        return "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way.".to_string();
-    }
-    if lower.starts_with("target opponent reveals their hand, you choose an artifact or creature card, you choose an artifact or creature card, then exile it")
-        || lower.starts_with("target opponent reveals their hand, choose an artifact or creature card, choose an artifact or creature card, then exile it")
-    {
-        return "Target opponent reveals their hand. You choose an artifact or creature card from it and choose an artifact or creature card from their graveyard. Exile the chosen cards.".to_string();
-    }
     if lower.contains(
         "tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
     ) {
@@ -918,10 +788,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     if lower.contains("if it's a permanent, exile it")
         && lower.contains("at the beginning of the next end step, exile it")
     {
-        line = line.replace(
-            "if it's a permanent, exile it",
-            "if it would leave the battlefield, exile it instead",
-        );
     }
     if lower.contains("as long as this creature is monstrous") {
         line = line.replace(
@@ -964,12 +830,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     {
         line = "When this creature enters, reveal the top ten cards of your library. For each card type, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library in a random order.".to_string();
     }
-    if lower.starts_with("you choose up to one artifacts on the battlefield. you choose up to one creatures on the battlefield")
-        && lower.contains("for each tagged '__source_exiled__' object")
-        && lower.contains("shares a permanent type with that object")
-    {
-        line = "Exile up to one target artifact, up to one target creature, up to one target enchantment, up to one target planeswalker, and/or up to one target land. For each permanent exiled this way, its controller reveals cards from the top of their library until they reveal a card that shares a card type with it, puts that card onto the battlefield, then shuffles.".to_string();
-    }
     if (lower
         .starts_with("look at the top three cards of your library, you choose a card in a hand")
         || lower
@@ -999,14 +859,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     if lower.contains("if you cast it, you can't be targeted until your next turn")
         && lower.contains("prevent all damage that would be dealt to you until your next turn")
     {
-        line = line.replace(
-            "if you cast it, you can't be targeted until your next turn, then prevent all damage that would be dealt to you until your next turn",
-            "if you cast it, you gain protection from everything until your next turn",
-        );
-        line = line.replace(
-            "If you cast it, you can't be targeted until your next turn, then prevent all damage that would be dealt to you until your next turn",
-            "If you cast it, you gain protection from everything until your next turn",
-        );
     }
     if lower.contains("you can't be targeted until your next turn")
         && lower.contains("prevent all damage that would be dealt to you until your next turn")
@@ -1021,14 +873,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     if lower.contains("if you do, you lose x life, where x is a card in your hand's mana value")
         && lower.contains("create x clue tokens, where x is a card in your hand's mana value")
     {
-        line = line.replace(
-            "if you do, you lose x life, where x is a card in your hand's mana value. create x clue tokens, where x is a card in your hand's mana value",
-            "if you do, you lose X life and create X Clue tokens, where X is that card's mana value",
-        );
-        line = line.replace(
-            "If you do, you lose X life, where X is a card in your hand's mana value. Create X Clue tokens, where X is a card in your hand's mana value",
-            "If you do, you lose X life and create X Clue tokens, where X is that card's mana value",
-        );
     }
     if lower.contains("if the player doesn't, mill three cards, then this creature deals damage") {
         line = line.replace(
@@ -1040,19 +884,6 @@ fn finalize_ast_surface_line(line: String) -> String {
             "if the player doesn't, you mill three cards",
         );
     }
-    if lower.starts_with("when ")
-        && let Some(reveal_idx) =
-            lower.find(" enters, reveal the top six cards of your library, you choose a card")
-        && lower.contains("return that object to its owner's hand")
-        && lower.contains("put that object into its owner's graveyard")
-    {
-        // Preserve the original "When <subject> enters" surface (the subject may
-        // be the card's name now that ETB triggers honor their self-naming hint).
-        let prefix = &line[..reveal_idx + " enters".len()];
-        return format!(
-            "{prefix}, reveal the top six cards of your library. You choose a card from among them and put it into your hand. Put the rest into your graveyard."
-        );
-    }
     if lower == "prevent all combat damage that would be dealt to you this turn, then populate." {
         line =
             "Prevent all combat damage that would be dealt to you this turn. Populate.".to_string();
@@ -1060,14 +891,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     if lower.contains("you choose a creature card, that player chooses a creature card")
         && lower.contains("you may put it onto the battlefield under its owner's control")
     {
-        line = line.replace(
-            "you choose a creature card, that player chooses a creature card, then you may put it onto the battlefield under its owner's control",
-            "you choose a creature card in an opponent's graveyard, then that player chooses a creature card in your graveyard, then you may return those cards to the battlefield under their owners' control",
-        );
-        line = line.replace(
-            "You choose a creature card, that player chooses a creature card, then you may put it onto the battlefield under its owner's control",
-            "You choose a creature card in an opponent's graveyard, then that player chooses a creature card in your graveyard, then you may return those cards to the battlefield under their owners' control",
-        );
     }
     if lower.contains("destroy target opponent's nonbasic artifact, enchantment, or land")
         && lower.contains("then an opponent may search an opponent's library for a basic land card")
@@ -1111,22 +934,9 @@ fn finalize_ast_surface_line(line: String) -> String {
             "When this token dies: It deals 1 damage to any target",
             "When this token dies, it deals 1 damage to any target",
         );
-    line = line
-        .replace(
-            "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
-            "Choose target creature you control and target creature an opponent controls. If there are four or more card types among cards in your graveyard, put two +1/+1 counters on the creature you control. The creature you control deals damage equal to its power to the creature an opponent controls.",
-        );
     if line.to_ascii_lowercase().contains(
         "creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this",
     ) {
-        line = line.replace(
-            "creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this",
-            "creatures you control with a +1/+1 counter on it have has all activated abilities of matching objects",
-        );
-        line = line.replace(
-            "Creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this",
-            "Creatures you control with a +1/+1 counter on it have has all activated abilities of matching objects",
-        );
     }
     if line.to_ascii_lowercase().contains(
         "at the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard",
@@ -1155,10 +965,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = line.replace(
         "tap each creature that was blocked by one of those creatures this turn. It doesn't untap during its controller's next untap step",
         "tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
-    );
-    line = line.replace(
-        "twice the number of cards in exile",
-        "twice the number of cards exiled this way",
     );
     line = line.replace(
         "target creature an opponent controls or planeswalker",
@@ -1221,10 +1027,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     );
     line = line.replace(
         "number of other creature artifact you control",
-        "number of other creatures and/or artifacts you control",
-    );
-    line = line.replace(
-        "number of another creature artifact you control",
         "number of other creatures and/or artifacts you control",
     );
     line = line.replace(
@@ -1791,8 +1593,6 @@ fn normalize_spellcast_trigger_copy_spell_surface(line: &str) -> String {
         return normalized;
     }
     normalized
-        .replace("copy that spell or ability", "copy that spell")
-        .replace("Copy that spell or ability", "Copy that spell")
 }
 
 fn normalize_basic_land_type_choice_surface(line: &str) -> String {
@@ -1890,37 +1690,10 @@ fn normalize_temporary_trample_pump_surface(line: &str) -> String {
 }
 
 fn normalize_chosen_player_adds_mana_surface(line: &str) -> String {
-    line.replace(
-        "You choose a player, then add one mana of any color to that player's mana pool",
-        "Choose a player. That player adds one mana of any color they choose",
-    )
-    .replace(
-        "you choose a player, then add one mana of any color to that player's mana pool",
-        "choose a player. That player adds one mana of any color they choose",
-    )
-    .replace(
-        "Choose a player, then add one mana of any color to that player's mana pool",
-        "Choose a player. That player adds one mana of any color they choose",
-    )
+    line
     .replace(
         "choose a player, then add one mana of any color to that player's mana pool",
         "choose a player. That player adds one mana of any color they choose",
-    )
-    .replace(
-        "You choose a player, then add two mana of any one color to that player's mana pool",
-        "Choose a player. That player adds two mana of any one color they choose",
-    )
-    .replace(
-        "you choose a player, then add two mana of any one color to that player's mana pool",
-        "choose a player. That player adds two mana of any one color they choose",
-    )
-    .replace(
-        "Choose a player, then add two mana of any one color to that player's mana pool",
-        "Choose a player. That player adds two mana of any one color they choose",
-    )
-    .replace(
-        "choose a player, then add two mana of any one color to that player's mana pool",
-        "choose a player. That player adds two mana of any one color they choose",
     )
 }
 
@@ -2006,10 +1779,7 @@ fn normalize_chosen_creature_type_surface(line: &str) -> String {
         }
         return format!(
             "Return {}",
-            effect.replace(
-                " of the chosen type",
-                " of the creature type of your choice"
-            )
+            effect
         );
     }
     line.to_string()
@@ -2255,13 +2025,6 @@ mod tests {
 
     #[test]
     fn scored_line_normalizes_late_milled_card_choice_surface() {
-        assert_eq!(
-            normalize_scored_compiled_line(
-                "Mill two cards, choose up to one permanent cards, for each card chosen this way, return that object to its owner's hand, then gain 2 life."
-                    .to_string()
-            ),
-            "Mill two cards. You may put a permanent card from among the milled cards into your hand. You gain 2 life."
-        );
         assert_eq!(
             normalize_scored_compiled_line(
                 "Return target permanent spell to its owner's hand, Jeskai Revelation deals 4 damage to any target, create two 1/1 white Monk creature tokens with prowess, draw two cards, then gain 4 life."
@@ -2675,7 +2438,7 @@ mod tests {
                 "Whenever you cast an Assassin, Mercenary, Pirate, Rogue, or Warlock spell, copy that spell or ability"
                     .to_string()
             ),
-            "Whenever you cast an outlaw spell, copy that spell."
+            "Whenever you cast an outlaw spell, copy that spell or ability."
         );
         assert_eq!(
             finalize_ast_surface_line(
@@ -2689,7 +2452,7 @@ mod tests {
                 "Whenever you cast an instant or sorcery spell that targets only this creature, you may pay {2}. If you do, copy that spell or ability. You may choose new targets for the copy"
                     .to_string()
             ),
-            "Whenever you cast an instant or sorcery spell that targets only this creature, you may pay {2}. If you do, copy that spell. You may choose new targets for the copy."
+            "Whenever you cast an instant or sorcery spell that targets only this creature, you may pay {2}. If you do, copy that spell or ability. You may choose new targets for the copy."
         );
         assert_eq!(
             finalize_ast_surface_line(
@@ -2789,21 +2552,24 @@ mod tests {
                 "{T}: You choose a player, then add one mana of any color to that player's mana pool"
                     .to_string()
             ),
-            "{T}: Choose a player. That player adds one mana of any color they choose."
+            "{T}: You choose a player. That player adds one mana of any color they choose."
         );
+        // Honest surfaces: the "That player adds ... they choose" rewrite
+        // moved the color choice to the chosen player, a claim the render
+        // never made (deleted as score laundering).
         assert_eq!(
             finalize_ast_surface_line(
                 "When this creature enters, you choose a player, then add two mana of any one color to that player's mana pool"
                     .to_string()
             ),
-            "When this creature enters, choose a player. That player adds two mana of any one color they choose."
+            "When this creature enters, you choose a player, then add two mana of any one color to that player's mana pool."
         );
         assert_eq!(
             finalize_ast_surface_line(
                 "When this creature enters, choose a player, then add two mana of any one color to that player's mana pool"
                     .to_string()
             ),
-            "When this creature enters, choose a player. That player adds two mana of any one color they choose."
+            "When this creature enters, choose a player, then add two mana of any one color to that player's mana pool."
         );
     }
 
@@ -2877,7 +2643,7 @@ mod tests {
                 "You choose a creature type, then return up to three target creature cards of the chosen type from your graveyard to your hand"
                     .to_string()
             ),
-            "Return up to three target creature cards of the creature type of your choice from your graveyard to your hand."
+            "Return up to three target creature cards of the chosen type from your graveyard to your hand."
         );
         assert_eq!(
             finalize_ast_surface_line(
@@ -2903,12 +2669,15 @@ mod tests {
             ),
             "Look at the top three cards of your library. Put one of them into your hand, put one of them on the bottom of your library, and exile one of them. You may play the exiled card this turn."
         );
+        // Honest surface: the render genuinely loses the hand/graveyard zone
+        // split for the two choices; the old expectation was a hand-written
+        // gate that re-asserted the zones (deleted as score laundering).
         assert_eq!(
             finalize_ast_surface_line(
                 "Target opponent reveals their hand, choose an artifact or creature card, choose an artifact or creature card, then exile it."
                     .to_string()
             ),
-            "Target opponent reveals their hand. You choose an artifact or creature card from it and choose an artifact or creature card from their graveyard. Exile the chosen cards."
+            "Target opponent reveals their hand, choose an artifact or creature card, choose an artifact or creature card, then exile it."
         );
     }
 

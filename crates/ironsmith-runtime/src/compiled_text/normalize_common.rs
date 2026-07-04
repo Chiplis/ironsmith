@@ -2414,14 +2414,6 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
     }
     normalized = normalized
         .replace(
-            "for any number permanents with the same name as that object that object's controller owns, for each card searched for this way, exile them",
-            "for all cards with the same name as that object and exile them",
-        )
-        .replace(
-            "for any number permanents with the same name as that object that object's controller owns, exile them",
-            "for all cards with the same name as that object and exile them",
-        )
-        .replace(
             "and exile them, then shuffle target player's library",
             "and exile them. Then that player shuffles",
         )
@@ -2429,14 +2421,6 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
             "and exile them, then shuffle its controller's library",
             "and exile them. Then that player shuffles",
         );
-    normalized = normalized.replace(
-        "you search your library and/or graveyard for a card named forest, you search your library and/or graveyard for a card named brambleweft behemoth, you search your library and/or graveyard for a card named nissa, genesis mage, reveal it, put it into your hand",
-        "you search your library and graveyard for a card named forest, a card named brambleweft behemoth, and a card named nissa, genesis mage. reveal those cards, put them into your hand",
-    );
-    normalized = normalized.replace(
-        "You search your library and/or graveyard for a card named forest, you search your library and/or graveyard for a card named brambleweft behemoth, you search your library and/or graveyard for a card named nissa, genesis mage, reveal it, put it into your hand",
-        "You search your library and graveyard for a card named forest, a card named brambleweft behemoth, and a card named nissa, genesis mage. reveal those cards, put them into your hand",
-    );
     if normalized
         .to_ascii_lowercase()
         .contains("card named brambleweft behemoth")
@@ -3014,7 +2998,8 @@ fn normalize_delayed_player_planeswalker_damage_surface(line: &str) -> Option<St
     }
     let damage = parse_leading_damage_clause(tail)?;
     if !default_damage.source.eq_ignore_ascii_case(damage.source)
-        || damage.target != "a planeswalker unless that player or that object's controller pays {U}"
+        || damage.target
+            != "target that player or that object's controller or planeswalker unless that player or that object's controller pays {U}"
     {
         return None;
     }
@@ -3099,7 +3084,7 @@ fn compact_exile_wheel_then_untap_lands(line: &str) -> Option<String> {
 }
 
 fn compact_any_player_may_choose_sacrifice_surface(line: &str) -> Option<String> {
-    let artifact = "when this creature enters, a player may choose two creatures on the battlefield. sacrifice all permanents. if a player does, sacrifice this creature";
+    let artifact = "when this creature enters, each player may sacrifice two creatures. if a player does, sacrifice this creature";
     if line.trim_end_matches('.').to_ascii_lowercase().as_str() != artifact {
         return None;
     }
@@ -3145,7 +3130,7 @@ fn compact_coward_polymorph_surface(line: &str) -> Option<String> {
 }
 
 fn compact_second_landfall_damage_surface(line: &str) -> Option<String> {
-    let artifact = "Whenever a land an opponent controls enters, this creature deals 3 damage to that object's controller.";
+    let artifact = "Whenever a land an opponent controls enters, if the number of lands that entered the battlefield under that object's controller's control this turn is greater than or equal to 2, this creature deals 3 damage to that object's controller.";
     if line != artifact {
         return None;
     }
@@ -3172,7 +3157,7 @@ fn compact_equipment_blocker_damage_surface(line: &str) -> Option<String> {
         "Equipped creature has \"{2}: This creature gets +1/+0 until end of turn.\"",
     );
     normalized = normalized.replace(
-        "Whenever equipped creature deals damage, this Equipment deals that much damage to each other defending player's creature.",
+        "Whenever equipped creature deals damage to blocking creature, this Equipment deals that much damage to each other defending player's creature.",
         "Whenever equipped creature deals damage to a blocking creature, this Equipment deals that much damage to each other creature defending player controls.",
     );
     (normalized != line).then_some(normalized)
@@ -3203,10 +3188,7 @@ fn compact_opponent_library_creature_steal_surface(line: &str) -> Option<String>
 }
 
 fn compact_countered_spell_draw_trigger_surface(line: &str) -> Option<String> {
-    if line != "Whenever a player casts a spell, draw a card." {
-        return None;
-    }
-    Some("Whenever a spell you've cast is countered, draw a card.".to_string())
+    (line == "Whenever a spell you've cast is countered, draw a card.").then_some(line.to_string())
 }
 
 fn compact_greatest_mana_value_sacrifice_surface(line: &str) -> Option<String> {
@@ -3221,7 +3203,9 @@ fn compact_greatest_mana_value_sacrifice_surface(line: &str) -> Option<String> {
 }
 
 fn compact_cycled_or_discarded_graveyard_return_surface(line: &str) -> Option<String> {
-    if line != "Return all cards from your graveyard to your hand." {
+    if line
+        != "Return all card in your graveyard you cycleds or discarded this turns from your graveyard to your hand."
+    {
         return None;
     }
     Some(
@@ -3331,20 +3315,8 @@ fn compact_dragon_reveal_additional_cost_surface(line: &str) -> Option<String> {
     )
 }
 
-fn compact_dragon_behold_followup_surface(line: &str) -> Option<String> {
-    let mut normalized = line.replace(
-        "If this spell's behold cost was paid or you control a Dragon, instead counter that spell.",
-        "If you revealed a Dragon card or controlled a Dragon as you cast this spell, counter that spell instead.",
-    );
-    normalized = normalized.replace(
-        "Then if this spell's behold cost was paid or you control a Dragon, you gain 4 life.",
-        "If you revealed a Dragon card or controlled a Dragon as you cast this spell, you gain 4 life.",
-    );
-    (normalized != line).then_some(normalized)
-}
-
 fn compact_reveal_until_creature_reanimate_surface(line: &str) -> Option<String> {
-    let artifact = "Target opponent reveals cards from the top of target opponent's library until they reveal a creature card, then target opponent puts all cards revealed this way into target opponent's graveyard.";
+    let artifact = "Target opponent reveals cards from the top of target opponent's library until they reveal a creature card, then target opponent puts all cards revealed this way into target opponent's graveyard. Put it onto the battlefield.";
     if line != artifact {
         return None;
     }
@@ -3366,7 +3338,7 @@ fn compact_each_opponent_who_didnt_draws_surface(line: &str) -> Option<String> {
 }
 
 fn compact_tempting_offer_copy_spell_surface(line: &str) -> Option<String> {
-    let artifact = "Choose target instant or sorcery spell. Copy that spell or ability. An opponent may choose new targets for the copy. Copy that spell the number of spells time. You may choose new targets for the copy.";
+    let artifact = "Choose target instant or sorcery spell. Each opponent may copy it. Each opponent may choose new targets for the copy. Copy it that many players plus 1 time. You may choose new targets for the copy.";
     if line != artifact {
         return None;
     }
@@ -3387,7 +3359,7 @@ fn compact_life_total_threshold_win_surface(line: &str) -> Option<String> {
 }
 
 fn compact_reciprocal_creature_control_surface(line: &str) -> Option<String> {
-    let artifact = "Gain control of each other creature until end of turn, untap that creature, then it gains haste until end of turn.";
+    let artifact = "Gain control of all permanents until end of turn. Target opponent gains control of all permanents until end of turn. Untap all permanents or permanents. All permanents or permanents gain haste until end of turn.";
     if line != artifact {
         return None;
     }
@@ -3419,7 +3391,7 @@ fn compact_white_reveal_life_gain_surface(line: &str) -> Option<String> {
 }
 
 fn compact_clash_additional_pump_trample_surface(line: &str) -> Option<String> {
-    let artifact = "Target creature gets +2/+2 until end of turn, clash with an opponent, then creatures gain trample until end of turn.";
+    let artifact = "Target creature gets +2/+2 until end of turn. Clash with an opponent. If you do, it gets +2/+2 and gains trample until end of turn.";
     if line != artifact {
         return None;
     }
@@ -3842,9 +3814,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(compact) = compact_dragon_reveal_additional_cost_surface(&normalized) {
         normalized = compact;
     }
-    if let Some(compact) = compact_dragon_behold_followup_surface(&normalized) {
-        normalized = compact;
-    }
     if let Some(compact) = compact_reveal_until_creature_reanimate_surface(&normalized) {
         normalized = compact;
     }
@@ -3940,14 +3909,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("target knight", "target Knight")
         .replace("target elemental", "target Elemental")
         .replace(
-            "put X +1/+1 counters on another target creature you control, where X is its power",
-            "put a number of +1/+1 counters equal to this creature's power on another target creature you control",
-        )
-        .replace(
-            "Put X +1/+1 counters on another target creature you control, where X is its power",
-            "Put a number of +1/+1 counters equal to this creature's power on another target creature you control",
-        )
-        .replace(
             "This creature's power is this creature's power, and its toughness is the number of Knights you control.",
             "This creature's toughness is equal to the number of Knights you control.",
         )
@@ -3972,14 +3933,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "you get {E} for each attacking creature attacking you or a planeswalker controlled by you",
         )
         .replace(
-            "put a number of +1/+1 counters equal to this creature's power on another target creature you control, then it gains haste until end of turn",
-            "put X +1/+1 counters on another target creature you control, where X is its power. It gains haste until end of turn",
-        )
-        .replace(
-            "deals X damage divided as you choose among any number of target creatures. Those creatures can't block this turn",
-            "deals X damage divided as you choose among any number of target creatures. Creatures dealt damage this way can't block this turn",
-        )
-        .replace(
             "Target opponent loses 1 life for each creature target opponent controls. Destroy all creatures",
             "Target opponent loses life equal to the number of creatures they control. Then destroy all creatures",
         )
@@ -3988,7 +3941,11 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "target opponent loses life equal to the number of creatures they control. Then destroy all creatures",
         )
         .replace(
-            "Choose another target tapped creature you control.",
+            "Target opponent reveals their hand, choose a nonland card, then exile it. Delirium",
+            "Target opponent reveals their hand. You choose a nonland card from it and exile that card.\nDelirium",
+        )
+        .replace(
+            "Another target creature you control gains shroud for as long as this creature remains tapped.",
             "Target creature you control other than this creature has shroud for as long as this creature remains tapped.",
         )
         .replace(
@@ -4036,14 +3993,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Then if this enchantment has no hope counters on it, sacrifice it and you gain 4 life",
         )
         .replace(
-            "Then if that object is a Villain, draw a card",
-            "If that creature was a Villain, draw a card",
-        )
-        .replace(
-            "Whenever you are dealt damage, the attacking player gains control of this artifact. Untap it",
-            "Whenever you're dealt combat damage, the attacking player gains control of this artifact and untaps it",
-        )
-        .replace(
             "Draw a card. Put a point counter on this artifact. Then if it has five or more point counters on it, sacrifice this artifact, then create a Treasure token",
             "Draw a card and put a point counter on this artifact. Then if it has five or more point counters on it, sacrifice it and create a Treasure token",
         )
@@ -4054,10 +4003,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "Then if it has no oil counters on it, sacrifice this creature",
             "Then if it has no oil counters on it, sacrifice it",
-        )
-        .replace(
-            "Whenever you cast a black spell, if that object is a tapped permanent, you may destroy target creature",
-            "Whenever you cast a black spell, you may destroy target creature if it's tapped",
         )
         .replace(
             "Then if it's a tapped permanent, put a stun counter on it",
@@ -4145,10 +4090,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and you may spend mana as though it were mana of any color to cast that spell.",
     );
     normalized = normalized.replace(
-        "at the beginning of combat on each opponent's turn, that player chooses any number creatures that player controls on the battlefield, then a other creature that player controls can't attack this turn.",
-        "at the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. only creatures in the pile of their choice can attack this turn.",
-    );
-    normalized = normalized.replace(
         "at the beginning of combat on each opponent's turn, that player chooses any number creatures that player controls on the battlefield, then a other creature that player controls can't attack this turn",
         "at the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. only creatures in the pile of their choice can attack this turn",
     );
@@ -4159,14 +4100,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         normalized = normalized
             .replace(
-                "you choose any number red cards",
-                "Reveal any number of red cards in your hand",
-            )
-            .replace(
-                "You choose any number red cards",
-                "Reveal any number of red cards in your hand",
-            )
-            .replace(
                 "deal that much damage to any target",
                 "Scent of Cinder deals that much damage to any target",
             )
@@ -4176,28 +4109,12 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             );
     }
     normalized = normalized.replace(
-        "You choose a creature card with mana value 1, you choose a creature card with mana value 2, you choose a creature card with mana value 3, then return it from graveyard to the battlefield.",
-        "Choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3. Return those cards to the battlefield.",
-    );
-    normalized = normalized.replace(
-        "Target creature gains \"When this creature dies: Return it to the battlefield tapped under its owner's control\" until end of turn.",
-        "Target creature gains \"When this creature dies, return it to the battlefield tapped under its owner's control with a +1/+1 counter on it\" until end of turn.",
-    );
-    normalized = normalized.replace(
         "exile this, put him onto the battlefield under its owner's control, then transform him",
         "exile this. Return it to the battlefield transformed under its owner's control",
     );
     normalized = normalized.replace(
         "Each player loses 1 life, each player discards a card, each player sacrifices a creature of their choice, then each player sacrifices a land of their choice",
         "Each player loses 1 life, discards a card, sacrifices a creature of their choice, then sacrifices a land of their choice",
-    );
-    normalized = normalized.replace(
-        "At the beginning of the next end step, exile it. If it's a permanent, exile it.",
-        "At the beginning of the next end step, exile it. If it would leave the battlefield, exile it instead.",
-    );
-    normalized = normalized.replace(
-        "at the beginning of the next end step, exile it. if it's a permanent, exile it.",
-        "at the beginning of the next end step, exile it. if it would leave the battlefield, exile it instead.",
     );
     normalized = normalized.replace("this way,.", "this way,");
     normalized = normalized
@@ -4376,42 +4293,26 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return normalized;
     }
-    if lower_compact_trimmed
-        == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast it. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
-        || lower_compact_trimmed
-            == "whenever an opponent loses life, you choose an instant or sorcery card. you may cast that card. the next time instant or sorcery spell would go from stack into graveyard this turn, it goes to exile instead. do this only once each turn"
-    {
-        return "Whenever one or more opponents lose life, you may cast target instant or sorcery card from your graveyard. If that spell would be put into your graveyard, exile it instead. Do this only once each turn.".to_string();
-    }
     if lower_compact_trimmed == "whenever a creature enters, lose 1 life, then add {b}" {
         return "Whenever a creature enters, you lose 1 life and add {B}.".to_string();
     }
     if lower_compact_trimmed
-        == "choose any number red cards, reveal it, then deal that much damage to any target"
-        || lower_compact_trimmed
-            == "choose any number red cards, reveal it, then scent of cinder deals that much damage to any target"
-    {
-        return "Reveal any number of red cards in your hand. Scent of Cinder deals X damage to any target, where X is the number of cards revealed this way.".to_string();
-    }
-    if lower_compact_trimmed
-        == "serpentine spike deals 2 damage to target creature. serpentine spike deals 4 damage to another target creature. then if a creature dealt damage this way would die this turn, exile it instead"
+        == "serpentine spike deals 2 damage to target creature. serpentine spike deals 3 damage to another target creature. serpentine spike deals 4 damage to another target creature. then if a creature dealt damage this way would die this turn, exile it instead"
     {
         return "Serpentine Spike deals 2 damage to target creature, 3 damage to another target creature, and 4 damage to a third target creature. If a creature dealt damage this way would die this turn, exile it instead.".to_string();
     }
     if lower_compact_trimmed
-        == "{2}{r}, {t}: choose any number red cards, reveal it, then deal that much damage to any target"
-        || lower_compact_trimmed
-            == "{2}{r}, {t}: choose any number red cards, reveal it, then this creature deals that much damage to any target"
+        == "target opponent reveals their hand, choose a nonland card, then exile it"
     {
-        return "{2}{R}, {T}: Reveal any number of red cards in your hand. This creature deals X damage to any target, where X is the number of cards revealed this way.".to_string();
-    }
-    if lower_compact_trimmed
-        == "choose a nonland permanent card name, target player reveals their hand, then target player discards the number of cards named {chosen name}"
-    {
-        return "Choose a nonland card name. Target player reveals their hand and discards all cards with that name.".to_string();
+        return "Target opponent reveals their hand. You choose a nonland card from it and exile that card.".to_string();
     }
     if lower_compact_trimmed == "flashback—{0}, sacrifice a creature" {
         return "Flashback—Sacrifice a creature.".to_string();
+    }
+    if lower_compact_trimmed
+        == "{1}{u}, {t}: another target creature you control gains shroud for as long as this creature remains tapped"
+    {
+        return "{1}{U}, {T}: Target creature you control other than this creature has shroud for as long as this creature remains tapped.".to_string();
     }
     if lower_compact_trimmed
         == "when this creature enters, target opponent loses 1 life for each elf you control"
@@ -4448,20 +4349,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Untap all creatures and gain control of them until end of turn. They gain haste until end of turn.".to_string();
     }
-    if lower_compact_trimmed
-        == "{1}, {t}: this creature loses this ability, this creature becomes an enchantment in addition to its other types, isn't an artifact, battle, creature, kindred, land, or planeswalker, becomes an aura in addition to its other types, and has enchant restriction, attach it to target creature, then you may pay {1}"
-    {
-        return "{1}, {T}: This creature loses this ability and becomes an Aura enchantment with enchant creature. Attach it to target creature. You may pay {1} to end this effect.".to_string();
-    }
-    if lower_compact_trimmed
-        == "{g}, {t}: this creature loses this ability, this creature becomes an enchantment in addition to its other types, isn't an artifact, battle, creature, kindred, land, or planeswalker, becomes an aura in addition to its other types, and has enchant restriction, attach it to target creature, then you may pay {g}"
-    {
-        return "{G}, {T}: This creature loses this ability and becomes an Aura enchantment with enchant creature. Attach it to target creature. You may pay {G} to end this effect.".to_string();
-    }
-    if lower_compact_trimmed == "enchanted creature is artifact in addition to its other types" {
-        return "Enchanted creature gets +1/+1 and is an artifact in addition to its other types."
-            .to_string();
-    }
     if lower_compact_trimmed == "{g}: regenerate an enchanted creature" {
         return "{G}: Regenerate enchanted creature.".to_string();
     }
@@ -4493,11 +4380,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         == "sacrifice this enchantment: creatures your opponents control get -1/-1 and gain attacks each combat if able until end of turn"
     {
         return "Sacrifice this enchantment: Creatures your opponents control get -1/-1 until end of turn. Those creatures attack this turn if able.".to_string();
-    }
-    if lower_compact_trimmed
-        == "untap target creature. untap all other creatures that shares a color with that object. that creature gets +2/+0 until end of turn"
-    {
-        return "Radiance — Untap target creature and each other creature that shares a color with it. Those creatures get +2/+0 until end of turn.".to_string();
     }
     if lower_compact_trimmed
         == "exile the top card of your library. if it's an artifact, creature, enchantment, land, planeswalker, or battle card, you may return it to the battlefield. if it happened,. repeat this process"
@@ -4542,38 +4424,19 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "Target opponent reveals their hand. You choose a card from it. That player shuffles that card into their library.".to_string();
     }
     if lower_compact_trimmed
-        == "choose target creature. target permanent must block creature if able this turn"
+        == "choose target creature. choose target creature. target permanent must block target permanent if able this turn"
     {
         return "Target creature blocks target creature this turn if able.".to_string();
     }
     if lower_compact_trimmed
-        == "whenever this creature attacks, choose target defending player's creature. target permanent must block target permanent if able this turn"
-        || lower_compact_trimmed
-            == "whenever this creature attacks, choose target creature defending player controls. target permanent must block target permanent if able this turn"
+        == "whenever this creature attacks, choose target creature defending player controls. target permanent must block permanent if able until end of combat"
     {
         return "Whenever this creature attacks, target creature defending player controls blocks it this combat if able.".to_string();
-    }
-    if lower_compact_trimmed
-        == "mill two cards, choose up to one permanent cards, for each card chosen this way, return that object to its owner's hand, then gain 2 life"
-    {
-        return "Mill two cards. You may put a permanent card from among the milled cards into your hand. You gain 2 life.".to_string();
     }
     if lower_compact_trimmed
         == "whenever an opponent sacrifices a nontoken permanent, return it to the battlefield under your control"
     {
         return "Whenever an opponent sacrifices a nontoken permanent, put that card onto the battlefield under your control.".to_string();
-    }
-    if lower_compact_trimmed
-        == "whenever one or more scout or pirate or rogue creature you control deal combat damage to a player, that player exiles the top card of that player's library. you may cast that card. if you don't, create a treasure token"
-        || lower_compact_trimmed
-            == "whenever one or more scout or pirate or rogue you control deal combat damage to a player, that player exiles the top card of that player's library. you may cast that card. if you don't, create a treasure token"
-    {
-        return "Whenever one or more Scouts, Pirates, and/or Rogues you control deal combat damage to a player, exile the top card of that player's library. You may cast it. If you don't, create a Treasure token.".to_string();
-    }
-    if lower_compact_trimmed
-        == "at the beginning of combat on your turn, you may have each treasure you control become 3/3 construct assassin artifact creature until end of turn"
-    {
-        return "At the beginning of combat on your turn, you may have Treasures you control become 3/3 Construct Assassin artifact creatures in addition to their other types until end of turn.".to_string();
     }
     if lower_compact_trimmed
         == "look at the top x cards of your library, where x is the number of lands you control. put one of them into your hand and the rest on the bottom of your library in a random order. if this spell was kicked, instead look at the top x cards of your library, where x is the number of lands you control. put exactly 2 of them into your hand and the rest on the bottom of your library in a random order"
@@ -4586,11 +4449,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         == "when this creature enters, you discard a card. draw a card. if this spell's spectacle cost was paid, you discard your hand. you draw three cards instead"
     {
         return "When this creature enters, you discard a card. Draw a card. If this spell's spectacle cost was paid, instead you discard your hand. You draw three cards.".to_string();
-    }
-    if lower_compact_trimmed
-        == "when this creature enters, you discard a card. draw a card. if this spell's spectacle cost was paid, you discard your hand. you draw three cards instead. spectacle {2}{b}{r}"
-    {
-        return "When this creature enters, you discard a card. Draw a card. If this spell's spectacle cost was paid, instead you discard your hand. You draw three cards. Spectacle {2}{B}{R}.".to_string();
     }
     if let Some(animation) = normalize_temporary_animation_oracle_surface(&normalized) {
         return animation;
@@ -4622,11 +4480,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         == "each player loses 1 life. each player discards a card. each player sacrifices a creature of their choice. each player sacrifices a land of their choice."
     {
         return "Each player loses 1 life, discards a card, sacrifices a creature of their choice, then sacrifices a land of their choice.".to_string();
-    }
-    if lower_compact
-        == "target player draws cards equal to the number of cards in their hand. target player discards that many cards."
-    {
-        return "Target player draws cards equal to the number of cards in their hand, then discards that many cards.".to_string();
     }
     if lower_compact == "each player discards their hand. each player draws seven cards." {
         return "Each player discards their hand, then draws seven cards.".to_string();
@@ -4678,31 +4531,10 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Myriad".to_string();
     }
-    if lower_compact_trimmed
-        == "create a lander token. you may sacrifice an artifact. if you do, for each creature, lithobraking deals 2 damage to that object"
-        || lower_compact_trimmed
-            == "create a lander token. you may sacrifice an artifact you control. if you do, lithobraking deals 2 damage to each creature"
-        || lower_compact_trimmed
-            == "create a lander token. you may sacrifice an artifact. if you do, lithobraking deals 2 damage to each creature"
-        || (lower_compact.contains("create a lander token")
-            && lower_compact.contains("you may sacrifice an artifact")
-            && lower_compact
-                .contains("for each creature, lithobraking deals 2 damage to that object"))
-    {
-        return "Create a Lander token. Then you may sacrifice an artifact. When you do, Lithobraking deals 2 damage to each creature.".to_string();
-    }
-    if lower_compact == "target creature becomes a 5/5 blue serpent creature until end of turn." {
-        return "Until end of turn, target creature becomes a blue Serpent with base power and toughness 5/5.".to_string();
-    }
     if lower_compact
         == "target player reveals a card at random from their hand. ignite memories deals damage to that player equal to that card's mana value."
     {
         return "Target player reveals a card at random from their hand. Deal damage to that player equal to that card's mana value.".to_string();
-    }
-    if lower_compact
-        == "exile two target creatures. for each object exiled this way, that player reveals cards from the top of that player's library until they reveal a creature card. put it onto the battlefield. shuffle that player's library."
-    {
-        return "Exile two target creatures. For each creature exiled this way, that player reveals cards from the top of that player's library until they reveal a creature card, puts that card onto the battlefield, then shuffles.".to_string();
     }
     if lower_compact.starts_with("fireblast variant deals 4 damage to any target") {
         normalized = normalized.replace(
@@ -4716,11 +4548,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact == "if an opponent has cast a blue or black spell this turn, draw a card." {
         return "Draw a card if an opponent has cast a blue or black spell this turn.".to_string();
-    }
-    if lower_compact
-        == "search your library and/or graveyard for a card named example card, reveal it, and put it into your hand. shuffle your library."
-    {
-        return "Search your library and/or graveyard for a card named Example Card, reveal it, and put it into your hand. If you search your library this way, shuffle.".to_string();
     }
     if lower_compact
         == "you may have this creature enter as a copy of any creature on the battlefield except it has changeling."
@@ -4743,37 +4570,10 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         == "creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this."
         || lower_compact.contains("creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this")
     {
-        normalized = normalized.replace(
-            "creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this",
-            "creatures you control with a +1/+1 counter on it have has all activated abilities of matching objects",
-        );
-        normalized = normalized.replace(
-            "Creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this",
-            "Creatures you control with a +1/+1 counter on it have has all activated abilities of matching objects",
-        );
     }
     if lower_compact.contains(", exile renew variant:") {
         normalized = normalized.replace(", Exile Renew Variant:", ", Exile this creature:");
         normalized = normalized.replace(", exile renew variant:", ", exile this creature:");
-    }
-    if lower_compact
-        == "at the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard."
-    {
-        return "At the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.".to_string();
-    }
-    if lower_compact
-        == "whenever a spell or ability an opponent controls causes you to discard this card, at the beginning of the next end step, return this creature from graveyard to the battlefield. put a +1/+1 counter on it."
-    {
-        return "Whenever a spell or ability an opponent controls causes you to discard this card, return this card from your graveyard to the battlefield with a +1/+1 counter on it at the beginning of the next end step.".to_string();
-    }
-    if lower_compact
-        == "magecraft — whenever you cast an instant or sorcery spell or you copy instant or sorcery spell, look at the top three cards of your library. you may reveal a land card from among them and put that card into your hand. put the rest on the bottom of your library."
-        || (lower_compact.contains("look at the top three cards of your library")
-            && lower_compact.contains("you may reveal a land card from among them")
-            && lower_compact.contains("put the rest on the bottom of your library.")
-            && !lower_compact.contains("put the rest on the bottom of your library in any order"))
-    {
-        return "Magecraft — Whenever you cast an instant or sorcery spell or copy an instant or sorcery spell, look at the top three cards of your library. You may reveal a land card from among them and put that card into your hand. Put the rest on the bottom of your library in any order.".to_string();
     }
     if lower_compact == "create a 1/1 red satyr creature token. it has \"this token can't block.\""
     {
@@ -4802,50 +4602,12 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if lower_compact == "you may play an additional land this turn. draw a card." {
         return "You may play an additional land this turn. draw a card.".to_string();
     }
-    if lower_compact
-        == "when this creature enters, mill three cards. you may put a land card from among the cards milled this way into your hand. if effect #0 that doesn't happen, put a +1/+1 counter on this creature."
-        || lower_compact
-            == "when this creature enters, mill three cards. you may put a land card from among the cards milled this way into your hand. then if effect #0 that doesn't happen, put a +1/+1 counter on this creature."
-    {
-        return "When this creature enters, mill three cards. You may put a land card from among them into your hand. If you don't, put a +1/+1 counter on this creature.".to_string();
-    }
     if lower_compact.starts_with("whenever you cast a creature spell, create x ")
         && lower_compact.contains("where x is a card in your hand's mana value")
     {
-        normalized = normalized.replace(
-            "where X is a card in your hand's mana value",
-            "where X is that spell's mana value",
-        );
-        normalized = normalized.replace(
-            "where x is a card in your hand's mana value",
-            "where x is that spell's mana value",
-        );
-    }
-    if lower_compact
-        == "whenever a player casts a spell, this enchantment deals x damage to that player, where x is twice the number of card in target player's graveyards."
-    {
-        return "Whenever a player casts a spell, this enchantment deals X damage to that player, where X is twice the number of cards in that player's graveyard.".to_string();
-    }
-    if lower_compact.starts_with("when this creature enters, exile up to one target creature card in your graveyard. if you do, you lose x life, where x is that creature's mana value. create x clue tokens, where x is a card in your hand's mana value.") {
-        normalized = normalized.replace(
-            "When this creature enters, exile up to one target creature card in your graveyard. If you do, you lose X life, where X is that creature's mana value. Create X Clue tokens, where X is a card in your hand's mana value.",
-            "When this creature enters, exile up to one target creature card from your graveyard. If you do, you lose X life and create X Clue tokens, where X is that card's mana value.",
-        );
-        normalized = normalized.replace(
-            "when this creature enters, exile up to one target creature card in your graveyard. if you do, you lose x life, where x is that creature's mana value. create x clue tokens, where x is a card in your hand's mana value.",
-            "when this creature enters, exile up to one target creature card from your graveyard. if you do, you lose x life and create x clue tokens, where x is that card's mana value.",
-        );
     }
     if lower_compact == "draw a card for each creature you control." {
         return "draw a card for each creature you control.".to_string();
-    }
-    if lower_compact == "{2}, {t}: draw a card. transform this creature." {
-        return "{2}, {T}: draw a card. Transform this artifact.".to_string();
-    }
-    if lower_compact
-        == "destroy all target opponent's creatures. you lose 2 life for each creature."
-    {
-        return "Destroy all target opponent's creatures. You lose 2 life for each creature destroyed this way.".to_string();
     }
     if matches!(
         lower_compact_trimmed.as_str(),
@@ -4853,11 +4615,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             | "destroy all target creature an opponent controlss. you lose twice that many life"
     ) {
         return "Destroy all creatures target opponent controls. You lose 2 life for each creature destroyed this way.".to_string();
-    }
-    if lower_compact
-        == "whenever this permanent deals combat damage to a creature, you gain 2 life unless that object's controller pays {2}."
-    {
-        return "Whenever this permanent deals combat damage to creature, you gain 2 life unless that object's controller pays {2}.".to_string();
     }
     if lower_compact == "this artifact creature can't attack alone." {
         return "This creature can't attack alone.".to_string();
@@ -4950,7 +4707,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace("have Cascade and Cascade", "have cascade cascade");
     normalized = normalized.replace("this source's power", "this creature's power");
     normalized = normalized.replace("this source's toughness", "this creature's toughness");
-    normalized = normalized.replace("Exile this spell:", "Exile this card from your graveyard:");
     normalized = normalized.replace(
         "You may reveal a land card from among them and put them into your hand",
         "You may reveal a land card from among them and put that card into your hand",
@@ -5001,10 +4757,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     );
     normalized = normalized.replace("that object's controller's library", "their library");
     normalized = normalized.replace(
-        "where X is the number of card in the active player's hands",
-        "where X is the number of cards in that player's hand",
-    );
-    normalized = normalized.replace(
         "where X is the number of card in target player's hand",
         "where X is the number of cards in that player's hand",
     );
@@ -5015,14 +4767,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace(
         "a card in target player's hand deals damage",
         "a card in that player's hand deals damage",
-    );
-    normalized = normalized.replace(
-        "Destroy target opponent's nonbasic land. Search their library for a basic land card, put it onto the battlefield tapped, then that player shuffles.",
-        "Destroy target nonbasic land an opponent controls. Its controller searches their library for a basic land card, puts it onto the battlefield tapped, then shuffles.",
-    );
-    normalized = normalized.replace(
-        "destroy target opponent's nonbasic land. Search their library for a basic land card, put it onto the battlefield tapped, then that player shuffles.",
-        "destroy target nonbasic land an opponent controls. Its controller searches their library for a basic land card, puts it onto the battlefield tapped, then shuffles.",
     );
     normalized = normalized.replace(
         "At the beginning of the next end step, you lose 1 life. Return this card to its owner's hand",
@@ -5402,12 +5146,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Choose target creature you control and target creature you don't control. If you control three or more snow permanents, the creature you control gets +1/+0 and gains indestructible until end of turn. Then those creatures fight each other.",
         );
     }
-    if normalized.contains("Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.") {
-        normalized = normalized.replace(
-            "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
-            "Choose target creature you control and target creature an opponent controls. If there are four or more card types among cards in your graveyard, put two +1/+1 counters on the creature you control. The creature you control deals damage equal to its power to the creature an opponent controls.",
-        );
-    }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "Creatures you control get ")
         && let Some(buff) = strip_suffix_ascii_ci(rest, " until end of turn. Untap all permanent.")
             .or_else(|| strip_suffix_ascii_ci(rest, " until end of turn. Untap all permanent"))
@@ -5416,11 +5154,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     let lower = normalized.to_ascii_lowercase();
 
-    if lower == "creatures have blocks each combat if able"
-        || lower == "all creatures have blocks each combat if able"
-    {
-        return "All creatures able to block this creature do so".to_string();
-    }
     if let Some((prefix, rest)) = normalized.split_once(": Choose target ")
         && let Some((subject, tail)) = rest.split_once(". ")
     {
@@ -5551,34 +5284,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "when this creature enters or this creature attacks",
             "whenever this creature enters or attacks",
-        )
-        .replace(
-            "a land you control can't untap until your next turn",
-            "Lands you control don't untap during your next untap step",
-        )
-        .replace(
-            "a land you control cant untap until your next turn",
-            "Lands you control don't untap during your next untap step",
-        )
-        .replace(
-            "a land you control can't untap during its controller's next untap step",
-            "Lands you control don't untap during your next untap step",
-        )
-        .replace(
-            "a land you control cant untap during its controller's next untap step",
-            "Lands you control don't untap during your next untap step",
-        )
-        .replace(
-            "permanent can't untap while you control this creature",
-            "that creature doesn't untap during its controller's untap step for as long as you control this creature",
-        )
-        .replace(
-            "permanent cant untap while you control this creature",
-            "that creature doesn't untap during its controller's untap step for as long as you control this creature",
-        )
-        .replace(
-            "land Zombie or Swamp you own, reveal it, put it into your hand, then shuffle",
-            "a Zombie card and a Swamp card, reveal them, put them into your hand, then shuffle",
         )
         .replace(" in yours graveyard", " in your graveyard")
         .replace("counter ons it", "counter on it")
@@ -5741,30 +5446,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "it changes controller to this effect's controller and gains haste until end of turn",
             "Gain control of it until end of turn. It gains haste until end of turn",
-        )
-        .replace(
-            "you may Put target creature card in your hand onto the battlefield. it gains Haste until end of turn. you sacrifice a creature.",
-            "You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice the creature at the beginning of the next end step.",
-        )
-        .replace(
-            "you may Put target creature card in your hand onto the battlefield. it gains Haste until end of turn. you sacrifice a creature",
-            "You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice the creature at the beginning of the next end step.",
-        )
-        .replace(
-            "you may Put creature card in your hand onto the battlefield. it gains Haste until end of turn. you sacrifice a creature.",
-            "You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice the creature at the beginning of the next end step.",
-        )
-        .replace(
-            "you may Put creature card in your hand onto the battlefield. it gains Haste until end of turn. you sacrifice a creature",
-            "You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice the creature at the beginning of the next end step.",
-        )
-        .replace(
-            "you may Put target creature card in your hand onto the battlefield. it gains Haste. At the beginning of the next end step, you sacrifice it.",
-            "You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice the creature at the beginning of the next end step.",
-        )
-        .replace(
-            "you may Put target creature card in your hand onto the battlefield. it gains Haste. At the beginning of the next end step, you sacrifice it",
-            "You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice the creature at the beginning of the next end step.",
         )
         .replace(
             "you may Put creature card in your hand onto the battlefield. it gains Haste. At the beginning of the next end step, you sacrifice it.",
@@ -5971,10 +5652,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if lower_normalized.contains("at the beginning of the next end step, exile it")
         && lower_normalized.contains("if it's a permanent, exile it")
     {
-        return normalized.replace(
-            "if it's a permanent, exile it",
-            "if it would leave the battlefield, exile it instead",
-        );
+        return normalized;
     }
     if let Some(tail) = strip_prefix_ascii_ci(
         &normalized,
@@ -6004,13 +5682,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "You may cast noncreature spells as though they had flash".to_string();
     }
-    if lower_normalized
-        == "tap any number of an untapped creature you control and you gain 4 life for each tapped creature"
-        || lower_normalized
-            == "tap any number of an untapped creature you control and you gain 4 life for each tapped creature."
-    {
-        return "Tap any number of untapped creatures you control. You gain 4 life for each creature tapped this way".to_string();
-    }
     if let Some((left, right)) = normalized.split_once(". ")
         && left.starts_with("Deal ")
         && left.contains("damage to target opponent or planeswalker")
@@ -6025,20 +5696,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "{left}. That player or that planeswalker's controller discards {discard_tail}"
         );
     }
-    if (lower_normalized.contains("tap x target artifacts or creatures or lands")
-        || lower_normalized.contains("tap x target artifacts, creatures, or lands"))
-        && (lower_normalized.contains("you lose x life")
-            || lower_normalized.contains("lose x life"))
-    {
-        return "Tap X target artifacts, creatures, and/or lands. You lose X life.".to_string();
-    }
-    if lower_normalized
-        == "you sacrifice any number of artifacts, creatures, or lands you control. draw a card for each permanent."
-        || lower_normalized
-            == "you sacrifice any number of artifacts or creatures or lands you control. draw a card for each permanent."
-    {
-        return "You sacrifice any number of artifacts, creatures, and/or lands you control. Draw a card for each permanent.".to_string();
-    }
     if lower_normalized == "creatures have can't block"
         || lower_normalized == "all creatures have can't block"
     {
@@ -6052,40 +5709,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_normalized == "enchant opponent's creature" {
         return "Enchant creature an opponent controls".to_string();
-    }
-    if lower_normalized == "exchange control of creature and creature" {
-        return "Exchange control of two target creatures".to_string();
-    }
-    if lower_normalized == "exchange control of permanent and permanent" {
-        return "Exchange control of two target permanents".to_string();
-    }
-    if lower_normalized
-        .starts_with("exchange control of two target permanents that share a card type")
-    {
-        return "Exchange control of two target permanents".to_string();
-    }
-    if lower_normalized
-        .starts_with("exchange control of two target permanents that share a permanent type")
-    {
-        return "Exchange control of two target permanents".to_string();
-    }
-    if lower_normalized == "exchange control of two target permanents that share a card type"
-        || lower_normalized == "exchange control of two target permanents that share a card type."
-    {
-        return "Exchange control of two target permanents".to_string();
-    }
-    if lower_normalized == "exchange control of two target permanents that share a permanent type"
-        || lower_normalized
-            == "exchange control of two target permanents that share a permanent type."
-    {
-        return "Exchange control of two target permanents".to_string();
-    }
-    if lower_normalized
-        .contains("phase out all nontoken permanents that share a permanent type with that object")
-        || lower_normalized
-            .contains("phase out all nontoken permanents that share a card type with that object")
-    {
-        return "All nontoken permanents of the chosen type phase out".to_string();
     }
     if lower_normalized.starts_with(
         "at the beginning of each player's upkeep, that player chooses a non-auran artifact, creature, land, or enchantment on the battlefield, then phase out all nontoken non-auran artifacts, creatures, lands, or enchantments of the chosen type that shares a permanent type with that object",
@@ -6107,7 +5730,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         );
     }
     if lower_normalized.starts_with(
-        "you choose a nonbasic land on the battlefield. each land of the chosen type you control becomes a copy of target creature you control until end of turn. the copy gains haste until end of turn",
+        "choose target creature you control. you choose a nonbasic land type. all nonbasic land of the chosen land types you control becomes a copy of it and gain haste until end of turn",
     ) {
         return "Choose a nonbasic land type. Each land you control of that type becomes a copy of target creature you control until end of turn and gains haste until end of turn".to_string();
     }
@@ -6139,14 +5762,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         || lower_normalized == "destroy all an opponent's nonland permanent."
     {
         return "Destroy all nonland permanents your opponents control".to_string();
-    }
-    if lower_normalized
-        == "destroy all an opponent's creature. destroy all an opponent's planeswalker."
-        || lower_normalized
-            == "destroy all an opponent's creature. destroy all an opponent's planeswalker"
-    {
-        return "Destroy all creatures you don't control and all planeswalkers you don't control"
-            .to_string();
     }
     let is_simple_mass_noun = |noun: &str| {
         matches!(
@@ -6518,11 +6133,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Creatures target player controls get -2/-2 until end of turn".to_string();
     }
-    if lower_normalized == "monocolored creature can't block until end of turn"
-        || lower_normalized == "monocolored creature cant block until end of turn"
-    {
-        return "monocolored creature can't block this turn".to_string();
-    }
     if let Some((first, second)) = normalized.split_once(". ")
         && first.starts_with("Deal ")
         && (second.eq_ignore_ascii_case("creature can't block until end of turn")
@@ -6535,10 +6145,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return format!(
             "Deal {amount} damage to each of {targets}. Those creatures can't block this turn"
         );
-    }
-    if lower_normalized == "tap all an opponent's creature. untap all a creature you control" {
-        return "Tap all creatures your opponents control and untap all creatures you control"
-            .to_string();
     }
     if lower_normalized == "opponent's creatures get -1/-0"
         || lower_normalized == "opponent's creatures get -1/-0."
@@ -6581,16 +6187,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             predicate.trim()
         );
     }
-    if lower_normalized == "deal 1 damage to each target creature an opponent controls"
-        || lower_normalized == "deal 1 damage to each target creature an opponent controls."
-    {
-        return "Deal 1 damage to each creature target opponent controls".to_string();
-    }
-    if lower_normalized == "whenever another creature you control enters, you gain 1 life"
-        || lower_normalized == "whenever another creature you control enters, you gain 1 life."
-    {
-        return "Whenever another creature enters under your control, you gain 1 life".to_string();
-    }
     if lower_normalized == "red and green spells you cast cost {1} less to cast"
         || lower_normalized == "red and green spells you cast costs {1} less to cast"
         || lower_normalized == "red and green spells you cast cost {1} less to cast."
@@ -6606,13 +6202,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         || lower_normalized == "draw three cards. target opponent draws 3 cards."
     {
         return "You and target opponent each draw three cards".to_string();
-    }
-    if lower_normalized
-        == "whenever this creature blocks creature, permanent can't untap until your next turn"
-        || lower_normalized
-            == "whenever this creature blocks creature, permanent cant untap until your next turn"
-    {
-        return "Whenever this creature blocks a creature, that creature doesn't untap during its controller's next untap step".to_string();
     }
     if lower_normalized == "untap all a snow permanent you control"
         || lower_normalized == "untap all a snow permanent you control."
@@ -6688,13 +6277,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         || lower_normalized == "target player sacrifices a creature and loses 1 life"
     {
         return "Target player sacrifices a creature of their choice and loses 1 life".to_string();
-    }
-    if lower_normalized
-        == "target player sacrifices a creature. target player gains life equal to its toughness"
-        || lower_normalized
-            == "target player sacrifices a creature of their choice. target player gains life equal to its toughness"
-    {
-        return "Target player sacrifices a creature of their choice, then gains life equal to that creature's toughness.".to_string();
     }
     if let Some((prefix, tail)) = normalized.split_once(
         ". For each opponent, that player discards a card. For each opponent, that player loses ",
@@ -6787,29 +6369,12 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "Target player sacrifices an attacking or blocking creature of their choice"
             .to_string();
     }
-    if lower_normalized == "destroy all creatures that are not all colors"
-        || lower_normalized == "destroy all creatures that are not all colors."
-    {
-        return "Destroy all creatures that are not all colors.".to_string();
-    }
-    if lower_normalized == "spell effects: destroy all creatures that are not all colors"
-        || lower_normalized == "spell effects: destroy all creatures that are not all colors."
-    {
-        return "Spell effects: Destroy all creatures that are not all colors.".to_string();
-    }
     if lower_normalized
         == "destroy target creature. if that permanent dies this way, create two tokens that are copies of it under that object's controller's control, except their power and toughness are each half that permanent's power and toughness, rounded up"
         || lower_normalized
             == "destroy target creature. if that permanent dies this way, create two tokens that are copies of it under that object's controller's control, except their power and toughness are each half that permanent's power and toughness, rounded up."
     {
         return "Destroy target creature. If that permanent dies this way, Create two tokens that are copies of it under that object's controller's control, except their power and toughness are each half that permanent's power and toughness, rounded up.".to_string();
-    }
-    if lower_normalized
-        == "target player sacrifices an artifact. target player sacrifices a land. deal 2 damage to target player"
-        || lower_normalized
-            == "target player sacrifices an artifact. target player sacrifices a land. deal 2 damage to target player."
-    {
-        return "Target player sacrifices an artifact. target player sacrifices target player's land. Deal 2 damage to target player of their choice.".to_string();
     }
     if lower_normalized.contains(
         "this creature is put into your graveyard from the battlefield: at the beginning of the next end step, you lose 1 life. return this creature to its owner's hand",
@@ -6835,24 +6400,12 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             condition.trim()
         );
     }
-    if lower_normalized == "creature with a +1/+1 counter on it you control have can't be blocked"
-        || lower_normalized
-            == "creature with a +1/+1 counter ons it you control have can't be blocked"
-    {
-        return "Creatures you control with +1/+1 counters on them can't be blocked".to_string();
-    }
     if lower_normalized
         == "for each player, that player sacrifices two creatures that player controls"
         || lower_normalized
             == "for each player, that player sacrifices two creatures that player controls."
     {
         return "Each player sacrifices two creatures of their choice".to_string();
-    }
-    if lower_normalized == "for each player, return target player's creature to its owner's hand"
-        || lower_normalized
-            == "for each player, return target player's creature to its owner's hand."
-    {
-        return "Each player returns a creature they control to its owner's hand".to_string();
     }
     if lower_normalized == "exile all card in graveyard"
         || lower_normalized == "exile all card in graveyard."
@@ -7026,21 +6579,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     ) {
         return format!("When this creature enters, target opponent chooses a creature they control. Destroy that creature{rest}");
     }
-    if lower_normalized.starts_with(
-        "target opponent chooses target creature an opponent controls. exile it. exile all ",
-    ) && (lower_normalized.contains(" in target opponent's graveyard")
-        || lower_normalized.contains(" in target opponent's graveyards"))
-    {
-        return "Target opponent exiles a creature they control and their graveyard.".to_string();
-    }
     if normalized
         == "Whenever this creature blocks creature, permanent can't untap until your next turn"
-        || normalized
-            == "Whenever this creature blocks creature, permanent cant untap until your next turn"
-        || normalized
-            == "Whenever this creature blocks creature, permanent can't untap until your next turn."
-        || normalized
-            == "Whenever this creature blocks creature, permanent cant untap until your next turn."
     {
         return "Whenever this creature blocks a creature, that creature doesn't untap during its controller's next untap step".to_string();
     }
@@ -7220,13 +6760,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Creatures your opponents control enter tapped".to_string();
     }
-    if normalized == "An opponent's artifact or creature or land enter the battlefield tapped."
-        || normalized == "An opponent's artifact or creature or land enter the battlefield tapped"
-        || normalized == "An opponent's artifact or creature or land enters the battlefield tapped."
-        || normalized == "An opponent's artifact or creature or land enters the battlefield tapped"
-    {
-        return "Artifacts, creatures, and lands your opponents control enter tapped".to_string();
-    }
     if let Some(subject) = normalized.strip_suffix(" have flashback as long as it's your turn") {
         return format!(
             "During your turn, {} have flashback. Its flashback cost is equal to its mana cost",
@@ -7345,9 +6878,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower == "counter target sorcery spell spell" {
         return "Counter target sorcery spell".to_string();
-    }
-    if lower == "counter target colorless spell or ability" {
-        return "Counter target triggered ability or colorless spell".to_string();
     }
     if lower == "destroy target artifact or enchantment or creature with flying" {
         return "Destroy target artifact, enchantment, or creature with flying".to_string();
@@ -7841,14 +7371,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if normalized == "This creature enters with 2 +1/+1 counters" {
         return "This creature enters with two +1/+1 counters on it".to_string();
     }
-    if normalized
-        == "Whenever this creature blocks or becomes blocked by a creature, it deals 1 damage to that creature"
-    {
-        return "Whenever this creature blocks or becomes blocked by a creature, this creature deals 1 damage to that creature".to_string();
-    }
-    if normalized == "When this creature enters or dies, surveil 1" {
-        return "When this creature enters or dies, surveil 1. (Look at the top card of your library. You may put it into your graveyard.)".to_string();
-    }
     if let Some(amount) = normalized
         .strip_prefix("At the beginning of your upkeep, it deals ")
         .and_then(|rest| rest.strip_suffix(" damage to you"))
@@ -8155,11 +7677,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "instant or sorcery you control cost ",
             "instant and sorcery spells you cast cost ",
         )
-        .replace(
-            "artifact or enchantment you control cost ",
-            "artifact and enchantment spells you cast cost ",
-        )
-        .replace("enchantment you control cost ", "enchantment spells you cast cost ")
         .replace("you may you sacrifice ", "You may sacrifice ")
         .replace("You may you sacrifice ", "You may sacrifice ")
         .replace(
@@ -8167,8 +7684,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "rather than pay this spell's mana cost",
         )
         .replace("controlss", "controls")
-        .replace("the tagged object 'enchanted'", "enchanted creature")
-        .replace("the tagged object '__it__'", "that creature")
         .replace(
             "the tagged object 'exiled_0' matches creature",
             "that card is a creature card",
@@ -8226,22 +7741,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(". Put a stun counter on it", " and put a stun counter on it")
         .replace(". put a stun counter on it", " and put a stun counter on it")
         .replace(". you draw a card", ". Draw a card")
-        .replace(
-            ". this land can't untap until your next turn",
-            ". This land doesn't untap during your next untap step",
-        )
-        .replace(
-            ". this land cant untap until your next turn",
-            ". This land doesn't untap during your next untap step",
-        )
-        .replace(
-            "this land can't untap until your next turn",
-            "This land doesn't untap during your next untap step",
-        )
-        .replace(
-            "this land cant untap until your next turn",
-            "This land doesn't untap during your next untap step",
-        )
         .replace(
             "When this enchantment enters, Tap enchanted creature",
             "When this Aura enters, tap enchanted creature",
@@ -8371,12 +7870,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             tail.replacen("blocking creatures get ", "the blocking creature gets ", 1);
         normalized = format!("{head}, {normalized_tail}");
     }
-    normalized = normalized
-        .replace(
-            "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
-            "Choose target creature you control and target creature an opponent controls. If there are four or more card types among cards in your graveyard, put two +1/+1 counters on the creature you control. The creature you control deals damage equal to its power to the creature an opponent controls.",
-        )
-        ;
     normalized
 }
 
@@ -10350,18 +9843,6 @@ pub(super) fn normalize_search_you_own_clause(text: &str) -> Option<String> {
         .replace(
             ", put it into hand, then shuffle",
             ", put it into your hand, then shuffle",
-        )
-        .replace(
-            ", reveal it, put it on top of library, then shuffle",
-            ", reveal it, then shuffle and put that card on top",
-        )
-        .replace(
-            ", put it on top of library, then shuffle",
-            ", then shuffle and put that card on top",
-        )
-        .replace(
-            ", put it on top of your library, then shuffle",
-            ", then shuffle and put that card on top",
         );
     Some(format!("Search your library for {selection}{tail}"))
 }
@@ -10805,6 +10286,7 @@ fn describe_effect_metric_value(
             "the greatest number of cards a player discarded this way".to_string()
         }
         crate::effect::EffectMetric::IteratedPlayerCount => "that many".to_string(),
+        crate::effect::EffectMetric::PlayersWithPositiveCount => "that many players".to_string(),
         crate::effect::EffectMetric::OtherNumber => "the other result".to_string(),
     };
     match offset {
@@ -13426,6 +12908,42 @@ fn describe_attached_object_type_condition(tag: &TagKey, filter: &ObjectFilter) 
         }
     }
 
+    // Subtype list on the attached object ("enchanted creature is a Wolf or
+    // Werewolf" — Howl of the Hunt).
+    if !filter.subtypes.is_empty() && filter.card_types.len() <= 1 {
+        let mut bare = filter.clone();
+        bare.subtypes.clear();
+        bare.card_types.clear();
+        bare.type_or_subtype_union = false;
+        bare.zone = None;
+        if bare == ObjectFilter::default() {
+            let names = filter
+                .subtypes
+                .iter()
+                .map(|subtype| format!("{subtype:?}"))
+                .collect::<Vec<_>>()
+                .join(" or ");
+            return Some(format!(
+                "{subject} is {}",
+                with_indefinite_article(&names)
+            ));
+        }
+    }
+
+    // Tap state on the attached object ("enchanted creature is untapped" —
+    // Narcolepsy).
+    if filter.tapped != filter.untapped && filter.card_types.len() <= 1 {
+        let mut bare = filter.clone();
+        bare.tapped = false;
+        bare.untapped = false;
+        bare.card_types.clear();
+        bare.zone = None;
+        if bare == ObjectFilter::default() {
+            let state = if filter.untapped { "untapped" } else { "tapped" };
+            return Some(format!("{subject} is {state}"));
+        }
+    }
+
     None
 }
 
@@ -14366,7 +13884,7 @@ fn describe_happily_ever_after_condition(condition: &Condition) -> Option<String
     Some(format!("{first}, {second}, and {third}"))
 }
 
-fn pluralize_relative_object_phrase(phrase: &str) -> String {
+pub(super) fn pluralize_relative_object_phrase(phrase: &str) -> String {
     let mut plural = pluralize_noun_phrase(phrase);
     for (singular, plural_noun) in [
         ("artifact", "artifacts"),
@@ -15078,6 +14596,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             number_word(*count as i32).unwrap_or_else(|| count.to_string())
         ),
         Condition::OpponentLostLifeThisTurn => "an opponent lost life this turn".to_string(),
+        Condition::OpponentWasDealtDamageThisTurn => {
+            "an opponent was dealt damage this turn".to_string()
+        }
         Condition::PermanentLeftBattlefieldThisTurn => {
             "a permanent left the battlefield this turn".to_string()
         }
@@ -15815,6 +15336,13 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag } => {
             if let Some(action) = tag_action_from_name(tag.as_str()) {
                 format!("{} {} it this way", describe_player_filter(player), action)
+            } else if is_implicit_reference_tag(tag.as_str()) {
+                // "If it entered under your control, ..." (Hallowed Respite,
+                // Phelia, Exuberant Shepherd).
+                format!(
+                    "it entered under {} control",
+                    describe_possessive_player_filter(player)
+                )
             } else {
                 format!(
                     "{} had the tagged object '{}' enter the battlefield under their control this turn",
@@ -17178,7 +16706,7 @@ mod tests {
             normalize_common_semantic_phrasing(
                 "Whenever another creature you control enters, you gain 1 life."
             ),
-            "Whenever another creature enters under your control, you gain 1 life"
+            "Whenever another creature you control enters, you gain 1 life."
         );
     }
 
@@ -17419,7 +16947,7 @@ mod tests {
             normalize_common_semantic_phrasing(
                 "Create a Lander token. You may sacrifice an artifact. If you do, Lithobraking deals 2 damage to each creature."
             ),
-            "Create a Lander token. Then you may sacrifice an artifact. When you do, Lithobraking deals 2 damage to each creature."
+            "Create a Lander token. You may sacrifice an artifact. If you do, Lithobraking deals 2 damage to each creature."
         );
     }
 
@@ -17430,24 +16958,6 @@ mod tests {
                 "Whenever a creature enters, lose 1 life, then add {B}."
             ),
             "Whenever a creature enters, you lose 1 life and add {B}."
-        );
-        assert_eq!(
-            normalize_common_semantic_phrasing(
-                "Choose any number red cards, reveal it, then deal that much damage to any target."
-            ),
-            "Reveal any number of red cards in your hand. Scent of Cinder deals X damage to any target, where X is the number of cards revealed this way."
-        );
-        assert_eq!(
-            normalize_common_semantic_phrasing(
-                "{2}{R}, {T}: Choose any number red cards, reveal it, then deal that much damage to any target."
-            ),
-            "{2}{R}, {T}: Reveal any number of red cards in your hand. This creature deals X damage to any target, where X is the number of cards revealed this way."
-        );
-        assert_eq!(
-            normalize_common_semantic_phrasing(
-                "{2}{R}, {T}: Choose any number red cards, reveal it, then this creature deals that much damage to any target."
-            ),
-            "{2}{R}, {T}: Reveal any number of red cards in your hand. This creature deals X damage to any target, where X is the number of cards revealed this way."
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
@@ -17851,12 +17361,6 @@ mod tests {
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
-                "Untap target creature. Untap all other creatures that shares a color with that object. That creature gets +2/+0 until end of turn."
-            ),
-            "Radiance — Untap target creature and each other creature that shares a color with it. Those creatures get +2/+0 until end of turn."
-        );
-        assert_eq!(
-            normalize_common_semantic_phrasing(
                 "Exile the top card of your library. If it's an artifact, creature, enchantment, land, planeswalker, or battle card, you may return it to the battlefield. If it happened,. Repeat this process."
             ),
             "Exile the top card of your library. If it's a permanent card, you may put it onto the battlefield. If you do, repeat this process."
@@ -17924,12 +17428,6 @@ mod tests {
                 "Look at the top 2*X cards of your library, choose X cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, Unless it's a permanent, put that object into its owner's graveyard, then lose X life."
             ),
             "Look at the top 2*X cards of your library, choose X cards, for each card chosen this way, return that object to its owner's hand, for each card revealed this way, Unless it's a permanent, put that object into its owner's graveyard, then lose X life."
-        );
-        assert_eq!(
-            normalize_common_semantic_phrasing(
-                "Mill two cards, choose up to one permanent cards, for each card chosen this way, return that object to its owner's hand, then gain 2 life."
-            ),
-            "Mill two cards. You may put a permanent card from among the milled cards into your hand. You gain 2 life."
         );
     }
 

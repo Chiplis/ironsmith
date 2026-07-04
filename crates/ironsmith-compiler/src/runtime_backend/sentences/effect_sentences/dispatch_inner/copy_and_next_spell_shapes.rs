@@ -151,6 +151,53 @@ const DELAYED_END_STEP_HEADER_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::tail("effect", LexCaptureKind::Rest),
 ]);
 
+const DELAYED_NEXT_COMBAT_OPTIONAL_PHASE_ATOMS: &[LexPatternAtom<'static>] =
+    &[LexPattern::word("phase")];
+const DELAYED_NEXT_COMBAT_HEADER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["at", "the", "beginning", "of", "the", "next", "combat"]),
+    LexPattern::optional(DELAYED_NEXT_COMBAT_OPTIONAL_PHASE_ATOMS),
+    LexPattern::phrase(&["this", "turn"]),
+    LexPattern::token(TokenKind::Comma),
+    LexPattern::tail("effect", LexCaptureKind::Rest),
+]);
+
+/// "At the beginning of the next combat [phase] this turn, <effects>" — a
+/// one-shot delayed trigger scheduled for the next beginning of combat,
+/// expiring at end of turn.
+pub(crate) fn parse_delayed_next_combat_phase_this_turn_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause = LexedClause::new(tokens).trimmed();
+    if clause.is_empty() {
+        return Ok(None);
+    }
+    let Some(matched) = DELAYED_NEXT_COMBAT_HEADER_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(effect_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
+    let remainder = effect_clause.trimmed().tokens();
+    if remainder.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed next-combat-phase effect clause (clause: '{}')",
+            crate::runtime_backend::lexer::render_token_slice(tokens).trim()
+        )));
+    }
+    let delayed_effects = parse_effect_chain(remainder)?;
+    if delayed_effects.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed next-combat-phase effect clause (clause: '{}')",
+            crate::runtime_backend::lexer::render_token_slice(tokens).trim()
+        )));
+    }
+    Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+        trigger: TriggerSpec::BeginningOfCombat(PlayerFilter::Any),
+        effects: delayed_effects,
+        one_shot: true,
+    }]))
+}
+
 fn delayed_end_step_player_from_owner(
     owner_clause: Option<LexedClause<'_>>,
 ) -> Option<PlayerFilter> {
