@@ -3,15 +3,15 @@ import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { useDragActions } from "@/context/DragContext";
 import useNewCards from "@/hooks/useNewCards";
+import useManabrewHandScale, {
+  MANABREW_HAND_CARD_BASE,
+  MANABREW_HAND_FAN_PARAMS,
+} from "@/hooks/useManabrewHandScale";
 import GameCard from "@/components/cards/GameCard";
 import { stagger } from "@/lib/motion/anime";
 import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 import { samePlayerId } from "@/lib/player-display";
 
-const HAND_CARD_WIDTH = 124;
-const HAND_CARD_BASE_OVERLAP = 20;
-const MOBILE_FAN_CARD_WIDTH = 104;
-const MOBILE_FAN_BASE_OVERLAP = 46;
 const HAND_ROULETTE_THRESHOLD = 10;
 const HAND_ROULETTE_VISIBLE_CARDS = 7;
 const HAND_ROULETTE_EDGE_PADDING = 12;
@@ -144,57 +144,94 @@ function buildPlayableMaps(state, player) {
   return { handPlayable, extraPlayable };
 }
 
-function computeHandOverlap(total, { mobileFan = false } = {}) {
-  const baseOverlap = mobileFan ? MOBILE_FAN_BASE_OVERLAP : HAND_CARD_BASE_OVERLAP;
-  const overlapGrowth = mobileFan ? 2.4 : 1.5;
-  const maxOverlap = mobileFan ? 74 : 30;
-  return Math.min(maxOverlap, baseOverlap + Math.max(0, total - 5) * overlapGrowth);
+function computeManabrewHandDimensions(scale) {
+  return {
+    cardW: Math.round(MANABREW_HAND_CARD_BASE.cardW * scale),
+    cardH: Math.round(MANABREW_HAND_CARD_BASE.cardH * scale),
+    hoverLift: Math.round(MANABREW_HAND_FAN_PARAMS.hoverLift * scale),
+    neighborPush: Math.round(MANABREW_HAND_FAN_PARAMS.neighborPush * scale),
+    maxSpread: Math.round(MANABREW_HAND_FAN_PARAMS.maxSpread * scale),
+    minSpread: Math.round(MANABREW_HAND_FAN_PARAMS.minSpread * scale),
+    spreadWidth: Math.round(MANABREW_HAND_FAN_PARAMS.spreadWidth * scale),
+  };
 }
 
-function computeRouletteWidth(total, { mobileFan = false } = {}) {
-  const visibleCards = Math.min(HAND_ROULETTE_VISIBLE_CARDS, total);
-  const cardWidth = mobileFan ? MOBILE_FAN_CARD_WIDTH : HAND_CARD_WIDTH;
-  const overlap = computeHandOverlap(total, { mobileFan });
-  const stride = cardWidth - overlap;
-  return Math.round(
-    cardWidth
-    + Math.max(0, visibleCards - 1) * stride
-    + (HAND_ROULETTE_EDGE_PADDING * 2)
+function computeManabrewSpread(total, dims) {
+  if (total <= 1) return 0;
+  return Math.max(
+    dims.minSpread,
+    Math.min(dims.maxSpread, Math.floor((dims.spreadWidth - dims.cardW) / (total - 1)))
   );
 }
 
-function computeHandRowWidth(total, { mobileFan = false } = {}) {
-  if (total <= 0) return 0;
-  const cardWidth = mobileFan ? MOBILE_FAN_CARD_WIDTH : HAND_CARD_WIDTH;
-  const overlap = computeHandOverlap(total, { mobileFan });
-  const stride = cardWidth - overlap;
-  return Math.round(cardWidth + Math.max(0, total - 1) * stride);
+function computeManabrewBaseLayout(total, dims) {
+  if (total === 0) return [];
+  if (total === 1) return [{ x: 0, drop: 0, rot: 0 }];
+
+  const spread = computeManabrewSpread(total, dims);
+  const totalWidth = (total - 1) * spread;
+  const arcDeg = Math.min(MANABREW_HAND_FAN_PARAMS.maxArcDeg, total * 2.5);
+
+  return Array.from({ length: total }, (_, index) => {
+    const t = (index / (total - 1)) * 2 - 1;
+    return {
+      x: -totalWidth / 2 + index * spread,
+      drop: (1 - Math.cos((t * Math.PI) / 2)) * (MANABREW_HAND_FAN_PARAMS.arcRadius * 0.015),
+      rot: t * (arcDeg / 2),
+    };
+  });
 }
 
-function buildHandCardRowStyle(index, total, { mobileFan = false } = {}) {
-  const cardWidth = mobileFan ? MOBILE_FAN_CARD_WIDTH : HAND_CARD_WIDTH;
-  const overlap = computeHandOverlap(total, { mobileFan });
-  const middleIndex = (total - 1) / 2;
-  const distanceFromMiddle = index - middleIndex;
-  const normalizedOffset = total > 1
-    ? distanceFromMiddle / Math.max(1, middleIndex)
-    : 0;
-  const fanRotate = mobileFan ? `${(normalizedOffset * 15).toFixed(2)}deg` : "0deg";
-  const fanTranslateX = mobileFan ? `${(normalizedOffset * 3.5).toFixed(1)}px` : "0px";
-  const fanTranslateY = mobileFan
-    ? `${(Math.abs(normalizedOffset) * 18 - 8).toFixed(1)}px`
-    : "0px";
+function computeRouletteWidth(total, dims) {
+  const visibleCards = Math.min(HAND_ROULETTE_VISIBLE_CARDS, total);
+  const stride = computeManabrewSpread(total, dims);
+  return Math.round(
+    dims.cardW
+    + Math.max(0, visibleCards - 1) * stride
+    + (HAND_ROULETTE_EDGE_PADDING * 2 * (dims.cardW / MANABREW_HAND_CARD_BASE.cardW))
+  );
+}
+
+function computeHandRowWidth(total, dims) {
+  if (total <= 0) return 0;
+  const stride = computeManabrewSpread(total, dims);
+  return Math.round(dims.cardW + Math.max(0, total - 1) * stride);
+}
+
+function buildHandCardRowStyle(index, total, { dims, activeIndex = null } = {}) {
+  const spread = computeManabrewSpread(total, dims);
+  const baseLayout = computeManabrewBaseLayout(total, dims);
+  const base = baseLayout[index] || { drop: 0, rot: 0 };
+  const isActive = activeIndex === index;
+
+  let pushX = 0;
+  if (activeIndex !== null && activeIndex >= 0 && index !== activeIndex) {
+    const distance = Math.abs(index - activeIndex);
+    const sign = index < activeIndex ? -1 : 1;
+    pushX = sign * Math.max(0, dims.neighborPush - distance * 6);
+  }
+
+  const fanRotate = isActive ? "0deg" : `${base.rot.toFixed(2)}deg`;
+  const fanTranslateX = `${pushX.toFixed(1)}px`;
+  const fanTranslateY = isActive
+    ? `${(-dims.hoverLift).toFixed(1)}px`
+    : `${base.drop.toFixed(1)}px`;
+  const cardScale = isActive ? MANABREW_HAND_FAN_PARAMS.hoverScale : 1;
 
   return {
-    flex: `0 0 ${cardWidth}px`,
-    width: `${cardWidth}px`,
-    minWidth: `${cardWidth}px`,
-    maxWidth: `${cardWidth}px`,
-    marginLeft: index === 0 ? "0px" : `-${overlap.toFixed(1)}px`,
-    zIndex: index + 2,
+    flex: `0 0 ${dims.cardW}px`,
+    width: `${dims.cardW}px`,
+    minWidth: `${dims.cardW}px`,
+    maxWidth: `${dims.cardW}px`,
+    height: `${dims.cardH}px`,
+    minHeight: `${dims.cardH}px`,
+    maxHeight: `${dims.cardH}px`,
+    marginLeft: index === 0 ? "0px" : `${(spread - dims.cardW).toFixed(1)}px`,
+    zIndex: isActive ? HAND_SELECTED_LAYOUT_Z_INDEX : index + 2,
     "--card-rotate": fanRotate,
     "--card-translate-x": fanTranslateX,
     "--card-translate-y": fanTranslateY,
+    "--card-scale": String(cardScale),
   };
 }
 
@@ -204,11 +241,15 @@ function splitHandCardRowStyle(style, { scrollSnapAlign } = {}) {
     width,
     minWidth,
     maxWidth,
+    height,
+    minHeight,
+    maxHeight,
     marginLeft,
     zIndex,
     "--card-rotate": cardRotate,
     "--card-translate-x": cardTranslateX,
     "--card-translate-y": cardTranslateY,
+    "--card-scale": cardScale,
   } = style;
 
   return {
@@ -217,6 +258,9 @@ function splitHandCardRowStyle(style, { scrollSnapAlign } = {}) {
       width,
       minWidth,
       maxWidth,
+      height,
+      minHeight,
+      maxHeight,
       marginLeft,
       zIndex,
       scrollSnapAlign,
@@ -226,9 +270,13 @@ function splitHandCardRowStyle(style, { scrollSnapAlign } = {}) {
       width: "100%",
       minWidth: "100%",
       maxWidth: "100%",
+      height: "100%",
+      minHeight: "100%",
+      maxHeight: "100%",
       "--card-rotate": cardRotate,
       "--card-translate-x": cardTranslateX,
       "--card-translate-y": cardTranslateY,
+      "--card-scale": cardScale,
     },
   };
 }
@@ -261,6 +309,7 @@ export default function HandZone({
   const { state, multiplayer } = useGame();
   const { hoverCard, clearHover, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
   const { startDrag, updateDrag, endDrag } = useDragActions();
+  const handScale = useManabrewHandScale();
   const dragThresholdRef = useRef(null);
   const activePointerIdRef = useRef(null);
   const dragHandlersRef = useRef(null);
@@ -577,21 +626,36 @@ export default function HandZone({
       handCards.map((card) => card.id).join("|"),
       extraCards.map((card) => `extra-${card.id}`).join("|"),
       layout,
+      handScale.toFixed(3),
     ].join("::"),
-    [extraCards, handCards, layout]
+    [extraCards, handCards, handScale, layout]
   );
   const renderedHandCardCount = handCards.length + extraCards.length;
   const hasExtra = extraCards.length > 0;
   const isMobileFan = layout === "mobile-fan";
   const isVerticalRail = layout === "vertical-rail";
   const isRoulette = !isVerticalRail && !isMobileFan && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
+  const handDimensions = useMemo(
+    () => computeManabrewHandDimensions(handScale),
+    [handScale]
+  );
+  const activeFanObjectId = activeMenuHoveredHandObjectId
+    || selectedObjectIdKey
+    || (hoveredObjectId != null ? String(hoveredObjectId) : null);
+  const activeFanIndex = useMemo(() => {
+    if (!activeFanObjectId) return null;
+    const handIndex = handCards.findIndex((card) => String(card.id) === activeFanObjectId);
+    if (handIndex >= 0) return handIndex;
+    const extraIndex = extraCards.findIndex((card) => String(card.id) === activeFanObjectId);
+    return extraIndex >= 0 ? handCards.length + extraIndex : null;
+  }, [activeFanObjectId, extraCards, handCards]);
   const rouletteWidth = useMemo(
-    () => computeRouletteWidth(renderedHandCardCount, { mobileFan: isMobileFan }),
-    [isMobileFan, renderedHandCardCount]
+    () => computeRouletteWidth(renderedHandCardCount, handDimensions),
+    [handDimensions, renderedHandCardCount]
   );
   const nonRouletteWidth = useMemo(
-    () => computeHandRowWidth(renderedHandCardCount, { mobileFan: isMobileFan }) + 32,
-    [isMobileFan, renderedHandCardCount]
+    () => computeHandRowWidth(renderedHandCardCount, handDimensions) + 32,
+    [handDimensions, renderedHandCardCount]
   );
   const surfaceWidth = isVerticalRail
     ? "100%"
@@ -1137,7 +1201,10 @@ export default function HandZone({
           else if (visualIndex < handCards.length - 1 && newIds.has(handCards[visualIndex + 1].id)) bumpDir = -1;
         }
         const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
-          buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
+          buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
+            dims: handDimensions,
+            activeIndex: isPrimaryCycle ? activeFanIndex : null,
+          }),
           { scrollSnapAlign: isRoulette ? "start" : undefined }
         );
         const wrapperStyle = elevateHandCardWrapperStyle(baseWrapperStyle, isInspected);
@@ -1194,7 +1261,10 @@ export default function HandZone({
         || isMenuActionPreview
       );
       const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
-        buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
+        buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
+          dims: handDimensions,
+          activeIndex: isPrimaryCycle ? activeFanIndex : null,
+        }),
         { scrollSnapAlign: isRoulette ? "start" : undefined }
       );
       const wrapperStyle = elevateHandCardWrapperStyle(baseWrapperStyle, isInspected);
@@ -1302,7 +1372,16 @@ export default function HandZone({
       <div className="flex gap-1.5 flex-nowrap pb-0.5 items-end min-h-0 overflow-hidden">
         {backs > 0
           ? Array.from({ length: backs }, (_, i) => (
-              <div key={i} className="game-card w-[92px] min-w-[92px] min-h-[126px] p-1 text-[14px] grid content-end">
+              <div
+                key={i}
+                className="game-card p-1 text-[14px] grid content-end"
+                style={{
+                  width: `${handDimensions.cardW}px`,
+                  minWidth: `${handDimensions.cardW}px`,
+                  height: `${handDimensions.cardH}px`,
+                  minHeight: `${handDimensions.cardH}px`,
+                }}
+              >
                 <span className="card-label text-muted-foreground">Card</span>
               </div>
             ))

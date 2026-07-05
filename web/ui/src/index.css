@@ -5027,7 +5027,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 
 @media (hover: hover) and (pointer: fine) {
   .hand-reveal-shell:hover {
-    --hand-reveal-scale: 1.5;
+    --hand-reveal-scale: 1;
     z-index: 80;
   }
 }
@@ -5272,14 +5272,28 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   transform:
     translate3d(
       calc(var(--card-translate-x) + var(--card-return-x) + var(--card-jolt-x)),
-      calc(var(--card-translate-y) - 16px + var(--card-return-y) + var(--card-jolt-y)),
+      calc(var(--card-translate-y) + var(--card-return-y) + var(--card-jolt-y)),
       0
     )
     rotate(calc(var(--card-rotate) + var(--card-return-rotate) + var(--card-jolt-rotate)))
-    scale(1.15)
+    scale(var(--card-scale))
     scale(var(--card-return-scale))
     scale(var(--card-jolt-scale));
   z-index: 50 !important;
+}
+
+.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.hovered .game-card-surface,
+.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected .game-card-surface {
+  inset: 0 !important;
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
+.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.hovered .game-card-surface > img,
+.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected .game-card-surface > img {
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .inspector-oracle-line {
@@ -11776,17 +11790,17 @@ select::-ms-expand {
   .mobile-battle-self-hand .game-card.hand-card:hover,
   .mobile-battle-self-hand .game-card.hand-card.hovered,
   .mobile-battle-self-hand .game-card.hand-card.inspected {
-    transform:
-      translate3d(
-        calc(var(--card-translate-x) + var(--card-return-x) + var(--card-jolt-x)),
-        calc(var(--card-translate-y) - 10px + var(--card-return-y) + var(--card-jolt-y)),
-        0
-      )
-      rotate(calc(var(--card-rotate) + var(--card-return-rotate) + var(--card-jolt-rotate)))
-      scale(calc(var(--card-scale) * 1.02))
-      scale(var(--card-return-scale))
-      scale(var(--card-jolt-scale));
-  }
+  transform:
+    translate3d(
+      calc(var(--card-translate-x) + var(--card-return-x) + var(--card-jolt-x)),
+      calc(var(--card-translate-y) + var(--card-return-y) + var(--card-jolt-y)),
+      0
+    )
+    rotate(calc(var(--card-rotate) + var(--card-return-rotate) + var(--card-jolt-rotate)))
+    scale(var(--card-scale))
+    scale(var(--card-return-scale))
+    scale(var(--card-jolt-scale));
+}
 
   .mobile-battle-self-hand .game-card.hand-card.inspected {
     transform:
@@ -11794,11 +11808,11 @@ select::-ms-expand {
         calc(var(--card-translate-x) + var(--mobile-hand-selected-shift-x, 0px) + var(--card-return-x) + var(--card-jolt-x)),
         calc(var(--card-translate-y) - var(--mobile-hand-selected-shift-y, 92px) + var(--card-return-y) + var(--card-jolt-y)),
         0
-      )
-      rotate(calc(var(--card-return-rotate) + var(--card-jolt-rotate)))
-      scale(calc(var(--card-scale) * 1.17))
-      scale(var(--card-return-scale))
-      scale(var(--card-jolt-scale));
+    )
+    rotate(calc(var(--card-return-rotate) + var(--card-jolt-rotate)))
+    scale(var(--card-scale))
+    scale(var(--card-return-scale))
+    scale(var(--card-jolt-scale));
     z-index: 220 !important;
   }
 

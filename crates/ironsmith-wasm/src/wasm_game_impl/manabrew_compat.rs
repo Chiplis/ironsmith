@@ -337,6 +337,12 @@ fn game_view_from_snapshot(snapshot_value: &Value) -> Value {
         .map(|player_value| {
             let player = object_value(player_value);
             let id = player_slot(get_any(player, &["id"]));
+            let (over, winner_id) = game_over(snapshot);
+            let status = if over && !winner_id.is_null() && winner_id.as_str() != Some(id.as_str()) {
+                "lost"
+            } else {
+                "playing"
+            };
             let hand_cards: Vec<Value> = array_value(get_any(player, &["hand_cards", "handCards"]))
                 .iter()
                 .map(|card| card_from_zone_card(card, &id, &id, "hand"))
@@ -350,6 +356,7 @@ fn game_view_from_snapshot(snapshot_value: &Value) -> Value {
             json!({
                 "id": id,
                 "name": string_value(get_any(player, &["name"]), &id),
+                "status": status,
                 "isHuman": true,
                 "life": number_value(get_any(player, &["life"]), 20),
                 "poison": 0,
@@ -415,7 +422,6 @@ fn game_view_from_snapshot(snapshot_value: &Value) -> Value {
             .collect()),
         "gameOver": over,
         "winnerId": winner_id,
-        "concededPlayerIds": [],
         "monarchId": null,
         "initiativeHolderId": null,
     })
@@ -1239,7 +1245,6 @@ fn manabrew_command_from_values(output: &JsonMap, binding: &JsonMap) -> Result<V
         "chooseAction" => {
             let inner = output.get("output").and_then(as_object).cloned().unwrap_or_default();
             match inner.get("type").and_then(Value::as_str).unwrap_or_default() {
-                "concede" => Ok(json!({ "type": "forfeit_player" })),
                 "pass" => Ok(json!({ "type": "priority_action", "action_ref": pass_priority_action_ref(binding) })),
                 "act" => Ok(json!({
                     "type": "priority_action",

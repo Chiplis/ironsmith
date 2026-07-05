@@ -4,6 +4,9 @@ import { useCombatArrows } from "@/context/useCombatArrows";
 import { useDragActions } from "@/context/DragContext";
 import { useHoverActions } from "@/context/HoverContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
+import useManabrewHandScale, {
+  MANABREW_HAND_CARD_BASE,
+} from "@/hooks/useManabrewHandScale";
 import TableCore from "@/components/board/TableCore";
 import HandZone from "@/components/board/HandZone";
 import RematchSideboardingView from "@/components/board/RematchSideboardingView";
@@ -28,7 +31,6 @@ import { samePlayerId } from "@/lib/player-display";
 import { sameActionRef } from "@/lib/sync-commands";
 
 const HAND_PEEK_HEIGHT_DEFAULT = 46;
-const HAND_REVEAL_HEIGHT_DEFAULT = 164;
 const TOP_LEFT_INSPECTOR_INSET = 6;
 const TOP_LEFT_INSPECTOR_ZONE_GAP = 6;
 const TOP_LEFT_INSPECTOR_MIN_HEIGHT = 96;
@@ -760,9 +762,10 @@ export default function Workspace({
   const { updateStackArrows, clearStackArrows } = useCombatArrows();
   const { endDrag } = useDragActions();
   const { clearHover, hoverCard } = useHoverActions();
-  const { nonDesktopViewport, tabletCompactViewport, smallDesktopViewport, largeDesktopViewport } = useViewportLayout();
-  const HAND_PEEK_HEIGHT = tabletCompactViewport ? 40 : (smallDesktopViewport ? 44 : (largeDesktopViewport ? 52 : HAND_PEEK_HEIGHT_DEFAULT));
-  const HAND_REVEAL_HEIGHT = tabletCompactViewport ? 140 : (smallDesktopViewport ? 152 : (largeDesktopViewport ? 180 : HAND_REVEAL_HEIGHT_DEFAULT));
+  const { nonDesktopViewport, tabletCompactViewport } = useViewportLayout();
+  const handScale = useManabrewHandScale();
+  const HAND_PEEK_HEIGHT = Math.round(HAND_PEEK_HEIGHT_DEFAULT * handScale);
+  const HAND_REVEAL_HEIGHT = Math.round(MANABREW_HAND_CARD_BASE.containerH * handScale);
   const HAND_COLLAPSED_SHELL_HEIGHT = HAND_PEEK_HEIGHT;
   const showTopDock = !nonDesktopViewport && !tabletCompactViewport;
   const showRematchSideboarding = multiplayer?.rematch?.phase === "sideboarding";
