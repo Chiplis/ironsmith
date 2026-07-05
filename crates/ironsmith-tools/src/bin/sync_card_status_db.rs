@@ -5,6 +5,7 @@ use ironsmith_tools::{
 use rayon::prelude::*;
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fs,
     time::{Duration, Instant},
 };
 
@@ -55,18 +56,31 @@ fn parse_args() -> Result<Args, String> {
                     names.insert(normalized);
                 }
             }
+            "--names-file" => {
+                let path = iter
+                    .next()
+                    .ok_or_else(|| "--names-file requires a path".to_string())?;
+                let raw = fs::read_to_string(&path)
+                    .map_err(|err| format!("failed to read --names-file {path}: {err}"))?;
+                for line in raw.lines() {
+                    let normalized = ironsmith_tools::normalize_lookup_name(line);
+                    if !normalized.is_empty() {
+                        names.insert(normalized);
+                    }
+                }
+            }
             "--strict-only" => {
                 strict_only = true;
             }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run --release -p ironsmith-tools --bin sync_card_status_db -- [--db-path <path>] [--tag <slug>] [--name <card>] [--cards <path>] [--strict-only]"
+                    "usage: cargo run --release -p ironsmith-tools --bin sync_card_status_db -- [--db-path <path>] [--tag <slug>] [--name <card>] [--names-file <path>] [--cards <path>] [--strict-only]"
                         .to_string(),
                 );
             }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --cards/--db-path/--tag/--name/--strict-only"
+                    "unknown argument '{arg}'. expected --cards/--db-path/--tag/--name/--names-file/--strict-only"
                 ));
             }
         }

@@ -224,6 +224,12 @@ pub struct RegistrySyncSummary {
     pub deleted: usize,
 }
 
+#[derive(Debug, Clone)]
+pub struct MissingRegistrySyncSummary {
+    pub inserted_names: Vec<String>,
+    pub unchanged: usize,
+}
+
 #[derive(Debug)]
 pub struct TagImportRow {
     pub card_name: String,
@@ -1811,6 +1817,91 @@ impl CardStatusDb {
             updated,
             unchanged,
             deleted,
+        })
+    }
+
+    pub fn insert_missing_registry_cards(
+        &mut self,
+        rows: &[RegistryCardRecord],
+    ) -> Result<MissingRegistrySyncSummary, Box<dyn Error>> {
+        let normalized_rows = rows
+            .iter()
+            .filter_map(|row| {
+                let normalized = normalize_lookup_name(&row.payload.name);
+                if normalized.is_empty() {
+                    return None;
+                }
+                let mut row = row.clone();
+                row.payload.name = normalized;
+                Some(row)
+            })
+            .collect::<Vec<_>>();
+        if normalized_rows.is_empty() {
+            return Err("refusing to sync registry cards with an empty row set".into());
+        }
+
+        let tx = self.conn.transaction()?;
+        let mut existing_names = BTreeSet::new();
+        {
+            let mut stmt = tx.prepare("SELECT card_name FROM registry_card")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            for row in rows {
+                existing_names.insert(row?);
+            }
+        }
+
+        let mut inserted_names = Vec::new();
+        let mut unchanged = 0usize;
+        {
+            let mut insert = tx.prepare(
+                "INSERT INTO registry_card (
+                    card_name,
+                    oracle_text,
+                    raw_oracle_text,
+                    parse_input,
+                    raw_card_json,
+                    mana_cost,
+                    type_line,
+                    power,
+                    toughness,
+                    loyalty,
+                    defense,
+                    layout,
+                    content_hash,
+                    updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+            )?;
+            for row in &normalized_rows {
+                if existing_names.contains(&row.payload.name) {
+                    unchanged += 1;
+                    continue;
+                }
+
+                let stored_oracle_text = strip_parenthetical_text(&row.payload.oracle_text);
+                insert.execute(params![
+                    row.payload.name.as_str(),
+                    stored_oracle_text,
+                    row.payload.raw_oracle_text.as_str(),
+                    row.payload.parse_input.as_str(),
+                    row.raw_card_json.as_str(),
+                    row.mana_cost.as_deref(),
+                    row.type_line.as_deref(),
+                    row.power.as_deref(),
+                    row.toughness.as_deref(),
+                    row.loyalty.as_deref(),
+                    row.defense.as_deref(),
+                    row.layout.as_deref(),
+                    row.content_hash.as_str(),
+                ])?;
+                existing_names.insert(row.payload.name.clone());
+                inserted_names.push(row.payload.name.clone());
+            }
+        }
+        tx.commit()?;
+
+        Ok(MissingRegistrySyncSummary {
+            inserted_names,
+            unchanged,
         })
     }
 

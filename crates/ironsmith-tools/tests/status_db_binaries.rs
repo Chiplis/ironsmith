@@ -130,6 +130,12 @@ fn query_count(db_path: &Path, sql: &str) -> i64 {
         .expect("query count")
 }
 
+fn query_string(db_path: &Path, sql: &str) -> String {
+    let conn = Connection::open(db_path).expect("open sqlite db");
+    conn.query_row(sql, [], |row| row.get(0))
+        .expect("query string")
+}
+
 fn make_payload(name: &str, oracle_text: &str, mana_cost: &str, type_line: &str) -> CardPayload {
     let metadata_lines = vec![
         format!("Mana cost: {mana_cost}"),
@@ -349,6 +355,70 @@ fn sync_registry_db_writes_registry_rows_by_default() {
     assert_eq!(
         query_count(&db_path, "SELECT COUNT(*) FROM registry_card"),
         2
+    );
+}
+
+#[test]
+fn sync_registry_db_insert_missing_only_preserves_existing_registry_rows() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+    let inserted_names_path = dir.path().join("inserted-names.txt");
+    write_cards_json(&cards_path);
+
+    sync_registry_db(&cards_path, &db_path);
+
+    fs::write(
+        &cards_path,
+        r#"[
+  {
+    "name":"Lightning Bolt",
+    "oracle_text":"Lightning Bolt deals 4 damage to any target.",
+    "mana_cost":"{R}",
+    "type_line":"Instant"
+  },
+  {
+    "name":"Counterspell",
+    "oracle_text":"Counter target spell.",
+    "mana_cost":"{U}{U}",
+    "type_line":"Instant"
+  },
+  {
+    "name":"Abrade",
+    "oracle_text":"Choose one — Abrade deals 3 damage to target creature; or destroy target artifact.",
+    "mana_cost":"{1}{R}",
+    "type_line":"Instant"
+  }
+]"#,
+    )
+    .expect("write updated cards.json");
+
+    sync_registry_db_with_args(
+        &cards_path,
+        &db_path,
+        &[
+            "--insert-missing-only",
+            "--inserted-names-out",
+            inserted_names_path
+                .to_str()
+                .expect("inserted names path utf8"),
+        ],
+    );
+
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM registry_card"),
+        3
+    );
+    assert_eq!(
+        query_string(
+            &db_path,
+            "SELECT oracle_text FROM registry_card WHERE card_name = 'Lightning Bolt'"
+        ),
+        "Lightning Bolt deals 3 damage to any target."
+    );
+    assert_eq!(
+        fs::read_to_string(&inserted_names_path).expect("read inserted names"),
+        "Abrade\n"
     );
 }
 
@@ -583,6 +653,46 @@ fn sync_card_status_db_configures_worker_stack_for_deep_compile_paths() {
     assert!(
         stdout.contains("Rayon worker stack: 16777216 bytes"),
         "expected sync output to report configured worker stack, got {stdout}"
+    );
+}
+
+#[test]
+fn sync_card_status_db_accepts_names_file_filter() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+    let names_path = dir.path().join("names.txt");
+    write_cards_with_abrade_json(&cards_path);
+    fs::write(&names_path, "Abrade\n").expect("write names file");
+
+    sync_registry_db(&cards_path, &db_path);
+
+    let status = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
+        .arg("--db-path")
+        .arg(&db_path)
+        .arg("--names-file")
+        .arg(&names_path)
+        .status()
+        .expect("run sync_card_status_db with names file");
+    assert!(status.success(), "sync_card_status_db should succeed");
+
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM latest_card_compilation"),
+        1
+    );
+    assert_eq!(
+        query_count(
+            &db_path,
+            "SELECT COUNT(*) FROM latest_card_compilation WHERE card_name = 'Abrade'"
+        ),
+        1
+    );
+    assert_eq!(
+        query_count(
+            &db_path,
+            "SELECT COUNT(*) FROM latest_card_compilation WHERE card_name = 'Lightning Bolt'"
+        ),
+        0
     );
 }
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -21,6 +22,7 @@ from stream_scryfall_blocks import (
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = ROOT / "cards.json"
+DEFAULT_METADATA_SUFFIX = ".scryfall-bulk-data.json"
 BULK_DATA_URL = "https://api.scryfall.com/bulk-data/default-cards"
 USER_AGENT = "ironsmith/1.0 (https://github.com/chiplis/ironsmith)"
 ACCEPT = "application/json;q=0.9,*/*;q=0.8"
@@ -48,6 +50,72 @@ def download_file(url: str, destination: Path) -> None:
     )
     with urllib.request.urlopen(request) as response, destination.open("wb") as out:
         shutil.copyfileobj(response, out)
+
+
+def default_metadata_path(out: Path) -> Path:
+    return out.with_name(out.name + DEFAULT_METADATA_SUFFIX)
+
+
+def write_status(path: Path | None, status: str) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{status}\n", encoding="utf-8")
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def local_metadata_matches(remote_metadata: dict, metadata_path: Path, cards_path: Path) -> bool:
+    if not cards_path.is_file() or not metadata_path.is_file():
+        return False
+    try:
+        local_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    remote_type = str(remote_metadata.get("type") or "").strip()
+    remote_updated_at = str(remote_metadata.get("updated_at") or "").strip()
+    local_cards_sha256 = str(local_metadata.get("filtered_cards_sha256") or "").strip()
+    return (
+        bool(remote_type)
+        and bool(remote_updated_at)
+        and bool(local_cards_sha256)
+        and local_metadata.get("type") == remote_type
+        and local_metadata.get("updated_at") == remote_updated_at
+        and local_cards_sha256 == file_sha256(cards_path)
+    )
+
+
+def write_download_metadata(
+    metadata: dict,
+    destination: Path,
+    *,
+    total: int,
+    kept: int,
+) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schemaVersion": 1,
+        "id": metadata.get("id"),
+        "type": metadata.get("type"),
+        "name": metadata.get("name"),
+        "uri": metadata.get("uri"),
+        "download_uri": metadata.get("download_uri"),
+        "updated_at": metadata.get("updated_at"),
+        "total_entries": total,
+        "kept_cards": kept,
+        "filtered_cards_sha256": file_sha256(destination),
+    }
+    destination.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def should_keep_card(card: dict) -> bool:
@@ -141,11 +209,30 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Use an existing Default Cards dump (.json or .json.gz) instead of downloading.",
     )
+    parser.add_argument(
+        "--metadata-out",
+        type=Path,
+        help=(
+            "Path for the Scryfall bulk-data metadata sidecar "
+            f"(default: <out>{DEFAULT_METADATA_SUFFIX})."
+        ),
+    )
+    parser.add_argument(
+        "--status-out",
+        type=Path,
+        help="Write one of downloaded, skipped, or filtered to this file.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Download even when the metadata sidecar says the local cards file is current.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    metadata_out = args.metadata_out or default_metadata_path(args.out)
 
     if args.input is not None:
         source = args.input
@@ -157,11 +244,24 @@ def main() -> int:
             print("Failed to find download_uri in Scryfall bulk-data metadata.", file=sys.stderr)
             return 1
 
+        if (
+            not args.force
+            and local_metadata_matches(metadata, metadata_out, args.out)
+        ):
+            print(
+                f"[INFO] Scryfall Default Cards already current at {args.out} "
+                f"(source updated_at: {metadata.get('updated_at')})",
+                file=sys.stderr,
+            )
+            write_status(args.status_out, "skipped")
+            return 0
+
         with tempfile.TemporaryDirectory(prefix="ironsmith-scryfall-") as tmpdir:
             source = Path(tmpdir) / "default-cards.json"
             print(f"[INFO] downloading {download_uri}", file=sys.stderr)
             download_file(download_uri, source)
             total, kept = write_filtered_cards(source, args.out)
+            write_download_metadata(metadata, metadata_out, total=total, kept=kept)
             print(
                 f"[INFO] wrote {kept} cards to {args.out} "
                 f"(from {total} Default Cards entries)",
@@ -172,6 +272,8 @@ def main() -> int:
                     f"[INFO] source updated_at: {metadata.get('updated_at')}",
                     file=sys.stderr,
                 )
+                print(f"[INFO] wrote Scryfall metadata to {metadata_out}", file=sys.stderr)
+            write_status(args.status_out, "downloaded")
             return 0
 
     total, kept = write_filtered_cards(source, args.out)
@@ -180,6 +282,7 @@ def main() -> int:
         f"(from {total} Default Cards entries)",
         file=sys.stderr,
     )
+    write_status(args.status_out, "filtered")
     return 0
 
 

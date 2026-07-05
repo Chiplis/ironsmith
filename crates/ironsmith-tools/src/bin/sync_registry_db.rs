@@ -13,6 +13,8 @@ struct Args {
     db_path: String,
     included_card_names: BTreeSet<String>,
     extra_cards: Vec<Value>,
+    insert_missing_only: bool,
+    inserted_names_out: Option<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -20,6 +22,8 @@ fn parse_args() -> Result<Args, String> {
     let mut db_path = default_db_path().display().to_string();
     let mut included_card_names = BTreeSet::new();
     let mut extra_cards = Vec::new();
+    let mut insert_missing_only = false;
+    let mut inserted_names_out = None;
 
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -76,15 +80,24 @@ fn parse_args() -> Result<Args, String> {
                     extra_cards.push(card);
                 }
             }
+            "--insert-missing-only" => {
+                insert_missing_only = true;
+            }
+            "--inserted-names-out" => {
+                inserted_names_out = Some(
+                    iter.next()
+                        .ok_or_else(|| "--inserted-names-out requires a path".to_string())?,
+                );
+            }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run --release -p ironsmith-tools --bin sync_registry_db -- [--cards <path>] [--db-path <path>] [--include-card <name>] [--include-cards <path>] [--extra-card-json <json-object>] [--extra-cards-json <json-array-path>]"
+                    "usage: cargo run --release -p ironsmith-tools --bin sync_registry_db -- [--cards <path>] [--db-path <path>] [--include-card <name>] [--include-cards <path>] [--extra-card-json <json-object>] [--extra-cards-json <json-array-path>] [--insert-missing-only] [--inserted-names-out <path>]"
                         .to_string(),
                 );
             }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --cards/--db-path/--include-card/--include-cards/--extra-card-json/--extra-cards-json"
+                    "unknown argument '{arg}'. expected --cards/--db-path/--include-card/--include-cards/--extra-card-json/--extra-cards-json/--insert-missing-only/--inserted-names-out"
                 ));
             }
         }
@@ -95,6 +108,8 @@ fn parse_args() -> Result<Args, String> {
         db_path,
         included_card_names,
         extra_cards,
+        insert_missing_only,
+        inserted_names_out,
     })
 }
 
@@ -125,6 +140,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut db = CardStatusDb::open(&args.db_path)?;
+    if args.insert_missing_only {
+        let summary =
+            db.insert_missing_registry_cards(&cards.values().cloned().collect::<Vec<_>>())?;
+        if let Some(path) = &args.inserted_names_out {
+            if let Some(parent) = std::path::Path::new(path).parent()
+                && !parent.as_os_str().is_empty()
+            {
+                fs::create_dir_all(parent)?;
+            }
+            let mut output = summary.inserted_names.join("\n");
+            if !output.is_empty() {
+                output.push('\n');
+            }
+            fs::write(path, output)?;
+        }
+
+        println!("Registry DB missing-card sync complete");
+        println!("- Canonical cards processed: {}", cards.len());
+        println!(
+            "- Explicit card includes requested: {}",
+            args.included_card_names.len()
+        );
+        println!("- Extra card records provided: {}", args.extra_cards.len());
+        println!("- Registry rows inserted: {}", summary.inserted_names.len());
+        println!("- Registry rows already present: {}", summary.unchanged);
+        println!("- Registry rows updated: 0");
+        println!("- Registry rows deleted: 0");
+        if let Some(path) = &args.inserted_names_out {
+            println!("- Inserted names file: {path}");
+        }
+        println!("- DB: {}", args.db_path);
+        return Ok(());
+    }
+
     let summary = db.replace_registry_cards(&cards.values().cloned().collect::<Vec<_>>())?;
     let prune = db.prune_cards_not_in_names(&cards.keys().cloned().collect::<Vec<_>>())?;
 

@@ -5,6 +5,7 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 WASM_CRATE_DIR="$ROOT_DIR/crates/ironsmith-wasm"
 PKG_DIR="$ROOT_DIR/pkg"
 DEMO_PKG_DIR="$ROOT_DIR/web/wasm_demo/pkg"
+DEFAULT_CARDS_FILE="$ROOT_DIR/cards.json"
 DEFAULT_DB_PATH="$ROOT_DIR/reports/engine-status.sqlite3"
 DEFAULT_FRONTEND_SCORES_FILE="$ROOT_DIR/web/ui/public/ironsmith_semantic_scores.json"
 DEFAULT_FRONTEND_CARDS_DIR="$ROOT_DIR/web/ui/public/cards"
@@ -12,9 +13,18 @@ FRONTEND_CARDS_CACHE_MANIFEST_NAME=".ironsmith_frontend_cards_checksum"
 
 FEATURES="wasm-lean"
 OPTIMIZE_WASM=0
+CARDS_FILE="${IRONSMITH_CARDS_FILE:-$DEFAULT_CARDS_FILE}"
+if [[ -n "${IRONSMITH_SCRYFALL_METADATA_FILE:-}" ]]; then
+  SCRYFALL_METADATA_FILE="$IRONSMITH_SCRYFALL_METADATA_FILE"
+  SCRYFALL_METADATA_FILE_SET=1
+else
+  SCRYFALL_METADATA_FILE="${CARDS_FILE}.scryfall-bulk-data.json"
+  SCRYFALL_METADATA_FILE_SET=0
+fi
 DB_PATH="${IRONSMITH_REGISTRY_DB_PATH:-$DEFAULT_DB_PATH}"
 FRONTEND_SCORES_FILE="${IRONSMITH_FRONTEND_SEMANTIC_SCORES_FILE:-$DEFAULT_FRONTEND_SCORES_FILE}"
 FRONTEND_CARDS_DIR="${IRONSMITH_FRONTEND_CARDS_DIR:-$DEFAULT_FRONTEND_CARDS_DIR}"
+SYNC_SCRYFALL_CARDS="${IRONSMITH_SYNC_SCRYFALL_CARDS:-1}"
 NO_DEFAULT_FEATURES=1
 
 require_cmd() {
@@ -32,19 +42,22 @@ feature_enabled() {
 
 usage() {
   cat <<USAGE
-Usage: ./rebuild-wasm.sh [--features <csv>] [--frontend-scores-file <path>] [--frontend-cards-dir <path>]
+Usage: ./rebuild-wasm.sh [--features <csv>] [--cards-file <path>] [--scryfall-metadata-file <path>] [--frontend-scores-file <path>] [--frontend-cards-dir <path>] [--skip-scryfall-sync]
 
 Examples:
   ./rebuild-wasm.sh
   ./rebuild-wasm.sh --release
+  ./rebuild-wasm.sh --skip-scryfall-sync
   ./rebuild-wasm.sh --frontend-scores-file web/ui/public/ironsmith_semantic_scores.json
   ./rebuild-wasm.sh --features wasm,generated-registry --default-features
 
 Notes:
   - Cargo always builds the WASM crate in release mode.
   - wasm-opt is skipped by default for faster iteration; pass --release to enable it.
+  - Scryfall Default Cards are downloaded to $DEFAULT_CARDS_FILE when Scryfall publishes a newer bulk-data updated_at.
+  - Registry DB rows are inserted only for cards not already present; existing registry cards are not updated or pruned during this rebuild preflight.
+  - Cards without compilation status rows are compiled before frontend assets are generated.
   - Canonical card data and per-card semantic scores are loaded from the registry SQLite DB (default: $DEFAULT_DB_PATH).
-  - Run sync_card_status_db separately when latest_card_compilation needs to be refreshed.
   - Frontend cache file defaults to $DEFAULT_FRONTEND_SCORES_FILE and stores only compact threshold stats.
   - Frontend card assets default to $DEFAULT_FRONTEND_CARDS_DIR and are copied by Vite into dist/cards/.
   - Frontend JSON assets are skipped when their checksum manifest matches the registry DB and generator inputs.
@@ -171,6 +184,130 @@ sys.exit(0)
 PY
 }
 
+scryfall_sync_enabled() {
+  case "$SYNC_SCRYFALL_CARDS" in
+    1|true|TRUE|yes|YES|on|ON)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+count_lines() {
+  local path="$1"
+  python3 - "$path" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    print(sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip()))
+except FileNotFoundError:
+    print(0)
+PY
+}
+
+write_registry_cards_missing_status_rows() {
+  local target="$1"
+  python3 - "$DB_PATH" "$target" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+
+db_path = Path(sys.argv[1])
+target = Path(sys.argv[2])
+
+conn = sqlite3.connect(db_path)
+try:
+    names = [
+        row[0]
+        for row in conn.execute(
+            """
+            SELECT registry.card_name
+            FROM registry_card registry
+            LEFT JOIN latest_card_compilation latest
+              ON latest.card_name = registry.card_name
+            WHERE latest.card_name IS NULL
+            ORDER BY registry.card_name COLLATE NOCASE ASC
+            """
+        )
+    ]
+finally:
+    conn.close()
+
+target.write_text("".join(f"{name}\n" for name in names), encoding="utf-8")
+PY
+}
+
+sync_scryfall_cards_for_rebuild() {
+  local download_status_file
+  local inserted_names_file
+  local missing_status_names_file
+  local download_status
+  local inserted_count
+  local missing_status_count
+
+  if ! scryfall_sync_enabled; then
+    echo "[INFO] skipped Scryfall card sync by request"
+    return 0
+  fi
+
+  download_status_file="$(mktemp "$ROOT_DIR/target/scryfall-download-status.XXXXXX")"
+  inserted_names_file="$(mktemp "$ROOT_DIR/target/scryfall-inserted-card-names.XXXXXX")"
+  missing_status_names_file="$(mktemp "$ROOT_DIR/target/registry-cards-missing-status.XXXXXX")"
+
+  echo "[INFO] checking Scryfall Default Cards freshness..."
+  python3 "$ROOT_DIR/scripts/download_scryfall_cards.py" \
+    --out "$CARDS_FILE" \
+    --metadata-out "$SCRYFALL_METADATA_FILE" \
+    --status-out "$download_status_file"
+
+  download_status="unknown"
+  if [[ -s "$download_status_file" ]]; then
+    IFS= read -r download_status < "$download_status_file"
+  fi
+  case "$download_status" in
+    downloaded)
+      echo "[INFO] downloaded latest Scryfall card list: $CARDS_FILE"
+      ;;
+    skipped)
+      echo "[INFO] Scryfall card list already current: $CARDS_FILE"
+      ;;
+    *)
+      echo "[INFO] Scryfall card list status: $download_status"
+      ;;
+  esac
+
+  echo "[INFO] syncing registry DB with cards not already present..."
+  cargo run --release -p ironsmith-tools --bin sync_registry_db -- \
+    --cards "$CARDS_FILE" \
+    --db-path "$DB_PATH" \
+    --insert-missing-only \
+    --inserted-names-out "$inserted_names_file"
+
+  inserted_count="$(count_lines "$inserted_names_file")"
+  if [[ "$inserted_count" -gt 0 ]]; then
+    echo "[INFO] registered $inserted_count new card(s) in the DB"
+  else
+    echo "[INFO] no new registry cards found"
+  fi
+
+  write_registry_cards_missing_status_rows "$missing_status_names_file"
+  missing_status_count="$(count_lines "$missing_status_names_file")"
+  if [[ "$missing_status_count" -gt 0 ]]; then
+    echo "[INFO] compiling semantic snapshots for $missing_status_count card(s) without status rows..."
+    cargo run --release -p ironsmith-tools --bin sync_card_status_db -- \
+      --db-path "$DB_PATH" \
+      --names-file "$missing_status_names_file"
+  else
+    echo "[INFO] all registry cards already have compilation status rows"
+  fi
+
+  rm -f "$download_status_file" "$inserted_names_file" "$missing_status_names_file"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --features)
@@ -185,6 +322,20 @@ while [[ $# -gt 0 ]]; do
     --release)
       OPTIMIZE_WASM=1
       shift
+      ;;
+    --cards-file)
+      [[ $# -ge 2 ]] || { echo "missing value for --cards-file" >&2; exit 1; }
+      CARDS_FILE="$2"
+      if [[ "$SCRYFALL_METADATA_FILE_SET" -eq 0 ]]; then
+        SCRYFALL_METADATA_FILE="${CARDS_FILE}.scryfall-bulk-data.json"
+      fi
+      shift 2
+      ;;
+    --scryfall-metadata-file)
+      [[ $# -ge 2 ]] || { echo "missing value for --scryfall-metadata-file" >&2; exit 1; }
+      SCRYFALL_METADATA_FILE="$2"
+      SCRYFALL_METADATA_FILE_SET=1
+      shift 2
       ;;
     --frontend-scores-file)
       [[ $# -ge 2 ]] || { echo "missing value for --frontend-scores-file" >&2; exit 1; }
@@ -204,6 +355,10 @@ while [[ $# -gt 0 ]]; do
       NO_DEFAULT_FEATURES=1
       shift
       ;;
+    --skip-scryfall-sync)
+      SYNC_SCRYFALL_CARDS=0
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -221,17 +376,21 @@ require_cmd cargo
 require_cmd wasm-pack
 require_cmd python3
 
+mkdir -p "$ROOT_DIR/target"
+sync_scryfall_cards_for_rebuild
+
 if [[ ! -f "$DB_PATH" ]]; then
   cat >&2 <<EOF
 [ERROR] registry DB not found: $DB_PATH
 
 Run the registry sync first, for example:
   cargo run --release -p ironsmith-tools --bin sync_registry_db -- --cards cards.json --db-path $DB_PATH
+
+Or let this script do the missing-card preflight by omitting --skip-scryfall-sync.
 EOF
   exit 1
 fi
 
-mkdir -p "$ROOT_DIR/target"
 FRONTEND_CARDS_CACHE_MANIFEST="$FRONTEND_CARDS_DIR/$FRONTEND_CARDS_CACHE_MANIFEST_NAME"
 PENDING_FRONTEND_CARDS_CACHE_MANIFEST="$(mktemp "$ROOT_DIR/target/frontend-card-assets-cache.XXXXXX.json")"
 write_frontend_cards_cache_manifest "$PENDING_FRONTEND_CARDS_CACHE_MANIFEST"
