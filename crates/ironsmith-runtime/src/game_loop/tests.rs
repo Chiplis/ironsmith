@@ -56299,6 +56299,256 @@ fn kitsunes_technique_even_library_does_not_round_past_half() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn elektra_sneak_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_491), "Elektra, Daughter of the Hand")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Sneak {1}{B}{B} (You may cast this spell for {1}{B}{B} if you also return an \
+             unblocked attacker you control to hand during the declare blockers step. She enters \
+             tapped and attacking.)\n\
+             When Elektra enters, destroy target creature an opponent controls with power 3 or less.",
+        )
+        .expect("Elektra should parse for permanent Sneak runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn sneak_permanent_probe_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_494), "Sneak Permanent Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Sneak {0} (You may cast this spell for {0} if you also return an unblocked \
+             attacker you control to hand during the declare blockers step. It enters tapped \
+             and attacking.)",
+        )
+        .expect("zero-cost permanent Sneak probe should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn set_up_permanent_sneak_game(
+    definition: &crate::cards::CardDefinition,
+) -> (GameState, PlayerId, PlayerId, ObjectId, ObjectId) {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(Step::DeclareBlockers);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let spell_id = game.create_object_from_definition(definition, alice, Zone::Hand);
+    let attacker = CardBuilder::new(CardId::from_raw(80_495), "Permanent Sneak Attacker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: attacker_id,
+            target: AttackTarget::Player(bob),
+        }],
+        ..Default::default()
+    });
+
+    (game, alice, bob, spell_id, attacker_id)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn finish_cast_to_stack(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    mut progress: crate::decision::GameProgress,
+    decision_maker: &mut SelectFirstDecisionMaker,
+    spell_name: &str,
+) {
+    for _ in 0..16 {
+        if stack_contains_named_object(game, spell_name) {
+            return;
+        }
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let choice = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.legal)
+                    .expect("cast flow should have a legal option")
+                    .index;
+                let description = ctx.description.to_ascii_lowercase();
+                let response = if description.starts_with("choose the next cost to pay") {
+                    PriorityResponse::NextCostChoice(choice)
+                } else {
+                    PriorityResponse::ManaPayment(choice)
+                };
+                apply_priority_response_with_dm(
+                    game,
+                    trigger_queue,
+                    state,
+                    &response,
+                    decision_maker,
+                )
+                .expect("cast flow option should be accepted")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ) => {
+                let choice = ctx
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.legal)
+                    .expect("cast flow should have a legal object choice")
+                    .id;
+                apply_priority_response_with_dm(
+                    game,
+                    trigger_queue,
+                    state,
+                    &PriorityResponse::CardCostChoice(choice),
+                    decision_maker,
+                )
+                .expect("cast flow object choice should be accepted")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            )
+            | crate::decision::GameProgress::Continue => {
+                if stack_contains_named_object(game, spell_name) {
+                    return;
+                }
+                panic!("cast flow returned before {spell_name} reached the stack");
+            }
+            other => panic!("unexpected cast flow state for {spell_name}: {other:?}"),
+        };
+    }
+    panic!("cast flow did not put {spell_name} on the stack");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn elektra_sneak_cast_is_legal_during_declare_blockers_with_unblocked_attacker() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let definition = elektra_sneak_definition();
+    let (mut game, alice, bob, spell_id, _) = set_up_permanent_sneak_game(&definition);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 3);
+    let target = CardBuilder::new(CardId::from_raw(80_496), "Elektra Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    game.create_object_from_card(&target, bob, Zone::Battlefield);
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: candidate,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *candidate == spell_id
+        )),
+        "Elektra should be offered as a Sneak cast during declare blockers with an unblocked attacker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn permanent_sneak_cast_returns_attacker_and_enters_tapped_and_attacking_same_player() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let definition = sneak_permanent_probe_definition();
+    let (mut game, alice, bob, spell_id, attacker_id) = set_up_permanent_sneak_game(&definition);
+    let actions = compute_legal_actions(&game, alice);
+    let cast_action = actions
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: candidate,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Alternative(0),
+                } if *candidate == spell_id
+            )
+        })
+        .expect("permanent Sneak spell should be castable");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut decision_maker = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+        &mut decision_maker,
+    )
+    .expect("permanent Sneak cast should finish cost payment and put the spell on the stack");
+    finish_cast_to_stack(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut decision_maker,
+        "Sneak Permanent Probe",
+    );
+
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Permanent Sneak Attacker")),
+        "paying Sneak should return the unblocked attacker to hand"
+    );
+    assert!(
+        !game.battlefield.contains(&attacker_id),
+        "paying Sneak should remove the original attacker from the battlefield"
+    );
+    assert!(
+        stack_contains_named_object(&game, "Sneak Permanent Probe"),
+        "Sneak permanent should be on the stack after casting"
+    );
+
+    resolve_stack_entry_with(&mut game, &mut decision_maker)
+        .expect("Sneak permanent should resolve");
+    let sneaked_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Sneak Permanent Probe")
+        })
+        .expect("Sneak permanent should enter the battlefield");
+    assert!(
+        game.is_tapped(sneaked_id),
+        "Sneak permanent should enter tapped"
+    );
+    let combat = game.combat.as_ref().expect("combat should remain active");
+    let sneaked_attacker = combat
+        .attackers
+        .iter()
+        .find(|attacker| attacker.creature == sneaked_id)
+        .expect("Sneak permanent should enter attacking");
+    assert_eq!(sneaked_attacker.target, AttackTarget::Player(bob));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
     let mut game = setup_game();

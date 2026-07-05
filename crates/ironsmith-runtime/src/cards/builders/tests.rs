@@ -17790,9 +17790,10 @@ fn parse_manifest_dread_then_multi_counter_followup_keeps_full_chain() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn render_trigger_uses_card_name_when_oracle_uses_name() {
+fn render_legendary_trigger_uses_card_name_when_oracle_uses_name() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Name Trigger Probe")
         .card_types(vec![CardType::Creature])
+        .supertypes(vec![crate::types::Supertype::Legendary])
         .parse_text("Whenever Name Trigger Probe attacks, draw a card.")
         .expect("name-based trigger should parse");
 
@@ -17835,7 +17836,9 @@ fn massacre_girl_keeps_named_self_reference_and_other_than_filter() {
 
     let debug = format!("{:#?}", def.abilities);
     assert!(
-        debug.contains("FullName(\"Massacre Girl\")") && !debug.contains("ForEachObject"),
+        debug.contains("FullName")
+            && debug.contains("\"Massacre Girl\"")
+            && !debug.contains("ForEachObject"),
         "expected named source surface on an object-filter pump, got {debug}"
     );
 }

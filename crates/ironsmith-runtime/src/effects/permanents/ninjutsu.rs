@@ -221,9 +221,9 @@ impl EffectExecutor for SneakCostEffect {
         let Some(source_obj) = game.object(ctx.source) else {
             return Err(ExecutionError::ObjectNotFound(ctx.source));
         };
-        if source_obj.zone != Zone::Hand {
+        if !matches!(source_obj.zone, Zone::Hand | Zone::Stack) {
             return Err(ExecutionError::Impossible(
-                "Sneak source must be in hand".to_string(),
+                "Sneak source must be in hand or on the stack".to_string(),
             ));
         }
 
@@ -261,6 +261,17 @@ impl EffectExecutor for SneakCostEffect {
                 )
             })?;
 
+        let attack_target = game
+            .combat
+            .as_ref()
+            .and_then(|combat| get_attack_target(combat, chosen_attacker))
+            .cloned()
+            .ok_or_else(|| {
+                ExecutionError::Impossible(
+                    "Chosen attacker has no combat attack target".to_string(),
+                )
+            })?;
+
         if let Some(combat) = game.combat.as_mut() {
             combat
                 .attackers
@@ -286,6 +297,11 @@ impl EffectExecutor for SneakCostEffect {
             .ok_or_else(|| {
                 ExecutionError::Impossible("Failed to return chosen attacker to hand".to_string())
             })?;
+
+        game.sneak_attack_targets
+            .entry(ctx.source)
+            .or_default()
+            .push(attack_target);
 
         Ok(EffectOutcome::resolved())
     }
@@ -313,9 +329,9 @@ impl CostExecutableEffect for SneakCostEffect {
                 "Sneak source does not exist".to_string(),
             ));
         };
-        if source_obj.zone != Zone::Hand {
+        if !matches!(source_obj.zone, Zone::Hand | Zone::Stack) {
             return Err(CostValidationError::Other(
-                "Sneak source must be in hand".to_string(),
+                "Sneak source must be in hand or on the stack".to_string(),
             ));
         }
 

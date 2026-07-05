@@ -2171,6 +2171,10 @@ pub struct GameState {
     /// activations can resolve LIFO.
     pub ninjutsu_attack_targets: HashMap<ObjectId, Vec<crate::combat_state::AttackTarget>>,
 
+    /// Attack targets captured while paying Sneak costs, keyed by the stack
+    /// object that paid the cost.
+    pub sneak_attack_targets: HashMap<ObjectId, Vec<crate::combat_state::AttackTarget>>,
+
     /// Combat-damage-to-player hits already processed in the current trigger batch.
     /// Used for "one or more ... deal combat damage to a player" trigger matching.
     pub combat_damage_player_batch_hits: Vec<(ObjectId, PlayerId)>,
@@ -2382,6 +2386,7 @@ impl GameState {
             saddled_until_end_of_turn: HashSet::new(),
             soulbond_pairs: HashMap::new(),
             ninjutsu_attack_targets: HashMap::new(),
+            sneak_attack_targets: HashMap::new(),
             combat_damage_player_batch_hits: Vec::new(),
             speed_increase_triggered_this_turn: HashSet::new(),
             draft_noted_highest_numbers: HashMap::new(),
@@ -8067,6 +8072,7 @@ impl GameState {
         self.turn_store.grant_cast_uses_this_turn.clear();
         self.saddled_until_end_of_turn.clear();
         self.ninjutsu_attack_targets.clear();
+        self.sneak_attack_targets.clear();
         self.combat_damage_player_batch_hits.clear();
         self.speed_increase_triggered_this_turn.clear();
 

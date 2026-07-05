@@ -93,6 +93,66 @@ fn object_filter_references_target_player(filter: &crate::target::ObjectFilter) 
             .any(object_filter_references_target_player)
 }
 
+fn pop_sneak_attack_target(game: &mut GameState, source: ObjectId) -> Option<AttackTarget> {
+    let mut remove_entry = false;
+    let target = game
+        .sneak_attack_targets
+        .get_mut(&source)
+        .and_then(|targets| {
+            let popped = targets.pop();
+            if targets.is_empty() {
+                remove_entry = true;
+            }
+            popped
+        });
+    if remove_entry {
+        game.sneak_attack_targets.remove(&source);
+    }
+    target
+}
+
+fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
+    match target {
+        AttackTarget::Player(player) => game.player(*player).is_some(),
+        AttackTarget::Planeswalker(planeswalker) => game.object(*planeswalker).is_some_and(|obj| {
+            obj.zone == Zone::Battlefield && obj.has_card_type(CardType::Planeswalker)
+        }),
+    }
+}
+
+fn stack_entry_cast_with_named_alternative(
+    game: &GameState,
+    entry: &StackEntry,
+    obj: &crate::object::Object,
+    name: &str,
+) -> bool {
+    match &entry.casting_method {
+        CastingMethod::Alternative(idx) => obj
+            .alternative_casts
+            .get(*idx)
+            .is_some_and(|method| method.name().eq_ignore_ascii_case(name)),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            zone,
+            ..
+        } => crate::decision::resolve_play_from_alternative_method(
+            game,
+            entry.controller,
+            obj,
+            *zone,
+            *idx,
+        )
+        .or_else(|| obj.cast_alternative_method.clone())
+        .is_some_and(|method| method.name().eq_ignore_ascii_case(name)),
+        _ => false,
+    }
+}
+
 fn choose_spec_references_target_player(spec: &crate::target::ChooseSpec) -> bool {
     use crate::target::ChooseSpec;
 
@@ -859,6 +919,13 @@ pub(super) fn resolve_stack_entry_full(
             let chosen_player = entry
                 .chosen_player
                 .or_else(|| game.chosen_player(entry.object_id));
+            let cast_with_sneak =
+                stack_entry_cast_with_named_alternative(game, &entry, obj, "Sneak");
+            let mut sneak_attack_target = if cast_with_sneak {
+                pop_sneak_attack_target(game, entry.object_id)
+            } else {
+                None
+            };
             // Handle ETB replacement: if player didn't satisfy the replacement, redirect
             if let Some((enters, enters_tapped, redirect_zone)) = etb_replacement_result {
                 if !enters {
@@ -894,8 +961,17 @@ pub(super) fn resolve_stack_entry_full(
                         game.set_chosen_player(id, chosen_player);
                     }
                     // Apply enters tapped if needed (e.g., shock land not paying life)
-                    if enters_tapped {
+                    if enters_tapped || cast_with_sneak {
                         game.tap(id);
+                    }
+                    if let Some(attack_target) = sneak_attack_target.take()
+                        && attack_target_still_valid(game, &attack_target)
+                        && let Some(combat) = game.combat.as_mut()
+                    {
+                        combat.attackers.push(crate::combat_state::AttackerInfo {
+                            creature: id,
+                            target: attack_target,
+                        });
                     }
 
                     if let Some(ref mut tq) = trigger_queue {
@@ -908,7 +984,7 @@ pub(super) fn resolve_stack_entry_full(
                         let etb_event_provenance = game
                             .provenance_graph_mut()
                             .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-                        let etb_event = if enters_tapped {
+                        let etb_event = if enters_tapped || cast_with_sneak {
                             TriggerEvent::new_with_provenance(
                                 EnterBattlefieldEvent::tapped(id, Zone::Stack),
                                 etb_event_provenance,
@@ -969,6 +1045,18 @@ pub(super) fn resolve_stack_entry_full(
                             .continuous_effects
                             .record_attachment(result.new_id);
                     }
+                }
+                if cast_with_sneak && !result.enters_tapped {
+                    game.tap(result.new_id);
+                }
+                if let Some(attack_target) = sneak_attack_target.take()
+                    && attack_target_still_valid(game, &attack_target)
+                    && let Some(combat) = game.combat.as_mut()
+                {
+                    combat.attackers.push(crate::combat_state::AttackerInfo {
+                        creature: result.new_id,
+                        target: attack_target,
+                    });
                 }
 
                 let cast_with_dash = match &entry.casting_method {
@@ -1239,7 +1327,7 @@ pub(super) fn resolve_stack_entry_full(
                     let etb_event_provenance = game
                         .provenance_graph_mut()
                         .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-                    let etb_event = if result.enters_tapped {
+                    let etb_event = if result.enters_tapped || cast_with_sneak {
                         TriggerEvent::new_with_provenance(
                             EnterBattlefieldEvent::tapped(result.new_id, Zone::Stack),
                             etb_event_provenance,
