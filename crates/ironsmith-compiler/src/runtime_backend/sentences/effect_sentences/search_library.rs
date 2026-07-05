@@ -1045,6 +1045,9 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
         && grammar::contains_word(tokens, "type")
         && grammar::contains_word(tokens, "library")
         && grammar::contains_word(tokens, "battlefield")
+        // "then shuffles" tails keep the explicit its-controller consult
+        // shape handled below (the remainder is shuffled away, not bottomed).
+        && !grammar::contains_word(tokens, "shuffles")
     {
         let filter_tokens = lex_line("a permanent that shares a card type with it", 0)?;
         let filter = parse_object_filter_lexed(&filter_tokens, false)?;
@@ -1108,7 +1111,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
             let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 
             return Ok(Some(vec![EffectAst::ForEachTagged {
-                tag: IT_TAG.into(),
+                tag: crate::tag::SOURCE_EXILED_TAG.into(),
                 effects: vec![
                     EffectAst::subject_verb_consult_top_of_library(
                         PlayerAst::ItsController,
@@ -1148,7 +1151,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
             let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 
             return Ok(Some(vec![EffectAst::ForEachTagged {
-                tag: IT_TAG.into(),
+                tag: crate::tag::SOURCE_EXILED_TAG.into(),
                 effects: vec![
                     EffectAst::subject_verb_consult_top_of_library(
                         PlayerAst::ItsController,

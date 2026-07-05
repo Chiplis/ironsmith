@@ -4604,8 +4604,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact.starts_with("whenever you cast a creature spell, create x ")
         && lower_compact.contains("where x is a card in your hand's mana value")
-    {
-    }
+    {}
     if lower_compact == "draw a card for each creature you control." {
         return "draw a card for each creature you control.".to_string();
     }
@@ -8129,6 +8128,23 @@ pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
         };
     }
 
+    if let Value::Count(count_filter) = value {
+        // Discarding as many matching cards as there are matching cards in
+        // hand is a mandatory "discard all" — render the oracle idiom. The
+        // discard player already scopes the hand, so ignore owner scoping
+        // when comparing the counted set against the discarded set.
+        let mut count_bare = count_filter.clone();
+        count_bare.owner = None;
+        let mut filter_bare = filter.clone();
+        filter_bare.owner = None;
+        if count_bare == filter_bare {
+            return format!(
+                "all {}",
+                render_effects::pluralize_noun_phrase(&describe_discard_card_phrase(filter))
+            );
+        }
+    }
+
     let card_phrase = describe_discard_card_phrase(filter);
     let plural_card_phrase = pluralize_discard_card_phrase(&card_phrase);
     match value {
@@ -10546,7 +10562,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
                     || tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG
                     || tag.as_str().starts_with("searched_")
                     || tag.as_str().starts_with("milled_")
-                    || tag.as_str().starts_with("discarded_"))
+                    || tag.as_str().starts_with("discarded_")
+                    || tag.as_str().starts_with("exiled_")
+                    || tag.as_str().starts_with("__sentence_helper_exiled"))
             {
                 "that card's mana value".to_string()
             } else {
@@ -10882,13 +10900,30 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of {} counters on this source",
             counter_type.description()
         ),
-        Value::CountersOn(spec, Some(counter_type)) => format!(
-            "the number of {} counters on {}",
-            counter_type.description(),
-            describe_choose_spec(spec)
-        ),
+        Value::CountersOn(spec, Some(counter_type)) => {
+            if let ChooseSpec::All(filter) = spec.unhinted() {
+                format!(
+                    "the number of {} counters among {}",
+                    counter_type.description(),
+                    render_effects::pluralize_noun_phrase(&filter.description())
+                )
+            } else {
+                format!(
+                    "the number of {} counters on {}",
+                    counter_type.description(),
+                    describe_choose_spec(spec)
+                )
+            }
+        }
         Value::CountersOn(spec, None) => {
-            format!("the number of counters on {}", describe_choose_spec(spec))
+            if let ChooseSpec::All(filter) = spec.unhinted() {
+                format!(
+                    "the number of counters among {}",
+                    render_effects::pluralize_noun_phrase(&filter.description())
+                )
+            } else {
+                format!("the number of counters on {}", describe_choose_spec(spec))
+            }
         }
         Value::TaggedCount => "the tagged object count".to_string(),
     }
@@ -12923,10 +12958,7 @@ fn describe_attached_object_type_condition(tag: &TagKey, filter: &ObjectFilter) 
                 .map(|subtype| format!("{subtype:?}"))
                 .collect::<Vec<_>>()
                 .join(" or ");
-            return Some(format!(
-                "{subject} is {}",
-                with_indefinite_article(&names)
-            ));
+            return Some(format!("{subject} is {}", with_indefinite_article(&names)));
         }
     }
 
@@ -12939,7 +12971,11 @@ fn describe_attached_object_type_condition(tag: &TagKey, filter: &ObjectFilter) 
         bare.card_types.clear();
         bare.zone = None;
         if bare == ObjectFilter::default() {
-            let state = if filter.untapped { "untapped" } else { "tapped" };
+            let state = if filter.untapped {
+                "untapped"
+            } else {
+                "tapped"
+            };
             return Some(format!("{subject} is {state}"));
         }
     }
@@ -15936,6 +15972,8 @@ fn describe_implicit_tagged_object_state_condition(
     base.nonblocking = false;
     base.blocked = false;
     base.unblocked = false;
+    base.tapped = false;
+    base.untapped = false;
     if base != ObjectFilter::default()
         && base != ObjectFilter::permanent()
         && base != ObjectFilter::creature()
@@ -15943,6 +15981,20 @@ fn describe_implicit_tagged_object_state_condition(
         return None;
     }
 
+    if filter.tapped {
+        return Some(if subject == "it" {
+            "it's tapped".to_string()
+        } else {
+            format!("{subject} is tapped")
+        });
+    }
+    if filter.untapped {
+        return Some(if subject == "it" {
+            "it's untapped".to_string()
+        } else {
+            format!("{subject} is untapped")
+        });
+    }
     if filter.attacking {
         return Some("it was attacking".to_string());
     }

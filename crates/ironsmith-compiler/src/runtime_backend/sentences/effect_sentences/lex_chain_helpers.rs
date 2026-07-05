@@ -434,6 +434,8 @@ const NONVERB_EFFECT_HEAD_WORDS: &[&str] = &[
     "explore",
     "explores",
     "earthbend",
+    "harness",
+    "harnesses",
 ];
 const KEYWORD_ACTION_EFFECT_HEAD_WORDS: &[&str] = &[
     "adapt",
@@ -444,6 +446,8 @@ const KEYWORD_ACTION_EFFECT_HEAD_WORDS: &[&str] = &[
     "connives",
     "earthbend",
     "earthbends",
+    "harness",
+    "harnesses",
     "endure",
     "endures",
     "explore",
@@ -620,6 +624,8 @@ fn starts_with_nonverb_effect_head(words: &[&str]) -> bool {
                 | "explore"
                 | "explores"
                 | "earthbend"
+                | "harness"
+                | "harnesses"
         )
     }) || words
         .iter()

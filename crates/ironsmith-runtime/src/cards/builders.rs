@@ -584,6 +584,7 @@ pub(crate) enum KeywordAction {
     Rebound,
     Sunburst,
     ReadAhead,
+    Firebending(u32),
     Fading(u32),
     Vanishing(u32),
     Fear,
@@ -704,6 +705,7 @@ impl KeywordAction {
                 | Self::Rebound
                 | Self::Sunburst
                 | Self::ReadAhead
+                | Self::Firebending(_)
                 | Self::Fading(_)
                 | Self::Vanishing(_)
                 | Self::Fear
@@ -864,6 +866,7 @@ impl KeywordAction {
             Self::Rebound => "Rebound".to_string(),
             Self::Sunburst => "Sunburst".to_string(),
             Self::ReadAhead => "Read ahead".to_string(),
+            Self::Firebending(amount) => format!("Firebending {amount}"),
             Self::Fading(amount) => format!("Fading {amount}"),
             Self::Vanishing(amount) => format!("Vanishing {amount}"),
             Self::Fear => "Fear".to_string(),
@@ -1767,6 +1770,9 @@ impl CardDefinitionBuilder {
             KeywordAction::Rebound => self.rebound(),
             KeywordAction::Sunburst => self.sunburst(),
             KeywordAction::ReadAhead => self.read_ahead(),
+            KeywordAction::Firebending(amount) => self.with_ability(Ability::static_ability(
+                StaticAbility::keyword_marker(format!("firebending {amount}")),
+            )),
             KeywordAction::Fading(amount) => self.fading(amount),
             KeywordAction::Vanishing(amount) => self.vanishing(amount),
             KeywordAction::Fear => self.fear(),

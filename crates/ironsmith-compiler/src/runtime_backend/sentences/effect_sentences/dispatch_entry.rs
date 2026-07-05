@@ -1525,6 +1525,44 @@ fn parse_effect_sentences_from_sentence_inputs(
             }
         }
 
+        let direct_for_each_tokens = trim_edge_punctuation(sentence);
+        let direct_for_each_words =
+            crate::runtime_backend::token_word_refs(&direct_for_each_tokens);
+        let direct_for_each_who = direct_for_each_words.get(..3).is_some_and(|prefix| {
+            matches!(
+                prefix,
+                [
+                    "each",
+                    "opponent" | "opponents" | "player" | "players",
+                    "who"
+                ]
+            )
+        }) || direct_for_each_words.get(..4).is_some_and(|prefix| {
+            matches!(
+                prefix,
+                [
+                    "for",
+                    "each",
+                    "opponent" | "opponents" | "player" | "players",
+                    "who"
+                ]
+            )
+        });
+        if direct_for_each_who {
+            if let Some(effect) = parse_for_each_opponent_clause(&direct_for_each_tokens)? {
+                effects.push(effect);
+                carried_context = None;
+                sentence_idx += 1;
+                continue;
+            }
+            if let Some(effect) = parse_for_each_player_clause(&direct_for_each_tokens)? {
+                effects.push(effect);
+                carried_context = None;
+                sentence_idx += 1;
+                continue;
+            }
+        }
+
         if let Some(mut matched) = try_parse_subject_verb_sequence_rule(&sentences, sentence_idx)? {
             let sequence_where_x = (0..matched.consumed_sentences).find_map(|offset| {
                 sentences

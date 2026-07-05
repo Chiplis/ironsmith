@@ -734,6 +734,8 @@ const AGGREGATE_VALUE_METRIC_PHRASES: &[&[&str]] = &[
     &["different", "powers", "among"],
     &["different", "power", "values", "among"],
     &["different", "power", "among"],
+    &["counter", "among"],
+    &["counters", "among"],
 ];
 const AGGREGATE_VALUE_SCOPE_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::amount(
@@ -1458,6 +1460,9 @@ fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
         ["different", "powers", "among"]
         | ["different", "power", "values", "among"]
         | ["different", "power", "among"] => Some(Value::DistinctPowers(filter)),
+        ["counter", "among"] | ["counters", "among"] => {
+            Some(Value::CountersOn(Box::new(ChooseSpec::All(filter)), None))
+        }
         _ => None,
     }
 }

@@ -248,6 +248,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::quads::parse_look_at_top_exile_one_rest_bottom_cast_else_hand,
     },
     SequenceRuleDef {
+        name: "look-at-top-may-exile-match-rest-bottom-cast-exiled",
+        feature_tag: Some("looked-card-may-exile-cast-exiled"),
+        priority: 430,
+        consumed_sentences: 4,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::quads::parse_look_at_top_may_exile_match_rest_bottom_cast_exiled,
+    },
+    SequenceRuleDef {
         name: "destroy-for-each-destroyed-consult-exile-put-shuffle",
         feature_tag: Some("destroyed-consult-exile-put"),
         priority: 429,

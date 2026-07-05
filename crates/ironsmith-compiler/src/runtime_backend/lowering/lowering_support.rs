@@ -782,6 +782,40 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         }
     }
 
+    fn trigger_object_is_stack_object(trigger: &TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => trigger_object_is_stack_object(trigger),
+            TriggerSpec::SpellCast { .. } => true,
+            _ => false,
+        }
+    }
+
+    /// An "it" predicate that checks battlefield-only state (tapped,
+    /// attacking, ...) cannot refer to a stack object; when the trigger's
+    /// implicit object is a spell, the pronoun must bind to an object
+    /// introduced by the body effects instead, so the condition resolves with
+    /// the effect rather than gating the trigger.
+    fn predicate_requires_battlefield_state(predicate: &PredicateAst) -> bool {
+        match predicate {
+            PredicateAst::ItMatches(filter) => {
+                filter.tapped
+                    || filter.untapped
+                    || filter.attacking
+                    || filter.nonattacking
+                    || filter.blocking
+                    || filter.nonblocking
+                    || filter.blocked
+                    || filter.unblocked
+            }
+            PredicateAst::Not(inner) => predicate_requires_battlefield_state(inner),
+            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+                predicate_requires_battlefield_state(left)
+                    || predicate_requires_battlefield_state(right)
+            }
+            _ => false,
+        }
+    }
+
     fn is_win_the_game_effect(effects: &[EffectAst]) -> bool {
         matches!(
             effects,
@@ -852,6 +886,8 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         && if_false.is_empty()
         && !if_true.is_empty()
         && predicate_can_promote_to_intervening_if(predicate)
+        && !(trigger_object_is_stack_object(&trigger)
+            && predicate_requires_battlefield_state(predicate))
         // "Whenever this attacks, you win the game if ..." checks on resolution;
         // it is not an intervening-if trigger gate.
         && !(
@@ -935,7 +971,17 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     let intervening_if_uses_trigger_object = intervening_if
         .as_ref()
         .is_some_and(predicate_uses_implicit_object_reference);
+    // A battlefield-state "it" condition in the body can never denote a
+    // stack-object trigger subject; leave the pronoun for the body's own
+    // target introduction instead of pre-binding it to the triggering spell.
+    let body_it_binds_to_body_target = trigger_object_is_stack_object(&trigger)
+        && matches!(
+            normalized.as_slice(),
+            [EffectAst::Conditional { predicate, .. }]
+                if predicate_requires_battlefield_state(predicate)
+        );
     let (default_last_object_tag, default_last_object_prelude) = if !has_local_target_prelude
+        && !body_it_binds_to_body_target
         && (effects_reference_it_tag(&normalized)
             || effects_reference_its_controller(&normalized)
             || intervening_if_uses_trigger_object)
@@ -1436,6 +1482,9 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::Rebound => Some(StaticAbility::rebound()),
         KeywordAction::Sunburst => Some(StaticAbility::keyword_marker("sunburst".to_string())),
         KeywordAction::ReadAhead => Some(StaticAbility::read_ahead()),
+        KeywordAction::Firebending(amount) => Some(StaticAbility::keyword_marker(format!(
+            "firebending {amount}"
+        ))),
         KeywordAction::Fading(amount) => {
             Some(StaticAbility::keyword_marker(format!("fading {amount}")))
         }

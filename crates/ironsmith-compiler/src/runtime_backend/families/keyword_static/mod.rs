@@ -4182,6 +4182,35 @@ pub(crate) fn parse_ward_static_ability_line(
         return Ok(None);
     }
 
+    let word_refs = crate::runtime_backend::token_word_refs(tokens);
+    if word_refs.as_slice()
+        == [
+            "ward",
+            "abilities",
+            "of",
+            "those",
+            "creatures",
+            "dont",
+            "trigger",
+        ]
+        || word_refs.as_slice()
+            == [
+                "ward",
+                "abilities",
+                "of",
+                "those",
+                "creatures",
+                "don't",
+                "trigger",
+            ]
+    {
+        return Ok(Some(StaticAbility::suppress_matching_triggered_abilities(
+            Some(ObjectFilter::creature().opponent_controls()),
+            None,
+            render_token_slice(tokens),
+        )));
+    }
+
     let cost_tokens = trim_commas(&tokens[1..]);
     if cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(

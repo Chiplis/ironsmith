@@ -79,6 +79,50 @@ const POWER_GREATER_THAN_TOUGHNESS_PHRASES: &[&[&str]] = &[
     &["toughness", "less", "than", "their", "power"],
 ];
 
+fn token_index_after_word_prefix(tokens: &[OwnedLexToken], word_len: usize) -> Option<usize> {
+    if word_len == 0 {
+        return Some(0);
+    }
+
+    let mut seen_words = 0usize;
+    for (token_idx, token) in tokens.iter().enumerate() {
+        let token_words = token.parser_word_pieces().len();
+        if token_words == 0 {
+            continue;
+        }
+        seen_words += token_words;
+        if seen_words == word_len {
+            return Some(token_idx + 1);
+        }
+        if seen_words > word_len {
+            return None;
+        }
+    }
+    None
+}
+
+fn source_reference_tail_prefix(
+    tokens: &[OwnedLexToken],
+) -> Option<(usize, crate::target::SourceReferenceSurface)> {
+    let words = parser_token_word_refs(tokens);
+    for word_len in (1..=words.len()).rev() {
+        let prefix = &words[..word_len];
+        let Some(surface) = source_reference_surface_for_words(prefix)
+            .or_else(|| this_source_surface_for_words(prefix))
+            .or_else(|| {
+                (word_len == 1 && SELF_REFERENCE_WORDS.contains(&prefix[0])).then(|| {
+                    crate::target::SourceReferenceSurface::ThisPermanentType(prefix[0].to_string())
+                })
+            })
+        else {
+            continue;
+        };
+        let token_len = token_index_after_word_prefix(tokens, word_len)?;
+        return Some((token_len, surface));
+    }
+    None
+}
+
 fn comparison_references_source_power(comparison: &crate::filter::Comparison) -> bool {
     matches!(
         comparison,
@@ -527,8 +571,8 @@ pub(super) fn parse_object_filter_inner(
 
     let not_on_battlefield = strip_not_on_battlefield_phrase(&mut base_tokens);
 
-    // "other than this/it/them ..." marks an exclusion, not an additional
-    // type selector. Keep "other" but drop the self-reference tail.
+    // "other than <source>" marks an exclusion, not an additional type
+    // selector. Keep "other" and capture the source surface when available.
     let mut idx = 0usize;
     while idx + 2 < base_tokens.len() {
         if !non_article_token_words_eq(&base_tokens[idx..idx + 2], OTHER_THAN_PREFIX) {
@@ -536,25 +580,15 @@ pub(super) fn parse_object_filter_inner(
             continue;
         }
 
-        let mut end = idx + 2;
-        let starts_with_self_reference = base_tokens[end]
-            .as_word()
-            .is_some_and(|word| SELF_REFERENCE_WORDS.contains(&word));
-        if !starts_with_self_reference {
+        let tail_tokens = &base_tokens[idx + 2..];
+        let Some((tail_token_len, surface)) = source_reference_tail_prefix(tail_tokens) else {
             idx += 1;
             continue;
-        }
-        end += 1;
+        };
 
-        if end < base_tokens.len()
-            && base_tokens[end]
-                .as_word()
-                .is_some_and(|word| OBJECT_REFERENCE_NOUN_WORDS.contains(&word))
-        {
-            end += 1;
-        }
-
-        base_tokens.drain(idx + 1..end);
+        filter.other = true;
+        filter.source_surface.get_or_insert(surface);
+        base_tokens.drain(idx..idx + 2 + tail_token_len);
     }
 
     // "other than Werewolves and Wolves" is an exclusion on the described

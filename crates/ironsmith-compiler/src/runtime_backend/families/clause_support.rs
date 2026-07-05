@@ -608,6 +608,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         if let Some(action) = parse_count_keyword("graft", KeywordAction::Graft) {
             return Some(action);
         }
+        if let Some(action) = parse_count_keyword("firebending", KeywordAction::Firebending) {
+            return Some(action);
+        }
         if let Some(action) = parse_count_keyword("fading", KeywordAction::Fading) {
             return Some(action);
         }

@@ -304,6 +304,12 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             },
         }]);
     }
+    if let Some(effect) = parse_for_each_opponent_clause(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) = parse_for_each_player_clause(tokens)? {
+        return Ok(vec![effect]);
+    }
     if labeled_cast_from_among_free(sentence_words.as_slice()) {
         let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
         filter.card_types.push(CardType::Instant);

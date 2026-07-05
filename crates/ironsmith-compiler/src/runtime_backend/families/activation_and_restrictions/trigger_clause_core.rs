@@ -2549,6 +2549,29 @@ pub(crate) fn parse_trigger_clause_lexed(
         ));
     }
 
+    if let Some(enters_word_idx) = ENTER_OR_ENTERS_PATTERN.find_word(&words)
+        && trigger_clause_shape_matches_words(&words, ENTERS_OR_LEAVES_BATTLEFIELD_SUFFIX_PATTERN)
+    {
+        let enters_token_idx = word_view
+            .token_index_for_word_index(enters_word_idx)
+            .unwrap_or(tokens.len());
+        let subject_tokens = &tokens[..enters_token_idx];
+        if let Some(surface) = source_reference_surface_for_trigger_subject(
+            strip_leading_trigger_intro(subject_tokens),
+        ) {
+            return Ok(TriggerSpec::Either(
+                Box::new(this_enters_battlefield_trigger_spec(Some(surface.clone()))),
+                Box::new(this_leaves_battlefield_trigger_spec(Some(surface))),
+            ));
+        }
+        if token_words_match_prefix(subject_tokens, &THIS_DESTINATION_TRIGGER_NAME_PATTERN) {
+            return Ok(TriggerSpec::Either(
+                Box::new(TriggerSpec::ThisEntersBattlefield),
+                Box::new(TriggerSpec::ThisLeavesBattlefield),
+            ));
+        }
+    }
+
     if let Some(leaves_word_idx) = LEAVE_OR_LEAVES_PATTERN.find_word(&words)
         && trigger_clause_shape_matches_words(
             &words[leaves_word_idx..],
@@ -2632,6 +2655,14 @@ pub(crate) fn parse_trigger_clause_lexed(
             .unwrap_or(tokens.len());
         if trigger_clause_shape_matches_words(&words, ENTERS_OR_LEAVES_BATTLEFIELD_SUFFIX_PATTERN) {
             let subject_tokens = &tokens[..enters_token_idx];
+            if let Some(surface) = source_reference_surface_for_trigger_subject(
+                strip_leading_trigger_intro(subject_tokens),
+            ) {
+                return Ok(TriggerSpec::Either(
+                    Box::new(this_enters_battlefield_trigger_spec(Some(surface.clone()))),
+                    Box::new(this_leaves_battlefield_trigger_spec(Some(surface))),
+                ));
+            }
             if token_words_match_prefix(subject_tokens, &THIS_DESTINATION_TRIGGER_NAME_PATTERN) {
                 return Ok(TriggerSpec::Either(
                     Box::new(TriggerSpec::ThisEntersBattlefield),
@@ -3870,6 +3901,20 @@ pub(crate) fn parse_trigger_clause_lexed(
 
     if trigger_clause_shape_matches_words(&words, THIS_BECOMES_MONSTROUS_TRIGGER_PATTERN) {
         return Ok(TriggerSpec::ThisBecomesMonstrous);
+    }
+    if words.len() == 5
+        && trigger_clause_shape_matches_word_at(&words, 0, THIS_WORD_PATTERN)
+        && words[1].eq_ignore_ascii_case("class")
+        && trigger_clause_shape_matches_word_at(&words, 2, BECOMES_WORD_PATTERN)
+        && words[3].eq_ignore_ascii_case("level")
+        && parse_named_number(words[4]).is_some()
+    {
+        return Ok(TriggerSpec::CounterPutOn {
+            filter: ObjectFilter::source(),
+            counter_type: Some(CounterType::Level),
+            source_controller: None,
+            one_or_more: false,
+        });
     }
     if trigger_clause_shape_matches_words(&words, BECOMES_MONSTROUS_TRIGGER_SUFFIX)
         && words.len() > 2

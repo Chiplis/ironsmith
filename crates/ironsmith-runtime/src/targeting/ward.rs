@@ -14,6 +14,7 @@ use crate::ability::AbilityKind;
 use crate::cost::TotalCost;
 use crate::decision::DecisionMaker;
 use crate::decisions::{WardSpec, make_decision};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::special_actions::pay_total_cost_with_choice;
@@ -57,6 +58,10 @@ pub fn get_ward_cost(
                 .collect()
         });
 
+    if ward_abilities_are_suppressed(game, target_id, caster) {
+        return None;
+    }
+
     for ability in abilities {
         if let Some(cost) = ability.ward_cost() {
             return Some(PendingWardCost {
@@ -68,6 +73,42 @@ pub fn get_ward_cost(
     }
 
     None
+}
+
+fn ward_abilities_are_suppressed(game: &GameState, target_id: ObjectId, caster: PlayerId) -> bool {
+    let Some(target) = game.object(target_id) else {
+        return false;
+    };
+    let filter_ctx = game.filter_context_for(caster, Some(target_id));
+    game.battlefield.iter().copied().any(|source_id| {
+        game.calculated_characteristics(source_id)
+            .map(|c| c.static_abilities)
+            .unwrap_or_else(|| {
+                game.object(source_id)
+                    .map(|source| {
+                        source
+                            .abilities
+                            .iter()
+                            .filter_map(|ability| match &ability.kind {
+                                AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+                                _ => None,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
+            .into_iter()
+            .any(|ability| {
+                ability
+                    .display()
+                    .to_ascii_lowercase()
+                    .contains("ward abilities")
+                    && ability
+                        .trigger_suppression_spec()
+                        .and_then(|spec| spec.source_filter)
+                        .is_some_and(|filter| filter.matches(target, &filter_ctx, game))
+            })
+    })
 }
 
 /// Collect all ward costs for a set of targets.

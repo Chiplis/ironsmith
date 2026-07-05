@@ -812,6 +812,97 @@ fn sync_card_status_db_supports_tag_filtered_recompile_without_pruning() {
 }
 
 #[test]
+fn sync_card_status_db_supports_name_filtered_recompile_without_pruning() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+    write_cards_with_abrade_json(&cards_path);
+
+    let status = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(&db_path)
+        .status()
+        .expect("run initial sync_card_status_db");
+    assert!(
+        status.success(),
+        "initial sync_card_status_db should succeed"
+    );
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM latest_card_compilation"),
+        2
+    );
+
+    fs::write(
+        &cards_path,
+        r#"[
+  {
+    "name":"Lightning Bolt",
+    "oracle_text":"Lightning Bolt deals 4 damage to any target.",
+    "mana_cost":"{R}",
+    "type_line":"Instant"
+  },
+  {
+    "name":"Abrade",
+    "oracle_text":"Choose one — Abrade deals 3 damage to target creature; or destroy target artifact.",
+    "mana_cost":"{1}{R}",
+    "type_line":"Instant"
+  }
+]"#,
+    )
+    .expect("write updated cards.json");
+
+    let status = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(&db_path)
+        .arg("--name")
+        .arg("Lightning Bolt")
+        .status()
+        .expect("run name-filtered sync_card_status_db");
+    assert!(
+        status.success(),
+        "name-filtered sync_card_status_db should succeed"
+    );
+
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM card_compilation"),
+        3
+    );
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM latest_card_compilation"),
+        2
+    );
+
+    let conn = Connection::open(&db_path).expect("open sqlite db");
+    let lightning_oracle: String = conn
+        .query_row(
+            "SELECT oracle_text FROM latest_card_compilation WHERE card_name = 'Lightning Bolt'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("latest lightning bolt oracle text");
+    let abrade_oracle: String = conn
+        .query_row(
+            "SELECT oracle_text FROM latest_card_compilation WHERE card_name = 'Abrade'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("latest abrade oracle text");
+
+    assert_eq!(
+        lightning_oracle,
+        "Lightning Bolt deals 4 damage to any target."
+    );
+    assert_eq!(
+        abrade_oracle,
+        "Choose one — Abrade deals 3 damage to target creature; or destroy target artifact."
+    );
+}
+
+#[test]
 fn sync_card_status_db_reports_strict_compiled_score_summary() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");

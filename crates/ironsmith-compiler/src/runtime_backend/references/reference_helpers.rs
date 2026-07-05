@@ -626,7 +626,10 @@ pub(crate) fn resolve_choose_spec_it_tag(
             }
             if let Some(player_filter) = refs.known_last_player_filter().cloned() {
                 if std::env::var("IRONSMITH_DEBUG_IT").is_ok() {
-                    eprintln!("DEBUG resolve_choose_spec_it_tag hand-fallback: refs={refs:?}");
+                    eprintln!(
+                        "DEBUG resolve_choose_spec_it_tag hand-fallback: refs={refs:?}\n{}",
+                        std::backtrace::Backtrace::force_capture()
+                    );
                 }
                 let filter = ObjectFilter {
                     zone: Some(Zone::Hand),

@@ -415,7 +415,7 @@ pub(super) fn lower_alternative_cast(
     }
 
     if keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Sneak) {
-        if !is_supported_spell_sneak_line(&line.full_parse_tokens) {
+        if !is_supported_sneak_line(&line.full_parse_tokens) {
             return Err(CardTextError::ParseError(format!(
                 "sneak keyword form is not yet supported: '{}'",
                 line.info.raw_line
@@ -474,8 +474,11 @@ pub(super) fn lower_alternative_cast(
     )))
 }
 
-fn is_supported_spell_sneak_line(tokens: &[OwnedLexToken]) -> bool {
-    keyword_special_form_shape(tokens) == Some(KeywordSpecialFormShape::SpellSneak)
+fn is_supported_sneak_line(tokens: &[OwnedLexToken]) -> bool {
+    matches!(
+        keyword_special_form_shape(tokens),
+        Some(KeywordSpecialFormShape::SpellSneak | KeywordSpecialFormShape::PermanentSneak)
+    )
 }
 
 pub(super) fn lower_bestow(

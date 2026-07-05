@@ -15,6 +15,7 @@ struct Args {
     cards_path: Option<String>,
     db_path: String,
     tag: Option<String>,
+    names: BTreeSet<String>,
     strict_only: bool,
 }
 
@@ -22,6 +23,7 @@ fn parse_args() -> Result<Args, String> {
     let mut cards_path = None;
     let mut db_path = default_db_path().display().to_string();
     let mut tag = None;
+    let mut names = BTreeSet::new();
     let mut strict_only = false;
 
     let mut iter = std::env::args().skip(1);
@@ -44,18 +46,27 @@ fn parse_args() -> Result<Args, String> {
                         .ok_or_else(|| "--tag requires a tag slug".to_string())?,
                 );
             }
+            "--name" => {
+                let name = iter
+                    .next()
+                    .ok_or_else(|| "--name requires a card name".to_string())?;
+                let normalized = ironsmith_tools::normalize_lookup_name(&name);
+                if !normalized.is_empty() {
+                    names.insert(normalized);
+                }
+            }
             "--strict-only" => {
                 strict_only = true;
             }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run --release -p ironsmith-tools --bin sync_card_status_db -- [--db-path <path>] [--tag <slug>] [--cards <path>] [--strict-only]"
+                    "usage: cargo run --release -p ironsmith-tools --bin sync_card_status_db -- [--db-path <path>] [--tag <slug>] [--name <card>] [--cards <path>] [--strict-only]"
                         .to_string(),
                 );
             }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --cards/--db-path/--tag/--strict-only"
+                    "unknown argument '{arg}'. expected --cards/--db-path/--tag/--name/--strict-only"
                 ));
             }
         }
@@ -65,6 +76,7 @@ fn parse_args() -> Result<Args, String> {
         cards_path,
         db_path,
         tag,
+        names,
         strict_only,
     })
 }
@@ -117,6 +129,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let name_filtered_names = if args.names.is_empty() {
+        None
+    } else {
+        Some(args.names.clone())
+    };
 
     let filtered_cards = cards
         .iter()
@@ -124,8 +141,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             tag_filtered_names
                 .as_ref()
                 .is_none_or(|filtered_names| filtered_names.contains(&payload.name))
+                && name_filtered_names
+                    .as_ref()
+                    .is_none_or(|filtered_names| filtered_names.contains(&payload.name))
         })
         .collect::<Vec<_>>();
+    if let Some(filtered_names) = name_filtered_names.as_ref() {
+        let found_names = filtered_cards
+            .iter()
+            .map(|payload| payload.name.clone())
+            .collect::<BTreeSet<_>>();
+        let missing_names = filtered_names
+            .difference(&found_names)
+            .cloned()
+            .collect::<Vec<_>>();
+        if !missing_names.is_empty() {
+            return Err(format!(
+                "card(s) requested with --name were not found in the selected card source: {}",
+                missing_names.join(", ")
+            )
+            .into());
+        }
+    }
     let filter_elapsed = filter_start.elapsed();
 
     let processed = filtered_cards.len();
@@ -153,7 +190,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let insert_elapsed = insert_start.elapsed();
 
     let prune_start = Instant::now();
-    let pruned = if tag_filtered_names.is_none() {
+    let pruned = if tag_filtered_names.is_none() && name_filtered_names.is_none() {
         Some(db.prune_cards_not_in_names(&canonical_card_names)?)
     } else {
         None
@@ -215,6 +252,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(tag) = &args.tag {
         println!("- Tag filter: {tag}");
+    }
+    if let Some(names) = &name_filtered_names {
+        println!("- Name filter: {} card(s)", names.len());
+    }
+    if tag_filtered_names.is_some() || name_filtered_names.is_some() {
         println!("- DB pruning skipped: yes");
     } else if let Some(pruned) = pruned {
         println!("- Cards removed from DB: {}", pruned.distinct_cards_deleted);

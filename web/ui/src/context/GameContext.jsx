@@ -1148,8 +1148,12 @@ export function GameProvider({ children }) {
       let phaseAdvances = 0;
       let holdReason = null;
       const trace = [];
+      const playerCount = Math.max(2, Array.isArray(st?.players) ? st.players.length : 2);
+      const maxAutoPasses = Math.max(80, playerCount * playerCount * 16);
+      const maxPhaseAdvances = Math.max(24, playerCount * 12);
+      const maxSettleIterations = maxPhaseAdvances + playerCount * 4;
 
-      for (let i = 0; i < 24; i++) {
+      for (let i = 0; i < maxSettleIterations; i++) {
         while (
           st
           && st.decision
@@ -1164,7 +1168,7 @@ export function GameProvider({ children }) {
             if (!passAction) { holdReason = "no pass action available"; break; }
             const isCustomPassAction = !!passAction.label && passAction.label !== "Pass priority";
             if (!isLocalOffTurnPriority && isCustomPassAction) {
-              if (autoPasses >= 80) { holdReason = "auto-pass safety limit reached"; break; }
+              if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
               const stepStartedAt = performance.now();
               const decisionBefore = summarizeDecision(st?.decision || null);
               st = await currentGame.dispatch(priorityCommandForAction(passAction));
@@ -1190,7 +1194,7 @@ export function GameProvider({ children }) {
               holdReason = "custom pass action";
               break;
             }
-            if (autoPasses >= 80) { holdReason = "auto-pass safety limit reached"; break; }
+            if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
             const stepStartedAt = performance.now();
             const decisionBefore = summarizeDecision(st?.decision || null);
             st = await currentGame.dispatch(priorityCommandForAction(passAction));
@@ -1249,7 +1253,7 @@ export function GameProvider({ children }) {
         }
         if (holdReason) break;
         if (!st || st.game_over || st.decision) break;
-        if (phaseAdvances >= 24) { holdReason = "phase auto-advance safety limit reached"; break; }
+        if (phaseAdvances >= maxPhaseAdvances) { holdReason = "phase auto-advance safety limit reached"; break; }
         const before = `${st.turn_number}|${st.phase}|${st.step}|${st.priority_player}|${st.stack_size}`;
         const advanceStartedAt = performance.now();
         await currentGame.advancePhase();

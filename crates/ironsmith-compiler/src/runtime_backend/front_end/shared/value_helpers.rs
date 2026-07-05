@@ -62,6 +62,8 @@ const AGGREGATE_SCOPE_METRIC_PHRASES: &[&[&str]] = &[
     &["different", "powers", "among"],
     &["different", "power", "values", "among"],
     &["different", "power", "among"],
+    &["counter", "among"],
+    &["counters", "among"],
 ];
 const AGGREGATE_SCOPE_OPTIONAL_THE_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
 const AGGREGATE_SCOPE_VALUE_PATTERN: LexPattern<'static> = LexPattern::new(&[
@@ -240,6 +242,10 @@ pub(crate) fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Opt
         ["different", "powers", "among"]
         | ["different", "power", "values", "among"]
         | ["different", "power", "among"] => Some(Value::DistinctPowers(filter)),
+        ["counter", "among"] | ["counters", "among"] => Some(Value::CountersOn(
+            Box::new(crate::target::ChooseSpec::All(filter)),
+            None,
+        )),
         _ => None,
     }
 }

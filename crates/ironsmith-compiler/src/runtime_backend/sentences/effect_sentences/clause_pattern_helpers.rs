@@ -575,7 +575,8 @@ const CLAUSE_PHASED_WORD_PATTERN: ClauseShape<'static> =
 const CLAUSE_BEHOLD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["behold"]);
 const CLAUSE_BLIGHT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["blight"]);
 const CLAUSE_UNSUPPORTED_KEYWORD_EFFECT_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["dredge"], &["warp"], &["harness"]]);
+    clause_shape!(exact_any & [&["dredge"], &["warp"]]);
+const CLAUSE_HARNESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["harness"]);
 const CLAUSE_MANIFEST_DREAD_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["manifest", "dread"]);
 const CLAUSE_TWICE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["twice"]);
@@ -2882,6 +2883,13 @@ pub(crate) fn parse_keyword_mechanic_clause(
     if CLAUSE_FORAGE_WORD_PATTERN.matches_words(&clause_words) {
         return Ok(Some(EffectAst::subject_verb_emit_keyword_action(
             crate::events::KeywordActionKind::Forage,
+            1,
+        )));
+    }
+
+    if CLAUSE_HARNESS_WORD_PATTERN.matches_first_word(&clause_words) {
+        return Ok(Some(EffectAst::subject_verb_emit_keyword_action(
+            crate::events::KeywordActionKind::Harness,
             1,
         )));
     }

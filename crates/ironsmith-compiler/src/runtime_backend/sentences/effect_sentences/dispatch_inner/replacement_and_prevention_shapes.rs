@@ -839,16 +839,12 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
             continue;
         }
 
-        let mut filter = parse_object_filter(slice, false).map_err(|_| {
+        let filter = parse_object_filter(slice, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported filter in 'exile up to one each target type' clause (clause: '{}')",
                 render_token_slice(clause.tokens()).trim()
             ))
         })?;
-        if filter.controller.is_none() {
-            // Keep this unrestricted to avoid implicit "you control" defaulting in ChooseObjects compilation.
-            filter.controller = Some(PlayerFilter::Any);
-        }
         filters.push(filter);
     }
 
@@ -856,21 +852,21 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
         return Ok(None);
     }
 
-    let tag = helper_tag_for_tokens(tokens, "exiled");
-    let mut effects: Vec<EffectAst> = filters
+    // Each segment is its own optional target ("up to one target artifact,
+    // up to one target creature, ..."), so emit one targeted exile per
+    // segment rather than a single merged choice.
+    let effects: Vec<EffectAst> = filters
         .into_iter()
-        .map(|filter| EffectAst::ChooseObjects {
-            filter,
-            count: ChoiceCount::up_to(1),
-            count_value: None,
-            player: PlayerAst::You,
-            tag: tag.clone(),
+        .map(|filter| {
+            EffectAst::subject_verb_exile(
+                TargetAst::WithCount(
+                    Box::new(TargetAst::Object(filter, Some(TextSpan::synthetic()), None)),
+                    ChoiceCount::up_to(1),
+                ),
+                false,
+            )
         })
         .collect();
-    effects.push(EffectAst::subject_verb_exile(
-        TargetAst::Tagged(tag, None),
-        false,
-    ));
 
     Ok(Some(effects))
 }

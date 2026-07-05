@@ -54,9 +54,10 @@ test("hidden card names use the local SVG cardback instead of Scryfall", () => {
 test("preloading resolves and caches Scryfall image URLs by card name", async () => {
   const originalFetch = globalThis.fetch;
   let calls = 0;
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, options) => {
     calls += 1;
     assert.match(String(url), /^http:\/\/localhost\/cards\/cache-test-card\.json$/);
+    assert.equal(options?.cache, "no-cache");
     return {
       ok: true,
       json: async () => ({

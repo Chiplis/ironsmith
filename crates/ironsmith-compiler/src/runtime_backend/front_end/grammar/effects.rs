@@ -52,7 +52,15 @@ const IF_YOU_PHRASE: &[&str] = &["if", "you"];
 const THIS_TURN_PHRASE: &[&str] = &["this", "turn"];
 const THIS_WAY_PHRASE: &[&str] = &["this", "way"];
 const MAX_SPEED_LABEL: &[&str] = &["max", "speed"];
-const SPLIT_NEGATED_ACTION_PHRASES: &[&[&str]] = &[&["do", "not"], &["did", "not"]];
+const SPLIT_NEGATED_ACTION_PHRASES: &[&[&str]] = &[
+    &["do", "not"],
+    &["did", "not"],
+    &["can", "not"],
+    &["can", "t"],
+    &["doesn", "t"],
+    &["didn", "t"],
+    &["don", "t"],
+];
 const THAT_WOULD_BE_DEALT_PHRASE: &[&str] = &["that", "would", "be", "dealt"];
 const LOSE_MANA_STEPS_PHASES_END_WORDS: &[&str] = &["lose", "mana", "steps", "phases", "end"];
 const THAT_MANY_PREFIX: &[&str] = &["that", "many"];
@@ -144,7 +152,10 @@ fn is_control_or_own_word(word: &str) -> bool {
 }
 
 fn is_compact_negated_action_word(word: &str) -> bool {
-    matches!(word, "doesnt" | "didnt" | "doesn't" | "didn't")
+    matches!(
+        word,
+        "cant" | "can't" | "cannot" | "doesnt" | "didnt" | "doesn't" | "didn't"
+    )
 }
 
 fn is_prevent_damage_source_head_word(word: &str) -> bool {
@@ -1052,6 +1063,30 @@ pub(crate) fn parse_conditional_sentence_family_lexed(
 pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = token_word_refs(tokens);
+    if words.get(..3).is_some_and(|prefix| {
+        matches!(
+            prefix,
+            [
+                "each",
+                "opponent" | "opponents" | "player" | "players",
+                "who"
+            ]
+        )
+    }) || words.get(..4).is_some_and(|prefix| {
+        matches!(
+            prefix,
+            [
+                "for",
+                "each",
+                "opponent" | "opponents" | "player" | "players",
+                "who"
+            ]
+        )
+    }) {
+        return Ok(None);
+    }
+
     if let Some(prefix_tokens) = split_cant_sentence_next_turn_prefix_lexed(tokens) {
         let prefix_tokens = prefix_tokens.as_slice();
         if let Some(parsed) = parse_cant_restriction_clause(prefix_tokens)? {
@@ -1124,7 +1159,6 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     }
 
     let source_tapped_duration = cant_sentence_has_source_remains_tapped_duration(tokens);
-    let words = token_word_refs(tokens);
     if words_contain_all(&words, LOSE_MANA_STEPS_PHASES_END_WORDS) {
         return Ok(Some(vec![
             EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn(),

@@ -3276,7 +3276,7 @@ fn named_source_alias_guards_use_tokens_not_raw_text() {
     for required in [
         "source_alias_word_pieces(&tokens)",
         "source_alias_word_span_matches(&pieces, word_idx, &alias_words)",
-        "source_alias_occurrence_should_preserve_surface_lexed(&pieces, word_idx, end_word)",
+        "source_alias_occurrence_should_preserve_surface_lexed(",
     ] {
         assert!(
             alias_rewriter.contains(required),
@@ -11640,7 +11640,7 @@ fn keyword_families_fallback_dispatch_uses_captured_prefix_shape() {
         "fn keyword_fallback_kind(tokens: &[OwnedLexToken]) -> Option<KeywordFallbackKind>",
         "const KEYWORD_FALLBACK_PREFIX_PATTERN: LexPattern<'static>",
         "LexPattern::action(\n            \"keyword\",",
-        "LexCaptureKind::OneOfPhrase(&[\n                &[\"basic\", \"landcycling\"],",
+        "LexCaptureKind::OneOfPhrase(&[\n                &[\"aftermath\"],\n                &[\"basic\", \"landcycling\"],",
         "KEYWORD_FALLBACK_PREFIX_PATTERN.match_prefix(clause)",
         "capture_clause_by_role(LexCaptureRole::Action, clause)",
     ] {
@@ -11653,7 +11653,7 @@ fn keyword_families_fallback_dispatch_uses_captured_prefix_shape() {
     for required in [
         "let fallback_kind = keyword_fallback_kind(tokens)",
         "KeywordFallbackKind::BasicLandcycling",
-        "KeywordFallbackKind::Encore | KeywordFallbackKind::JumpStart",
+        "KeywordFallbackKind::Aftermath\n                | KeywordFallbackKind::Encore\n                | KeywordFallbackKind::JumpStart",
     ] {
         assert!(
             dispatcher.contains(required),
@@ -15645,7 +15645,7 @@ fn this_turn_delayed_trigger_parser_uses_outer_lex_pattern_capture() {
         "delayed_tagged_dealt_damage_trigger_from_core(trigger_core_tokens)",
         "capture_clause_by_role(LexCaptureRole::Object, trigger_clause)",
         "matched.capture(\"combat\").is_some()",
-        "LexPattern::modifier(\"duration\", LexCaptureKind::OneOfPhrase(&[&[\"this\", \"turn\"]]))",
+        "LexPattern::modifier(\n        \"duration\",\n        LexCaptureKind::OneOfPhrase(&[&[\"this\", \"turn\"]]),\n    )",
         "LexPattern::action(\"intro\", LexCaptureKind::OneOf(&[\"when\", \"whenever\"]))",
         "LexPattern::condition(\"trigger\", LexCaptureKind::UntilToken(TokenKind::Comma))",
         "LexCaptureKind::UntilLastPhraseBeforeToken(&[\"this\", \"turn\"], TokenKind::Comma)",
@@ -19642,6 +19642,14 @@ fn cursor_walk_allowlist() -> BTreeSet<String> {
         "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/activation_restriction_clauses.rs::damage_cause_life_loss_restriction_from_tail",
         "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/activation_restriction_clauses.rs::parse_spell_restriction_subject_filter",
         "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/activation_restriction_clauses.rs::parse_spell_subject_cant_be_cast_filter",
+        // static-ability enumeration scans ("a card with flying, a card with
+        // first strike, ... found among"): variable-length keyword lists with
+        // multi-word entries can't be a fixed pattern — each entry is
+        // validated via parse_static_ability_id_words.
+        "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/etb_static_lines.rs::parse_static_abilities_among_scope_value",
+        "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/etb_static_lines.rs::parse_static_ability_id_words",
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/creation_handlers.rs::parse_create_for_each_static_abilities_among_count",
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/creation_handlers.rs::parse_static_ability_id_words",
         // "as ~ enters, choose" subject scan: walks the choice clause word by
         // word, validating each token.
         "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs::parse_as_enters_choice_subject_clause",

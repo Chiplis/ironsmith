@@ -3549,24 +3549,6 @@ fn try_parse_labeled_line_dispatch(
         .is_some_and(|(cost_tokens, _, _)| looks_like_activation_cost_prefix(cost_tokens));
 
     if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
-        if let Some(mut triggered) = try_parse_triggered_line_with_named_source_rewrite(
-            &preprocessed.builder,
-            line,
-            body_line.info.normalized.normalized.as_str(),
-        )? {
-            if preserve_as_choice_label && !is_case_ability_label(&label) {
-                triggered.chosen_option_label = Some(label.to_ascii_lowercase());
-            }
-            if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
-                triggered.presentation_label = Some(trigger_presentation_label(&label));
-            }
-            let (triggered, next_idx) =
-                extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
-            return Ok(Some(LineDispatchResult::single(
-                RewriteLineCst::Triggered(triggered),
-                next_idx,
-            )));
-        }
         if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
             if preserve_as_choice_label && !is_case_ability_label(&label) {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
@@ -3787,14 +3769,6 @@ fn try_parse_triggered_line_dispatch(
         let mut lines = Vec::with_capacity(trigger_chunks.len());
         for chunk_tokens in trigger_chunks {
             let chunk_line = rewrite_line_tokens(line, &chunk_tokens);
-            if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
-                &preprocessed.builder,
-                &chunk_line,
-                chunk_line.info.normalized.normalized.as_str(),
-            )? {
-                lines.push(RewriteLineCst::Triggered(triggered));
-                continue;
-            }
             match parse_triggered_line_cst(&chunk_line) {
                 Ok(triggered) => lines.push(RewriteLineCst::Triggered(triggered)),
                 Err(_) => {

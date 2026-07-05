@@ -569,6 +569,7 @@ fn replace_names_with_map(
                         | b"untap"
                         | b"control"
                         | b"of"
+                        | b"than"
                         | b"to"
                         | b"on"
                 )

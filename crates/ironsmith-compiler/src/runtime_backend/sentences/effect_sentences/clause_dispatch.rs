@@ -2023,17 +2023,18 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                 }
 
                 let has_counter_state_pronoun = has_counter_state_pronoun(&subject_words);
+                let subject_mentions_this_source = subject_words
+                    .iter()
+                    .any(|word| *word == THIS_SOURCE_WORDS[0]);
                 let has_disallowed_pronoun_reference = subject_words
                     .iter()
                     .any(|word| word_slice_eq_any(&[*word], PRONOUN_TAGGED_SUBJECT_PHRASES))
                     && !has_counter_state_pronoun;
-                if !subject_words
-                    .iter()
-                    .any(|word| *word == THIS_SOURCE_WORDS[0])
-                    && !has_disallowed_pronoun_reference
-                    && !has_demonstrative_object_reference(&subject_words)
+                if !has_demonstrative_object_reference(&subject_words)
                     && let Ok(filter) = parse_object_filter(subject_tokens, false)
                     && filter != ObjectFilter::default()
+                    && (!subject_mentions_this_source || filter.other)
+                    && (!has_disallowed_pronoun_reference || filter.other)
                 {
                     return Ok(EffectAst::subject_verb_pump_all(
                         filter,

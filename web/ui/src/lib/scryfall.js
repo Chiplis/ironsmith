@@ -211,6 +211,8 @@ function baseAssetUrl() {
   return new URL(base, globalThis?.location?.href || "http://localhost/").href;
 }
 
+const STABLE_CARD_ASSET_FETCH_OPTIONS = { cache: "no-cache" };
+
 export function cardRouteKey(name) {
   const normalized = String(name || "")
     .trim()
@@ -353,7 +355,7 @@ async function fetchLocalCardPayload(cardName) {
 
   const request = (async () => {
     const url = new URL(`cards/${route}.json`, baseAssetUrl()).href;
-    const response = await fetch(url, { cache: "force-cache" });
+    const response = await fetch(url, STABLE_CARD_ASSET_FETCH_OPTIONS);
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`Local card metadata fetch failed: HTTP ${response.status}`);
     const payload = await response.json();

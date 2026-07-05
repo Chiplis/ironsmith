@@ -704,6 +704,116 @@ pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_t
     ]))
 }
 
+/// "you may exile a <filter> card from among them" — the optional single-card
+/// exile pick from a previously looked-at set.
+fn parse_may_exile_filtered_looked_card(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let trimmed = trim_commas(tokens);
+    let clause = LexedClause::new(&trimmed);
+    let words = clause.word_refs();
+    if !word_slice_starts_with(&words, &["you", "may", "exile"]) {
+        return Ok(None);
+    }
+    let Some((filter_clause, after_clause)) =
+        clause.split_once_on_phrase(&["from", "among", "them"])
+    else {
+        return Ok(None);
+    };
+    if !after_clause.trimmed().is_empty() {
+        return Ok(None);
+    }
+    let Some(filter_start) = clause.token_index_for_word_index(3) else {
+        return Ok(None);
+    };
+    let filter_tokens = &filter_clause.tokens()[filter_start..];
+    let Some(mut filter) = effect_sentences::parse_looked_card_choice_filter(filter_tokens) else {
+        return Ok(None);
+    };
+    filter.zone = Some(Zone::Library);
+    Ok(Some(filter))
+}
+
+/// "Look at the top N cards of your library. You may exile a <filter> card
+/// from among them. Put the rest on the bottom of your library in
+/// a random/any order. You may cast the exiled card <this turn|without paying
+/// its mana cost...>."
+pub(crate) fn parse_look_at_top_may_exile_match_rest_bottom_cast_exiled(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        effect_sentences::parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    if reveal_top {
+        return Ok(None);
+    }
+    let Some(exile_filter) =
+        parse_may_exile_filtered_looked_card(sentences[sentence_idx + 1].lowered())?
+    else {
+        return Ok(None);
+    };
+    let Some(order) = puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered()) else {
+        return Ok(None);
+    };
+    let Some(permission) = parse_cast_or_play_tagged_clause(sentences[sentence_idx + 3].lowered())?
+    else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                player: permission_player,
+                allow_land,
+                without_paying_mana_cost,
+                allow_any_color_for_cast,
+                ..
+            },
+        ..
+    }) = permission
+    else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let exiled_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "exiled");
+
+    let mut choice_filter = exile_filter;
+    choice_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: looked_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
+        EffectAst::ChooseObjects {
+            filter: choice_filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player,
+            tag: exiled_tag.clone(),
+        },
+        EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), false),
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(exiled_tag.clone()),
+            order,
+            player,
+        ),
+        EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+            exiled_tag,
+            permission_player,
+            allow_land,
+            without_paying_mana_cost,
+            allow_any_color_for_cast,
+        ),
+    ]))
+}
+
 pub(crate) fn parse_look_at_top_exile_one_rest_bottom_cast_else_hand(
     sentences: &[SentenceInput],
     sentence_idx: usize,

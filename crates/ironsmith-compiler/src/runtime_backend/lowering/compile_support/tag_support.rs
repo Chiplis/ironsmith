@@ -451,7 +451,8 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
 
 pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
     match value {
-        Value::Add(left, right) => {
+        Value::SurfaceHinted { value, .. } => value_references_tag(value, tag),
+        Value::Add(left, right) | Value::Min(left, right) => {
             value_references_tag(left, tag) || value_references_tag(right, tag)
         }
         Value::Scaled(value, _)

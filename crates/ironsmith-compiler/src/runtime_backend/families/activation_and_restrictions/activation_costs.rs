@@ -846,6 +846,28 @@ pub(crate) fn parse_cant_clauses(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
+    if normalized_words.get(..3).is_some_and(|prefix| {
+        matches!(
+            prefix,
+            [
+                "each",
+                "opponent" | "opponents" | "player" | "players",
+                "who"
+            ]
+        )
+    }) || normalized_words.get(..4).is_some_and(|prefix| {
+        matches!(
+            prefix,
+            [
+                "for",
+                "each",
+                "opponent" | "opponents" | "player" | "players",
+                "who"
+            ]
+        )
+    }) {
+        return Ok(None);
+    }
     if activation_cost_shape_matches_words(
         &normalized_words,
         IF_PLAYER_WOULD_GAIN_NO_LIFE_INSTEAD_PATTERN,

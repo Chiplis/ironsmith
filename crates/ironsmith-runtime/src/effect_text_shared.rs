@@ -73,6 +73,14 @@ fn strip_article(text: &str) -> &str {
 
 fn describe_each_other_filter(filter: &ObjectFilter) -> (String, bool) {
     let description = filter.description();
+    if filter.source_surface.is_some() {
+        let rest = strip_article(&description).trim();
+        if rest.is_empty() {
+            return ("each object".to_string(), false);
+        }
+        return (format!("each {rest}"), false);
+    }
+
     let rest = description
         .strip_prefix("another ")
         .unwrap_or(description.as_str())

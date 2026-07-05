@@ -3350,10 +3350,19 @@ impl ObjectFilterExt for ObjectFilter {
         let append_token_after_type = self.token;
         let mut controller_suffix: Option<String> = None;
         let mut owner_suffix: Option<String> = None;
+        let other_source_surface_text = if self.other && !self.source {
+            self.source_surface
+                .as_ref()
+                .map(crate::target::SourceReferenceSurface::display_text)
+        } else {
+            None
+        };
 
         // Handle "other" modifier
         if self.other {
-            parts.push("another".to_string());
+            if other_source_surface_text.is_none() {
+                parts.push("another".to_string());
+            }
         }
         let has_target_tag = self.tagged_constraints.iter().any(|constraint| {
             matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
@@ -4037,6 +4046,9 @@ impl ObjectFilterExt for ObjectFilter {
         if !post_noun_qualifiers.is_empty() {
             parts.extend(post_noun_qualifiers);
         }
+        if let Some(surface_text) = other_source_surface_text {
+            parts.push(format!("other than {surface_text}"));
+        }
         if self.distinct_names {
             parts.push("with different names".to_string());
         }
@@ -4062,6 +4074,11 @@ impl ObjectFilterExt for ObjectFilter {
                 (Some(controller), None) => parts.push(controller.clone()),
                 (None, Some(owner)) => parts.push(owner.clone()),
                 (None, None) => {}
+            }
+            if name == "{chosen name}" {
+                // The name is a runtime back-reference to a previously chosen
+                // card name, not a literal card name.
+                return format!("a {} with that name", parts.join(" "));
             }
             return format!("a {} named {}", parts.join(" "), name);
         }

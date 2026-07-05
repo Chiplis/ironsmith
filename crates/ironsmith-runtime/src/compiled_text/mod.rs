@@ -787,8 +787,7 @@ fn finalize_ast_surface_line(line: String) -> String {
     }
     if lower.contains("if it's a permanent, exile it")
         && lower.contains("at the beginning of the next end step, exile it")
-    {
-    }
+    {}
     if lower.contains("as long as this creature is monstrous") {
         line = line.replace(
             "As long as this creature is monstrous",
@@ -872,8 +871,7 @@ fn finalize_ast_surface_line(line: String) -> String {
     }
     if lower.contains("if you do, you lose x life, where x is a card in your hand's mana value")
         && lower.contains("create x clue tokens, where x is a card in your hand's mana value")
-    {
-    }
+    {}
     if lower.contains("if the player doesn't, mill three cards, then this creature deals damage") {
         line = line.replace(
             "If the player doesn't, mill three cards",
@@ -890,8 +888,7 @@ fn finalize_ast_surface_line(line: String) -> String {
     }
     if lower.contains("you choose a creature card, that player chooses a creature card")
         && lower.contains("you may put it onto the battlefield under its owner's control")
-    {
-    }
+    {}
     if lower.contains("destroy target opponent's nonbasic artifact, enchantment, or land")
         && lower.contains("then an opponent may search an opponent's library for a basic land card")
     {
@@ -1690,8 +1687,7 @@ fn normalize_temporary_trample_pump_surface(line: &str) -> String {
 }
 
 fn normalize_chosen_player_adds_mana_surface(line: &str) -> String {
-    line
-    .replace(
+    line.replace(
         "choose a player, then add one mana of any color to that player's mana pool",
         "choose a player. That player adds one mana of any color they choose",
     )
@@ -1777,9 +1773,15 @@ fn normalize_chosen_creature_type_surface(line: &str) -> String {
         if !effect.contains("target ") {
             return line.to_string();
         }
+        // With the leading "Choose a creature type" clause folded away, the
+        // chosen-type back-reference reads as the single-sentence oracle
+        // idiom "of the creature type of your choice".
         return format!(
             "Return {}",
-            effect
+            effect.replace(
+                " of the chosen type",
+                " of the creature type of your choice"
+            )
         );
     }
     line.to_string()

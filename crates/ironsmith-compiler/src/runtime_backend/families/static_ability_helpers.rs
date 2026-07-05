@@ -115,6 +115,9 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         KeywordAction::Rebound => Some(StaticAbility::rebound()),
         KeywordAction::Sunburst => Some(StaticAbility::keyword_marker("sunburst".to_string())),
         KeywordAction::ReadAhead => Some(StaticAbility::read_ahead()),
+        KeywordAction::Firebending(amount) => Some(StaticAbility::keyword_marker(format!(
+            "firebending {amount}"
+        ))),
         KeywordAction::Fading(amount) => {
             Some(StaticAbility::keyword_marker(format!("fading {amount}")))
         }

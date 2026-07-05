@@ -1202,9 +1202,18 @@ impl ObjectFilter {
         } else {
             None
         };
+        let other_source_surface_text = if self.other && !self.source {
+            self.source_surface
+                .as_ref()
+                .map(source_reference_surface_text)
+        } else {
+            None
+        };
 
         if self.other {
-            parts.push("another".to_string());
+            if other_source_surface_text.is_none() {
+                parts.push("another".to_string());
+            }
         }
         let has_target_tag = self.tagged_constraints.iter().any(|constraint| {
             matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
@@ -1899,6 +1908,9 @@ impl ObjectFilter {
         if !post_noun_qualifiers.is_empty() {
             parts.extend(post_noun_qualifiers);
         }
+        if let Some(surface_text) = other_source_surface_text {
+            parts.push(format!("other than {surface_text}"));
+        }
         if self.distinct_names {
             parts.push("with different names".to_string());
         }
@@ -1926,6 +1938,11 @@ impl ObjectFilter {
                 (Some(controller), None) => parts.push(controller.clone()),
                 (None, Some(owner)) => parts.push(owner.clone()),
                 (None, None) => {}
+            }
+            if name == "{chosen name}" {
+                // The name is a runtime back-reference to a previously chosen
+                // card name, not a literal card name.
+                return format!("a {} with that name", parts.join(" "));
             }
             return format!("a {} named {}", parts.join(" "), name);
         }

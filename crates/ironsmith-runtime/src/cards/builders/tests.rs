@@ -17798,8 +17798,45 @@ fn render_trigger_uses_card_name_when_oracle_uses_name() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Whenever this creature attacks"),
-        "expected rendered trigger to use structural self-reference, got {rendered}"
+        rendered.contains("Whenever Name Trigger Probe attacks"),
+        "expected rendered trigger to keep the oracle name surface, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn massacre_girl_keeps_named_self_reference_and_other_than_filter() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Massacre Girl")
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .parse_text(
+            "Menace\n\
+             When Massacre Girl enters, each other creature gets -1/-1 until end of turn. Whenever a creature dies this turn, each creature other than Massacre Girl gets -1/-1 until end of turn.",
+        )
+        .expect("Massacre Girl should parse with named source surfaces");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("When Massacre Girl enters"),
+        "ETB trigger should keep Massacre Girl's oracle name surface, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever a creature dies, each creature other than Massacre Girl gets -1/-1 until end of turn."
+        ),
+        "death trigger should target creatures other than Massacre Girl, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("When this creature enters")
+            && !rendered.contains("for each other creature")
+            && !rendered.contains("this creature gets -1/-1"),
+        "Massacre Girl should not fall back to structural or source-targeted wording, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("FullName(\"Massacre Girl\")") && !debug.contains("ForEachObject"),
+        "expected named source surface on an object-filter pump, got {debug}"
     );
 }
 
@@ -28870,22 +28907,112 @@ fn kitsunes_technique_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn permanent_sneak_form_stays_unsupported_until_tapped_attacking_is_modeled() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(80_491), "Permanent Sneak Probe")
+fn permanent_sneak_form_compiles_with_sneak_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(80_491), "Elektra, Daughter of the Hand")
         .card_types(vec![CardType::Creature])
-        .power_toughness(PowerToughness::fixed(3, 2))
+        .power_toughness(PowerToughness::fixed(3, 3))
         .parse_text(
-            "Sneak {1}{B} (You may cast this spell for {1}{B} if you also return an \
-             unblocked attacker you control to hand during the declare blockers step. It enters \
-             tapped and attacking.)",
+            "Sneak {1}{B}{B} (You may cast this spell for {1}{B}{B} if you also return an \
+             unblocked attacker you control to hand during the declare blockers step. She enters \
+             tapped and attacking.)\n\
+             When Elektra enters, destroy target creature an opponent controls with power 3 or less.",
         )
-        .expect_err("permanent Sneak should not compile without tapped-and-attacking support");
+        .expect("permanent Sneak should compile");
 
-    let err_text = err.to_string();
-    assert!(
-        err_text.contains("sneak keyword form is not yet supported"),
-        "unexpected permanent Sneak parse error: {err_text}"
+    let sneak = def
+        .alternative_casts
+        .iter()
+        .find(|method| method.name().eq_ignore_ascii_case("Sneak"))
+        .expect("Elektra should have a Sneak alternative cost");
+    assert_eq!(
+        sneak.mana_cost().map(|cost| cost.to_oracle()),
+        Some("{1}{B}{B}".to_string())
     );
+    assert!(
+        sneak.non_mana_costs().iter().any(|cost| {
+            cost.effect_ref().is_some_and(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::SneakCostEffect>()
+                    .is_some()
+            })
+        }),
+        "permanent Sneak should keep the real return-unblocked-attacker cost"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn requested_parse_gap_cards_compile() {
+    let cases = [
+        (
+            "Cryogen Relic",
+            CardType::Artifact,
+            "When this artifact enters or leaves the battlefield, draw a card.\n\
+             {1}{U}, Sacrifice this artifact: Put a stun counter on up to one target tapped creature.",
+        ),
+        (
+            "Stormchaser's Talent",
+            CardType::Enchantment,
+            "(Gain the next level as a sorcery to add its ability.)\n\
+             When this Class enters, create a 1/1 blue and red Otter creature token with prowess.\n\
+             {3}{U}: Level 2\n\
+             When this Class becomes level 2, return target instant or sorcery card from your graveyard to your hand.\n\
+             {5}{U}: Level 3\n\
+             Whenever you cast an instant or sorcery spell, create a 1/1 blue and red Otter creature token with prowess.",
+        ),
+        (
+            "Nowhere to Run",
+            CardType::Enchantment,
+            "Flash\n\
+             When this enchantment enters, target creature an opponent controls gets -3/-3 until end of turn.\n\
+             Creatures your opponents control can be the targets of spells and abilities as though they didn't have hexproof. Ward abilities of those creatures don't trigger.",
+        ),
+        (
+            "Momentum Breaker",
+            CardType::Enchantment,
+            "Start your engines!\n\
+             When this enchantment enters, each opponent sacrifices a creature or Vehicle of their choice. Each opponent who can't discards a card.\n\
+             {2}, Sacrifice this enchantment: You gain life equal to your speed.",
+        ),
+        (
+            "Fire Lord Sozin",
+            CardType::Creature,
+            "Menace, firebending 3 (Whenever this creature attacks, add {R}{R}{R}. This mana lasts until end of combat.)\n\
+             Whenever Fire Lord Sozin deals combat damage to a player, you may pay {X}. When you do, put any number of target creature cards with total mana value X or less from that player's graveyard onto the battlefield under your control.",
+        ),
+        (
+            "The Mind Stone",
+            CardType::Artifact,
+            "Indestructible\n\
+             {T}: Add {W}.\n\
+             {5}{W}, {T}: Harness The Mind Stone.\n\
+             ∞ — At the beginning of your end step, exile up to one other target nonland permanent you control, then return that card to the battlefield under its owner's control.",
+        ),
+        (
+            "Erode",
+            CardType::Instant,
+            "Destroy target creature or planeswalker. Its controller may search their library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+        ),
+    ];
+
+    for (name, card_type, text) in cases {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![card_type])
+            .parse_text(text)
+            .unwrap_or_else(|err| panic!("{name} should parse: {err}"));
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
+        assert!(
+            !rendered.trim().is_empty(),
+            "{name} should produce compiled text"
+        );
+        if name == "Cryogen Relic" {
+            let lowered = rendered.to_ascii_lowercase();
+            assert!(
+                lowered.contains("enters") && lowered.contains("leaves"),
+                "Cryogen Relic should retain both trigger arms, got {rendered}"
+            );
+        }
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

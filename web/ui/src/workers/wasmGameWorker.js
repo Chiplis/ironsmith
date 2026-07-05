@@ -34,6 +34,7 @@ let cardIndexPromise = null;
 const registeredCardRoutes = new Set();
 const missingCardRoutes = new Set();
 const knownRuntimeCardNames = new Set();
+const STABLE_CARD_ASSET_FETCH_OPTIONS = { cache: "no-cache" };
 const SNAPSHOT_METHODS = new Set([
   "advancePhase",
   "applyVerifiedHiddenLibraryShuffle",
@@ -328,9 +329,10 @@ async function loadCardIndex() {
     return null;
   }
   if (!cardIndexPromise) {
-    cardIndexPromise = fetch(new URL("index.json", cardAssetsBaseUrl).href, {
-      cache: "force-cache",
-    }).then(async (response) => {
+    cardIndexPromise = fetch(
+      new URL("index.json", cardAssetsBaseUrl).href,
+      STABLE_CARD_ASSET_FETCH_OPTIONS
+    ).then(async (response) => {
       if (!response.ok) {
         throw new Error(`Card index fetch failed: HTTP ${response.status}`);
       }
@@ -365,7 +367,7 @@ async function fetchCardSource(name) {
   }
   const url = cardAssetUrl(route);
   if (!url) return null;
-  const response = await fetch(url, { cache: "force-cache" });
+  const response = await fetch(url, STABLE_CARD_ASSET_FETCH_OPTIONS);
   if (response.status === 404) {
     missingCardRoutes.add(route);
     return null;

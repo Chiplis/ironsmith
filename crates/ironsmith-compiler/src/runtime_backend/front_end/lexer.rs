@@ -40,6 +40,7 @@ fn parser_text_for_token(kind: TokenKind, slice: &str) -> String {
         TokenKind::Tilde => "this".to_string(),
         TokenKind::Half => "1/2".to_string(),
         TokenKind::Ampersand => "and".to_string(),
+        TokenKind::Infinity => "infinity".to_string(),
         _ => normalize_parser_fragment(slice),
     }
 }
@@ -78,6 +79,8 @@ pub(crate) enum TokenKind {
     Ampersand,
     #[token("~")]
     Tilde,
+    #[token("∞")]
+    Infinity,
     #[token("-")]
     #[token("−")]
     #[token("–")]
@@ -125,7 +128,7 @@ fn build_token_word_pieces(
 ) -> Box<[TokenWordPiece]> {
     let mut pieces = Vec::new();
     match kind {
-        TokenKind::Word | TokenKind::Number | TokenKind::Ampersand => {
+        TokenKind::Word | TokenKind::Number | TokenKind::Ampersand | TokenKind::Infinity => {
             push_normalized_token_words(parser_text, span, false, &mut pieces);
         }
         TokenKind::Tilde => pieces.push(TokenWordPiece {
@@ -225,7 +228,9 @@ impl OwnedLexToken {
 
     pub(crate) fn as_word(&self) -> Option<&str> {
         match self.kind {
-            TokenKind::Word | TokenKind::Number | TokenKind::Ampersand => Some(self.slice.as_str()),
+            TokenKind::Word | TokenKind::Number | TokenKind::Ampersand | TokenKind::Infinity => {
+                Some(self.slice.as_str())
+            }
             TokenKind::Tilde => Some("this"),
             _ => None,
         }
@@ -259,7 +264,7 @@ impl OwnedLexToken {
 
     pub(crate) fn replace_word(&mut self, slice: impl Into<String>) -> bool {
         match self.kind {
-            TokenKind::Word | TokenKind::Number | TokenKind::Ampersand => {
+            TokenKind::Word | TokenKind::Number | TokenKind::Ampersand | TokenKind::Infinity => {
                 let slice = slice.into();
                 self.parser_text = parser_text_for_token(self.kind, slice.as_str());
                 self.slice = slice;
@@ -277,7 +282,7 @@ impl OwnedLexToken {
 
     pub(crate) fn lowercase_word(&mut self) -> bool {
         match self.kind {
-            TokenKind::Word | TokenKind::Number | TokenKind::Ampersand => {
+            TokenKind::Word | TokenKind::Number | TokenKind::Ampersand | TokenKind::Infinity => {
                 let lowered = self.slice.to_ascii_lowercase();
                 self.replace_word(lowered)
             }
@@ -289,7 +294,11 @@ impl OwnedLexToken {
     pub(crate) fn is_word(&self, expected: &str) -> bool {
         matches!(
             self.kind,
-            TokenKind::Word | TokenKind::Number | TokenKind::Ampersand | TokenKind::Tilde
+            TokenKind::Word
+                | TokenKind::Number
+                | TokenKind::Ampersand
+                | TokenKind::Infinity
+                | TokenKind::Tilde
         ) && self.parser_text == normalize_parser_fragment(expected)
     }
 

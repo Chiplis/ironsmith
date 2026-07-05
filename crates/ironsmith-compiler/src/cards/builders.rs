@@ -379,6 +379,13 @@ impl CardDefinitionBuilder {
             KeywordAction::Rebound => self.rebound(),
             KeywordAction::Sunburst => self.sunburst(),
             KeywordAction::ReadAhead => self.read_ahead(),
+            KeywordAction::Firebending(amount) => {
+                self.with_ability(crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::keyword_marker(format!(
+                        "firebending {amount}"
+                    )),
+                ))
+            }
             KeywordAction::Fading(amount) => self.fading(amount),
             KeywordAction::Modular(amount) => self.modular(amount),
             KeywordAction::ModularSunburst => self.modular_sunburst(),
