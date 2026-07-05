@@ -509,23 +509,191 @@ fn prompt_binding(prompt_id: &str, player_slot: &str, decision_kind: &str) -> Va
     })
 }
 
+fn optional_number_value(value: Option<&Value>) -> Option<i64> {
+    match value {
+        Some(Value::Number(value)) => value.as_i64(),
+        Some(Value::String(value)) => value.parse().ok(),
+        _ => None,
+    }
+}
+
+fn priority_ref_number(action_ref: &Value, keys: &[&str]) -> Option<i64> {
+    as_object(action_ref).and_then(|object| optional_number_value(get_any(object, keys)))
+}
+
+fn nested_special_action_ref(action_ref: &Value) -> Option<&Value> {
+    as_object(action_ref).and_then(|object| get_any(object, &["action"]))
+}
+
+fn priority_action_object_id(action: &JsonMap, action_ref: &Value) -> Option<Value> {
+    let kind = priority_action_ref_kind(action_ref);
+    match kind.as_str() {
+        "cast_spell" => as_object(action_ref)
+            .and_then(|action_ref| get_any(action_ref, &["spell_id", "spellId"]))
+            .cloned(),
+        "play_land" => as_object(action_ref)
+            .and_then(|action_ref| get_any(action_ref, &["land_id", "landId", "card_id", "cardId"]))
+            .cloned(),
+        "activate_ability" | "activate_mana_ability" => as_object(action_ref)
+            .and_then(|action_ref| get_any(action_ref, &["source", "card_id", "cardId"]))
+            .cloned(),
+        "untap_land" => as_object(action_ref)
+            .and_then(|action_ref| get_any(action_ref, &["stable_id", "stableId", "land_id", "landId"]))
+            .cloned(),
+        "special_action" => {
+            let nested = nested_special_action_ref(action_ref)?;
+            let nested_kind = priority_action_ref_kind(nested);
+            let nested_object = as_object(nested)?;
+            match nested_kind.as_str() {
+                "play_land" => get_any(nested_object, &["card_id", "cardId", "land_id", "landId"]).cloned(),
+                "activate_mana_ability" => get_any(
+                    nested_object,
+                    &["permanent_id", "permanentId", "source", "card_id", "cardId"],
+                )
+                .cloned(),
+                _ => get_any(nested_object, &["permanent_id", "permanentId", "card_id", "cardId"]).cloned(),
+            }
+        }
+        _ => get_any(action, &["object_id", "objectId", "stable_id", "stableId"]).cloned(),
+    }
+}
+
+fn priority_action_ability_index(action: &JsonMap, action_ref: &Value) -> i64 {
+    priority_ref_number(action_ref, &["ability_index", "abilityIndex"])
+        .or_else(|| optional_number_value(get_any(action, &["ability_index", "abilityIndex"])))
+        .or_else(|| {
+            nested_special_action_ref(action_ref)
+                .and_then(|nested| priority_ref_number(nested, &["ability_index", "abilityIndex"]))
+        })
+        .unwrap_or(0)
+}
+
+fn priority_action_label(action: &JsonMap, index: usize) -> String {
+    string_value(get_any(action, &["label"]), &format!("Action {}", index + 1))
+}
+
+fn priority_action_mode_label(label: &str, fallback: &str) -> String {
+    label
+        .split_whitespace()
+        .next()
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+fn available_action_from_priority_action(action: &JsonMap, index: usize) -> Option<Value> {
+    let action_ref = normalize_priority_action_ref(get_any(action, &["action_ref", "actionRef"]).cloned())
+        .unwrap_or(Value::Null);
+    let kind = priority_action_ref_kind(&action_ref);
+    let label = priority_action_label(action, index);
+    let object_id = priority_action_object_id(action, &action_ref);
+    let id = index.to_string();
+
+    match kind.as_str() {
+        "cast_spell" => object_id.as_ref().map(|object_id| {
+            json!({
+                "id": id,
+                "type": "cast",
+                "cardId": card_id(Some(object_id)),
+                "mode": "normal",
+                "modeLabel": priority_action_mode_label(&label, "Cast"),
+            })
+        }),
+        "play_land" => object_id.as_ref().map(|object_id| {
+            json!({
+                "id": id,
+                "type": "cast",
+                "cardId": card_id(Some(object_id)),
+                "mode": "playLand",
+                "modeLabel": priority_action_mode_label(&label, "Play"),
+            })
+        }),
+        "activate_ability" | "activate_mana_ability" => object_id.as_ref().map(|object_id| {
+            json!({
+                "id": id,
+                "type": "activateAbility",
+                "cardId": card_id(Some(object_id)),
+                "abilityIndex": priority_action_ability_index(action, &action_ref),
+                "description": label,
+                "isManaAbility": kind == "activate_mana_ability",
+            })
+        }),
+        "untap_land" => object_id.as_ref().map(|object_id| {
+            json!({
+                "id": id,
+                "type": "undoMana",
+                "cardId": card_id(Some(object_id)),
+            })
+        }),
+        "special_action" => {
+            let nested = nested_special_action_ref(&action_ref)?;
+            let nested_kind = priority_action_ref_kind(nested);
+            let nested_object_id = priority_action_object_id(action, &action_ref);
+            match nested_kind.as_str() {
+                "play_land" => nested_object_id.as_ref().map(|object_id| {
+                    json!({
+                        "id": id,
+                        "type": "cast",
+                        "cardId": card_id(Some(object_id)),
+                        "mode": "playLand",
+                        "modeLabel": priority_action_mode_label(&label, "Play"),
+                    })
+                }),
+                "activate_mana_ability" => nested_object_id.as_ref().map(|object_id| {
+                    json!({
+                        "id": id,
+                        "type": "activateAbility",
+                        "cardId": card_id(Some(object_id)),
+                        "abilityIndex": priority_action_ability_index(action, &action_ref),
+                        "description": label,
+                        "isManaAbility": true,
+                    })
+                }),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn priority_action_ref_has_kind(action: &JsonMap, kind: &str) -> bool {
+    let action_ref = normalize_priority_action_ref(get_any(action, &["action_ref", "actionRef"]).cloned())
+        .unwrap_or(Value::Null);
+    if priority_action_ref_kind(&action_ref) == kind {
+        return true;
+    }
+    nested_special_action_ref(&action_ref)
+        .map(|nested| priority_action_ref_kind(nested) == kind)
+        .unwrap_or(false)
+}
+
+fn is_mulligan_priority(actions: &[Value]) -> bool {
+    actions
+        .iter()
+        .filter_map(as_object)
+        .any(|action| priority_action_ref_has_kind(action, "keep_opening_hand"))
+        && actions
+            .iter()
+            .filter_map(as_object)
+            .any(|action| priority_action_ref_has_kind(action, "take_mulligan"))
+}
+
 fn priority_prompt(decision: &JsonMap, prompt_id: &str) -> Value {
     let for_player = player_slot(get_any(decision, &["player"]));
     let actions = array_value(get_any(decision, &["actions"]));
     let mut action_refs = JsonMap::new();
-    let options: Vec<Value> = actions
-        .iter()
-        .enumerate()
-        .map(|(index, action)| {
-            let action = object_value(action);
-            action_refs.insert(
-                index.to_string(),
-                normalize_priority_action_ref(get_any(action, &["action_ref", "actionRef"]).cloned())
-                    .unwrap_or(Value::Null),
-            );
-            json!(string_value(get_any(action, &["label"]), &format!("Action {}", index + 1)))
-        })
-        .collect();
+    let mut available_actions = Vec::new();
+    for (index, action) in actions.iter().enumerate() {
+        let action = object_value(action);
+        action_refs.insert(
+            index.to_string(),
+            normalize_priority_action_ref(get_any(action, &["action_ref", "actionRef"]).cloned())
+                .unwrap_or(Value::Null),
+        );
+        if let Some(available_action) = available_action_from_priority_action(action, index) {
+            available_actions.push(available_action);
+        }
+    }
     let mut binding = prompt_binding(prompt_id, &for_player, "priority");
     binding["actionRefs"] = Value::Object(action_refs);
     json!({
@@ -533,16 +701,17 @@ fn priority_prompt(decision: &JsonMap, prompt_id: &str) -> Value {
         "prompt": {
             "promptId": prompt_id,
             "decidingPlayerId": for_player,
-            "input": {
-                "type": "chooseFromSelection",
-                "presentation": presentation(
-                    "Choose action",
-                    Some(string_value(get_any(decision, &["description"]), "")).filter(|value| !value.is_empty()),
-                    None,
-                ),
-                "options": options,
-                "minChoices": if actions.is_empty() { 0 } else { 1 },
-                "maxChoices": if actions.is_empty() { 0 } else { 1 },
+            "input": if is_mulligan_priority(actions) {
+                json!({
+                    "type": "mulligan",
+                    "handCardIds": [],
+                    "mulliganCount": 0,
+                })
+            } else {
+                json!({
+                    "type": "chooseAction",
+                    "actions": available_actions,
+                })
             }
         },
         "binding": binding,
@@ -965,25 +1134,31 @@ fn normalize_priority_action_ref(action_ref: Option<Value>) -> Option<Value> {
     Some(Value::Object(object))
 }
 
-fn pass_priority_action_ref(binding: &JsonMap) -> Value {
-    let pass_like = [
-        "pass_priority",
-        "keep_opening_hand",
-        "continue_pregame",
-        "begin_game",
-    ];
+fn priority_action_ref_for_kinds(binding: &JsonMap, kinds: &[&str]) -> Value {
     binding
         .get("actionRefs")
         .and_then(Value::as_object)
         .and_then(|action_refs| {
             action_refs.values().find_map(|action_ref| {
                 let normalized = normalize_priority_action_ref(Some(action_ref.clone()))?;
-                pass_like
+                kinds
                     .contains(&priority_action_ref_kind(&normalized).as_str())
                     .then_some(normalized)
             })
         })
-        .unwrap_or_else(|| json!({ "kind": "pass_priority" }))
+        .unwrap_or_else(|| json!({ "kind": kinds.first().copied().unwrap_or("pass_priority") }))
+}
+
+fn pass_priority_action_ref(binding: &JsonMap) -> Value {
+    priority_action_ref_for_kinds(
+        binding,
+        &[
+            "pass_priority",
+            "keep_opening_hand",
+            "continue_pregame",
+            "begin_game",
+        ],
+    )
 }
 
 fn bound_priority_action_ref(binding: &JsonMap, action_id: &str) -> Result<Value, JsValue> {
@@ -1048,6 +1223,19 @@ fn parse_player_index(id: &str) -> u64 {
 
 fn manabrew_command_from_values(output: &JsonMap, binding: &JsonMap) -> Result<Value, JsValue> {
     match output.get("type").and_then(Value::as_str).unwrap_or_default() {
+        "mulligan" => {
+            let keep = output
+                .get("output")
+                .and_then(|output| output.get("keep"))
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let action_ref = if keep {
+                priority_action_ref_for_kinds(binding, &["keep_opening_hand"])
+            } else {
+                priority_action_ref_for_kinds(binding, &["take_mulligan"])
+            };
+            Ok(json!({ "type": "priority_action", "action_ref": action_ref }))
+        }
         "chooseAction" => {
             let inner = output.get("output").and_then(as_object).cloned().unwrap_or_default();
             match inner.get("type").and_then(Value::as_str).unwrap_or_default() {
