@@ -96,6 +96,7 @@ def write_download_metadata(
     metadata: dict,
     destination: Path,
     *,
+    cards_path: Path,
     total: int,
     kept: int,
 ) -> None:
@@ -110,7 +111,7 @@ def write_download_metadata(
         "updated_at": metadata.get("updated_at"),
         "total_entries": total,
         "kept_cards": kept,
-        "filtered_cards_sha256": file_sha256(destination),
+        "filtered_cards_sha256": file_sha256(cards_path),
     }
     destination.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -261,7 +262,13 @@ def main() -> int:
             print(f"[INFO] downloading {download_uri}", file=sys.stderr)
             download_file(download_uri, source)
             total, kept = write_filtered_cards(source, args.out)
-            write_download_metadata(metadata, metadata_out, total=total, kept=kept)
+            write_download_metadata(
+                metadata,
+                metadata_out,
+                cards_path=args.out,
+                total=total,
+                kept=kept,
+            )
             print(
                 f"[INFO] wrote {kept} cards to {args.out} "
                 f"(from {total} Default Cards entries)",
