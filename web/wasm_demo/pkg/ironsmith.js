@@ -406,6 +406,54 @@ export class WasmGame {
         }
     }
     /**
+     * @param {any} output
+     * @param {any} binding
+     * @returns {any}
+     */
+    manabrewCommandFromPromptOutput(output, binding) {
+        const ret = wasm.wasmgame_manabrewCommandFromPromptOutput(this.__wbg_ptr, output, binding);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {string} prompt_id
+     * @returns {any}
+     */
+    manabrewPrompt(prompt_id) {
+        const ptr0 = passStringToWasm0(prompt_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmgame_manabrewPrompt(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {any}
+     */
+    manabrewPublicState() {
+        const ret = wasm.wasmgame_manabrewPublicState(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {string} prompt_id
+     * @returns {any}
+     */
+    manabrewView(prompt_id) {
+        const ptr0 = passStringToWasm0(prompt_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmgame_manabrewView(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Move a hand card onto the battlefield with the shared morph-style
      * face-down overlay. This is used by ported test harnesses that set up a
      * cast result directly when the UI has no payable cast action exposed.
@@ -1015,6 +1063,10 @@ function __wbg_get_imports() {
             const ret = new Array();
             return ret;
         },
+        __wbg_new_46ae4e4ff2a07a64: function() {
+            const ret = new Map();
+            return ret;
+        },
         __wbg_new_8454eee672b2ba6e: function(arg0) {
             const ret = new Uint8Array(arg0);
             return ret;
@@ -1040,6 +1092,10 @@ function __wbg_get_imports() {
         },
         __wbg_set_6be42768c690e380: function(arg0, arg1, arg2) {
             arg0[arg1] = arg2;
+        },
+        __wbg_set_82f7a370f604db70: function(arg0, arg1, arg2) {
+            const ret = arg0.set(arg1, arg2);
+            return ret;
         },
         __wbg_set_f614f6a0608d1d1d: function(arg0, arg1, arg2) {
             arg0[arg1 >>> 0] = arg2;

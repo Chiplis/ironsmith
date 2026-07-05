@@ -8,3 +8,4 @@ include!("pregame.rs");
 include!("runtime_flow.rs");
 include!("sync_checkpoint.rs");
 include!("ziffle_backend.rs");
+include!("manabrew_compat.rs");

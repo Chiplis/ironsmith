@@ -130,6 +130,10 @@ export class WasmGame {
      * Replace game state with demo decks and no battlefield/stack state.
      */
     loadDemoDecks(): void;
+    manabrewCommandFromPromptOutput(output: any, binding: any): any;
+    manabrewPrompt(prompt_id: string): any;
+    manabrewPublicState(): any;
+    manabrewView(prompt_id: string): any;
     /**
      * Move a hand card onto the battlefield with the shared morph-style
      * face-down overlay. This is used by ported test harnesses that set up a
@@ -303,6 +307,10 @@ export interface InitOutput {
     readonly wasmgame_ziffleBuildRevealTokens: (a: number, b: any) => [number, number, number];
     readonly wasmgame_ziffleRevealCard: (a: number, b: any) => [number, number, number];
     readonly wasmgame_ziffleRevealCards: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_manabrewView: (a: number, b: number, c: number) => [number, number, number];
+    readonly wasmgame_manabrewPublicState: (a: number) => [number, number, number];
+    readonly wasmgame_manabrewPrompt: (a: number, b: number, c: number) => [number, number, number];
+    readonly wasmgame_manabrewCommandFromPromptOutput: (a: number, b: any, c: any) => [number, number, number];
     readonly __wbg_wasmgame_free: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
