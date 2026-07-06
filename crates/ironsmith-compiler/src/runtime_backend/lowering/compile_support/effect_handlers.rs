@@ -588,8 +588,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                         (vec![effect], choices)
                     }
                 }
-                TriggerSpec::DealsCombatDamageToPlayer { source, player }
-                | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => {
+                TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => {
                     let resolved_source = resolve_it_tag(source, &current_reference_env(ctx))?;
                     let trigger = ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
                         source: resolved_source.clone(),

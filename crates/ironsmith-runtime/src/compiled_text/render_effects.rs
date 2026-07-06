@@ -20327,24 +20327,6 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             Some(tagged.tag.as_str())
         }
 
-        fn choose_up_to_one_target_type(
-            effect: &Effect,
-            card_type: crate::types::CardType,
-        ) -> Option<&str> {
-            let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-            let count = &choose.count;
-            if count.min != 0 || count.max != Some(1) {
-                return None;
-            }
-            if choose_primary_zone(choose) != Some(Zone::Battlefield) {
-                return None;
-            }
-            if choose.filter.card_types != vec![card_type] {
-                return None;
-            }
-            Some(choose.tag.as_str())
-        }
-
         fn is_move_to_exile_of_tag(effect: &Effect, tag: &str) -> bool {
             let effect = unwrap_tag_wrappers(effect);
             let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()

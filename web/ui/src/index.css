@@ -5013,16 +5013,31 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   --hand-reveal-y: -12px;
 }
 
+.hand-reveal-shell:has(.game-card.hand-card:hover),
+.hand-reveal-shell:has(.game-card.hand-card.hovered),
 .hand-reveal-shell:has(.game-card.hand-card.inspected) {
-  z-index: 1000;
+  z-index: 4000;
 }
 
+[data-hand-dock-lane]:has(.game-card.hand-card:hover),
+[data-hand-dock-lane]:has(.game-card.hand-card.hovered),
+[data-hand-dock-lane]:has(.game-card.hand-card.inspected),
+[data-bottom-dock]:has(.game-card.hand-card:hover),
+[data-bottom-dock]:has(.game-card.hand-card.hovered),
 [data-bottom-dock]:has(.game-card.hand-card.inspected),
+.mobile-mtga-hand-fan:has(.game-card.hand-card:hover),
+.mobile-mtga-hand-fan:has(.game-card.hand-card.hovered),
 .mobile-mtga-hand-fan:has(.game-card.hand-card.inspected),
+.mobile-mtga-hand-fullscreen:has(.game-card.hand-card:hover),
+.mobile-mtga-hand-fullscreen:has(.game-card.hand-card.hovered),
 .mobile-mtga-hand-fullscreen:has(.game-card.hand-card.inspected),
+.mobile-battle-self-hand:has(.game-card.hand-card:hover),
+.mobile-battle-self-hand:has(.game-card.hand-card.hovered),
 .mobile-battle-self-hand:has(.game-card.hand-card.inspected),
+.my-zone-hand-rail:has(.game-card.hand-card:hover),
+.my-zone-hand-rail:has(.game-card.hand-card.hovered),
 .my-zone-hand-rail:has(.game-card.hand-card.inspected) {
-  z-index: 1000;
+  z-index: 4000;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -11679,6 +11694,8 @@ select::-ms-expand {
     overflow: visible;
   }
 
+  .mobile-battle-self-hud:has(.game-card.hand-card:hover),
+  .mobile-battle-self-hud:has(.game-card.hand-card.hovered),
   .mobile-battle-self-hud:has(.game-card.hand-card.inspected) {
     z-index: 182;
   }
@@ -15040,13 +15057,23 @@ select::-ms-expand {
   position: relative;
 }
 
+.hand-zone-surface:has(.game-card.hand-card:hover),
+.hand-zone-surface:has(.game-card.hand-card.hovered),
 .hand-zone-surface:has(.game-card.hand-card.inspected),
+.hand-zone-viewport:has(.game-card.hand-card:hover),
+.hand-zone-viewport:has(.game-card.hand-card.hovered),
 .hand-zone-viewport:has(.game-card.hand-card.inspected),
+.hand-zone-scroll:has(.game-card.hand-card:hover),
+.hand-zone-scroll:has(.game-card.hand-card.hovered),
 .hand-zone-scroll:has(.game-card.hand-card.inspected),
+.hand-zone-row:has(.game-card.hand-card:hover),
+.hand-zone-row:has(.game-card.hand-card.hovered),
 .hand-zone-row:has(.game-card.hand-card.inspected),
+.hand-zone-cycle:has(.game-card.hand-card:hover),
+.hand-zone-cycle:has(.game-card.hand-card.hovered),
 .hand-zone-cycle:has(.game-card.hand-card.inspected) {
   position: relative;
-  z-index: 1000;
+  z-index: 4000;
 }
 
 /* Mana pool chips: brass gem socket behind the symbol. */
