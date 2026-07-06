@@ -2,6 +2,23 @@ use serde_json::{Value, json};
 
 type JsonMap = serde_json::Map<String, Value>;
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManabrewMatchConfigInput {
+    player_names: Vec<String>,
+    starting_life: i32,
+    #[serde(default)]
+    seed: Option<u64>,
+    #[serde(default)]
+    format: Option<String>,
+    #[serde(default)]
+    decks: Vec<Value>,
+    #[serde(default)]
+    commander_names: Vec<Option<String>>,
+    #[serde(default)]
+    opening_hand_size: Option<usize>,
+}
+
 fn as_object(value: &Value) -> Option<&JsonMap> {
     value.as_object()
 }
@@ -32,6 +49,193 @@ fn bool_value(value: Option<&Value>, fallback: bool) -> bool {
 
 fn array_value(value: Option<&Value>) -> &[Value] {
     value.and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
+}
+
+fn manabrew_format(value: Option<&str>) -> MatchFormatInput {
+    match value.unwrap_or_default().to_ascii_lowercase().as_str() {
+        "commander" | "brawl" | "oathbreaker" => MatchFormatInput::Commander,
+        _ => MatchFormatInput::Normal,
+    }
+}
+
+fn manabrew_card_name(card: &Value) -> Option<String> {
+    let card = object_value(card);
+    let name = card
+        .get("identity")
+        .and_then(as_object)
+        .and_then(|identity| identity.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+fn manabrew_deck_section_names(deck: &Value, section: &str) -> Vec<String> {
+    let deck = object_value(deck);
+    array_value(deck.get(section))
+        .iter()
+        .filter_map(manabrew_card_name)
+        .collect()
+}
+
+fn manabrew_deck_commander_names(deck: &Value, fallback: Option<&str>) -> Vec<String> {
+    let commanders = manabrew_deck_section_names(deck, "commanders");
+    if !commanders.is_empty() {
+        return commanders;
+    }
+    fallback
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| vec![value.to_string()])
+        .unwrap_or_default()
+}
+
+fn manabrew_all_deck_cards(deck: &Value) -> Vec<&Value> {
+    let deck = object_value(deck);
+    let mut cards = Vec::new();
+    for section in [
+        "cards",
+        "sideboard",
+        "commanders",
+        "attractions",
+        "contraptions",
+        "schemes",
+        "planes",
+        "maybeboard",
+        "tokens",
+    ] {
+        cards.extend(array_value(deck.get(section)));
+    }
+    if let Some(companion) = deck.get("companion") {
+        cards.push(companion);
+    }
+    cards
+}
+
+fn manabrew_string_array(card: &JsonMap, key: &str) -> Vec<String> {
+    array_value(card.get(key))
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn manabrew_type_line(card: &JsonMap) -> String {
+    let mut front = manabrew_string_array(card, "supertypes");
+    front.extend(manabrew_string_array(card, "types"));
+    let front = front.join(" ");
+    let subtypes = manabrew_string_array(card, "subtypes").join(" ");
+    if front.is_empty() {
+        if subtypes.is_empty() {
+            "Card".to_string()
+        } else {
+            subtypes
+        }
+    } else if subtypes.is_empty() {
+        front
+    } else {
+        format!("{front} \u{2014} {subtypes}")
+    }
+}
+
+fn manabrew_card_source_block(card: &Value) -> String {
+    let card = object_value(card);
+    let mut lines = Vec::new();
+    let mana_cost = string_value(card.get("manaCost"), "").trim().to_string();
+    if !mana_cost.is_empty() {
+        lines.push(format!("Mana cost: {mana_cost}"));
+    }
+    lines.push(format!("Type: {}", manabrew_type_line(card)));
+    let power = card.get("power").and_then(Value::as_str).map(str::trim);
+    let toughness = card.get("toughness").and_then(Value::as_str).map(str::trim);
+    if let (Some(power), Some(toughness)) = (power, toughness)
+        && !power.is_empty()
+        && !toughness.is_empty()
+    {
+        lines.push(format!("Power/Toughness: {power}/{toughness}"));
+    }
+    let oracle_text = string_value(card.get("text"), "").trim().to_string();
+    if !oracle_text.is_empty() {
+        lines.push(oracle_text);
+    }
+    lines.join("\n")
+}
+
+fn manabrew_deck_sources(decks: &[Value]) -> Vec<ExternalCardSourceFile> {
+    let mut seen = HashSet::new();
+    let mut sources = Vec::new();
+    for deck in decks {
+        for card in manabrew_all_deck_cards(deck) {
+            let Some(name) = manabrew_card_name(card) else {
+                continue;
+            };
+            if !seen.insert(name.to_ascii_lowercase()) {
+                continue;
+            }
+            sources.push(ExternalCardSourceFile {
+                canonical_name: name.clone(),
+                aliases: Vec::new(),
+                group: ExternalCardSourceGroup::Single {
+                    name,
+                    block: manabrew_card_source_block(card),
+                    score: Some(1.0),
+                },
+            });
+        }
+    }
+    sources
+}
+
+fn manabrew_match_setup(input: &ManabrewMatchConfigInput) -> MatchSetupInput {
+    let format = manabrew_format(input.format.as_deref());
+    let opening_hand_size = input.opening_hand_size.unwrap_or(7);
+    let decks: Vec<Vec<String>> = input
+        .decks
+        .iter()
+        .map(|deck| manabrew_deck_section_names(deck, "cards"))
+        .collect();
+    let sideboards: Vec<Vec<String>> = input
+        .decks
+        .iter()
+        .map(|deck| manabrew_deck_section_names(deck, "sideboard"))
+        .collect();
+    let commanders: Vec<Vec<String>> = input
+        .decks
+        .iter()
+        .enumerate()
+        .map(|(index, deck)| {
+            manabrew_deck_commander_names(
+                deck,
+                input
+                    .commander_names
+                    .get(index)
+                    .and_then(|value| value.as_deref()),
+            )
+        })
+        .collect();
+    let seed = input.seed.unwrap_or_else(|| {
+        deterministic_match_seed(
+            &input.player_names,
+            input.starting_life,
+            format,
+            Some(&decks),
+            Some(&commanders),
+            opening_hand_size,
+        )
+    });
+    MatchSetupInput {
+        player_names: input.player_names.clone(),
+        starting_life: input.starting_life,
+        seed,
+        format,
+        decks: Some(decks),
+        sideboards: Some(sideboards),
+        commanders: Some(commanders),
+        opening_hand_size: Some(opening_hand_size),
+        hidden_deck_manifests: None,
+    }
 }
 
 fn player_slot(value: Option<&Value>) -> String {
@@ -1435,8 +1639,57 @@ fn manabrew_command_from_values(output: &JsonMap, binding: &JsonMap) -> Result<V
     }
 }
 
+impl WasmGame {
+    fn register_manabrew_deck_sources_input(
+        &mut self,
+        decks: &[Value],
+    ) -> ExternalCardRegistrationSummary {
+        self.register_external_card_sources_input(ExternalCardSourcesInput::Many(
+            manabrew_deck_sources(decks),
+        ))
+    }
+}
+
 #[wasm_bindgen]
 impl WasmGame {
+    #[wasm_bindgen(js_name = registerManabrewDeckSources)]
+    pub fn register_manabrew_deck_sources(&mut self, decks: JsValue) -> Result<JsValue, JsValue> {
+        let decks: Vec<Value> = serde_wasm_bindgen::from_value(decks)
+            .map_err(|error| JsValue::from_str(&format!("invalid Manabrew decks: {error}")))?;
+        let summary = self.register_manabrew_deck_sources_input(&decks);
+        serde_wasm_bindgen::to_value(&summary).map_err(|error| {
+            JsValue::from_str(&format!(
+                "failed to encode Manabrew deck source registration summary: {error}"
+            ))
+        })
+    }
+
+    #[wasm_bindgen(js_name = validateManabrewMatchConfig)]
+    pub fn validate_manabrew_match_config(&mut self, config: JsValue) -> Result<JsValue, JsValue> {
+        let input: ManabrewMatchConfigInput = serde_wasm_bindgen::from_value(config)
+            .map_err(|error| JsValue::from_str(&format!("invalid Manabrew match config: {error}")))?;
+        self.register_manabrew_deck_sources_input(&input.decks);
+        let setup = manabrew_match_setup(&input);
+        let validation = self.validate_match_setup_input(&setup)?;
+        serde_wasm_bindgen::to_value(&validation).map_err(|error| {
+            JsValue::from_str(&format!(
+                "failed to encode Manabrew match validation: {error}"
+            ))
+        })
+    }
+
+    #[wasm_bindgen(js_name = startManabrewMatch)]
+    pub fn start_manabrew_match(&mut self, config: JsValue) -> Result<JsValue, JsValue> {
+        let input: ManabrewMatchConfigInput = serde_wasm_bindgen::from_value(config)
+            .map_err(|error| JsValue::from_str(&format!("invalid Manabrew match config: {error}")))?;
+        self.register_manabrew_deck_sources_input(&input.decks);
+        let setup = manabrew_match_setup(&input);
+        let setup = serde_wasm_bindgen::to_value(&setup).map_err(|error| {
+            JsValue::from_str(&format!("failed to encode Ironsmith match setup: {error}"))
+        })?;
+        self.start_match(setup)
+    }
+
     #[wasm_bindgen(js_name = manabrewView)]
     pub fn manabrew_view(&mut self, prompt_id: String) -> Result<JsValue, JsValue> {
         let snapshot_js = self.ui_state()?;
