@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "scenario": "post-setup-draws",
+  "roots": [
+    {
+      "label": "after setup",
+      "public_audit_sha256": "eaf4729bce19e50ed57272f2eca50d97ece0ddd74f969fc3d66190aedde0e92f",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "645e7092302c1bf0fc782b755007e0a7e0948655d9ba23880e8b06da7abba6f5"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "d86035c7fc63ae2d4c1d493599292c7d36a2a06aa25ac22a388b3bbdceb2f8c2"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "78e2adfc4085fb694aa313e55ff6237a91215f7eb15949105ce9069b691bd71b"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "404a8cbfaae1b64d2d22257186da095aaaf332e35d74d28b45127ef6e05e1dca"
+        }
+      ]
+    },
+    {
+      "label": "after action 1",
+      "public_audit_sha256": "ea032d4fab7927d1617d4cb6ec89d87c7de41e7e9f628c172aacebb479f384fd",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "04c324c4fb71bb3a233716b200d2be860fb3aabca160ded4268c30f3abfb64f3"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "f0b982072dddb10896122742e7363aa7ab9309b4eb066f7cb17742b6b364fe38"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "78e2adfc4085fb694aa313e55ff6237a91215f7eb15949105ce9069b691bd71b"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "404a8cbfaae1b64d2d22257186da095aaaf332e35d74d28b45127ef6e05e1dca"
+        }
+      ]
+    },
+    {
+      "label": "after action 2",
+      "public_audit_sha256": "992939dd9bd6016970b31c0847c8b427a9c28e554d4611627664823e10dbcb83",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "cf1b17b395306f1338c5a71d8f571dd3c6a68c80c449a82be29859accbc351d3"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "01a54bafbba6a0566521fc412e94baccbc56cfea08fa607e990d2c4743a30ab1"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "78e2adfc4085fb694aa313e55ff6237a91215f7eb15949105ce9069b691bd71b"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "404a8cbfaae1b64d2d22257186da095aaaf332e35d74d28b45127ef6e05e1dca"
+        }
+      ]
+    },
+    {
+      "label": "after action 3",
+      "public_audit_sha256": "c54a09d824674934dc8698bbd563949cf53f2f2a629e0c352ac6f208d28ae708",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "cf1b17b395306f1338c5a71d8f571dd3c6a68c80c449a82be29859accbc351d3"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "01a54bafbba6a0566521fc412e94baccbc56cfea08fa607e990d2c4743a30ab1"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "680917100c3c26881007fd38751299d64b33cbba233b0a63ed9d9457f8b2177f"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "0dc28ae8a735472390ac914468aaae56039b0615399eae28591533ef8c3ffb2b"
+        }
+      ]
+    },
+    {
+      "label": "late joiner import",
+      "public_audit_sha256": "c54a09d824674934dc8698bbd563949cf53f2f2a629e0c352ac6f208d28ae708",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "cf1b17b395306f1338c5a71d8f571dd3c6a68c80c449a82be29859accbc351d3"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "01a54bafbba6a0566521fc412e94baccbc56cfea08fa607e990d2c4743a30ab1"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "680917100c3c26881007fd38751299d64b33cbba233b0a63ed9d9457f8b2177f"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "0dc28ae8a735472390ac914468aaae56039b0615399eae28591533ef8c3ffb2b"
+        }
+      ]
+    }
+  ]
+}

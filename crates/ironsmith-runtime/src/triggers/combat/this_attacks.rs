@@ -26,6 +26,10 @@ impl TriggerMatcher for ThisAttacksTrigger {
         e.attacker == ctx.source_id
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
+    }
+
     fn display(&self) -> String {
         "Whenever this creature attacks".to_string()
     }
@@ -71,6 +75,10 @@ impl TriggerMatcher for ThisAttacksPlayerWhoControlsAtLeastTrigger {
             })
             .count();
         controlled_count >= self.count
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
     }
 
     fn display(&self) -> String {

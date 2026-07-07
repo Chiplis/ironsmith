@@ -48,6 +48,10 @@ impl TriggerMatcher for IsDealtDamageTrigger {
         }
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::Damage])
+    }
+
     fn display(&self) -> String {
         let damage_text = if self.combat_only {
             "combat damage"

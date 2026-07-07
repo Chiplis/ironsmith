@@ -71,7 +71,7 @@ fn choose_opponent(
         .map(|(index, player_id)| {
             let name = game
                 .player(*player_id)
-                .map(|player| player.name.clone())
+                .map(|player| player.name.to_string())
                 .unwrap_or_else(|| format!("Player {}", player_id.0));
             DisplayOption::new(index, name)
         })
@@ -328,7 +328,7 @@ mod tests {
             .expect("player should exist")
             .library
             .iter()
-            .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+            .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
             .collect()
     }
 
@@ -372,7 +372,7 @@ mod tests {
                 .filter_map(|player| {
                     game.player(player.id)
                         .and_then(|entry| entry.library.last().copied())
-                        .and_then(|card| game.object(card).map(|object| object.name.clone()))
+                        .and_then(|card| game.object(card).map(|object| object.name.to_string()))
                 })
                 .collect::<Vec<_>>();
             self.top_observations.push((ctx.player, tops));

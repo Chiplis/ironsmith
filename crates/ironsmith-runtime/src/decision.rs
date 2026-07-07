@@ -140,7 +140,7 @@ mod tests {
         let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
         game.object_mut(source_id)
             .expect("helper permanent should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::krrik_black_mana_may_be_paid_with_life(),
             ));
@@ -175,7 +175,7 @@ mod tests {
         let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
         game.object_mut(source_id)
             .expect("helper permanent should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::minimum_spell_total_mana(3),
             ));
@@ -207,7 +207,7 @@ mod tests {
         let krrik_id = game.create_object_from_card(&krrik, alice, Zone::Battlefield);
         game.object_mut(krrik_id)
             .expect("krrik helper should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::krrik_black_mana_may_be_paid_with_life(),
             ));
@@ -218,7 +218,7 @@ mod tests {
         let trini_id = game.create_object_from_card(&trini, alice, Zone::Battlefield);
         game.object_mut(trini_id)
             .expect("trinisphere helper should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::minimum_spell_total_mana(3),
             ));
@@ -267,7 +267,7 @@ mod tests {
         let krrik_id = game.create_object_from_card(&krrik, alice, Zone::Battlefield);
         game.object_mut(krrik_id)
             .expect("krrik helper should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::krrik_black_mana_may_be_paid_with_life(),
             ));
@@ -278,7 +278,7 @@ mod tests {
         let yasharn_id = game.create_object_from_card(&yasharn, alice, Zone::Battlefield);
         game.object_mut(yasharn_id)
             .expect("yasharn helper should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate(),
             ));
@@ -382,7 +382,7 @@ mod tests {
         let yasharn_id = game.create_object_from_card(&yasharn, alice, Zone::Battlefield);
         game.object_mut(yasharn_id)
             .expect("yasharn helper should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate(),
             ));
@@ -419,7 +419,7 @@ mod tests {
         let trini_id = game.create_object_from_card(&trini, alice, Zone::Battlefield);
         game.object_mut(trini_id)
             .expect("trinisphere helper should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::minimum_spell_total_mana(3),
             ));
@@ -891,7 +891,7 @@ mod tests {
         let cohort_id = game.create_object_from_card(&cohort_card, alice, Zone::Battlefield);
         game.object_mut(cohort_id)
             .expect("cohort exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_controller_cast_creature_spell_this_turn(),
             ));
@@ -937,8 +937,7 @@ mod tests {
         let attacker_id = game.create_object_from_card(&threshold_card, alice, Zone::Battlefield);
         game.object_mut(attacker_id)
             .expect("threshold attacker exists")
-                .abilities
-                .push(Ability::static_ability(
+                .abilities_mut().push(Ability::static_ability(
                     StaticAbility::cant_attack_unless_condition(
                     crate::static_abilities::CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(5),
                     "Can't attack unless there are five or more cards in your graveyard",
@@ -1055,7 +1054,7 @@ mod tests {
         ));
         game.object_mut(tax_id)
             .expect("tax permanent exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(tax));
 
         // A black spell with base cost {1}{B}.
@@ -1091,7 +1090,7 @@ mod tests {
         ));
         game.object_mut(tax_id)
             .expect("tax permanent exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(tax));
 
         let creature_spell = CardBuilder::new(CardId::from_raw(13), "Large Creature")
@@ -1128,7 +1127,7 @@ mod tests {
         ));
         game.object_mut(tax_id)
             .expect("tax permanent exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(tax));
 
         let spell_card = CardBuilder::new(CardId::from_raw(15), "Borrowed Spell")
@@ -1170,7 +1169,7 @@ mod tests {
         ));
         game.object_mut(battlefield_only_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(reduction));
         let battlefield_only_obj = game.object(battlefield_only_id).expect("spell exists");
         let battlefield_only_base = battlefield_only_obj
@@ -1196,7 +1195,7 @@ mod tests {
         );
         game.object_mut(hand_scoped_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(
                 Ability::static_ability(hand_scoped_reduction)
                     .in_zones(vec![Zone::Hand, Zone::Stack]),
@@ -1235,7 +1234,7 @@ mod tests {
         ));
         game.object_mut(colorless_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(reduction).in_zones(vec![Zone::Hand, Zone::Stack]));
         let colorless_obj = game.object(colorless_id).expect("spell exists");
         let colorless_base = colorless_obj
@@ -1264,7 +1263,7 @@ mod tests {
         ));
         game.object_mut(red_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(red_reduction).in_zones(vec![Zone::Hand, Zone::Stack]));
         let red_obj = game.object(red_id).expect("spell exists");
         let red_base = red_obj.mana_cost.as_ref().expect("spell has mana cost");
@@ -1295,7 +1294,7 @@ mod tests {
         ));
         game.object_mut(reducer_id)
             .expect("reducer exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(reduction));
 
         let prototype_cost =
@@ -1375,7 +1374,7 @@ mod tests {
         let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(reduction).in_zones(vec![Zone::Hand, Zone::Stack]));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -1405,7 +1404,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         // Condition not met.
@@ -1468,7 +1467,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -1506,7 +1505,7 @@ mod tests {
         );
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         // Condition not met.
@@ -1550,7 +1549,7 @@ mod tests {
         );
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         // Condition not met.
@@ -1598,7 +1597,7 @@ mod tests {
         );
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         // Condition met (it's your turn).
@@ -1638,7 +1637,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let creature_card = CardBuilder::new(CardId::from_raw(134), "Target Creature")
@@ -1697,7 +1696,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         // No prior instant/sorcery this turn.
@@ -1745,7 +1744,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         // Not enough cards.
@@ -1794,7 +1793,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         // No attackers: no reduction.
@@ -1842,7 +1841,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -1878,7 +1877,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -1914,7 +1913,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -1955,7 +1954,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -1993,7 +1992,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         // Only this card in hand (named Mothrider Cavalry): reduction applies.
@@ -2033,7 +2032,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         // At starting life, no reduction.
@@ -2070,7 +2069,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -2117,7 +2116,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("knowledge exploitation should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game
@@ -2181,7 +2180,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("knowledge exploitation should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let wizard = CardBuilder::new(CardId::from_raw(9504), "Wizard Test Creature")
@@ -2237,7 +2236,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("Overpowering Attack should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game
@@ -2311,7 +2310,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("Overpowering Attack should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let soldier = CardBuilder::new(CardId::from_raw(9514), "Commander Test Creature")
@@ -2378,7 +2377,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -2418,7 +2417,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -2448,7 +2447,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -2479,7 +2478,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -2542,7 +2541,7 @@ mod tests {
         ));
         game.object_mut(spell_id)
             .expect("spell exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
@@ -2876,7 +2875,7 @@ mod tests {
         };
         game.object_mut(spell_id)
             .expect("spell should exist")
-            .abilities
+            .abilities_mut()
             .push(
                 Ability::static_ability(StaticAbility::conditional_spell_keyword(spec))
                     .in_zones(vec![Zone::Hand, Zone::Stack]),
@@ -3311,7 +3310,7 @@ mod tests {
             let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
             game.object_mut(land_id)
                 .expect("green source should exist")
-                .abilities
+                .abilities_mut()
                 .push(Ability::mana(TotalCost::free(), vec![ManaSymbol::Green]));
         }
 
@@ -3344,7 +3343,7 @@ mod tests {
             let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
             game.object_mut(land_id)
                 .expect("extra green source should exist")
-                .abilities
+                .abilities_mut()
                 .push(Ability::mana(TotalCost::free(), vec![ManaSymbol::Green]));
         }
 
@@ -3478,7 +3477,7 @@ mod tests {
         };
         game.object_mut(creature_id)
             .unwrap()
-            .abilities
+            .abilities_mut()
             .push(activated_ability);
         game.remove_summoning_sickness(creature_id);
 
@@ -3588,7 +3587,7 @@ mod tests {
         };
         game.object_mut(ore_id)
             .expect("Ore-Rich Stalactite should exist")
-            .abilities
+            .abilities_mut()
             .push(craft_ability);
 
         for _ in 0..6 {
@@ -3804,7 +3803,7 @@ mod tests {
         };
         game.object_mut(creature_id)
             .expect("creature exists")
-            .abilities
+            .abilities_mut()
             .extend([activated(cost_two), activated(cost_one)]);
 
         // Training Grounds-style static ability.
@@ -3814,7 +3813,7 @@ mod tests {
         let reducer_id = game.create_object_from_card(&reducer, alice, Zone::Battlefield);
         game.object_mut(reducer_id)
             .expect("reducer exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::reduce_activated_ability_costs(
                     ObjectFilter::creature().you_control(),
@@ -3906,7 +3905,7 @@ mod tests {
         let source_id = game.create_object_from_card(&card, alice, Zone::Hand);
         game.object_mut(source_id)
             .expect("source exists")
-            .abilities
+            .abilities_mut()
             .extend([
                 Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
@@ -3967,7 +3966,7 @@ mod tests {
         let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
         game.object_mut(source_id)
             .expect("source exists")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::reduce_activated_ability_costs_for_each_basic_land_type(
                     ObjectFilter::source(),
@@ -4060,7 +4059,7 @@ mod tests {
         // Add haste (e.g., from equipment or an enchantment)
         game.object_mut(creature_id)
             .unwrap()
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::haste()));
 
         // Creature just entered battlefield, so it has summoning sickness
@@ -4095,7 +4094,7 @@ mod tests {
         let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
         game.object_mut(creature_id)
             .unwrap()
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::morph(
                 crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![
                     crate::mana::ManaSymbol::Green,
@@ -4141,7 +4140,7 @@ mod tests {
         let creature_id = game.create_object_from_card(&creature, alice, Zone::Hand);
         game.object_mut(creature_id)
             .unwrap()
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::morph(
                 crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![
                     crate::mana::ManaSymbol::Green,
@@ -4214,7 +4213,7 @@ mod tests {
         };
         game.object_mut(creature_id)
             .unwrap()
-            .abilities
+            .abilities_mut()
             .push(activated_ability);
         game.remove_summoning_sickness(creature_id);
 
@@ -4259,7 +4258,7 @@ mod tests {
         let source_id = game.create_object_from_card(&card, alice, Zone::Hand);
         game.object_mut(source_id)
             .expect("source card should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
                     mana_cost: TotalCost::free(),
@@ -4352,7 +4351,7 @@ mod tests {
         );
         game.object_mut(source_id)
             .expect("tap probe should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::activated_with_costs(
                 TotalCost::free(),
                 vec![Cost::tap()],
@@ -4420,7 +4419,7 @@ mod tests {
         );
         game.object_mut(source_id)
             .expect("probe should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::activated_with_costs(
                 TotalCost::free(),
                 vec![Cost::tap()],
@@ -4460,7 +4459,7 @@ mod tests {
         );
         game.object_mut(source_id)
             .expect("probe should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::activated_with_costs(
                 TotalCost::free(),
                 vec![Cost::untap()],
@@ -5460,13 +5459,14 @@ mod tests {
         let spell_id = game.create_object_from_card(&card, alice, Zone::Hand);
         game.object_mut(spell_id)
             .expect("spell exists")
-            .spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
-            Effect::conditional(
+            .spell_effect = Some(
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::conditional(
                 Condition::TargetSpellControllerIsPoisoned,
                 vec![Effect::counter(ChooseSpec::target_spell())],
                 vec![],
-            ),
-        ]));
+            )])
+            .into(),
+        );
 
         // With no spell on stack, the counterspell must not be castable.
         let actions_without_stack = compute_legal_actions(&game, alice);
@@ -5556,8 +5556,9 @@ mod tests {
             spell.optional_costs = vec![crate::cost::OptionalCost::custom(
                 "Gift a card",
                 crate::cost::TotalCost::from_cost(gift_player_cost),
-            )];
-            spell.spell_effect = Some(program);
+            )]
+            .into();
+            spell.spell_effect = Some(program.into());
         }
 
         let dummy_spell = CardBuilder::new(CardId::from_raw(96), "Noncreature Stack Spell")
@@ -5607,13 +5608,14 @@ mod tests {
         let spell_id = game.create_object_from_card(&card, alice, Zone::Hand);
         game.object_mut(spell_id)
             .expect("spell exists")
-            .spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
-            Effect::if_then(
+            .spell_effect = Some(
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::if_then(
                 crate::effect::EffectId(0),
                 crate::effect::EffectPredicate::Happened,
                 vec![Effect::counter(ChooseSpec::target_spell())],
-            ),
-        ]));
+            )])
+            .into(),
+        );
 
         // With no spell on stack, the spell must not be castable.
         let actions_without_stack = compute_legal_actions(&game, alice);

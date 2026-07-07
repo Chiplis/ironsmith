@@ -232,6 +232,10 @@ impl Trigger {
         self.matcher.matches(event, ctx)
     }
 
+    pub(crate) fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        self.matcher.subscribed_kinds()
+    }
+
     /// Get the display text for this trigger.
     pub fn display(&self) -> String {
         let display = self.matcher.display();
@@ -1307,6 +1311,10 @@ impl Trigger {
 impl TriggerMatcher for Trigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         self.matcher.matches(event, ctx)
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        self.matcher.subscribed_kinds()
     }
 
     fn display(&self) -> String {

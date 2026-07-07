@@ -380,7 +380,7 @@ mod tests {
         let attacker_id =
             create_undead_creature(&mut game, alice, "Deadly Zombie", Subtype::Zombie);
         if let Some(obj) = game.object_mut(attacker_id) {
-            obj.abilities
+            obj.abilities_mut()
                 .push(Ability::static_ability(StaticAbility::deathtouch()));
         }
         let victim_id = create_undead_creature(&mut game, bob, "Shielded Spirit", Subtype::Spirit);

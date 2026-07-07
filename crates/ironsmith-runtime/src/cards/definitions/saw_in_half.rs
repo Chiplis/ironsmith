@@ -263,9 +263,10 @@ mod tests {
 
         // Add indestructible
         if let Some(obj) = game.object_mut(creature_id) {
-            obj.abilities.push(crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::indestructible(),
-            ));
+            obj.abilities_mut()
+                .push(crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::indestructible(),
+                ));
         }
 
         let outcomes = execute_saw_in_half(&mut game, alice, Some(creature_id));

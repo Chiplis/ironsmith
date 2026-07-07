@@ -78,7 +78,7 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
     fn materialize_for(&self, card: &Object) -> Option<AlternativeCastingMethod> {
         match self {
             Self::FlashbackFromCardManaCost { additional_costs } => {
-                let mana_cost = card.mana_cost.clone()?;
+                let mana_cost = card.mana_cost_owned()?;
                 if !card.has_card_type(CardType::Instant) && !card.has_card_type(CardType::Sorcery)
                 {
                     return None;
@@ -94,13 +94,13 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                 })
             }
             Self::BlitzFromCardManaCost => {
-                let mana_cost = card.mana_cost.clone()?;
+                let mana_cost = card.mana_cost_owned()?;
                 Some(AlternativeCastingMethod::Blitz {
                     total_cost: TotalCost::mana(mana_cost),
                 })
             }
             Self::RetraceFromCardManaCost => {
-                let mana_cost = card.mana_cost.clone()?;
+                let mana_cost = card.mana_cost_owned()?;
                 if card.zone != Zone::Graveyard {
                     return None;
                 }
@@ -112,7 +112,7 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                 })
             }
             Self::EmergeFromCardManaCost => {
-                let mana_cost = card.mana_cost.clone()?;
+                let mana_cost = card.mana_cost_owned()?;
                 if card.zone != Zone::Hand || !card.has_card_type(CardType::Creature) {
                     return None;
                 }
@@ -125,7 +125,7 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                 ))
             }
             Self::MiracleFromCardManaCostReducedBy { reduction } => {
-                let mana_cost = card.mana_cost.clone()?;
+                let mana_cost = card.mana_cost_owned()?;
                 if card.zone != Zone::Hand {
                     return None;
                 }
@@ -134,7 +134,7 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                 })
             }
             Self::EscapeFromCardManaCost { exile_count } => {
-                let mana_cost = card.mana_cost.clone()?;
+                let mana_cost = card.mana_cost_owned()?;
                 if card.zone != Zone::Graveyard {
                     return None;
                 }
@@ -199,7 +199,7 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                 condition,
                 exiles_after_resolution,
             } => {
-                let mana_cost = card.mana_cost.clone()?;
+                let mana_cost = card.mana_cost_owned()?;
                 if card.zone != Zone::Graveyard {
                     return None;
                 }

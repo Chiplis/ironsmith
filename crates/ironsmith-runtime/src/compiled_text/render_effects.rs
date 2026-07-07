@@ -1465,7 +1465,7 @@ fn describe_named_vote_conditional_sequence(effects: &[&Effect]) -> Option<Strin
 
     let option_names = options
         .iter()
-        .map(|option| option.name.clone())
+        .map(|option| option.name.to_string())
         .collect::<Vec<_>>();
     let mut clauses = Vec::new();
     for effect in followups {

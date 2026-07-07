@@ -113,12 +113,12 @@ impl EffectExecutor for MeldEffect {
             MeldComponentState {
                 stable_id: exiled_source.stable_id,
                 owner: exiled_source.owner,
-                name: exiled_source.name.clone(),
+                name: exiled_source.name.to_string(),
             },
             MeldComponentState {
                 stable_id: exiled_counterpart.stable_id,
                 owner: exiled_counterpart.owner,
-                name: exiled_counterpart.name.clone(),
+                name: exiled_counterpart.name.to_string(),
             },
         ];
 
@@ -222,7 +222,7 @@ mod tests {
 
     fn names_for_ids(game: &GameState, ids: &[ObjectId]) -> Vec<String> {
         ids.iter()
-            .map(|id| game.object(*id).expect("object exists").name.clone())
+            .map(|id| game.object(*id).expect("object exists").name.to_string())
             .collect()
     }
 
@@ -236,7 +236,7 @@ mod tests {
                 game.object(*id)
                     .expect("library object exists")
                     .name
-                    .clone()
+                    .to_string()
             })
             .collect()
     }
@@ -443,7 +443,7 @@ mod tests {
         assert_eq!(moved_ids.len(), 2, "meld should split into two cards");
         let moved_names: Vec<_> = moved_ids
             .iter()
-            .map(|&id| game.object(id).expect("moved card exists").name.clone())
+            .map(|&id| game.object(id).expect("moved card exists").name.to_string())
             .collect();
         assert!(moved_names.contains(&"Graf Rats".to_string()));
         assert!(moved_names.contains(&"Midnight Scavengers".to_string()));

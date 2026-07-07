@@ -180,9 +180,10 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
                 ) && !snapshot
                     .has_static_ability_id(crate::static_abilities::StaticAbilityId::Lifelink)
                 {
-                    snapshot.abilities.push(crate::ability::lifelink());
+                    std::sync::Arc::make_mut(&mut snapshot.abilities)
+                        .push(crate::ability::lifelink());
                 }
-                (object.stable_id, object.name.clone(), snapshot)
+                (object.stable_id, object.name.to_string(), snapshot)
             })
         })
         .map(|(stable_id, name, snapshot)| (Some(stable_id), Some(name), Some(snapshot)))

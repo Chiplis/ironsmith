@@ -26,6 +26,14 @@ impl From<IdCountersSnapshot> for SyncIdCounters {
     }
 }
 
+impl SyncIdCounters {
+    fn from_game(game: &ironsmith::game_state::GameState) -> Self {
+        let mut counters = Self::from(ironsmith::ids::snapshot_id_counters());
+        counters.object = game.next_object_id_counter();
+        counters
+    }
+}
+
 impl From<SyncIdCounters> for IdCountersSnapshot {
     fn from(value: SyncIdCounters) -> Self {
         Self {
@@ -257,7 +265,7 @@ struct PublicAuditHiddenZone {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct PublicAuditCheckpoint {
+pub(crate) struct PublicAuditCheckpoint {
     version: u32,
     format: MatchFormatInput,
     perspective: u8,
@@ -294,7 +302,7 @@ enum SyncTarget {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SyncCheckpoint {
+pub(crate) struct SyncCheckpoint {
     version: u32,
     format: MatchFormatInput,
     perspective: u8,
@@ -658,7 +666,7 @@ fn public_audit_protocol_name() -> String {
 impl WasmGame {
     fn public_audit_known_object_identity(object: &Object) -> PublicAuditObjectIdentity {
         PublicAuditObjectIdentity {
-            name: object.name.clone(),
+            name: object.name.to_string(),
             card_types: object
                 .card_types
                 .iter()
@@ -669,7 +677,7 @@ impl WasmGame {
                 .iter()
                 .map(|subtype| subtype.display_name())
                 .collect(),
-            oracle_text: object.compiled_card_text.clone(),
+            oracle_text: object.compiled_card_text.to_string(),
         }
     }
 
@@ -726,11 +734,7 @@ impl WasmGame {
             "manifested": self.game.is_manifested(id),
             "foretold": self.game.is_foretold(id),
             "suspected": self.game.is_suspected(id),
-            "plottedBy": self
-                .game
-                .plotted_cards
-                .get(&id)
-                .map(|(player, _)| player.0),
+            "plottedBy": self.game.plotted_by(id).map(|player| player.0),
             "plottedTurn": self.game.plotted_turn(id),
             "commander": self.game.is_commander_object(id),
         })
@@ -781,7 +785,7 @@ impl WasmGame {
         ids
     }
 
-    fn build_sync_checkpoint(&self) -> SyncCheckpoint {
+    pub(crate) fn build_sync_checkpoint(&self) -> SyncCheckpoint {
         let players = self
             .game
             .players
@@ -821,7 +825,7 @@ impl WasmGame {
                     owner: object.owner.0,
                     controller: self.game.controller_of(object).0,
                     zone: sync_zone_name(object.zone).to_string(),
-                    name: object.name.clone(),
+                    name: object.name.to_string(),
                     token: matches!(object.kind, ironsmith::object::ObjectKind::Token),
                     card_types: object
                         .card_types
@@ -837,7 +841,7 @@ impl WasmGame {
                     toughness: object.toughness(),
                     loyalty: object.loyalty(),
                     defense: object.defense(),
-                    oracle_text: object.compiled_card_text.clone(),
+                    oracle_text: object.compiled_card_text.to_string(),
                     counters: object
                         .counters
                         .iter()
@@ -860,13 +864,9 @@ impl WasmGame {
                     madness_exiled: self.game.is_madness_exiled(id),
                     foretold: self.game.is_foretold(id),
                     suspected: self.game.is_suspected(id),
-                    plotted_by: self
-                        .game
-                        .plotted_cards
-                        .get(&id)
-                        .map(|(player, _)| player.0),
+                    plotted_by: self.game.plotted_by(id).map(|player| player.0),
                     plotted_turn: self.game.plotted_turn(id),
-                    damage_marked: self.game.damage_marked.get(&id).copied().unwrap_or(0),
+                    damage_marked: self.game.damage_on(id),
                     commander: self.game.is_commander_object(id),
                     hidden_card: self
                         .game
@@ -931,17 +931,15 @@ impl WasmGame {
                 .collect(),
             exiled_with_source: self
                 .game
-                .exiled_with_source
-                .iter()
+                .exiled_with_source_entries()
                 .map(|(source, linked)| (source.0, raw_ids(linked)))
                 .collect(),
             return_exiled_when_source_leaves: self
                 .game
-                .return_exiled_when_source_leaves
-                .iter()
+                .return_exiled_when_source_leaves_ids()
                 .map(|id| id.0)
                 .collect(),
-            id_counters: SyncIdCounters::from(snapshot_id_counters()),
+            id_counters: SyncIdCounters::from_game(&self.game),
         }
     }
 
@@ -988,7 +986,7 @@ impl WasmGame {
             .then(|| Self::public_audit_known_object_identity(object))
     }
 
-    fn build_public_audit_checkpoint(&self) -> PublicAuditCheckpoint {
+    pub(crate) fn build_public_audit_checkpoint(&self) -> PublicAuditCheckpoint {
         let (consecutive_priority_passes, priority_players_in_game) =
             self.priority_state.priority_tracker_snapshot();
         let players = self
@@ -1058,13 +1056,9 @@ impl WasmGame {
                     madness_exiled: self.game.is_madness_exiled(id),
                     foretold: self.game.is_foretold(id),
                     suspected: self.game.is_suspected(id),
-                    plotted_by: self
-                        .game
-                        .plotted_cards
-                        .get(&id)
-                        .map(|(player, _)| player.0),
+                    plotted_by: self.game.plotted_by(id).map(|player| player.0),
                     plotted_turn: self.game.plotted_turn(id),
-                    damage_marked: self.game.damage_marked.get(&id).copied().unwrap_or(0),
+                    damage_marked: self.game.damage_on(id),
                     commander: self.game.is_commander_object(id),
                 })
             })
@@ -1341,7 +1335,7 @@ impl WasmGame {
         restored.zone = zone;
         restored.stable_id = StableId::from_raw(object.stable_id);
         if object.token {
-            restored.compiled_card_text = object.oracle_text.clone();
+            restored.compiled_card_text = object.oracle_text.clone().into();
             restored.base_loyalty = object.loyalty;
             restored.base_defense = object.defense;
         }
@@ -1378,7 +1372,7 @@ impl WasmGame {
             let restored_zone = restored.zone;
             self.game.add_object(restored);
             if let Some(hidden) = &object.hidden_card {
-                self.game.hidden_cards.insert(
+                self.game.set_hidden_card_info(
                     restored_id,
                     HiddenCardInfo {
                         owner: PlayerId::from_index(hidden.owner),
@@ -1439,16 +1433,20 @@ impl WasmGame {
                 stack_entry
             })
             .collect();
-        self.game.exiled_with_source = checkpoint
-            .exiled_with_source
-            .iter()
-            .map(|(source, linked)| (ObjectId::from_raw(*source), object_ids(linked.clone())))
-            .collect();
-        self.game.return_exiled_when_source_leaves = checkpoint
-            .return_exiled_when_source_leaves
-            .iter()
-            .map(|id| ObjectId::from_raw(*id))
-            .collect();
+        self.game.replace_exiled_with_source_links(
+            checkpoint
+                .exiled_with_source
+                .iter()
+                .map(|(source, linked)| (ObjectId::from_raw(*source), object_ids(linked.clone())))
+                .collect(),
+        );
+        self.game.replace_return_exiled_when_source_leaves(
+            checkpoint
+                .return_exiled_when_source_leaves
+                .iter()
+                .map(|id| ObjectId::from_raw(*id))
+                .collect(),
+        );
 
         self.game.turn = TurnState {
             active_player: PlayerId::from_index(checkpoint.turn.active_player),
@@ -1505,12 +1503,14 @@ impl WasmGame {
                 self.game.set_suspected(id);
             }
             if let Some(player) = object.plotted_by {
-                self.game
-                    .plotted_cards
-                    .insert(id, (PlayerId::from_index(player), object.plotted_turn.unwrap_or(0)));
+                self.game.set_plotted_on_turn(
+                    id,
+                    PlayerId::from_index(player),
+                    object.plotted_turn.unwrap_or(0),
+                );
             }
             if object.damage_marked > 0 {
-                self.game.damage_marked.insert(id, object.damage_marked);
+                self.game.set_damage_marked(id, object.damage_marked);
             }
             if object.commander {
                 self.game.set_commander(id);
@@ -1521,7 +1521,9 @@ impl WasmGame {
             }
         }
 
-        restore_id_counters(IdCountersSnapshot::from(checkpoint.id_counters));
+        let id_counters = IdCountersSnapshot::from(checkpoint.id_counters.clone());
+        restore_id_counters(id_counters);
+        self.game.set_next_object_id_counter(id_counters.object);
         self.pending_decision = self.game.turn.priority_player.map(|player| {
             DecisionContext::Priority(ironsmith::decisions::context::PriorityContext::new(
                 player,
@@ -1880,7 +1882,7 @@ mod sync_checkpoint_tests {
         game.game
             .object_mut(known_id)
             .expect("known hand object should exist")
-            .name = "Island".to_string();
+            .name = "Island".to_string().into();
         let renamed = hand_root(&game);
         assert_ne!(
             renamed, original,

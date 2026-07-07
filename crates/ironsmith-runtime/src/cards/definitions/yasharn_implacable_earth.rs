@@ -93,7 +93,7 @@ mod tests {
             .expect("alice exists")
             .hand
             .iter()
-            .filter_map(|&id| game.object(id).map(|object| object.name.clone()))
+            .filter_map(|&id| game.object(id).map(|object| object.name.to_string()))
             .collect();
         assert!(
             hand_names.iter().any(|name| name == "Forest"),

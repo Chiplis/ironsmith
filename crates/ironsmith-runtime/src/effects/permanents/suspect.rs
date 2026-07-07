@@ -67,7 +67,7 @@ impl EffectExecutor for ClearSuspectedEffect {
                 Err(err) => return Err(err),
             }
         } else {
-            game.suspected.iter().copied().collect()
+            game.suspected_ids().collect()
         };
 
         let mut count = 0_i32;

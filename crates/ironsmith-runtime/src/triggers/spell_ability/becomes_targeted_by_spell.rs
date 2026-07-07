@@ -35,6 +35,10 @@ impl TriggerMatcher for BecomesTargetedBySpellTrigger {
         self.filter.matches(source, &ctx.filter_ctx, ctx.game)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::BecomesTargeted])
+    }
+
     fn display(&self) -> String {
         format!(
             "Whenever this permanent becomes the target of {}",
@@ -69,6 +73,10 @@ impl TriggerMatcher for BecomesTargetedByStackObjectTrigger {
             return false;
         };
         self.filter.matches(source, &ctx.filter_ctx, ctx.game)
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::BecomesTargeted])
     }
 
     fn display(&self) -> String {
@@ -119,6 +127,10 @@ impl TriggerMatcher for BecomesTargetedObjectByStackObjectTrigger {
         };
         self.source_filter
             .matches(source, &ctx.filter_ctx, ctx.game)
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::BecomesTargeted])
     }
 
     fn display(&self) -> String {

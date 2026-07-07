@@ -233,7 +233,7 @@ mod tests {
         let ability = Ability::static_ability(StaticAbility::ward(cost));
         game.object_mut(object_id)
             .expect("ward permanent exists")
-            .abilities
+            .abilities_mut()
             .push(ability);
     }
 

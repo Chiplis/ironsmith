@@ -78,7 +78,7 @@ impl DecisionSpec for SacrificeSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 SelectableObject::new(id, name)
             })
@@ -193,7 +193,7 @@ impl DecisionSpec for ChooseObjectsSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 SelectableObject::new(id, name)
             })
@@ -316,7 +316,7 @@ impl DecisionSpec for DiscardSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 SelectableObject::new(id, name)
             })
@@ -406,7 +406,7 @@ impl DecisionSpec for ExileSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 SelectableObject::new(id, name)
             })
@@ -511,7 +511,7 @@ impl DecisionSpec for SearchSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 SelectableObject::new(id, name)
             })
@@ -602,7 +602,7 @@ impl DecisionSpec for DiscardToHandSizeSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 SelectableObject::new(id, name)
             })
@@ -679,8 +679,8 @@ impl DecisionSpec for LegendRuleSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
-                    .unwrap_or_else(|| self.name.clone());
+                    .map(|o| o.name.to_string())
+                    .unwrap_or_else(|| self.name.to_string());
                 SelectableObject::new(id, name)
             })
             .collect();
@@ -766,7 +766,7 @@ impl DecisionSpec for ProliferateSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 (id, name)
             })
@@ -778,7 +778,7 @@ impl DecisionSpec for ProliferateSpec {
             .map(|&id| {
                 let name = game
                     .player(id)
-                    .map(|p| p.name.clone())
+                    .map(|p| p.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 (id, name)
             })
@@ -857,7 +857,7 @@ impl DecisionSpec for MayChooseCardSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 SelectableObject::new(id, name)
             })
@@ -1013,14 +1013,14 @@ impl DecisionSpec for TargetsSpec {
                     crate::game_state::Target::Object(id) => {
                         let name = game
                             .object(*id)
-                            .map(|o| o.name.clone())
+                            .map(|o| o.name.to_string())
                             .unwrap_or_else(|| "Unknown".to_string());
                         (*id, name)
                     }
                     crate::game_state::Target::Player(pid) => {
                         let name = game
                             .player(*pid)
-                            .map(|p| p.name.clone())
+                            .map(|p| p.name.to_string())
                             .unwrap_or_else(|| "Unknown player".to_string());
                         // Use a synthetic ObjectId for players in the selection context
                         // This is a workaround since SelectObjectsContext uses ObjectId

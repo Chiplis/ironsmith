@@ -968,12 +968,7 @@ fn object_matches_filter_with_chars(
     {
         return false;
     }
-    if filter.has_x_in_cost
-        && !object
-            .mana_cost
-            .as_ref()
-            .is_some_and(crate::mana::ManaCost::has_x)
-    {
+    if filter.has_x_in_cost && !object.mana_cost.as_ref().is_some_and(|cost| cost.has_x()) {
         return false;
     }
 
@@ -2296,21 +2291,23 @@ mod tests {
             PlayerId::from_index(0),
             Zone::Battlefield,
         );
-        let objects = HashMap::from([(object.id, Arc::new(object.clone()))]);
+        let objects = [(object.id, Arc::new(object.clone()))]
+            .into_iter()
+            .collect::<crate::game_state::ObjectMap>();
         let baseline = HashMap::from([(
             object.id,
             CalculatedCharacteristics {
-                name: object.name.clone(),
+                name: object.name.to_string(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 power: object.base_power.as_ref().map(|p| p.base_value()),
                 toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
-                card_types: object.card_types.clone(),
-                subtypes: object.subtypes.clone(),
-                supertypes: object.supertypes.clone(),
+                card_types: object.card_types.to_vec(),
+                subtypes: object.subtypes.to_vec(),
+                supertypes: object.supertypes.to_vec(),
                 colors: object.colors(),
-                abilities: object.abilities.clone(),
+                abilities: object.abilities_vec(),
                 static_abilities: Vec::new(),
-                aura_attach_filter: object.aura_attach_filter.clone(),
+                aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
             },
         )]);
@@ -2345,21 +2342,23 @@ mod tests {
             Zone::Battlefield,
         );
 
-        let objects = HashMap::from([(land.id, Arc::new(land.clone()))]);
+        let objects = [(land.id, Arc::new(land.clone()))]
+            .into_iter()
+            .collect::<crate::game_state::ObjectMap>();
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
-                name: land.name.clone(),
+                name: land.name.to_string(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
-                card_types: land.card_types.clone(),
-                subtypes: land.subtypes.clone(),
-                supertypes: land.supertypes.clone(),
+                card_types: land.card_types.to_vec(),
+                subtypes: land.subtypes.to_vec(),
+                supertypes: land.supertypes.to_vec(),
                 colors: land.colors(),
-                abilities: land.abilities.clone(),
+                abilities: land.abilities_vec(),
                 static_abilities: Vec::new(),
-                aura_attach_filter: land.aura_attach_filter.clone(),
+                aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
             },
         )]);
@@ -2437,7 +2436,7 @@ mod tests {
             PlayerId::from_index(0),
             Zone::Battlefield,
         );
-        land.abilities.push(Ability {
+        land.abilities_mut().push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
@@ -2455,21 +2454,23 @@ mod tests {
             functional_zones: vec![Zone::Battlefield],
         });
 
-        let objects = HashMap::from([(land.id, Arc::new(land.clone()))]);
+        let objects = [(land.id, Arc::new(land.clone()))]
+            .into_iter()
+            .collect::<crate::game_state::ObjectMap>();
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
-                name: land.name.clone(),
+                name: land.name.to_string(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
-                card_types: land.card_types.clone(),
-                subtypes: land.subtypes.clone(),
-                supertypes: land.supertypes.clone(),
+                card_types: land.card_types.to_vec(),
+                subtypes: land.subtypes.to_vec(),
+                supertypes: land.supertypes.to_vec(),
                 colors: land.colors(),
-                abilities: land.abilities.clone(),
+                abilities: land.abilities_vec(),
                 static_abilities: Vec::new(),
-                aura_attach_filter: land.aura_attach_filter.clone(),
+                aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
             },
         )]);

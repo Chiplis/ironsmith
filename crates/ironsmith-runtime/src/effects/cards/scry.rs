@@ -74,7 +74,7 @@ fn reorder_cards_top_to_bottom(
         .map(|&id| {
             let name = game
                 .object(id)
-                .map(|object| object.name.clone())
+                .map(|object| object.name.to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
             (id, name)
         })
@@ -108,7 +108,7 @@ fn choose_fateseal_opponent(
                 .iter()
                 .filter_map(|player_id| {
                     game.player(*player_id)
-                        .map(|player| (player.name.clone(), *player_id))
+                        .map(|player| (player.name.to_string(), *player_id))
                 })
                 .collect();
             ask_choose_one(
@@ -462,7 +462,7 @@ mod tests {
             .expect("player should exist")
             .library
             .iter()
-            .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+            .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
             .collect()
     }
 

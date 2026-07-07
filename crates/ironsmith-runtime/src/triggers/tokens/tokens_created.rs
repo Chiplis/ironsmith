@@ -44,6 +44,10 @@ impl TriggerMatcher for TokensCreatedTrigger {
         self.filter.matches(token, &ctx.filter_ctx, ctx.game)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreateTokens])
+    }
+
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {
         if self.one_or_more {
             return 1;

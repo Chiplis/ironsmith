@@ -62,7 +62,7 @@ fn object_toughness(game: &GameState, object_id: ObjectId) -> i32 {
 fn keyword_marker_texts(game: &GameState, object_id: ObjectId) -> Vec<String> {
     let abilities = game.current_abilities(object_id).unwrap_or_else(|| {
         game.object(object_id)
-            .map(|obj| obj.abilities.clone())
+            .map(|obj| obj.abilities_vec())
             .unwrap_or_default()
     });
     abilities

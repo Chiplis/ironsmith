@@ -155,7 +155,8 @@ mod tests {
             .subtypes(vec![Subtype::Aura])
             .build();
         let mut object = Object::from_card(id, &card, controller, Zone::Battlefield);
-        object.aura_attach_filter = Some(ObjectFilter::creature().into());
+        object.aura_attach_filter =
+            Some(crate::object::AuraAttachmentFilter::from(ObjectFilter::creature()).into());
         game.add_object(object);
         id
     }
@@ -292,7 +293,9 @@ mod tests {
         let aura = create_aura(&mut game, "Curse", alice);
         game.object_mut(aura)
             .expect("aura should exist")
-            .aura_attach_filter = Some(crate::target::PlayerFilter::Any.into());
+            .aura_attach_filter = Some(
+            crate::object::AuraAttachmentFilter::from(crate::target::PlayerFilter::Any).into(),
+        );
 
         let mut ctx = ExecutionContext::new_default(aura, alice)
             .with_targets(vec![ResolvedTarget::Player(bob)]);

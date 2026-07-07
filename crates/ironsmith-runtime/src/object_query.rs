@@ -15,27 +15,19 @@ use crate::zone::Zone;
 /// When `zone` is `None`, this defaults to battlefield candidates.
 pub(crate) fn candidate_ids_for_zone(game: &GameState, zone: Option<Zone>) -> Vec<ObjectId> {
     match zone {
-        Some(Zone::Battlefield) => game.battlefield.clone(),
-        Some(Zone::Graveyard) => game
-            .players
-            .iter()
-            .flat_map(|player| player.graveyard.iter().copied())
-            .collect(),
-        Some(Zone::Hand) => game
-            .players
-            .iter()
-            .flat_map(|player| player.hand.iter().copied())
-            .collect(),
-        Some(Zone::Library) => game
-            .players
-            .iter()
-            .flat_map(|player| player.library.iter().copied())
-            .collect(),
-        Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-        Some(Zone::Exile) => game.exile.clone(),
-        Some(Zone::Command) => game.command_zone.clone(),
-        Some(Zone::OutsideGame) => game.objects_in_zone(Zone::OutsideGame),
-        None => game.battlefield.clone(),
+        Some(zone) => game.zone_ids(zone).collect(),
+        None => game.zone_ids(Zone::Battlefield).collect(),
+    }
+}
+
+pub(crate) fn for_each_candidate_id_for_zone(
+    game: &GameState,
+    zone: Option<Zone>,
+    mut visitor: impl FnMut(ObjectId),
+) {
+    let zone = zone.unwrap_or(Zone::Battlefield);
+    for id in game.zone_ids(zone) {
+        visitor(id);
     }
 }
 
@@ -65,5 +57,25 @@ pub(crate) fn candidate_ids_for_filter(game: &GameState, filter: &ObjectFilter) 
         let mut ordered: Vec<_> = ids.into_iter().collect();
         ordered.sort();
         ordered
+    }
+}
+
+pub(crate) fn for_each_candidate_id_for_filter(
+    game: &GameState,
+    filter: &ObjectFilter,
+    mut visitor: impl FnMut(ObjectId),
+) {
+    if let Some(zone) = filter.zone {
+        for_each_candidate_id_for_zone(game, Some(zone), visitor);
+        return;
+    }
+
+    if filter.any_of.is_empty() {
+        for_each_candidate_id_for_zone(game, None, visitor);
+        return;
+    }
+
+    for id in candidate_ids_for_filter(game, filter) {
+        visitor(id);
     }
 }

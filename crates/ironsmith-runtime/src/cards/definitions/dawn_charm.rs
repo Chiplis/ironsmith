@@ -378,7 +378,7 @@ mod tests {
 
         // Add "can't be countered" to the spell
         if let Some(obj) = game.object_mut(spell_id) {
-            obj.abilities.push(Ability {
+            obj.abilities_mut().push(Ability {
                 kind: AbilityKind::Static(crate::static_abilities::StaticAbility::uncounterable()),
                 functional_zones: vec![Zone::Stack],
             });

@@ -94,21 +94,7 @@ fn object_filter_references_target_player(filter: &crate::target::ObjectFilter) 
 }
 
 fn pop_sneak_attack_target(game: &mut GameState, source: ObjectId) -> Option<AttackTarget> {
-    let mut remove_entry = false;
-    let target = game
-        .sneak_attack_targets
-        .get_mut(&source)
-        .and_then(|targets| {
-            let popped = targets.pop();
-            if targets.is_empty() {
-                remove_entry = true;
-            }
-            popped
-        });
-    if remove_entry {
-        game.sneak_attack_targets.remove(&source);
-    }
-    target
+    game.pop_sneak_attack_target(source)
 }
 
 fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
@@ -147,7 +133,7 @@ fn stack_entry_cast_with_named_alternative(
             *zone,
             *idx,
         )
-        .or_else(|| obj.cast_alternative_method.clone())
+        .or_else(|| obj.cast_alternative_method_owned())
         .is_some_and(|method| method.name().eq_ignore_ascii_case(name)),
         _ => false,
     }
@@ -1392,7 +1378,7 @@ pub(super) fn resolve_stack_entry_full(
                         *zone,
                         *idx,
                     )
-                    .or_else(|| obj.cast_alternative_method.clone())
+                    .or_else(|| obj.cast_alternative_method_owned())
                     .map(|m| m.exiles_after_resolution())
                     .unwrap_or(false)
                 }
@@ -1605,8 +1591,8 @@ pub(super) fn get_effects_for_stack_entry(
     }
 
     // For spells, check the spell_effect field (instants/sorceries)
-    if let Some(ref effects) = obj.spell_effect {
-        return effects.clone();
+    if let Some(effects) = obj.spell_effect.as_ref() {
+        return effects.to_owned_value();
     }
 
     // Permanent spells (creatures, artifacts, enchantments, etc.) don't have effects
@@ -1903,13 +1889,14 @@ mod tests {
         let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
         {
             let spell = game.object_mut(spell_id).expect("spell exists");
-            spell.abilities.push(
+            spell.abilities_mut().push(
                 Ability::static_ability(StaticAbility::keyword_marker("Epic"))
                     .in_zones(vec![Zone::Stack]),
             );
-            spell.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
-                Effect::gain_life(1),
-            ]));
+            spell.spell_effect = Some(
+                crate::resolution::ResolutionProgram::from_effects(vec![Effect::gain_life(1)])
+                    .into(),
+            );
         }
         game.push_to_stack(StackEntry::new(spell_id, alice));
 
@@ -2425,7 +2412,7 @@ mod tests {
                 ],
             ),
         )]);
-        game.object_mut(source).expect("source").spell_effect = Some(program);
+        game.object_mut(source).expect("source").spell_effect = Some(program.into());
 
         let mut entry = StackEntry::new(source, alice)
             .with_chosen_modes(Some(vec![0, 1]))
@@ -2526,7 +2513,7 @@ mod tests {
                 ],
             ),
         )]);
-        game.object_mut(source).expect("source").spell_effect = Some(program);
+        game.object_mut(source).expect("source").spell_effect = Some(program.into());
 
         let mut entry = StackEntry::new(source, alice)
             .with_chosen_modes(Some(vec![0, 1]))

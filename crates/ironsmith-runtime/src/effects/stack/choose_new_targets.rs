@@ -139,7 +139,7 @@ impl EffectExecutor for ChooseNewTargetsEffect {
             if self.may {
                 let source_name = game
                     .object(object_id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "copy".to_string());
                 let choose = ctx.decision_maker.decide_boolean(
                     game,

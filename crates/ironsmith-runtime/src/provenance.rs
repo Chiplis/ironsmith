@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::events::EventKind;
 use crate::ids::{ObjectId, PlayerId};
 
@@ -45,7 +43,7 @@ pub struct ProvenanceNode {
 #[derive(Debug, Clone, Default)]
 pub struct ProvenanceGraph {
     next_id: u64,
-    nodes: HashMap<ProvNodeId, ProvenanceNode>,
+    nodes: im::Vector<ProvenanceNode>,
 }
 
 impl ProvenanceGraph {
@@ -54,7 +52,8 @@ impl ProvenanceGraph {
     }
 
     pub fn node(&self, id: ProvNodeId) -> Option<&ProvenanceNode> {
-        self.nodes.get(&id)
+        let index = usize::try_from(id.raw().checked_sub(1)?).ok()?;
+        self.nodes.get(index)
     }
 
     pub fn node_count(&self) -> usize {
@@ -74,12 +73,11 @@ impl ProvenanceGraph {
     }
 
     pub fn alloc_child(&mut self, parent: ProvNodeId, kind: ProvenanceNodeKind) -> ProvNodeId {
-        let normalized_parent =
-            if parent == ProvNodeId::default() || !self.nodes.contains_key(&parent) {
-                None
-            } else {
-                Some(parent)
-            };
+        let normalized_parent = if parent == ProvNodeId::default() || self.node(parent).is_none() {
+            None
+        } else {
+            Some(parent)
+        };
         self.alloc_node(normalized_parent, kind)
     }
 
@@ -113,7 +111,7 @@ impl ProvenanceGraph {
             .checked_add(1)
             .expect("provenance node id overflow");
         let id = ProvNodeId(self.next_id);
-        self.nodes.insert(id, ProvenanceNode { id, parent, kind });
+        self.nodes.push_back(ProvenanceNode { id, parent, kind });
         id
     }
 }

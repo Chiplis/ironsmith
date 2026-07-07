@@ -44,6 +44,10 @@ impl TriggerMatcher for PlayerRollsResultTrigger {
         player_filter_matches_with_context(&self.player, e.player, ctx.controller, ctx.game, None)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::DieRolled])
+    }
+
     fn display(&self) -> String {
         let result = self.result;
         match &self.player {
@@ -70,6 +74,10 @@ impl TriggerMatcher for PlayerRollsHighestNaturalResultTrigger {
         }
 
         player_filter_matches_with_context(&self.player, e.player, ctx.controller, ctx.game, None)
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::DieRolled])
     }
 
     fn display(&self) -> String {

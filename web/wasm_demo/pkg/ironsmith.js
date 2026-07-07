@@ -379,6 +379,16 @@ export class WasmGame {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * @returns {any}
+     */
+    lastWorkCounters() {
+        const ret = wasm.wasmgame_lastWorkCounters(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Load explicit decks by card name. JS format: `string[][]` or
      * `{ decks: string[][], sideboards?: string[][] }`.
      *
@@ -571,6 +581,17 @@ export class WasmGame {
         }
     }
     /**
+     * @param {any} decks
+     * @returns {any}
+     */
+    registerManabrewDeckSources(decks) {
+        const ret = wasm.wasmgame_registerManabrewDeckSources(this.__wbg_ptr, decks);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Number of cards currently available in the registry.
      * @returns {number}
      */
@@ -749,6 +770,17 @@ export class WasmGame {
         }
     }
     /**
+     * @param {any} config
+     * @returns {any}
+     */
+    startManabrewMatch(config) {
+        const ret = wasm.wasmgame_startManabrewMatch(this.__wbg_ptr, config);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Start a fully specified match from a synchronized lobby payload.
      * @param {any} config
      * @returns {any}
@@ -777,6 +809,17 @@ export class WasmGame {
      */
     uiState() {
         const ret = wasm.wasmgame_uiState(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {any} config
+     * @returns {any}
+     */
+    validateManabrewMatchConfig(config) {
+        const ret = wasm.wasmgame_validateManabrewMatchConfig(this.__wbg_ptr, config);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -1086,10 +1129,18 @@ function __wbg_get_imports() {
         __wbg_prototypesetcall_fd4050e806e1d519: function(arg0, arg1, arg2) {
             Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
         },
+        __wbg_push_60a5366c0bb22a7d: function(arg0, arg1) {
+            const ret = arg0.push(arg1);
+            return ret;
+        },
         __wbg_random_fc287e2ecb3e2805: function() {
             const ret = Math.random();
             return ret;
         },
+        __wbg_set_5337f8ac82364a3f: function() { return handleError(function (arg0, arg1, arg2) {
+            const ret = Reflect.set(arg0, arg1, arg2);
+            return ret;
+        }, arguments); },
         __wbg_set_6be42768c690e380: function(arg0, arg1, arg2) {
             arg0[arg1] = arg2;
         },

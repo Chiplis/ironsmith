@@ -68,6 +68,10 @@ impl TriggerMatcher for BecomesTargetedBySourceControllerTrigger {
             .matches_player(e.source_controller, &ctx.filter_ctx)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::BecomesTargeted])
+    }
+
     fn display(&self) -> String {
         let controller = match self.source_controller {
             PlayerFilter::You => "you",
@@ -110,6 +114,10 @@ impl TriggerMatcher for PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
         };
         self.object_filter
             .matches(target, &ctx.filter_ctx, ctx.game)
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::BecomesTargeted])
     }
 
     fn display(&self) -> String {

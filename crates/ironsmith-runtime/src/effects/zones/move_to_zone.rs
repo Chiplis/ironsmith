@@ -61,7 +61,7 @@ fn choose_attack_target_for_player(
 
     let player_name = game
         .player(player_id)
-        .map(|player| player.name.clone())
+        .map(|player| player.name.to_string())
         .unwrap_or_else(|| "that player".to_string());
     let options: Vec<SelectableOption> = targets
         .iter()
@@ -72,7 +72,7 @@ fn choose_attack_target_for_player(
                 AttackTarget::Planeswalker(planeswalker_id) => {
                     let walker_name = game
                         .object(*planeswalker_id)
-                        .map(|object| object.name.clone())
+                        .map(|object| object.name.to_string())
                         .unwrap_or_else(|| "a planeswalker".to_string());
                     format!("Attack {walker_name} controlled by {player_name}")
                 }
@@ -118,36 +118,11 @@ fn matching_cost_candidate_count(
     controller: crate::ids::PlayerId,
 ) -> usize {
     let filter_ctx = FilterContext::new(controller).with_source(source);
-    let candidate_ids: Vec<_> = match filter.zone {
-        Some(Zone::Hand) => game
-            .players
-            .iter()
-            .flat_map(|player| player.hand.iter().copied())
-            .collect(),
-        Some(Zone::Graveyard) => game
-            .players
-            .iter()
-            .flat_map(|player| player.graveyard.iter().copied())
-            .collect(),
-        Some(Zone::Battlefield) => game.battlefield.clone(),
-        Some(Zone::Library) => game
-            .players
-            .iter()
-            .flat_map(|player| player.library.iter().copied())
-            .collect(),
-        Some(Zone::OutsideGame) => game
-            .players
-            .iter()
-            .flat_map(|player| player.sideboard.iter().copied())
-            .collect(),
-        Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-        Some(Zone::Exile) => game.exile.clone(),
-        Some(Zone::Command) => game.command_zone.clone(),
-        None => Vec::new(),
+    let Some(zone) = filter.zone else {
+        return 0;
     };
 
-    candidate_ids
-        .into_iter()
+    game.zone_ids(zone)
         .filter(|id| {
             game.object(*id)
                 .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
@@ -198,11 +173,11 @@ fn attack_target_description(game: &GameState, target: &AttackTarget) -> String 
     match target {
         AttackTarget::Player(player) => game
             .player(*player)
-            .map(|player| player.name.clone())
+            .map(|player| player.name.to_string())
             .unwrap_or_else(|| format!("player {}", player.0)),
         AttackTarget::Planeswalker(object_id) => game
             .object(*object_id)
-            .map(|object| object.name.clone())
+            .map(|object| object.name.to_string())
             .unwrap_or_else(|| format!("planeswalker #{}", object_id.0)),
     }
 }

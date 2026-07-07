@@ -1,6 +1,14 @@
+use std::cell::RefCell;
+#[cfg(target_arch = "wasm32")]
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
+#[cfg(target_arch = "wasm32")]
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use serde::Serialize;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsValue;
 
 use ironsmith::cards::CardRegistry;
 use ironsmith::combat_state::AttackTarget;
@@ -54,6 +62,371 @@ struct BattlefieldGroupKey {
     counter_signature: String,
     token: bool,
     force_single_object: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PermanentObjectViewCacheKey {
+    object_id: ObjectId,
+    object_revision: u64,
+    continuous_revision: u64,
+    turn_number: u32,
+    active_player: PlayerId,
+    priority_player: Option<PlayerId>,
+    phase: u8,
+    step: Option<u8>,
+    tapped: bool,
+    flipped: bool,
+    face_down: bool,
+    manifested: bool,
+    phased_out: bool,
+    counter_signature: String,
+}
+
+#[derive(Debug, Clone)]
+struct PermanentObjectView {
+    id: u64,
+    stable_id: u64,
+    name: String,
+    token: bool,
+    tapped: bool,
+    lane: BattlefieldLane,
+    characteristic_signature: String,
+    counter_signature: String,
+    mana_cost: Option<String>,
+    oracle_text: String,
+    power_toughness: Option<String>,
+    counters: Vec<CounterSnapshot>,
+}
+
+const SNAPSHOT_OBJECT_VIEW_CACHE_LIMIT: usize = 8_192;
+
+#[derive(Debug, Default)]
+pub(super) struct SnapshotObjectViewCache {
+    battlefield: RefCell<HashMap<PermanentObjectViewCacheKey, Arc<PermanentObjectView>>>,
+}
+
+impl SnapshotObjectViewCache {
+    fn battlefield_view(
+        &self,
+        game: &GameState,
+        obj: &ironsmith::object::Object,
+    ) -> Arc<PermanentObjectView> {
+        let tapped = game.is_tapped(obj.id);
+        let counter_signature = counter_signature_for_group(obj);
+        let key = PermanentObjectViewCacheKey {
+            object_id: obj.id,
+            object_revision: obj.last_modified,
+            continuous_revision: game.effect_store.continuous_effects.revision(),
+            turn_number: game.turn.turn_number,
+            active_player: game.turn.active_player,
+            priority_player: game.turn.priority_player,
+            phase: game.turn.phase as u8,
+            step: game.turn.step.map(|step| step as u8),
+            tapped,
+            flipped: game.is_flipped(obj.id),
+            face_down: game.is_face_down(obj.id),
+            manifested: game.is_manifested(obj.id),
+            phased_out: game.is_phased_out(obj.id),
+            counter_signature,
+        };
+
+        if let Some(view) = self.battlefield.borrow().get(&key).cloned() {
+            return view;
+        }
+
+        let current = game.current_characteristics(obj.id);
+        let current_card_types = current
+            .as_ref()
+            .map(|chars| chars.card_types.as_slice())
+            .unwrap_or(&obj.card_types);
+        let name = current
+            .as_ref()
+            .map(|chars| chars.name.clone())
+            .unwrap_or_else(|| obj.name.to_string());
+        let power_toughness = {
+            let p = current
+                .as_ref()
+                .and_then(|chars| chars.power)
+                .or_else(|| obj.power());
+            let t = current
+                .as_ref()
+                .and_then(|chars| chars.toughness)
+                .or_else(|| obj.toughness());
+            match (p, t) {
+                (Some(power), Some(toughness)) => Some(format!("{power}/{toughness}")),
+                _ => None,
+            }
+        };
+        let oracle_text = current
+            .as_ref()
+            .map(|chars| chars.compiled_card_text.to_string())
+            .unwrap_or_else(|| obj.compiled_card_text.to_string());
+        let counter_signature = key.counter_signature.clone();
+        let view = Arc::new(PermanentObjectView {
+            id: obj.id.0,
+            stable_id: obj.stable_id.0.0,
+            name,
+            token: matches!(obj.kind, ironsmith::object::ObjectKind::Token),
+            tapped,
+            lane: battlefield_lane_for_card_types(current_card_types),
+            characteristic_signature: object_characteristic_signature(game, obj, true),
+            counter_signature,
+            mana_cost: obj.mana_cost.as_ref().map(|mc| mc.to_oracle()),
+            oracle_text,
+            power_toughness,
+            counters: counter_snapshots_for_object(obj),
+        });
+
+        let mut cache = self.battlefield.borrow_mut();
+        if cache.len() >= SNAPSHOT_OBJECT_VIEW_CACHE_LIMIT {
+            cache.clear();
+        }
+        cache.insert(key, view.clone());
+        view
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SnapshotEncodedSubtreeKind {
+    Permanent,
+    HandCard,
+    ZoneCard,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SnapshotEncodedSubtreeKey {
+    kind: SnapshotEncodedSubtreeKind,
+    hash: u64,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug, Clone)]
+struct SnapshotEncodedSubtreeValue {
+    fingerprint: String,
+    value: JsValue,
+}
+
+#[cfg(target_arch = "wasm32")]
+const SNAPSHOT_JS_ENCODING_CACHE_LIMIT: usize = 16_384;
+
+#[derive(Debug, Default)]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(super) struct SnapshotJsEncodingCache {
+    #[cfg(target_arch = "wasm32")]
+    subtrees: RefCell<HashMap<SnapshotEncodedSubtreeKey, SnapshotEncodedSubtreeValue>>,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl SnapshotJsEncodingCache {
+    pub(super) fn encode_snapshot(&self, snapshot: &GameSnapshot) -> Result<JsValue, JsValue> {
+        let object = js_sys::Object::new();
+        self.set_serde(&object, "snapshot_id", &snapshot.snapshot_id)?;
+        self.set_serde(&object, "perspective", &snapshot.perspective)?;
+        self.set_serde(&object, "turn_number", &snapshot.turn_number)?;
+        self.set_serde(&object, "active_player", &snapshot.active_player)?;
+        self.set_serde(&object, "priority_player", &snapshot.priority_player)?;
+        self.set_serde(&object, "phase", &snapshot.phase)?;
+        self.set_serde(&object, "step", &snapshot.step)?;
+        self.set_serde(&object, "stack_size", &snapshot.stack_size)?;
+        self.set_serde(&object, "stack_preview", &snapshot.stack_preview)?;
+        self.set_serde(&object, "stack_objects", &snapshot.stack_objects)?;
+        self.set_serde(
+            &object,
+            "resolving_stack_object",
+            &snapshot.resolving_stack_object,
+        )?;
+        self.set_serde(&object, "battlefield_size", &snapshot.battlefield_size)?;
+        self.set_serde(&object, "exile_size", &snapshot.exile_size)?;
+        self.set_value(
+            &object,
+            "players",
+            self.encode_players(&snapshot.players)?.as_ref(),
+        )?;
+        self.set_serde(
+            &object,
+            "battlefield_transitions",
+            &snapshot.battlefield_transitions,
+        )?;
+        self.set_serde(&object, "zone_transitions", &snapshot.zone_transitions)?;
+        self.set_serde(&object, "effect_events", &snapshot.effect_events)?;
+        self.set_serde(
+            &object,
+            "crypto_requirements",
+            &snapshot.crypto_requirements,
+        )?;
+        self.set_serde(&object, "viewed_cards", &snapshot.viewed_cards)?;
+        self.set_serde(&object, "decision", &snapshot.decision)?;
+        self.set_serde(&object, "mana_payment", &snapshot.mana_payment)?;
+        self.set_serde(&object, "game_over", &snapshot.game_over)?;
+        self.set_serde(&object, "cancelable", &snapshot.cancelable)?;
+        self.set_serde(
+            &object,
+            "undo_land_stable_id",
+            &snapshot.undo_land_stable_id,
+        )?;
+        Ok(object.into())
+    }
+
+    fn encode_players(&self, players: &[PlayerSnapshot]) -> Result<JsValue, JsValue> {
+        let array = js_sys::Array::new();
+        for player in players {
+            array.push(&self.encode_player(player)?);
+        }
+        Ok(array.into())
+    }
+
+    fn encode_player(&self, player: &PlayerSnapshot) -> Result<JsValue, JsValue> {
+        let object = js_sys::Object::new();
+        self.set_serde(&object, "id", &player.id)?;
+        self.set_serde(&object, "name", &player.name)?;
+        self.set_serde(&object, "life", &player.life)?;
+        self.set_serde(&object, "mana_pool", &player.mana_pool)?;
+        self.set_serde(&object, "can_view_hand", &player.can_view_hand)?;
+        self.set_serde(
+            &object,
+            "can_view_library_top",
+            &player.can_view_library_top,
+        )?;
+        self.set_serde(&object, "hand_size", &player.hand_size)?;
+        self.set_serde(&object, "library_size", &player.library_size)?;
+        self.set_serde(&object, "graveyard_size", &player.graveyard_size)?;
+        self.set_serde(&object, "command_size", &player.command_size)?;
+        self.set_value(
+            &object,
+            "hand_cards",
+            self.encode_hand_cards(&player.hand_cards)?.as_ref(),
+        )?;
+        self.set_value(
+            &object,
+            "graveyard_cards",
+            self.encode_zone_cards(&player.graveyard_cards)?.as_ref(),
+        )?;
+        self.set_value(
+            &object,
+            "exile_cards",
+            self.encode_zone_cards(&player.exile_cards)?.as_ref(),
+        )?;
+        self.set_value(
+            &object,
+            "command_cards",
+            self.encode_zone_cards(&player.command_cards)?.as_ref(),
+        )?;
+        self.set_value(
+            &object,
+            "sideboard_cards",
+            self.encode_zone_cards(&player.sideboard_cards)?.as_ref(),
+        )?;
+        self.set_serde(&object, "library_top", &player.library_top)?;
+        self.set_serde(&object, "graveyard_top", &player.graveyard_top)?;
+        self.set_value(
+            &object,
+            "battlefield",
+            self.encode_permanents(&player.battlefield)?.as_ref(),
+        )?;
+        self.set_serde(&object, "battlefield_total", &player.battlefield_total)?;
+        Ok(object.into())
+    }
+
+    fn encode_permanents(&self, permanents: &[PermanentSnapshot]) -> Result<JsValue, JsValue> {
+        let array = js_sys::Array::new();
+        for permanent in permanents {
+            array.push(
+                &self.encode_cached_subtree(SnapshotEncodedSubtreeKind::Permanent, permanent)?,
+            );
+        }
+        Ok(array.into())
+    }
+
+    fn encode_hand_cards(&self, cards: &[HandCardSnapshot]) -> Result<JsValue, JsValue> {
+        let array = js_sys::Array::new();
+        for card in cards {
+            array.push(&self.encode_cached_subtree(SnapshotEncodedSubtreeKind::HandCard, card)?);
+        }
+        Ok(array.into())
+    }
+
+    fn encode_zone_cards(&self, cards: &[ZoneCardSnapshot]) -> Result<JsValue, JsValue> {
+        let array = js_sys::Array::new();
+        for card in cards {
+            array.push(&self.encode_cached_subtree(SnapshotEncodedSubtreeKind::ZoneCard, card)?);
+        }
+        Ok(array.into())
+    }
+
+    fn encode_cached_subtree<T>(
+        &self,
+        kind: SnapshotEncodedSubtreeKind,
+        value: &T,
+    ) -> Result<JsValue, JsValue>
+    where
+        T: Serialize + std::fmt::Debug,
+    {
+        let fingerprint = format!("{value:?}");
+        let hash = hash_snapshot_fingerprint(&fingerprint);
+        let key = SnapshotEncodedSubtreeKey { kind, hash };
+        if let Some(cached) = self.subtrees.borrow().get(&key)
+            && cached.fingerprint == fingerprint
+        {
+            return Ok(cached.value.clone());
+        }
+
+        let encoded = serde_wasm_bindgen::to_value(value).map_err(|error| {
+            JsValue::from_str(&format!("snapshot subtree encode failed: {error}"))
+        })?;
+        freeze_snapshot_subtree(&encoded);
+        let mut subtrees = self.subtrees.borrow_mut();
+        if subtrees.len() >= SNAPSHOT_JS_ENCODING_CACHE_LIMIT {
+            subtrees.clear();
+        }
+        subtrees.insert(
+            key,
+            SnapshotEncodedSubtreeValue {
+                fingerprint,
+                value: encoded.clone(),
+            },
+        );
+        Ok(encoded)
+    }
+
+    fn set_serde<T>(&self, object: &js_sys::Object, key: &str, value: &T) -> Result<(), JsValue>
+    where
+        T: Serialize,
+    {
+        let value = serde_wasm_bindgen::to_value(value).map_err(|error| {
+            JsValue::from_str(&format!("snapshot field {key} encode failed: {error}"))
+        })?;
+        self.set_value(object, key, &value)
+    }
+
+    fn set_value(
+        &self,
+        object: &js_sys::Object,
+        key: &str,
+        value: &JsValue,
+    ) -> Result<(), JsValue> {
+        js_sys::Reflect::set(object, &JsValue::from_str(key), value).map(|_| ())
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn hash_snapshot_fingerprint(fingerprint: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    fingerprint.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn freeze_snapshot_subtree(value: &JsValue) {
+    #[cfg(debug_assertions)]
+    if value.is_object() {
+        let object = js_sys::Object::from(value.clone());
+        js_sys::Object::freeze(&object);
+    }
+
+    #[cfg(not(debug_assertions))]
+    let _ = value;
 }
 
 fn battlefield_lane_for_card_types(card_types: &[CardType]) -> BattlefieldLane {
@@ -193,7 +566,7 @@ fn object_characteristic_signature(
     ) = if let Some(chars) = current {
         (
             chars.name,
-            chars.compiled_card_text,
+            chars.compiled_card_text.to_string(),
             chars.power,
             chars.toughness,
             chars.card_types,
@@ -206,15 +579,15 @@ fn object_characteristic_signature(
         )
     } else {
         (
-            obj.name.clone(),
-            obj.compiled_card_text.clone(),
+            obj.name.to_string(),
+            obj.compiled_card_text.to_string(),
             obj.power(),
             obj.toughness(),
-            obj.card_types.clone(),
-            obj.subtypes.clone(),
-            obj.supertypes.clone(),
+            obj.card_types.to_vec(),
+            obj.subtypes.to_vec(),
+            obj.supertypes.to_vec(),
             obj.colors(),
-            obj.abilities.clone(),
+            obj.abilities_vec(),
             obj.abilities
                 .iter()
                 .filter_map(|ability| match &ability.kind {
@@ -363,12 +736,23 @@ pub(super) fn protected_object_ids_for_decision(
     ids
 }
 
+#[cfg(test)]
 pub(super) fn grouped_battlefield_for_player(
     game: &GameState,
     player: PlayerId,
     protected_ids: &HashSet<ObjectId>,
 ) -> (Vec<PermanentSnapshot>, usize) {
-    let mut grouped: HashMap<BattlefieldGroupKey, Vec<&ironsmith::object::Object>> = HashMap::new();
+    let object_view_cache = SnapshotObjectViewCache::default();
+    grouped_battlefield_for_player_with_cache(game, player, protected_ids, &object_view_cache)
+}
+
+fn grouped_battlefield_for_player_with_cache(
+    game: &GameState,
+    player: PlayerId,
+    protected_ids: &HashSet<ObjectId>,
+    object_view_cache: &SnapshotObjectViewCache,
+) -> (Vec<PermanentSnapshot>, usize) {
+    let mut grouped: HashMap<BattlefieldGroupKey, Vec<Arc<PermanentObjectView>>> = HashMap::new();
     let mut total = 0usize;
 
     for object_id in &game.battlefield {
@@ -381,28 +765,20 @@ pub(super) fn grouped_battlefield_for_player(
         total += 1;
 
         let force_single = protected_ids.contains(&obj.id).then_some(obj.id.0);
-        let current = game.current_characteristics(obj.id);
-        let current_card_types = current
-            .as_ref()
-            .map(|chars| chars.card_types.as_slice())
-            .unwrap_or(&obj.card_types);
-        let current_name = current
-            .as_ref()
-            .map(|chars| chars.name.clone())
-            .unwrap_or_else(|| obj.name.clone());
+        let view = object_view_cache.battlefield_view(game, obj);
         let key = BattlefieldGroupKey {
-            lane: battlefield_lane_for_card_types(current_card_types),
-            name: current_name,
-            tapped: game.is_tapped(obj.id),
-            characteristic_signature: object_characteristic_signature(game, obj, true),
-            counter_signature: counter_signature_for_group(obj),
-            token: matches!(obj.kind, ironsmith::object::ObjectKind::Token),
+            lane: view.lane,
+            name: view.name.clone(),
+            tapped: view.tapped,
+            characteristic_signature: view.characteristic_signature.clone(),
+            counter_signature: view.counter_signature.clone(),
+            token: view.token,
             force_single_object: force_single,
         };
-        grouped.entry(key).or_default().push(obj);
+        grouped.entry(key).or_default().push(view);
     }
 
-    let mut groups: Vec<(BattlefieldGroupKey, Vec<&ironsmith::object::Object>)> =
+    let mut groups: Vec<(BattlefieldGroupKey, Vec<Arc<PermanentObjectView>>)> =
         grouped.into_iter().collect();
     groups.sort_unstable_by(|(left_key, left_members), (right_key, right_members)| {
         left_key
@@ -414,52 +790,32 @@ pub(super) fn grouped_battlefield_for_player(
             .then_with(|| {
                 left_members
                     .first()
-                    .map(|obj| obj.id.0)
-                    .cmp(&right_members.first().map(|obj| obj.id.0))
+                    .map(|view| view.id)
+                    .cmp(&right_members.first().map(|view| view.id))
             })
     });
 
     let snapshots = groups
         .into_iter()
         .map(|(key, mut members)| {
-            members.sort_unstable_by_key(|obj| obj.id.0);
-            let representative = members.first().copied();
-            let member_ids: Vec<u64> = members.iter().map(|obj| obj.id.0).collect();
-            let member_stable_ids: Vec<u64> = members.iter().map(|obj| obj.stable_id.0.0).collect();
-            let id = representative.map(|obj| obj.id.0).unwrap_or_default();
+            members.sort_unstable_by_key(|view| view.id);
+            let representative = members.first();
+            let member_ids: Vec<u64> = members.iter().map(|view| view.id).collect();
+            let member_stable_ids: Vec<u64> = members.iter().map(|view| view.stable_id).collect();
+            let id = representative.map(|view| view.id).unwrap_or_default();
             let stable_id = representative
-                .map(|obj| obj.stable_id.0.0)
+                .map(|view| view.stable_id)
                 .unwrap_or_default();
             let name = representative
-                .map(|obj| {
-                    game.current_characteristics(obj.id)
-                        .map(|chars| chars.name)
-                        .unwrap_or_else(|| obj.name.clone())
-                })
+                .map(|view| view.name.clone())
                 .unwrap_or_else(|| key.name.clone());
-            let power_toughness = representative.and_then(|obj| {
-                let current = game.current_characteristics(obj.id);
-                let p = current
-                    .as_ref()
-                    .and_then(|chars| chars.power)
-                    .or_else(|| obj.power())?;
-                let t = current
-                    .as_ref()
-                    .and_then(|chars| chars.toughness)
-                    .or_else(|| obj.toughness())?;
-                Some(format!("{p}/{t}"))
-            });
-            let mana_cost =
-                representative.and_then(|obj| obj.mana_cost.as_ref().map(|mc| mc.to_oracle()));
+            let power_toughness = representative.and_then(|view| view.power_toughness.clone());
+            let mana_cost = representative.and_then(|view| view.mana_cost.clone());
             let compiled_card_text = representative
-                .map(|obj| {
-                    game.current_characteristics(obj.id)
-                        .map(|chars| chars.compiled_card_text)
-                        .unwrap_or_else(|| obj.compiled_card_text.clone())
-                })
+                .map(|view| view.oracle_text.clone())
                 .unwrap_or_default();
             let counters = representative
-                .map(counter_snapshots_for_object)
+                .map(|view| view.counters.clone())
                 .unwrap_or_default();
             PermanentSnapshot {
                 id,
@@ -606,7 +962,7 @@ fn build_zone_card_snapshot(
         id: object.id.0,
         stable_id: object.stable_id.0.0,
         name: if visible {
-            object.name.clone()
+            object.name.to_string()
         } else {
             hidden_object_label()
         },
@@ -614,7 +970,7 @@ fn build_zone_card_snapshot(
             .then(|| object.mana_cost.as_ref().map(|mc| mc.to_oracle()))
             .flatten(),
         oracle_text: visible
-            .then(|| object.compiled_card_text.clone())
+            .then(|| object.compiled_card_text.to_string())
             .unwrap_or_default(),
         power_toughness,
         loyalty: visible.then(|| object.loyalty()).flatten(),
@@ -698,7 +1054,6 @@ pub(super) struct UiEffectEventSnapshot {
 
 fn effect_event_snapshots(game: &GameState) -> Vec<UiEffectEventSnapshot> {
     game.ui_effect_events()
-        .iter()
         .map(|event| UiEffectEventSnapshot {
             id: event.id,
             kind: event.kind.clone(),
@@ -739,7 +1094,6 @@ fn zone_transition_snapshots(
 ) -> Vec<ZoneTransitionSnapshot> {
     let hidden_label = hidden_object_label().to_ascii_lowercase();
     game.ui_zone_transitions()
-        .iter()
         .filter_map(|transition| {
             let object = game.object(transition.new_object_id)?;
             if !object_visible_to_perspective(game, perspective, viewed_cards, object.id) {
@@ -883,8 +1237,8 @@ fn resolve_viewed_card(
         return (
             current_id,
             obj.stable_id.0.0,
-            obj.name.clone(),
-            obj.compiled_card_text.clone(),
+            obj.name.to_string(),
+            obj.compiled_card_text.to_string(),
         );
     }
 
@@ -892,8 +1246,8 @@ fn resolve_viewed_card(
         return (
             id,
             obj.stable_id.0.0,
-            obj.name.clone(),
-            obj.compiled_card_text.clone(),
+            obj.name.to_string(),
+            obj.compiled_card_text.to_string(),
         );
     }
 
@@ -905,8 +1259,8 @@ fn resolve_viewed_card(
         return (
             current_id,
             obj.stable_id.0.0,
-            obj.name.clone(),
-            obj.compiled_card_text.clone(),
+            obj.name.to_string(),
+            obj.compiled_card_text.to_string(),
         );
     }
 
@@ -942,6 +1296,7 @@ pub(super) struct ZoneCardSnapshot {
 }
 
 impl GameSnapshot {
+    #[cfg(test)]
     pub(super) fn from_game(
         game: &GameState,
         perspective: PlayerId,
@@ -955,6 +1310,39 @@ impl GameSnapshot {
         cancelable: bool,
         undo_land_stable_id: Option<u64>,
         snapshot_id: u64,
+    ) -> Self {
+        let object_view_cache = SnapshotObjectViewCache::default();
+        Self::from_game_with_object_view_cache(
+            game,
+            perspective,
+            decision,
+            mana_payment,
+            game_over,
+            pending_cast_stack_id,
+            resolving_stack_object,
+            battlefield_transitions,
+            viewed_cards,
+            cancelable,
+            undo_land_stable_id,
+            snapshot_id,
+            &object_view_cache,
+        )
+    }
+
+    pub(super) fn from_game_with_object_view_cache(
+        game: &GameState,
+        perspective: PlayerId,
+        decision: Option<&DecisionContext>,
+        mana_payment: Option<ManaPaymentView>,
+        game_over: Option<&GameResult>,
+        pending_cast_stack_id: Option<ObjectId>,
+        resolving_stack_object: Option<super::StackObjectSnapshot>,
+        battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
+        viewed_cards: Option<&ActiveViewedCards>,
+        cancelable: bool,
+        undo_land_stable_id: Option<u64>,
+        snapshot_id: u64,
+        object_view_cache: &SnapshotObjectViewCache,
     ) -> Self {
         let stack_viewed_cards = super::stack_revealed_view(game);
         let viewed_cards = viewed_cards.or(stack_viewed_cards.as_ref());
@@ -971,8 +1359,12 @@ impl GameSnapshot {
             .players
             .iter()
             .map(|p| {
-                let (battlefield, battlefield_total) =
-                    grouped_battlefield_for_player(game, p.id, &protected_ids);
+                let (battlefield, battlefield_total) = grouped_battlefield_for_player_with_cache(
+                    game,
+                    p.id,
+                    &protected_ids,
+                    object_view_cache,
+                );
                 let is_perspective_player = p.id == perspective;
                 let visible_hand_view = viewed_cards.filter(|view| {
                     view.zone == Zone::Hand
@@ -1006,9 +1398,9 @@ impl GameSnapshot {
                                 HandCardSnapshot {
                                     id: o.id.0,
                                     stable_id: o.stable_id.0.0,
-                                    name: o.name.clone(),
+                                    name: o.name.to_string(),
                                     mana_cost,
-                                    oracle_text: o.compiled_card_text.clone(),
+                                    oracle_text: o.compiled_card_text.to_string(),
                                     power_toughness,
                                     loyalty: o.loyalty(),
                                     defense: o.defense(),
@@ -1093,14 +1485,14 @@ impl GameSnapshot {
                             p.library
                                 .last()
                                 .and_then(|id| game.object(*id))
-                                .map(|o| o.name.clone())
+                                .map(|o| o.name.to_string())
                         })
                         .flatten(),
                     graveyard_top: p
                         .graveyard
                         .last()
                         .and_then(|id| game.object(*id))
-                        .map(|o| o.name.clone()),
+                        .map(|o| o.name.to_string()),
                     battlefield,
                     battlefield_total,
                     id: p.id.0,
@@ -1135,7 +1527,7 @@ impl GameSnapshot {
             .rev()
             .map(|entry| {
                 game.object(entry.object_id)
-                    .map(|obj| obj.name.clone())
+                    .map(|obj| obj.name.to_string())
                     .unwrap_or_else(|| format!("Object#{}", entry.object_id.0))
             })
             .collect();
@@ -1151,7 +1543,7 @@ impl GameSnapshot {
             && !game.stack.iter().any(|entry| entry.object_id == stack_id)
             && let Some(obj) = game.object(stack_id)
         {
-            stack_preview.insert(0, obj.name.clone());
+            stack_preview.insert(0, obj.name.to_string());
             let pending_effect_text = {
                 let lines: Vec<_> = obj
                     .compiled_card_text
@@ -1173,7 +1565,7 @@ impl GameSnapshot {
                     stable_id: Some(obj.stable_id.0.0),
                     source_stable_id: None,
                     controller: game.current_controller(stack_id).unwrap_or(obj.owner).0,
-                    name: obj.name.clone(),
+                    name: obj.name.to_string(),
                     mana_cost: obj.mana_cost.as_ref().map(|mc| mc.to_oracle()),
                     effect_text: pending_effect_text,
                     ability_kind: None,
@@ -1263,17 +1655,19 @@ pub(super) fn build_object_details_snapshot(
     id: ObjectId,
 ) -> Option<ObjectDetailsSnapshot> {
     let obj = game.object(id)?;
-    let current_name = game.current_name(id).unwrap_or_else(|| obj.name.clone());
+    let current_name = game
+        .current_name(id)
+        .unwrap_or_else(|| obj.name.to_string());
     let current_controller = game.current_controller(id).unwrap_or(obj.owner);
     let current_supertypes = game
         .current_supertypes(id)
-        .unwrap_or_else(|| obj.supertypes.clone());
+        .unwrap_or_else(|| obj.supertypes.to_vec());
     let current_card_types = game
         .current_card_types(id)
-        .unwrap_or_else(|| obj.card_types.clone());
+        .unwrap_or_else(|| obj.card_types.to_vec());
     let current_subtypes = game
         .current_subtypes(id)
-        .unwrap_or_else(|| obj.subtypes.clone());
+        .unwrap_or_else(|| obj.subtypes.to_vec());
     let (power, toughness) = if obj.zone == Zone::Battlefield {
         (
             game.calculated_power(id).or_else(|| obj.power()),
@@ -1296,7 +1690,7 @@ pub(super) fn build_object_details_snapshot(
 
     let abilities = game
         .current_abilities(id)
-        .unwrap_or_else(|| obj.abilities.clone())
+        .unwrap_or_else(|| obj.abilities_vec())
         .iter()
         .map(ironsmith::compiled_text::ability_surface_text)
         .collect();
@@ -1313,7 +1707,7 @@ pub(super) fn build_object_details_snapshot(
         type_line_display,
         type_line_badges,
         mana_cost: obj.mana_cost.as_ref().map(|cost| cost.to_oracle()),
-        oracle_text: obj.compiled_card_text.clone(),
+        oracle_text: obj.compiled_card_text.to_string(),
         power,
         toughness,
         loyalty: obj.loyalty(),
@@ -1805,6 +2199,55 @@ mod tests {
         assert!(
             bear_groups.iter().all(|group| group.count == 1),
             "protected legal targets should not be grouped: {bear_groups:?}"
+        );
+    }
+
+    #[test]
+    fn snapshot_object_view_cache_refreshes_tapped_state() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let protected_ids = std::collections::HashSet::new();
+        let bears_card = test_bears_card();
+        let bear = game.create_object_from_card(&bears_card, alice, Zone::Battlefield);
+        let object_view_cache = SnapshotObjectViewCache::default();
+
+        let (untapped_battlefield, _) = grouped_battlefield_for_player_with_cache(
+            &game,
+            alice,
+            &protected_ids,
+            &object_view_cache,
+        );
+        assert_eq!(
+            object_view_cache.battlefield.borrow().len(),
+            1,
+            "first snapshot should populate one cached permanent view"
+        );
+        assert!(
+            untapped_battlefield
+                .iter()
+                .any(|permanent| permanent.member_ids.contains(&bear.0) && !permanent.tapped),
+            "initial cached view should show the bear as untapped: {untapped_battlefield:?}"
+        );
+
+        game.tap(bear);
+        let (tapped_battlefield, _) = grouped_battlefield_for_player_with_cache(
+            &game,
+            alice,
+            &protected_ids,
+            &object_view_cache,
+        );
+
+        assert_eq!(
+            object_view_cache.battlefield.borrow().len(),
+            2,
+            "a changed per-object key should create a fresh cached view"
+        );
+        assert!(
+            tapped_battlefield
+                .iter()
+                .any(|permanent| permanent.member_ids.contains(&bear.0) && permanent.tapped),
+            "second snapshot should not reuse the stale untapped view: {tapped_battlefield:?}"
         );
     }
 

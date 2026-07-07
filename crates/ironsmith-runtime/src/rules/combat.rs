@@ -96,7 +96,7 @@ pub(crate) fn can_block_with_view(
     let attacker_subtypes = attacker_chars
         .as_ref()
         .map(|c| c.subtypes.clone())
-        .unwrap_or_else(|| attacker.subtypes.clone());
+        .unwrap_or_else(|| attacker.subtypes.to_vec());
     let blocker_is_artifact = blocker_chars
         .as_ref()
         .map(|c| c.card_types.contains(&CardType::Artifact))
@@ -303,7 +303,7 @@ pub(crate) fn can_block_with_view(
                 let supertypes = || {
                     view.calculated_characteristics(obj.id)
                         .map(|chars| chars.supertypes)
-                        .unwrap_or_else(|| obj.supertypes.clone())
+                        .unwrap_or_else(|| obj.supertypes.to_vec())
                 };
 
                 match landwalk_kind {
@@ -391,7 +391,7 @@ fn protection_prevents_blocking_with_view(
     let blocker_card_types = blocker_chars
         .as_ref()
         .map(|c| c.card_types.clone())
-        .unwrap_or_else(|| blocker.card_types.clone());
+        .unwrap_or_else(|| blocker.card_types.to_vec());
 
     match protection {
         ProtectionFrom::Color(colors) => !colors.intersection(blocker_colors).is_empty(),
@@ -411,7 +411,7 @@ fn protection_prevents_blocking_with_view(
                 .map_or(0, |cost| cost.mana_value() as i32);
             let ctx = FilterContext::new(game.controller_of(attacker)).with_source(attacker.id);
             let zone = filter.zone.unwrap_or(crate::zone::Zone::Battlefield);
-            game.objects_in_zone(zone).into_iter().any(|object_id| {
+            game.zone_ids(zone).any(|object_id| {
                 let Some(object) = game.object(object_id) else {
                     return false;
                 };
@@ -734,17 +734,18 @@ mod tests {
         Object {
             id: ObjectId::from_raw(raw),
             stable_id: StableId::from_raw(raw),
+            last_modified: 0,
             kind: crate::object::ObjectKind::Card,
             card: None,
             zone: Zone::Battlefield,
             owner: PlayerId::from_index(0),
-            name: name.to_string(),
+            name: name.to_string().into(),
             mana_cost: None,
             color_override: None,
-            supertypes: vec![],
-            card_types: vec![CardType::Creature],
-            subtypes: vec![],
-            compiled_card_text: String::new(),
+            supertypes: vec![].into(),
+            card_types: vec![CardType::Creature].into(),
+            subtypes: vec![].into(),
+            compiled_card_text: String::new().into(),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
@@ -753,23 +754,23 @@ mod tests {
             base_toughness: Some(PtValue::Fixed(toughness)),
             base_loyalty: None,
             base_defense: None,
-            abilities: vec![],
+            abilities: std::sync::Arc::new(vec![]),
             counters: HashMap::new(),
             attached_to: None,
             attachments: vec![],
             spell_effect: None,
             aura_attach_filter: None,
-            alternative_casts: vec![],
+            alternative_casts: vec![].into(),
             cast_alternative_method: None,
             has_fuse: false,
-            optional_costs: vec![],
+            optional_costs: vec![].into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
             temporary_static_ability_grants: vec![],
             x_value: None,
             keyword_payment_contributions_to_cast: vec![],
             cast_tagged_objects: HashMap::new(),
-            additional_cost: crate::cost::TotalCost::free(),
+            additional_cost: crate::cost::TotalCost::free().into(),
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
@@ -777,13 +778,13 @@ mod tests {
     }
 
     fn add_ability(obj: &mut Object, static_ability: StaticAbility) {
-        obj.abilities.push(Ability::static_ability(static_ability));
+        obj.abilities_mut()
+            .push(Ability::static_ability(static_ability));
     }
 
     fn set_mana_value(obj: &mut Object, mana_value: u8) {
-        obj.mana_cost = Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
-            mana_value,
-        )]]));
+        obj.mana_cost =
+            Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]).into());
     }
 
     #[test]
@@ -1098,7 +1099,7 @@ mod tests {
         let mut artifact_only = make_creature("Relic", 0, 1);
         artifact_only.id = ObjectId::from_raw(112);
         artifact_only.owner = bob;
-        artifact_only.card_types = vec![CardType::Artifact];
+        artifact_only.card_types = vec![CardType::Artifact].into();
         game_with_only_artifact.add_object(attacker.clone());
         game_with_only_artifact.add_object(blocker.clone());
         game_with_only_artifact.add_object(artifact_only);
@@ -1111,7 +1112,7 @@ mod tests {
         let mut land_only = make_creature("Field", 0, 1);
         land_only.id = ObjectId::from_raw(113);
         land_only.owner = bob;
-        land_only.card_types = vec![CardType::Land];
+        land_only.card_types = vec![CardType::Land].into();
         game_with_only_land.add_object(attacker.clone());
         game_with_only_land.add_object(blocker.clone());
         game_with_only_land.add_object(land_only);
@@ -1124,7 +1125,7 @@ mod tests {
         let mut artifact_land = make_creature("Seat of Synod", 0, 1);
         artifact_land.id = ObjectId::from_raw(114);
         artifact_land.owner = bob;
-        artifact_land.card_types = vec![CardType::Artifact, CardType::Land];
+        artifact_land.card_types = vec![CardType::Artifact, CardType::Land].into();
         game_with_artifact_land.add_object(attacker);
         game_with_artifact_land.add_object(blocker);
         game_with_artifact_land.add_object(artifact_land);
@@ -1248,8 +1249,8 @@ mod tests {
         let mut island = make_creature("Island", 0, 0);
         island.id = ObjectId::from_raw(99);
         island.owner = bob;
-        island.card_types = vec![CardType::Land];
-        island.subtypes = vec![crate::types::Subtype::Island];
+        island.card_types = vec![CardType::Land].into();
+        island.subtypes = vec![crate::types::Subtype::Island].into();
         game.add_object(island);
 
         assert!(can_attack_defending_player(&attacker, bob, &game));
@@ -1370,7 +1371,7 @@ mod tests {
         let game = test_game_state();
         let mut protected = make_creature("Protected", 2, 2);
         protected
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::protection(
                 ProtectionFrom::Color(ColorSet::RED),
             )));
@@ -1470,8 +1471,8 @@ mod tests {
 
         let mut land = make_creature("Plains", 0, 1);
         land.owner = bob;
-        land.card_types = vec![CardType::Land];
-        land.subtypes = vec![crate::types::Subtype::Plains];
+        land.card_types = vec![CardType::Land].into();
+        land.subtypes = vec![crate::types::Subtype::Plains].into();
         game.add_object(land);
 
         assert!(!can_block(&attacker, &blocker, &game));
@@ -1491,14 +1492,14 @@ mod tests {
 
         let mut basic_land = make_creature("Forest", 0, 1);
         basic_land.owner = bob;
-        basic_land.card_types = vec![CardType::Land];
-        basic_land.subtypes = vec![crate::types::Subtype::Forest];
-        basic_land.supertypes = vec![Supertype::Basic];
+        basic_land.card_types = vec![CardType::Land].into();
+        basic_land.subtypes = vec![crate::types::Subtype::Forest].into();
+        basic_land.supertypes = vec![Supertype::Basic].into();
 
         let mut nonbasic_land = make_creature("Maze", 0, 1);
         nonbasic_land.owner = bob;
-        nonbasic_land.card_types = vec![CardType::Land];
-        nonbasic_land.subtypes = vec![crate::types::Subtype::Desert];
+        nonbasic_land.card_types = vec![CardType::Land].into();
+        nonbasic_land.subtypes = vec![crate::types::Subtype::Desert].into();
 
         let mut game = test_game_state();
         game.add_object(attacker.clone());
@@ -1524,8 +1525,8 @@ mod tests {
 
         let mut land = make_creature("Maze", 0, 1);
         land.owner = bob;
-        land.card_types = vec![CardType::Land];
-        land.subtypes = vec![crate::types::Subtype::Desert];
+        land.card_types = vec![CardType::Land].into();
+        land.subtypes = vec![crate::types::Subtype::Desert].into();
         let land_id = land.id;
 
         let mut game = test_game_state();
@@ -1567,13 +1568,13 @@ mod tests {
 
         let mut forest = make_creature("Forest", 0, 1);
         forest.owner = bob;
-        forest.card_types = vec![CardType::Land];
-        forest.subtypes = vec![crate::types::Subtype::Forest];
+        forest.card_types = vec![CardType::Land].into();
+        forest.subtypes = vec![crate::types::Subtype::Forest].into();
 
         let mut snow_forest = forest.clone();
         snow_forest.id = ObjectId::from_raw(5000);
         snow_forest.stable_id = StableId::from_raw(5000);
-        snow_forest.supertypes = vec![Supertype::Snow];
+        snow_forest.supertypes = vec![Supertype::Snow].into();
 
         let mut game = test_game_state();
         game.add_object(attacker.clone());
@@ -1602,8 +1603,8 @@ mod tests {
 
         let mut forest = make_creature("Forest", 0, 1);
         forest.owner = bob;
-        forest.card_types = vec![CardType::Land];
-        forest.subtypes = vec![crate::types::Subtype::Forest];
+        forest.card_types = vec![CardType::Land].into();
+        forest.subtypes = vec![crate::types::Subtype::Forest].into();
         let forest_id = forest.id;
 
         let mut game = test_game_state();
@@ -1641,10 +1642,10 @@ mod tests {
 
         let mut aura = make_creature("Traveler's Cloak", 0, 0);
         aura.owner = alice;
-        aura.card_types = vec![CardType::Enchantment];
-        aura.subtypes = vec![crate::types::Subtype::Aura];
+        aura.card_types = vec![CardType::Enchantment].into();
+        aura.subtypes = vec![crate::types::Subtype::Aura].into();
         aura.attached_to = Some(crate::object::AttachmentTarget::Object(attacker.id));
-        aura.abilities.push(Ability::static_ability(
+        aura.abilities_mut().push(Ability::static_ability(
             StaticAbility::attached_chosen_landwalk_grant(
                 "enchanted creature has landwalk of the chosen type".to_string(),
                 false,
@@ -1653,8 +1654,8 @@ mod tests {
 
         let mut chosen_land = make_creature("Desert", 0, 1);
         chosen_land.owner = bob;
-        chosen_land.card_types = vec![CardType::Land];
-        chosen_land.subtypes = vec![crate::types::Subtype::Desert];
+        chosen_land.card_types = vec![CardType::Land].into();
+        chosen_land.subtypes = vec![crate::types::Subtype::Desert].into();
 
         let mut game = test_game_state();
         let attacker_id = attacker.id;
@@ -1690,14 +1691,14 @@ mod tests {
 
         let mut swamp = make_creature("Swamp", 0, 1);
         swamp.owner = bob;
-        swamp.card_types = vec![CardType::Land];
-        swamp.subtypes = vec![crate::types::Subtype::Swamp];
+        swamp.card_types = vec![CardType::Land].into();
+        swamp.subtypes = vec![crate::types::Subtype::Swamp].into();
 
         let mut quagmire = make_creature("Quagmire", 0, 0);
         quagmire.owner = alice;
-        quagmire.card_types = vec![CardType::Enchantment];
+        quagmire.card_types = vec![CardType::Enchantment].into();
         quagmire
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::remove_ability(
                 crate::filter::ObjectFilter::creature().with_ability_marker("swampwalk"),
                 StaticAbility::landwalk(crate::types::Subtype::Swamp),
@@ -1726,9 +1727,9 @@ mod tests {
 
         let mut quagmire = make_creature("Quagmire", 0, 0);
         quagmire.owner = alice;
-        quagmire.card_types = vec![CardType::Enchantment];
+        quagmire.card_types = vec![CardType::Enchantment].into();
         quagmire
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::remove_ability(
                 crate::filter::ObjectFilter::creature().with_ability_marker("swampwalk"),
                 StaticAbility::landwalk(crate::types::Subtype::Swamp),

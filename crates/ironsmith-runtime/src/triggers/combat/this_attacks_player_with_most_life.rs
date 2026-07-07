@@ -36,6 +36,10 @@ impl TriggerMatcher for ThisAttacksPlayerWithMostLifeTrigger {
         max_life.is_some_and(|max_life| defending_life == max_life)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
+    }
+
     fn display(&self) -> String {
         "Whenever this creature attacks the player with the most life or tied for most life"
             .to_string()

@@ -65,7 +65,7 @@ impl EffectExecutor for GrantObjectAbilityEffect {
                 }
             }
 
-            target.abilities.push(self.ability.clone());
+            target.abilities_mut().push(self.ability.clone());
         }
         Ok(EffectOutcome::default())
     }

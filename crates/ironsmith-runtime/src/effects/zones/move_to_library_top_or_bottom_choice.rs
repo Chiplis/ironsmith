@@ -108,7 +108,7 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
             let stable_id = obj.stable_id;
             let from_zone = obj.zone;
             let chooser = obj.owner;
-            let object_name = obj.name.clone();
+            let object_name = obj.name.to_string();
             let pre_snapshot =
                 ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
             let source_lki_before_move = if moves_source && object_id == ctx.source {

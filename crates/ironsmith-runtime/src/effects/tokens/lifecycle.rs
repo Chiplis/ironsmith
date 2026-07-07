@@ -8,7 +8,6 @@ use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_e
 use crate::events::EnterBattlefieldEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::object::Object;
 #[cfg(test)]
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -65,7 +64,8 @@ pub(crate) fn create_replacement_additional_tokens(
         let count = (*requested_count as usize).min(remaining_token_slots(game, controller_id));
         for _ in 0..count {
             let id = game.new_object_id();
-            let mut token_obj = Object::from_token_definition(id, &token_definition, controller_id);
+            let mut token_obj =
+                game.object_from_token_definition(id, &token_definition, controller_id);
             token_obj.zone = Zone::Command;
             let token_is_creature = token_obj.is_creature();
 

@@ -68,7 +68,7 @@ impl EffectExecutor for SoulbondPairEffect {
             .map(|(index, object_id)| {
                 let name = game
                     .object(*object_id)
-                    .map(|object| object.name.clone())
+                    .map(|object| object.name.to_string())
                     .unwrap_or_else(|| format!("Object {}", object_id.0));
                 DisplayOption::new(index, name)
             })

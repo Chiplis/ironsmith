@@ -5,9 +5,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::{Deref, DerefMut, Range};
 use std::sync::Arc;
 
+use rand::SeedableRng;
 use rand::seq::SliceRandom;
-use rand::{SeedableRng, rngs::StdRng};
+use rand_chacha::ChaCha12Rng;
 
+use crate::FxMap;
 use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::alternative_cast::CastingMethod;
 use crate::card::{Card, LinkedFaceLayout};
@@ -23,14 +25,14 @@ use crate::dungeon::ActiveDungeonProgress;
 use crate::effect::Until;
 use crate::events::{Event, EventKind, KeywordActionKind};
 use crate::filter::PlayerFilterExt;
-use crate::ids::{ObjectId, PlayerId, StableId, reset_runtime_id_counters};
-use crate::object::{AttachmentTarget, AuraAttachmentFilter, Object};
+use crate::ids::{CardId, ObjectId, PlayerId, StableId, reset_runtime_id_counters};
+use crate::object::{AttachmentTarget, AuraAttachmentFilter, CardSharedHandles, Object};
 use crate::player::{ManaPool, Player};
 use crate::prevention::PreventionEffectManager;
 use crate::provenance::{ProvNodeId, ProvenanceGraph, ProvenanceNodeKind};
 use crate::replacement::{ReplacementEffectId, ReplacementEffectKey, ReplacementEffectManager};
 use crate::snapshot::ObjectSnapshot;
-use crate::static_abilities::StaticAbility;
+use crate::static_abilities::{AnthemCountExpression, StaticAbility};
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerIdentity;
 use crate::turn_history::TurnHistory;
@@ -194,33 +196,172 @@ pub enum HiddenInfoOperation {
 
 #[derive(Debug, Clone, Default)]
 struct MetadataStateStore {
-    ui_battlefield_transitions: Vec<UiBattlefieldTransition>,
-    ui_zone_transitions: Vec<UiZoneTransition>,
+    ui_battlefield_transitions: im::Vector<UiBattlefieldTransition>,
+    ui_zone_transitions: im::Vector<UiZoneTransition>,
     next_ui_zone_transition_id: u64,
-    ui_effect_events: Vec<UiEffectEvent>,
+    ui_effect_events: im::Vector<UiEffectEvent>,
     next_ui_effect_event_id: u64,
     provenance_graph: ProvenanceGraph,
 }
 
+/// Battlefield-only flags grouped behind copy-on-write storage for cheap clones.
+#[derive(Debug, Clone, Default)]
+struct BattlefieldFlags {
+    /// Tapped permanents on the battlefield.
+    tapped_permanents: HashSet<ObjectId>,
+    /// Creatures that have summoning sickness.
+    summoning_sick: HashSet<ObjectId>,
+    /// Damage marked on creatures (cleared at cleanup step).
+    damage_marked: HashMap<ObjectId, u32>,
+    /// Creatures that are monstrous (from monstrosity ability).
+    monstrous: HashSet<ObjectId>,
+    /// Permanents that are suspected.
+    suspected: HashSet<ObjectId>,
+    /// Mounts that are saddled until end of turn.
+    saddled_until_end_of_turn: HashSet<ObjectId>,
+    /// Creatures dealt nonzero damage by a source with deathtouch since last SBA check.
+    dealt_deathtouch_damage_since_sba: HashSet<ObjectId>,
+    /// Permanents whose damage is not removed during cleanup.
+    damage_persists: HashSet<ObjectId>,
+    /// Regeneration shields on permanents.
+    regeneration_shields: HashMap<ObjectId, u32>,
+    /// Number of times each permanent successfully regenerated this turn.
+    regenerated_this_turn: HashMap<ObjectId, u32>,
+    /// Number of permanents sacrificed as a result of this permanent's devour ability.
+    devoured_counts: HashMap<ObjectId, u32>,
+    /// Cases that have become solved.
+    solved_cases: HashSet<ObjectId>,
+    /// Creatures that are renowned.
+    renowned: HashSet<ObjectId>,
+    /// Flipped permanents.
+    flipped: HashSet<ObjectId>,
+    /// Face-down permanents.
+    face_down: HashSet<ObjectId>,
+    /// Face-down permanents created via manifest.
+    manifested: HashSet<ObjectId>,
+    /// Split Room permanents whose linked locked door has been unlocked.
+    fully_unlocked_rooms: HashSet<ObjectId>,
+    /// Number of times each battlefield permanent has transformed.
+    transform_count: HashMap<ObjectId, u64>,
+    /// Phased-out permanents.
+    phased_out: HashSet<ObjectId>,
+}
+
+/// Exile/casting permission flags grouped behind copy-on-write storage.
+#[derive(Debug, Clone, Default)]
+struct CastPermissionFlags {
+    /// Cards exiled via Madness.
+    madness_exiled: HashSet<ObjectId>,
+    /// Cards exiled via Foretell.
+    foretold_cards: HashSet<ObjectId>,
+    /// Cards exiled after resolving as Adventure spells.
+    adventure_exiled: HashSet<ObjectId>,
+}
+
+/// Per-object annotation state grouped behind copy-on-write storage.
+#[derive(Debug, Clone, Default)]
+struct ObjectAnnotationStore {
+    /// Last life total noted for a battlefield source object.
+    noted_life_totals: HashMap<ObjectId, i32>,
+    /// Stickers attached to an object, keyed by stable object identity.
+    object_stickers: HashMap<StableId, Vec<StickerMarker>>,
+}
+
+/// Commander-format tracking grouped behind copy-on-write storage.
+#[derive(Debug, Clone, Default)]
+struct CommanderTracking {
+    /// Objects designated as commanders.
+    commanders: HashSet<ObjectId>,
+    /// Number of times each commander has been cast from the command zone.
+    commander_casts_from_command_zone: HashMap<ObjectId, u32>,
+    /// Commanders whose owner declined the current move-to-command-zone choice.
+    declined_command_zone_moves: HashSet<ObjectId>,
+    /// Component-card identity for battlefield melded permanents.
+    melded_permanents: HashMap<StableId, MeldedPermanentState>,
+}
+
+/// Exile and stack-origin tracking grouped behind copy-on-write storage.
+#[derive(Debug, Clone, Default)]
+struct ExileTracking {
+    /// Which players may inspect a face-down card in exile.
+    face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
+    /// Snapshot of a card just before it moved to the stack for casting.
+    cast_origin_snapshots: HashMap<ObjectId, ObjectSnapshot>,
+    /// Cards exiled via Plot, keyed by object id -> (player who plotted it, turn plotted).
+    plotted_cards: HashMap<ObjectId, (PlayerId, u32)>,
+    /// Imprinted cards keyed by source permanent.
+    imprinted_cards: HashMap<ObjectId, Vec<ObjectId>>,
+    /// Cards exiled by a specific source object ID.
+    exiled_with_source: HashMap<ObjectId, Vec<ObjectId>>,
+    /// Return zones for cards exiled by a source-leaves duration effect.
+    exiled_with_source_return_zones: HashMap<ObjectId, HashMap<ObjectId, Zone>>,
+    /// Sources whose linked exiled cards return when the source leaves.
+    return_exiled_when_source_leaves: HashSet<ObjectId>,
+    /// Linked exile groups keyed by generated runtime ID.
+    linked_exile_groups: HashMap<u64, LinkedExileGroup>,
+    /// Monotonic ID generator for linked exile groups.
+    next_linked_exile_group_id: u64,
+}
+
+/// Combat and per-turn transient tracking grouped behind copy-on-write storage.
+#[derive(Debug, Clone, Default)]
+struct CombatTransientState {
+    /// Soulbond pairings (stored bidirectionally: A -> B and B -> A).
+    soulbond_pairs: HashMap<ObjectId, ObjectId>,
+    /// Attack targets captured while paying Ninjutsu costs.
+    ninjutsu_attack_targets: HashMap<ObjectId, Vec<crate::combat_state::AttackTarget>>,
+    /// Attack targets captured while paying Sneak costs.
+    sneak_attack_targets: HashMap<ObjectId, Vec<crate::combat_state::AttackTarget>>,
+    /// Combat-damage-to-player hits processed in the current trigger batch.
+    combat_damage_player_batch_hits: Vec<(ObjectId, PlayerId)>,
+    /// Players whose inherent speed trigger has already fired this turn.
+    speed_increase_triggered_this_turn: HashSet<PlayerId>,
+}
+
+/// Miscellaneous checkpoint-heavy state grouped behind copy-on-write storage.
+#[derive(Debug, Clone, Default)]
+struct AuxiliaryTrackingState {
+    /// Current dungeon progress for each player, if any.
+    active_dungeons: HashMap<PlayerId, ActiveDungeonProgress>,
+    /// Named dungeons each player has completed this game.
+    completed_dungeons: HashMap<PlayerId, Vec<String>>,
+    /// Active and pending player-control effects.
+    player_control_effects: Vec<PlayerControlEffect>,
+    /// Player-control effects active only while a resolving instruction is in scope.
+    scoped_player_control_effects: Vec<ScopedPlayerControlEffect>,
+    /// Timestamp counter for player-control effects.
+    player_control_timestamp: u64,
+    /// Temporary effects that redirect attacker/blocker choices this turn.
+    combat_choice_control_effects: Vec<CombatChoiceControlEffect>,
+    /// Timestamp counter for combat-choice control effects.
+    combat_choice_control_timestamp: u64,
+    /// Highest pregame draft-note number recorded by a player for a named card.
+    draft_noted_highest_numbers: HashMap<(PlayerId, String), u32>,
+    /// Cryptographic hidden-card slots that have not been opened on this peer.
+    hidden_cards: HashMap<ObjectId, HiddenCardInfo>,
+}
+
 /// Storage and denormalized zone indexes for live objects in the game.
-pub(crate) type ObjectMap = HashMap<ObjectId, Arc<Object>>;
+pub(crate) type ObjectMap = FxMap<ObjectId, Arc<Object>>;
 
 #[derive(Debug, Clone, Default)]
 pub struct ObjectStore {
     objects: ObjectMap,
     /// Fast index: stable id -> current object id.
-    stable_id_index: HashMap<StableId, ObjectId>,
+    stable_id_index: FxMap<StableId, ObjectId>,
     /// Game-local cache for linked-face definitions so transform/split/disturb
     /// resolution doesn't depend on the shared runtime custom-card registry.
     linked_face_definitions_by_id: HashMap<crate::ids::CardId, crate::cards::CardDefinition>,
     linked_face_definitions_by_name: HashMap<String, crate::cards::CardDefinition>,
+    /// Game-local Arc-backed payload cache for repeated objects from one card definition.
+    card_shared: HashMap<CardId, CardSharedHandles>,
     /// Zone indexes (denormalized for efficiency).
     pub battlefield: Vec<ObjectId>,
     pub command_zone: Vec<ObjectId>,
     pub exile: Vec<ObjectId>,
     /// The full set of destination object IDs created by the most recent move
     /// of a given source object.
-    zone_change_result_objects: HashMap<ObjectId, Vec<ObjectId>>,
+    zone_change_result_objects: FxMap<ObjectId, Vec<ObjectId>>,
 }
 
 impl ObjectStore {
@@ -241,6 +382,18 @@ impl ObjectStore {
             Ok(object) => object,
             Err(shared) => (*shared).clone(),
         }
+    }
+
+    fn shared_handles_for_definition(
+        &mut self,
+        def: &crate::cards::CardDefinition,
+    ) -> CardSharedHandles {
+        if let Some(handles) = self.card_shared.get(&def.card.id) {
+            return handles.clone();
+        }
+        let handles = CardSharedHandles::from_definition(def);
+        self.card_shared.insert(def.card.id, handles.clone());
+        handles
     }
 }
 
@@ -389,15 +542,20 @@ struct RuntimeCacheState {
     forced_die_rolls: RefCell<VecDeque<u32>>,
     transcript_random_seeds: RefCell<VecDeque<u64>>,
     transcript_library_shuffle_orders: RefCell<VecDeque<TranscriptLibraryShuffleOrder>>,
-    hidden_info_audit_log: RefCell<Vec<HiddenInfoOperation>>,
+    hidden_info_audit_log: RefCell<im::Vector<HiddenInfoOperation>>,
     continuous_state_dirty: Cell<bool>,
     continuous_state_revision: Cell<u64>,
     continuous_state_turn_number: Cell<u32>,
     continuous_state_active_player: Cell<PlayerId>,
     continuous_state_phase: Cell<Phase>,
     continuous_state_step: Cell<Option<Step>>,
-    calculated_characteristics_cache: RefCell<HashMap<ObjectId, Option<CalculatedCharacteristics>>>,
-    calculated_characteristics_cache_revision: Cell<u64>,
+    effects_snapshot: RefCell<Option<(u64, Arc<Vec<ContinuousEffect>>)>>,
+    controller_cache: RefCell<Option<ControllerCache>>,
+    static_effects_cache: RefCell<crate::static_ability_processor::StaticEffectsCache>,
+    trigger_registry: RefCell<Option<crate::triggers::check::TriggerRegistry>>,
+    object_snapshot_cache: RefCell<FxMap<ObjectSnapshotCacheKey, Arc<ObjectSnapshot>>>,
+    characteristics_cache: CharacteristicsCache,
+    work_counters: WorkCounters,
 }
 
 impl Clone for RuntimeCacheState {
@@ -417,10 +575,17 @@ impl Clone for RuntimeCacheState {
             continuous_state_active_player: Cell::new(self.continuous_state_active_player.get()),
             continuous_state_phase: Cell::new(self.continuous_state_phase.get()),
             continuous_state_step: Cell::new(self.continuous_state_step.get()),
-            calculated_characteristics_cache: RefCell::new(HashMap::new()),
-            calculated_characteristics_cache_revision: Cell::new(
-                self.calculated_characteristics_cache_revision.get(),
+            effects_snapshot: RefCell::new(None),
+            controller_cache: RefCell::new(None),
+            static_effects_cache: RefCell::new(
+                crate::static_ability_processor::StaticEffectsCache::default(),
             ),
+            trigger_registry: RefCell::new(None),
+            object_snapshot_cache: RefCell::new(FxMap::default()),
+            characteristics_cache: CharacteristicsCache::cloned_empty_from(
+                &self.characteristics_cache,
+            ),
+            work_counters: WorkCounters::default(),
         }
     }
 }
@@ -433,17 +598,215 @@ impl RuntimeCacheState {
             forced_die_rolls: RefCell::new(VecDeque::new()),
             transcript_random_seeds: RefCell::new(VecDeque::new()),
             transcript_library_shuffle_orders: RefCell::new(VecDeque::new()),
-            hidden_info_audit_log: RefCell::new(Vec::new()),
+            hidden_info_audit_log: RefCell::new(im::Vector::new()),
             continuous_state_dirty: Cell::new(true),
             continuous_state_revision: Cell::new(0),
             continuous_state_turn_number: Cell::new(1),
             continuous_state_active_player: Cell::new(active_player),
             continuous_state_phase: Cell::new(Phase::Beginning),
             continuous_state_step: Cell::new(Some(Step::Untap)),
-            calculated_characteristics_cache: RefCell::new(HashMap::new()),
-            calculated_characteristics_cache_revision: Cell::new(0),
+            effects_snapshot: RefCell::new(None),
+            controller_cache: RefCell::new(None),
+            static_effects_cache: RefCell::new(
+                crate::static_ability_processor::StaticEffectsCache::default(),
+            ),
+            trigger_registry: RefCell::new(None),
+            object_snapshot_cache: RefCell::new(FxMap::default()),
+            characteristics_cache: CharacteristicsCache::default(),
+            work_counters: WorkCounters::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ObjectSnapshotCacheKey {
+    object_id: ObjectId,
+    mutation_revision: u64,
+    effect_revision: u64,
+}
+
+#[derive(Debug, Default)]
+struct CharacteristicsCache {
+    epoch: Cell<u64>,
+    effect_revision: Cell<u64>,
+    object_revisions: RefCell<FxMap<ObjectId, u64>>,
+    entries: RefCell<FxMap<ObjectId, CharacteristicsCacheEntry>>,
+}
+
+#[derive(Debug, Clone)]
+struct CharacteristicsCacheEntry {
+    epoch: u64,
+    effect_revision: u64,
+    self_rev: u64,
+    chars: Option<CalculatedCharacteristics>,
+}
+
+impl CharacteristicsCache {
+    fn cloned_empty_from(other: &Self) -> Self {
+        Self {
+            epoch: Cell::new(other.epoch.get()),
+            effect_revision: Cell::new(other.effect_revision.get()),
+            object_revisions: RefCell::new(other.object_revisions.borrow().clone()),
+            entries: RefCell::new(FxMap::default()),
+        }
+    }
+
+    fn bump_epoch(&self) {
+        self.epoch.set(self.epoch.get().saturating_add(1));
+        self.entries.borrow_mut().clear();
+    }
+
+    fn bump_object_revision(&self, id: ObjectId, revision: u64) {
+        self.object_revisions.borrow_mut().insert(id, revision);
+    }
+
+    fn prepare_for_effect_revision(&self, effect_revision: u64) {
+        if self.effect_revision.get() == effect_revision {
+            return;
+        }
+        self.entries.borrow_mut().clear();
+        self.effect_revision.set(effect_revision);
+        self.epoch.set(self.epoch.get().saturating_add(1));
+    }
+
+    fn object_revision(&self, id: ObjectId) -> u64 {
+        self.object_revisions
+            .borrow()
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn get(&self, id: ObjectId, effect_revision: u64) -> Option<Option<CalculatedCharacteristics>> {
+        self.prepare_for_effect_revision(effect_revision);
+        let entry = self.entries.borrow().get(&id).cloned()?;
+        if entry.epoch == self.epoch.get()
+            && entry.effect_revision == effect_revision
+            && entry.self_rev == self.object_revision(id)
+        {
+            Some(entry.chars)
+        } else {
+            None
+        }
+    }
+
+    fn contains_valid_entry(&self, id: ObjectId, effect_revision: u64) -> bool {
+        self.get(id, effect_revision).is_some()
+    }
+
+    fn insert(&self, id: ObjectId, effect_revision: u64, chars: Option<CalculatedCharacteristics>) {
+        self.prepare_for_effect_revision(effect_revision);
+        self.entries.borrow_mut().insert(
+            id,
+            CharacteristicsCacheEntry {
+                epoch: self.epoch.get(),
+                effect_revision,
+                self_rev: self.object_revision(id),
+                chars,
+            },
+        );
+    }
+}
+
+#[derive(Debug)]
+struct ControllerCache {
+    revision: u64,
+    turn_number: u32,
+    active_player: PlayerId,
+    phase: Phase,
+    step: Option<Step>,
+    change_effects: Arc<Vec<ContinuousEffect>>,
+    resolved: RefCell<FxMap<ObjectId, PlayerId>>,
+}
+
+impl ControllerCache {
+    fn matches_state(&self, game: &GameState) -> bool {
+        self.revision == game.effect_store.continuous_effects.revision()
+            && self.turn_number == game.turn.turn_number
+            && self.active_player == game.turn.active_player
+            && self.phase == game.turn.phase
+            && self.step == game.turn.step
+    }
+}
+
+#[derive(Debug, Default)]
+struct WorkCounters {
+    characteristics_full_recomputes: Cell<u64>,
+    characteristics_cache_hits: Cell<u64>,
+    static_ability_regens: Cell<u64>,
+    effects_considered: Cell<u64>,
+    objects_scanned_in_sba: Cell<u64>,
+    derived_view_rebuilds: Cell<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+pub struct WorkCounterSnapshot {
+    pub characteristics_full_recomputes: u64,
+    pub characteristics_cache_hits: u64,
+    pub static_ability_regens: u64,
+    pub effects_considered: u64,
+    pub objects_scanned_in_sba: u64,
+    pub derived_view_rebuilds: u64,
+}
+
+impl WorkCounters {
+    fn snapshot(&self) -> WorkCounterSnapshot {
+        WorkCounterSnapshot {
+            characteristics_full_recomputes: self.characteristics_full_recomputes.get(),
+            characteristics_cache_hits: self.characteristics_cache_hits.get(),
+            static_ability_regens: self.static_ability_regens.get(),
+            effects_considered: self.effects_considered.get(),
+            objects_scanned_in_sba: self.objects_scanned_in_sba.get(),
+            derived_view_rebuilds: self.derived_view_rebuilds.get(),
+        }
+    }
+
+    fn bump_characteristics_full_recomputes(&self) {
+        self.characteristics_full_recomputes
+            .set(self.characteristics_full_recomputes.get().saturating_add(1));
+    }
+
+    fn bump_characteristics_cache_hits(&self) {
+        self.characteristics_cache_hits
+            .set(self.characteristics_cache_hits.get().saturating_add(1));
+    }
+
+    fn bump_static_ability_regens(&self) {
+        self.static_ability_regens
+            .set(self.static_ability_regens.get().saturating_add(1));
+    }
+
+    fn add_effects_considered(&self, count: u64) {
+        self.effects_considered
+            .set(self.effects_considered.get().saturating_add(count));
+    }
+
+    fn add_objects_scanned_in_sba(&self, count: u64) {
+        self.objects_scanned_in_sba
+            .set(self.objects_scanned_in_sba.get().saturating_add(count));
+    }
+
+    fn bump_derived_view_rebuilds(&self) {
+        self.derived_view_rebuilds
+            .set(self.derived_view_rebuilds.get().saturating_add(1));
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ZoneRevisionSnapshot {
+    pub battlefield: u64,
+    pub command: u64,
+    pub exile: u64,
+    pub library: u64,
+    pub hand: u64,
+    pub graveyard: u64,
+    pub outside_game: u64,
+    pub stack: u64,
+    pub all: u64,
 }
 
 /// Key type for extensible per-turn counters.
@@ -2122,8 +2485,11 @@ pub struct GameState {
     pub turn: TurnState,
     pub turn_store: TurnStore,
     pub effect_store: EffectStore,
-    pub choice_store: ChoiceStore,
+    choice_store: Arc<ChoiceStore>,
     metadata: MetadataStateStore,
+    mutation_revision: u64,
+    next_object_id: u64,
+    zone_revisions: ZoneRevisionSnapshot,
 
     /// Current combat state (Some during combat phase, None otherwise).
     /// Effects can directly add creatures to combat when this is set.
@@ -2136,179 +2502,20 @@ pub struct GameState {
     pub monarch: Option<PlayerId>,
     /// Current initiative designation holder, if any.
     pub initiative: Option<PlayerId>,
-    /// Current dungeon progress for each player, if any.
-    pub active_dungeons: HashMap<PlayerId, ActiveDungeonProgress>,
-    /// Named dungeons each player has completed this game.
-    pub completed_dungeons: HashMap<PlayerId, Vec<String>>,
+    battlefield_flags: Arc<BattlefieldFlags>,
 
-    /// Active and pending player-control effects.
-    pub player_control_effects: Vec<PlayerControlEffect>,
+    combat_transients: Arc<CombatTransientState>,
 
-    /// Player-control effects active only while a resolving instruction is in scope.
-    pub scoped_player_control_effects: Vec<ScopedPlayerControlEffect>,
+    auxiliary_tracking: Arc<AuxiliaryTrackingState>,
 
-    /// Timestamp counter for player-control effects.
-    pub player_control_timestamp: u64,
+    object_annotations: Arc<ObjectAnnotationStore>,
 
-    /// Temporary effects that redirect attacker/blocker choices this turn.
-    pub combat_choice_control_effects: Vec<CombatChoiceControlEffect>,
+    cast_permission_flags: Arc<CastPermissionFlags>,
 
-    /// Timestamp counter for combat-choice control effects.
-    pub combat_choice_control_timestamp: u64,
+    commander_tracking: Arc<CommanderTracking>,
 
-    /// Mounts that are saddled until end of turn.
-    ///
-    /// Cleared at the start of each turn.
-    pub saddled_until_end_of_turn: HashSet<ObjectId>,
+    exile_tracking: Arc<ExileTracking>,
 
-    /// Soulbond pairings (stored bidirectionally: A -> B and B -> A).
-    pub soulbond_pairs: HashMap<ObjectId, ObjectId>,
-
-    /// Attack targets captured while paying Ninjutsu costs, keyed by the
-    /// source card object ID in hand.
-    ///
-    /// Multiple entries per source are stored in activation order so nested
-    /// activations can resolve LIFO.
-    pub ninjutsu_attack_targets: HashMap<ObjectId, Vec<crate::combat_state::AttackTarget>>,
-
-    /// Attack targets captured while paying Sneak costs, keyed by the stack
-    /// object that paid the cost.
-    pub sneak_attack_targets: HashMap<ObjectId, Vec<crate::combat_state::AttackTarget>>,
-
-    /// Combat-damage-to-player hits already processed in the current trigger batch.
-    /// Used for "one or more ... deal combat damage to a player" trigger matching.
-    pub combat_damage_player_batch_hits: Vec<(ObjectId, PlayerId)>,
-
-    /// Players whose inherent speed trigger has already fired this turn.
-    pub speed_increase_triggered_this_turn: HashSet<PlayerId>,
-
-    /// Highest pregame draft-note number recorded by a player for a named card.
-    pub draft_noted_highest_numbers: HashMap<(PlayerId, String), u32>,
-
-    /// Last life total noted for a battlefield source object.
-    pub noted_life_totals: HashMap<ObjectId, i32>,
-
-    /// Stickers attached to an object, tracked by stable object identity so
-    /// zone changes preserve the sticker state.
-    pub object_stickers: HashMap<StableId, Vec<StickerMarker>>,
-
-    // =========================================================================
-    // Battlefield State Extension Maps
-    // =========================================================================
-    // These track state that was previously on Object but is only relevant
-    // for permanents on the battlefield. Cleared when objects leave battlefield.
-    /// Tapped permanents on the battlefield.
-    pub tapped_permanents: HashSet<ObjectId>,
-
-    /// Creatures that have summoning sickness.
-    pub summoning_sick: HashSet<ObjectId>,
-
-    /// Damage marked on creatures (cleared at cleanup step).
-    pub damage_marked: HashMap<ObjectId, u32>,
-
-    /// Creatures that have been dealt nonzero damage by a source with deathtouch
-    /// since the last time state-based actions were checked.
-    pub dealt_deathtouch_damage_since_sba: HashSet<ObjectId>,
-
-    /// Permanents whose damage is not removed during cleanup.
-    pub damage_persists: HashSet<ObjectId>,
-
-    /// Regeneration shields on permanents (expires at end of turn).
-    pub regeneration_shields: HashMap<ObjectId, u32>,
-
-    /// Number of times each permanent successfully regenerated this turn.
-    pub regenerated_this_turn: HashMap<ObjectId, u32>,
-
-    /// Creatures that are monstrous (from monstrosity ability).
-    pub monstrous: HashSet<ObjectId>,
-
-    /// Creatures that are renowned.
-    pub renowned: HashSet<ObjectId>,
-
-    /// Number of permanents sacrificed as a result of this permanent's devour ability.
-    pub devoured_counts: HashMap<ObjectId, u32>,
-
-    /// Permanents that are suspected.
-    pub suspected: HashSet<ObjectId>,
-
-    /// Cases that have become solved.
-    pub solved_cases: HashSet<ObjectId>,
-
-    /// Flipped permanents (for flip cards like Budoka Gardener).
-    pub flipped: HashSet<ObjectId>,
-
-    /// Face-down permanents (for morph, manifest, etc.).
-    pub face_down: HashSet<ObjectId>,
-
-    /// Face-down permanents created via manifest.
-    pub manifested: HashSet<ObjectId>,
-
-    /// Split Room permanents whose linked locked door has been unlocked.
-    pub fully_unlocked_rooms: HashSet<ObjectId>,
-
-    /// Number of times each battlefield permanent has transformed.
-    ///
-    /// Used to enforce CR 701.27f for abilities that try to transform their source.
-    pub transform_count: HashMap<ObjectId, u64>,
-
-    /// Which players may inspect a face-down card in exile.
-    pub face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
-
-    /// Phased-out permanents.
-    pub phased_out: HashSet<ObjectId>,
-
-    /// Cards exiled via Madness (can be cast from exile for madness cost).
-    pub madness_exiled: HashSet<ObjectId>,
-
-    /// Cards exiled via Foretell (can be cast from exile for their foretell cost).
-    pub foretold_cards: HashSet<ObjectId>,
-
-    /// Cards exiled by resolving an Adventure spell.
-    pub adventure_exiled: HashSet<ObjectId>,
-
-    /// Snapshot of a card just before it moved to the stack for casting.
-    pub cast_origin_snapshots: HashMap<ObjectId, ObjectSnapshot>,
-
-    /// Cards exiled via Plot, keyed by object id -> (player who plotted it, turn plotted).
-    pub plotted_cards: HashMap<ObjectId, (PlayerId, u32)>,
-
-    /// Objects designated as commanders.
-    pub commanders: HashSet<ObjectId>,
-
-    /// Number of times each commander has been cast from the command zone.
-    pub commander_casts_from_command_zone: HashMap<ObjectId, u32>,
-
-    /// Commanders whose owner declined the current graveyard/exile -> command
-    /// zone choice for this specific object instance.
-    pub declined_commander_command_zone_moves: HashSet<ObjectId>,
-
-    /// Imprinted cards - maps a permanent to the card(s) exiled with it via imprint.
-    /// Used by Chrome Mox, Isochron Scepter, etc.
-    pub imprinted_cards: HashMap<ObjectId, Vec<ObjectId>>,
-
-    /// Cards exiled by a specific source object ID.
-    ///
-    /// This powers "cards exiled with <this object>" style references.
-    pub exiled_with_source: HashMap<ObjectId, Vec<ObjectId>>,
-
-    /// Return zones for cards exiled by a source-leaves duration effect.
-    pub exiled_with_source_return_zones: HashMap<ObjectId, HashMap<ObjectId, Zone>>,
-
-    /// Sources whose linked exiled cards return immediately when the source
-    /// leaves the battlefield.
-    pub return_exiled_when_source_leaves: HashSet<ObjectId>,
-
-    /// Linked exile groups keyed by generated runtime ID.
-    pub linked_exile_groups: HashMap<u64, LinkedExileGroup>,
-
-    /// Monotonic ID generator for linked exile groups.
-    pub next_linked_exile_group_id: u64,
-
-    /// Component-card identity for battlefield melded permanents, keyed by the
-    /// melded permanent's stable ID.
-    pub melded_permanents: HashMap<StableId, MeldedPermanentState>,
-    /// Cryptographic hidden-card slots that have not been opened on this peer.
-    pub hidden_cards: HashMap<ObjectId, HiddenCardInfo>,
     /// Whether required single-object choices with exactly one legal candidate
     /// may be resolved by the generic decision layer without surfacing a prompt.
     auto_choose_single_object_decisions: bool,
@@ -2337,6 +2544,42 @@ fn normalize_draft_note_card_name(name: &str) -> String {
 }
 
 impl GameState {
+    fn battlefield_flags_mut(&mut self) -> &mut BattlefieldFlags {
+        Arc::make_mut(&mut self.battlefield_flags)
+    }
+
+    fn combat_transients_mut(&mut self) -> &mut CombatTransientState {
+        Arc::make_mut(&mut self.combat_transients)
+    }
+
+    fn auxiliary_tracking_mut(&mut self) -> &mut AuxiliaryTrackingState {
+        Arc::make_mut(&mut self.auxiliary_tracking)
+    }
+
+    fn choice_store_mut(&mut self) -> &mut ChoiceStore {
+        Arc::make_mut(&mut self.choice_store)
+    }
+
+    fn cast_permission_flags_mut(&mut self) -> &mut CastPermissionFlags {
+        Arc::make_mut(&mut self.cast_permission_flags)
+    }
+
+    fn object_annotations_mut(&mut self) -> &mut ObjectAnnotationStore {
+        Arc::make_mut(&mut self.object_annotations)
+    }
+
+    fn commander_tracking_mut(&mut self) -> &mut CommanderTracking {
+        Arc::make_mut(&mut self.commander_tracking)
+    }
+
+    fn exile_tracking_mut(&mut self) -> &mut ExileTracking {
+        Arc::make_mut(&mut self.exile_tracking)
+    }
+
+    pub fn commander_objects(&self) -> &HashSet<ObjectId> {
+        &self.commander_tracking.commanders
+    }
+
     /// Creates a new game state with the given players.
     pub fn new(player_names: Vec<String>, starting_life: i32) -> Self {
         let players: Vec<Player> = player_names
@@ -2362,72 +2605,30 @@ impl GameState {
                 ..TurnStore::default()
             },
             effect_store: EffectStore::default(),
-            choice_store: ChoiceStore::default(),
+            choice_store: Arc::new(ChoiceStore::default()),
             metadata: MetadataStateStore {
-                ui_battlefield_transitions: Vec::new(),
-                ui_zone_transitions: Vec::new(),
+                ui_battlefield_transitions: im::Vector::new(),
+                ui_zone_transitions: im::Vector::new(),
                 next_ui_zone_transition_id: 0,
-                ui_effect_events: Vec::new(),
+                ui_effect_events: im::Vector::new(),
                 next_ui_effect_event_id: 0,
                 provenance_graph: ProvenanceGraph::new(),
             },
+            mutation_revision: 0,
+            next_object_id: 1,
+            zone_revisions: ZoneRevisionSnapshot::default(),
             combat: None,
             has_day_night: false,
             is_night: false,
             monarch: None,
             initiative: None,
-            active_dungeons: HashMap::new(),
-            completed_dungeons: HashMap::new(),
-            player_control_effects: Vec::new(),
-            scoped_player_control_effects: Vec::new(),
-            player_control_timestamp: 0,
-            combat_choice_control_effects: Vec::new(),
-            combat_choice_control_timestamp: 0,
-            saddled_until_end_of_turn: HashSet::new(),
-            soulbond_pairs: HashMap::new(),
-            ninjutsu_attack_targets: HashMap::new(),
-            sneak_attack_targets: HashMap::new(),
-            combat_damage_player_batch_hits: Vec::new(),
-            speed_increase_triggered_this_turn: HashSet::new(),
-            draft_noted_highest_numbers: HashMap::new(),
-            noted_life_totals: HashMap::new(),
-            object_stickers: HashMap::new(),
-            // Battlefield state extension maps
-            tapped_permanents: HashSet::new(),
-            summoning_sick: HashSet::new(),
-            damage_marked: HashMap::new(),
-            dealt_deathtouch_damage_since_sba: HashSet::new(),
-            damage_persists: HashSet::new(),
-            regeneration_shields: HashMap::new(),
-            regenerated_this_turn: HashMap::new(),
-            monstrous: HashSet::new(),
-            renowned: HashSet::new(),
-            devoured_counts: HashMap::new(),
-            suspected: HashSet::new(),
-            solved_cases: HashSet::new(),
-            flipped: HashSet::new(),
-            face_down: HashSet::new(),
-            manifested: HashSet::new(),
-            fully_unlocked_rooms: HashSet::new(),
-            transform_count: HashMap::new(),
-            face_down_exile_viewers: HashMap::new(),
-            phased_out: HashSet::new(),
-            madness_exiled: HashSet::new(),
-            foretold_cards: HashSet::new(),
-            adventure_exiled: HashSet::new(),
-            cast_origin_snapshots: HashMap::new(),
-            plotted_cards: HashMap::new(),
-            commanders: HashSet::new(),
-            commander_casts_from_command_zone: HashMap::new(),
-            declined_commander_command_zone_moves: HashSet::new(),
-            imprinted_cards: HashMap::new(),
-            exiled_with_source: HashMap::new(),
-            exiled_with_source_return_zones: HashMap::new(),
-            return_exiled_when_source_leaves: HashSet::new(),
-            linked_exile_groups: HashMap::new(),
-            next_linked_exile_group_id: 0,
-            melded_permanents: HashMap::new(),
-            hidden_cards: HashMap::new(),
+            battlefield_flags: Arc::new(BattlefieldFlags::default()),
+            combat_transients: Arc::new(CombatTransientState::default()),
+            auxiliary_tracking: Arc::new(AuxiliaryTrackingState::default()),
+            object_annotations: Arc::new(ObjectAnnotationStore::default()),
+            cast_permission_flags: Arc::new(CastPermissionFlags::default()),
+            commander_tracking: Arc::new(CommanderTracking::default()),
+            exile_tracking: Arc::new(ExileTracking::default()),
             auto_choose_single_object_decisions: true,
             runtime_cache: RuntimeCacheState::new(active_player),
         }
@@ -2447,14 +2648,17 @@ impl GameState {
         card_name: impl AsRef<str>,
         count: u32,
     ) {
-        self.draft_noted_highest_numbers.insert(
-            (player, normalize_draft_note_card_name(card_name.as_ref())),
-            count,
-        );
+        self.auxiliary_tracking_mut()
+            .draft_noted_highest_numbers
+            .insert(
+                (player, normalize_draft_note_card_name(card_name.as_ref())),
+                count,
+            );
     }
 
     pub fn draft_noted_highest_number(&self, player: PlayerId, card_name: impl AsRef<str>) -> u32 {
-        self.draft_noted_highest_numbers
+        self.auxiliary_tracking
+            .draft_noted_highest_numbers
             .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
             .copied()
             .unwrap_or(0)
@@ -2466,19 +2670,25 @@ impl GameState {
         player: PlayerId,
     ) -> Option<i32> {
         let life_total = self.player(player)?.life;
-        self.noted_life_totals.insert(source, life_total);
+        self.object_annotations_mut()
+            .noted_life_totals
+            .insert(source, life_total);
         Some(life_total)
     }
 
     pub fn noted_life_total_for_source(&self, source: ObjectId) -> Option<i32> {
-        self.noted_life_totals.get(&source).copied()
+        self.object_annotations
+            .noted_life_totals
+            .get(&source)
+            .copied()
     }
 
     pub fn put_sticker_on_object(&mut self, object_id: ObjectId, action: KeywordActionKind) {
         let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
             return;
         };
-        self.object_stickers
+        self.object_annotations_mut()
+            .object_stickers
             .entry(stable_id)
             .or_default()
             .push(StickerMarker {
@@ -2496,7 +2706,8 @@ impl GameState {
         let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
             return 0;
         };
-        self.object_stickers
+        self.object_annotations
+            .object_stickers
             .get(&stable_id)
             .into_iter()
             .flatten()
@@ -2532,18 +2743,110 @@ impl GameState {
 
     pub(crate) fn mark_continuous_state_dirty(&self) {
         self.runtime_cache.continuous_state_dirty.set(true);
+        self.runtime_cache.characteristics_cache.bump_epoch();
+    }
+
+    fn mark_object_characteristics_dirty(&mut self, id: ObjectId) {
+        let revision = self.bump_mutation_revision();
         self.runtime_cache
-            .calculated_characteristics_cache
-            .borrow_mut()
-            .clear();
+            .characteristics_cache
+            .bump_object_revision(id, revision);
+    }
+
+    fn bump_mutation_revision(&mut self) -> u64 {
+        self.mutation_revision = self.mutation_revision.saturating_add(1);
+        self.mutation_revision
+    }
+
+    fn stamp_object_modified(&mut self, id: ObjectId) {
+        let revision = self.bump_mutation_revision();
+        if let Some(object) = self.object_store.object_mut(id) {
+            object.last_modified = revision;
+        }
+        self.runtime_cache
+            .characteristics_cache
+            .bump_object_revision(id, revision);
+    }
+
+    fn bump_zone_revision(&mut self, zone: Zone) {
+        self.zone_revisions.all = self.zone_revisions.all.saturating_add(1);
+        match zone {
+            Zone::Battlefield => {
+                self.zone_revisions.battlefield = self.zone_revisions.battlefield.saturating_add(1);
+            }
+            Zone::Command => {
+                self.zone_revisions.command = self.zone_revisions.command.saturating_add(1);
+            }
+            Zone::Exile => {
+                self.zone_revisions.exile = self.zone_revisions.exile.saturating_add(1);
+            }
+            Zone::Library => {
+                self.zone_revisions.library = self.zone_revisions.library.saturating_add(1);
+            }
+            Zone::Hand => {
+                self.zone_revisions.hand = self.zone_revisions.hand.saturating_add(1);
+            }
+            Zone::Graveyard => {
+                self.zone_revisions.graveyard = self.zone_revisions.graveyard.saturating_add(1);
+            }
+            Zone::OutsideGame => {
+                self.zone_revisions.outside_game =
+                    self.zone_revisions.outside_game.saturating_add(1);
+            }
+            Zone::Stack => {
+                self.zone_revisions.stack = self.zone_revisions.stack.saturating_add(1);
+            }
+        }
+    }
+
+    pub fn mutation_revision(&self) -> u64 {
+        self.mutation_revision
+    }
+
+    pub fn zone_revisions(&self) -> ZoneRevisionSnapshot {
+        self.zone_revisions
+    }
+
+    pub fn work_counters(&self) -> WorkCounterSnapshot {
+        self.runtime_cache.work_counters.snapshot()
+    }
+
+    pub(crate) fn count_static_ability_regen(&self) {
+        self.runtime_cache
+            .work_counters
+            .bump_static_ability_regens();
+    }
+
+    pub(crate) fn count_sba_scan_objects(&self, count: usize) {
+        self.runtime_cache
+            .work_counters
+            .add_objects_scanned_in_sba(count as u64);
+    }
+
+    pub(crate) fn count_derived_view_rebuild(&self) {
+        self.runtime_cache
+            .work_counters
+            .bump_derived_view_rebuilds();
+    }
+
+    pub(crate) fn cached_trigger_registry(
+        &self,
+        key: crate::triggers::check::TriggerRegistryKey,
+        build: impl FnOnce() -> crate::triggers::check::TriggerRegistry,
+    ) -> crate::triggers::check::TriggerRegistry {
+        let mut cached = self.runtime_cache.trigger_registry.borrow_mut();
+        if cached.as_ref().is_none_or(|registry| registry.key != key) {
+            *cached = Some(build());
+        }
+        cached
+            .as_ref()
+            .expect("trigger registry cache should be populated")
+            .clone()
     }
 
     fn mark_continuous_state_clean(&self) {
         if !self.cached_continuous_turn_state_matches_current() {
-            self.runtime_cache
-                .calculated_characteristics_cache
-                .borrow_mut()
-                .clear();
+            self.runtime_cache.characteristics_cache.bump_epoch();
         }
         self.runtime_cache.continuous_state_dirty.set(false);
         self.runtime_cache
@@ -2601,14 +2904,14 @@ impl GameState {
         if checkpoint >= log.len() {
             return Vec::new();
         }
-        log[checkpoint..].to_vec()
+        log.iter().skip(checkpoint).cloned().collect()
     }
 
     fn push_hidden_info_operation(&self, operation: HiddenInfoOperation) {
         self.runtime_cache
             .hidden_info_audit_log
             .borrow_mut()
-            .push(operation);
+            .push_back(operation);
     }
 
     /// Queue a deterministic die result for test harnesses that mirror external fixtures.
@@ -2703,7 +3006,7 @@ impl GameState {
     /// Shuffle a slice using the deterministic match RNG.
     pub fn shuffle_slice<T>(&self, values: &mut [T]) {
         let (random_count_before, random_count_after) = self.record_irreversible_random();
-        let mut rng = StdRng::seed_from_u64(self.next_random_u64());
+        let mut rng = ChaCha12Rng::seed_from_u64(self.next_random_u64());
         values.shuffle(&mut rng);
         self.push_hidden_info_operation(HiddenInfoOperation::FairRandom {
             random_count_before,
@@ -2756,15 +3059,15 @@ impl GameState {
                 {
                     self.players[index].library = localized_after;
                 } else {
-                    let mut rng = StdRng::seed_from_u64(seed);
+                    let mut rng = ChaCha12Rng::seed_from_u64(seed);
                     self.players[index].library.shuffle(&mut rng);
                 }
             } else {
-                let mut rng = StdRng::seed_from_u64(seed);
+                let mut rng = ChaCha12Rng::seed_from_u64(seed);
                 self.players[index].library.shuffle(&mut rng);
             }
         } else {
-            let mut rng = StdRng::seed_from_u64(seed);
+            let mut rng = ChaCha12Rng::seed_from_u64(seed);
             self.players[index].library.shuffle(&mut rng);
         }
         let after_order = self.players[index].library.clone();
@@ -2959,8 +3262,17 @@ impl GameState {
 
     /// Generates a new unique object ID.
     pub fn new_object_id(&mut self) -> ObjectId {
-        // Use global atomic counter for ID generation
-        ObjectId::new()
+        let id = ObjectId::from_raw(self.next_object_id);
+        self.next_object_id = self.next_object_id.saturating_add(1);
+        id
+    }
+
+    pub fn next_object_id_counter(&self) -> u64 {
+        self.next_object_id
+    }
+
+    pub fn set_next_object_id_counter(&mut self, next_object_id: u64) {
+        self.next_object_id = next_object_id.max(1);
     }
 
     pub fn add_restriction_effect(
@@ -3270,7 +3582,7 @@ impl GameState {
                 });
                 if !already_present {
                     spell
-                        .abilities
+                        .abilities_mut()
                         .push(crate::ability::Ability::static_ability(ability));
                 }
             }
@@ -3766,13 +4078,16 @@ impl GameState {
     /// Adds an object to the game.
     pub fn add_object(&mut self, object: Object) {
         self.mark_continuous_state_dirty();
+        self.bump_mutation_revision();
         let zone = object.zone;
         let id = object.id;
         let owner = object.owner;
         let stable_id = object.stable_id;
 
+        self.next_object_id = self.next_object_id.max(id.0.saturating_add(1));
         self.objects.insert(id, Arc::new(object));
         self.stable_id_index.insert(stable_id, id);
+        self.bump_zone_revision(zone);
 
         // Update zone indexes
         match zone {
@@ -3845,7 +4160,8 @@ impl GameState {
     ) -> ObjectId {
         self.prime_linked_face_definitions(def);
         let id = self.new_object_id();
-        let mut object = Object::from_card_definition(id, def, owner, zone);
+        let handles = self.object_store.shared_handles_for_definition(def);
+        let mut object = Object::from_card_definition_with_shared(id, def, owner, zone, &handles);
         if zone == Zone::Battlefield
             && let Some(loyalty) = object.base_loyalty
             && loyalty > 0
@@ -3870,6 +4186,17 @@ impl GameState {
             }
         }
         id
+    }
+
+    pub(crate) fn object_from_token_definition(
+        &mut self,
+        id: ObjectId,
+        def: &crate::cards::CardDefinition,
+        controller: PlayerId,
+    ) -> Object {
+        self.prime_linked_face_definitions(def);
+        let handles = self.object_store.shared_handles_for_definition(def);
+        Object::from_token_definition_with_shared(id, def, controller, &handles)
     }
 
     /// Cache a linked-face definition for later runtime lookups.
@@ -3914,7 +4241,7 @@ impl GameState {
         let id = self.new_object_id();
         let object = Object::new_hidden_card(id, owner, zone);
         self.add_object(object);
-        self.hidden_cards.insert(
+        self.auxiliary_tracking_mut().hidden_cards.insert(
             id,
             HiddenCardInfo {
                 owner,
@@ -3929,15 +4256,19 @@ impl GameState {
     }
 
     pub fn hidden_card_info(&self, id: ObjectId) -> Option<&HiddenCardInfo> {
-        self.hidden_cards.get(&id)
+        self.auxiliary_tracking.hidden_cards.get(&id)
+    }
+
+    pub fn hidden_card_entries(&self) -> impl Iterator<Item = (&ObjectId, &HiddenCardInfo)> + '_ {
+        self.auxiliary_tracking.hidden_cards.iter()
     }
 
     pub fn set_hidden_card_info(&mut self, id: ObjectId, info: HiddenCardInfo) {
-        self.hidden_cards.insert(id, info);
+        self.auxiliary_tracking_mut().hidden_cards.insert(id, info);
     }
 
     pub fn is_hidden_card_placeholder(&self, id: ObjectId) -> bool {
-        self.hidden_cards.contains_key(&id)
+        self.auxiliary_tracking.hidden_cards.contains_key(&id)
             && self.object(id).is_some_and(|object| object.card.is_none())
     }
 
@@ -3947,10 +4278,11 @@ impl GameState {
         def: &crate::cards::CardDefinition,
     ) -> Option<HiddenCardInfo> {
         self.prime_linked_face_definitions(def);
-        let info = self.hidden_cards.get(&id)?.clone();
+        let info = self.auxiliary_tracking.hidden_cards.get(&id)?.clone();
         let zone = self.object(id)?.zone;
+        let handles = self.object_store.shared_handles_for_definition(def);
         let object = self.object_mut(id)?;
-        object.apply_card_definition(def);
+        object.apply_card_definition_with_shared(def, &handles);
         if zone == Zone::Battlefield
             && let Some(loyalty) = object.base_loyalty
             && loyalty > 0
@@ -4156,18 +4488,25 @@ impl GameState {
     ) -> Option<ObjectId> {
         let def = self.linked_face_definition_by_name_or_id(Some(&component.name), None)?;
         let new_id = self.new_object_id();
-        let mut object =
-            crate::object::Object::from_card_definition(new_id, &def, component.owner, zone);
+        let handles = self.object_store.shared_handles_for_definition(&def);
+        let mut object = crate::object::Object::from_card_definition_with_shared(
+            new_id,
+            &def,
+            component.owner,
+            zone,
+            &handles,
+        );
         object.stable_id = component.stable_id;
         self.add_object(object);
         Some(new_id)
     }
 
     fn cache_linked_face_definition(&mut self, def: &crate::cards::CardDefinition) {
+        self.object_store.shared_handles_for_definition(def);
         self.linked_face_definitions_by_id
             .insert(def.card.id, def.clone());
         self.linked_face_definitions_by_name
-            .insert(def.card.name.clone(), def.clone());
+            .insert(def.card.name.to_string(), def.clone());
     }
 
     fn load_linked_face_definition(
@@ -4266,17 +4605,17 @@ impl GameState {
             .get(&old_id)
             .is_some_and(|obj| obj.zone == Zone::Exile)
         {
-            self.face_down_exile_viewers.remove(&old_id)
+            self.exile_tracking_mut()
+                .face_down_exile_viewers
+                .remove(&old_id)
         } else {
             None
         };
         // Capture a full pre-move snapshot for LKI-based trigger matching.
         let pre_move_snapshot = lki_snapshot.or_else(|| {
-            self.objects.get(&old_id).map(|obj| {
-                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                    obj, self,
-                )
-            })
+            self.objects
+                .get(&old_id)
+                .map(|obj| self.cached_object_snapshot_with_calculated_characteristics(obj))
         });
         let pre_event_lookback_source_snapshots = self.trigger_source_lookback_snapshots();
         if let Some(snapshot) = pre_move_snapshot.as_ref() {
@@ -4323,16 +4662,18 @@ impl GameState {
                     entry.source_stable_id = Some(snapshot.stable_id);
                     entry
                         .source_name
-                        .get_or_insert_with(|| snapshot.name.clone());
+                        .get_or_insert_with(|| snapshot.name.to_string());
                     entry.source_snapshot = Some(snapshot.clone());
                 }
             }
         }
 
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
-        let hidden_card_info = self.hidden_cards.remove(&old_id);
+        let hidden_card_info = self.auxiliary_tracking_mut().hidden_cards.remove(&old_id);
         self.stable_id_index.remove(&old_object.stable_id);
-        self.declined_commander_command_zone_moves.remove(&old_id);
+        self.commander_tracking_mut()
+            .declined_command_zone_moves
+            .remove(&old_id);
         let old_zone = old_object.zone;
         let owner = old_object.owner;
 
@@ -4377,7 +4718,9 @@ impl GameState {
             self.clear_exile_state(old_id);
         }
         if old_zone == Zone::Stack {
-            self.cast_origin_snapshots.remove(&old_id);
+            self.exile_tracking_mut()
+                .cast_origin_snapshots
+                .remove(&old_id);
         }
 
         if old_zone == Zone::Battlefield
@@ -4389,7 +4732,9 @@ impl GameState {
                 let new_component_id = self.create_meld_component_object(component, new_zone)?;
                 result_object_ids.push(new_component_id);
             }
-            self.melded_permanents.remove(&old_object.stable_id);
+            self.commander_tracking_mut()
+                .melded_permanents
+                .remove(&old_object.stable_id);
 
             use crate::events::zones::ZoneChangeEvent;
             use crate::triggers::TriggerEvent;
@@ -4486,7 +4831,8 @@ impl GameState {
                 new_object.other_face,
             )
         {
-            new_object.apply_definition_face(&front_def);
+            let handles = self.object_store.shared_handles_for_definition(&front_def);
+            new_object.apply_definition_face_with_shared(&front_def, &handles);
         }
         if old_zone == Zone::Exile
             && new_zone == Zone::Battlefield
@@ -4494,7 +4840,8 @@ impl GameState {
             && let Some(front_def) =
                 self.default_face_definition_for_transform_like_return(&new_object)
         {
-            new_object.apply_definition_face(&front_def);
+            let handles = self.object_store.shared_handles_for_definition(&front_def);
+            new_object.apply_definition_face_with_shared(&front_def, &handles);
         }
 
         // Set battlefield state for new permanents
@@ -4506,7 +4853,9 @@ impl GameState {
         if let Some(mut info) = hidden_card_info {
             let audit_info = info.clone();
             info.zone = new_zone;
-            self.hidden_cards.insert(new_id, info);
+            self.auxiliary_tracking_mut()
+                .hidden_cards
+                .insert(new_id, info);
             self.push_hidden_info_operation(HiddenInfoOperation::HiddenMove {
                 owner: audit_info.owner,
                 old_object_id: old_id,
@@ -4794,7 +5143,7 @@ impl GameState {
             if let (Some(source_obj), Some(new_obj)) = (copy_source, self.object_mut(new_id)) {
                 new_obj.copy_copiable_values_from(&source_obj);
                 if let Some(name) = &result.copy_name_override {
-                    new_obj.name = name.clone();
+                    new_obj.name = name.clone().into();
                 }
             }
         }
@@ -4828,7 +5177,7 @@ impl GameState {
         {
             for ability in &result.added_abilities {
                 if !new_obj.abilities.contains(ability) {
-                    new_obj.abilities.push(ability.clone());
+                    new_obj.abilities_mut().push(ability.clone());
                 }
             }
         }
@@ -4874,7 +5223,7 @@ impl GameState {
         // Apply "as this enters, choose a color" selections.
         let choose_color_abilities = self
             .object(new_id)
-            .map(|obj| (self.controller_of(obj), obj.abilities.clone()));
+            .map(|obj| (self.controller_of(obj), obj.abilities_vec()));
         if let Some((controller, abilities)) = choose_color_abilities {
             for ability in abilities {
                 if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind {
@@ -5001,7 +5350,7 @@ impl GameState {
                                 self.player(*player_id).map(|player| {
                                     crate::decisions::spec::DisplayOption::new(
                                         idx,
-                                        player.name.clone(),
+                                        player.name.to_string(),
                                     )
                                 })
                             })
@@ -5151,7 +5500,7 @@ impl GameState {
             && let Some(obj) = self.object(new_id)
             && obj.subtypes.contains(&Subtype::Aura)
             && obj.attached_to.is_none()
-            && let Some(filter) = obj.aura_attach_filter.clone()
+            && let Some(filter) = obj.aura_attach_filter_owned()
         {
             let chooser = obj.owner;
             let filter_ctx = self.filter_context_for(chooser, Some(new_id));
@@ -5165,7 +5514,7 @@ impl GameState {
                         if filter.matches(candidate, &filter_ctx, self) {
                             candidates.push(crate::decisions::context::SelectableObject::new(
                                 *id,
-                                candidate.name.clone(),
+                                candidate.name.to_string(),
                             ));
                         }
                     }
@@ -5195,7 +5544,7 @@ impl GameState {
                         .filter(|player| {
                             player.is_in_game() && filter.matches_player(player.id, &filter_ctx)
                         })
-                        .map(|player| (player.id, player.name.clone()))
+                        .map(|player| (player.id, player.name.to_string()))
                         .collect::<Vec<_>>();
                     if candidates.is_empty() {
                         None
@@ -5265,25 +5614,43 @@ impl GameState {
                 }
             }
             self.stable_id_index.remove(&obj.stable_id);
-            self.melded_permanents.remove(&obj.stable_id);
-            self.declined_commander_command_zone_moves.remove(&id);
+            {
+                let commander_tracking = self.commander_tracking_mut();
+                commander_tracking.melded_permanents.remove(&obj.stable_id);
+                commander_tracking.declined_command_zone_moves.remove(&id);
+            }
             self.remove_from_zone_index(id, obj.zone, obj.owner);
         }
     }
 
     /// Removes an object ID from its zone index.
     fn remove_from_zone_index(&mut self, id: ObjectId, zone: Zone, owner: PlayerId) {
+        let mut removed = false;
         match zone {
-            Zone::Battlefield => self.battlefield.retain(|&x| x != id),
-            Zone::Command => self.command_zone.retain(|&x| x != id),
-            Zone::Exile => self.exile.retain(|&x| x != id),
+            Zone::Battlefield => {
+                let before = self.battlefield.len();
+                self.battlefield.retain(|&x| x != id);
+                removed = self.battlefield.len() != before;
+            }
+            Zone::Command => {
+                let before = self.command_zone.len();
+                self.command_zone.retain(|&x| x != id);
+                removed = self.command_zone.len() != before;
+            }
+            Zone::Exile => {
+                let before = self.exile.len();
+                self.exile.retain(|&x| x != id);
+                removed = self.exile.len() != before;
+            }
             Zone::Library => {
                 let was_top = self
                     .player(owner)
                     .and_then(|player| player.library.last().copied())
                     == Some(id);
                 if let Some(player) = self.player_mut(owner) {
+                    let before = player.library.len();
                     player.library.retain(|&x| x != id);
+                    removed = player.library.len() != before;
                 }
                 if was_top {
                     self.bump_library_top_revision(owner);
@@ -5291,20 +5658,29 @@ impl GameState {
             }
             Zone::Hand => {
                 if let Some(player) = self.player_mut(owner) {
+                    let before = player.hand.len();
                     player.hand.retain(|&x| x != id);
+                    removed = player.hand.len() != before;
                 }
             }
             Zone::Graveyard => {
                 if let Some(player) = self.player_mut(owner) {
+                    let before = player.graveyard.len();
                     player.graveyard.retain(|&x| x != id);
+                    removed = player.graveyard.len() != before;
                 }
             }
             Zone::OutsideGame => {
                 if let Some(player) = self.player_mut(owner) {
+                    let before = player.sideboard.len();
                     player.sideboard.retain(|&x| x != id);
+                    removed = player.sideboard.len() != before;
                 }
             }
             Zone::Stack => {}
+        }
+        if removed {
+            self.bump_zone_revision(zone);
         }
     }
 
@@ -5319,8 +5695,8 @@ impl GameState {
     /// - Every object's zone field matches exactly one denormalized index
     /// - No ID appears in multiple zone indexes
     ///
-    /// Only runs in debug builds to avoid release performance impact.
-    #[cfg(debug_assertions)]
+    /// Only runs in debug builds or paranoid invariant builds to avoid release performance impact.
+    #[cfg(any(debug_assertions, feature = "paranoid-invariants"))]
     pub fn validate_zone_consistency(&self) -> Result<(), String> {
         use std::collections::HashSet;
 
@@ -5515,7 +5891,7 @@ impl GameState {
     }
 
     /// Debug assertion for zone consistency. Panics if zones are inconsistent.
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "paranoid-invariants"))]
     pub fn debug_assert_zone_consistency(&self) {
         if let Err(e) = self.validate_zone_consistency() {
             panic!("Zone consistency violation: {}", e);
@@ -5530,6 +5906,7 @@ impl GameState {
     /// Gets a mutable reference to an object by ID.
     pub fn object_mut(&mut self, id: ObjectId) -> Option<&mut Object> {
         self.mark_continuous_state_dirty();
+        self.stamp_object_modified(id);
         self.object_store.object_mut(id)
     }
 
@@ -5550,9 +5927,9 @@ impl GameState {
 
     pub fn detach_object_from_current_target(&mut self, attachment_id: ObjectId) -> bool {
         let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
-        let attachment_snapshot = self.object(attachment_id).map(|object| {
-            ObjectSnapshot::from_object_with_calculated_characteristics(object, self)
-        });
+        let attachment_snapshot = self
+            .object(attachment_id)
+            .map(|object| self.cached_object_snapshot_with_calculated_characteristics(object));
         self.mark_continuous_state_dirty();
         let Some(current_target) = self
             .object(attachment_id)
@@ -5925,7 +6302,10 @@ impl GameState {
     /// - Static abilities on permanents (generated dynamically)
     pub fn all_continuous_effects(&self) -> Vec<ContinuousEffect> {
         if self.continuous_state_is_clean() {
-            return self.cached_continuous_effects_snapshot();
+            return self
+                .cached_continuous_effects_snapshot_arc()
+                .as_ref()
+                .clone();
         }
         crate::static_ability_processor::get_all_continuous_effects(self)
     }
@@ -5937,6 +6317,20 @@ impl GameState {
     /// `refresh_continuous_state` (or `update_static_ability_effects`) for the
     /// current state.
     pub(crate) fn cached_continuous_effects_snapshot(&self) -> Vec<ContinuousEffect> {
+        self.cached_continuous_effects_snapshot_arc()
+            .as_ref()
+            .clone()
+    }
+
+    pub(crate) fn cached_continuous_effects_snapshot_arc(&self) -> Arc<Vec<ContinuousEffect>> {
+        let revision = self.effect_store.continuous_effects.revision();
+        if let Some((cached_revision, effects)) =
+            self.runtime_cache.effects_snapshot.borrow().as_ref()
+            && *cached_revision == revision
+        {
+            return Arc::clone(effects);
+        }
+
         let mut effects: Vec<ContinuousEffect> = self
             .effect_store
             .continuous_effects
@@ -5957,6 +6351,8 @@ impl GameState {
                 .iter()
                 .cloned(),
         );
+        let effects = Arc::new(effects);
+        *self.runtime_cache.effects_snapshot.borrow_mut() = Some((revision, Arc::clone(&effects)));
         effects
     }
 
@@ -5977,7 +6373,7 @@ impl GameState {
             &self.objects,
             effects,
             &self.battlefield,
-            &self.commanders,
+            self.commander_objects(),
             self,
         )
     }
@@ -5992,7 +6388,7 @@ impl GameState {
             &self.objects,
             effects,
             &self.battlefield,
-            &self.commanders,
+            self.commander_objects(),
             self,
         )
     }
@@ -6009,40 +6405,28 @@ impl GameState {
         }
 
         let effects_revision = self.effect_store.continuous_effects.revision();
-        if self
-            .runtime_cache
-            .calculated_characteristics_cache_revision
-            .get()
-            != effects_revision
-        {
-            self.runtime_cache
-                .calculated_characteristics_cache
-                .borrow_mut()
-                .clear();
-            self.runtime_cache
-                .calculated_characteristics_cache_revision
-                .set(effects_revision);
-        }
-
-        let missing: Vec<_> = {
-            let cache = self.runtime_cache.calculated_characteristics_cache.borrow();
-            ids.iter()
-                .copied()
-                .filter(|id| !cache.contains_key(id))
-                .collect()
-        };
+        let missing: Vec<_> = ids
+            .iter()
+            .copied()
+            .filter(|id| {
+                !self
+                    .runtime_cache
+                    .characteristics_cache
+                    .contains_valid_entry(*id, effects_revision)
+            })
+            .collect();
         if missing.is_empty() {
             return;
         }
 
         let effects = self.cached_continuous_effects_snapshot();
         let calculated = self.calculated_characteristics_batch_with_effects(&missing, &effects);
-        let mut cache = self
-            .runtime_cache
-            .calculated_characteristics_cache
-            .borrow_mut();
         for id in missing {
-            cache.insert(id, calculated.get(&id).cloned());
+            self.runtime_cache.characteristics_cache.insert(
+                id,
+                effects_revision,
+                calculated.get(&id).cloned(),
+            );
         }
     }
 
@@ -6055,43 +6439,84 @@ impl GameState {
         }
         let effects_revision = self.effect_store.continuous_effects.revision();
         if self.continuous_state_is_clean() {
-            if self
-                .runtime_cache
-                .calculated_characteristics_cache_revision
-                .get()
-                != effects_revision
-            {
-                self.runtime_cache
-                    .calculated_characteristics_cache
-                    .borrow_mut()
-                    .clear();
-                self.runtime_cache
-                    .calculated_characteristics_cache_revision
-                    .set(effects_revision);
-            }
-
             if let Some(cached) = self
                 .runtime_cache
-                .calculated_characteristics_cache
-                .borrow()
-                .get(&id)
+                .characteristics_cache
+                .get(id, effects_revision)
             {
+                self.runtime_cache
+                    .work_counters
+                    .bump_characteristics_cache_hits();
+                #[cfg(feature = "paranoid-invariants")]
+                self.assert_cached_characteristics_fresh(id, cached.as_ref());
                 return cached.clone();
             }
         }
 
         let all_effects = self.all_continuous_effects();
+        self.runtime_cache
+            .work_counters
+            .bump_characteristics_full_recomputes();
+        self.runtime_cache
+            .work_counters
+            .add_effects_considered(all_effects.len() as u64);
+        if self.continuous_state_is_clean() {
+            let mut scope = self.battlefield.clone();
+            if !scope.contains(&id) {
+                scope.push(id);
+            }
+            let missing: Vec<_> = scope
+                .into_iter()
+                .filter(|candidate| {
+                    !self
+                        .runtime_cache
+                        .characteristics_cache
+                        .contains_valid_entry(*candidate, effects_revision)
+                })
+                .collect();
+            if !missing.is_empty() {
+                let calculated_batch =
+                    self.calculated_characteristics_batch_with_effects(&missing, &all_effects);
+                let calculated = calculated_batch.get(&id).cloned();
+                for candidate in missing {
+                    self.runtime_cache.characteristics_cache.insert(
+                        candidate,
+                        effects_revision,
+                        calculated_batch.get(&candidate).cloned(),
+                    );
+                }
+                return calculated;
+            }
+        }
+
         let calculated = self.calculated_characteristics_with_effects(id, &all_effects);
         if self.continuous_state_is_clean() {
-            self.runtime_cache
-                .calculated_characteristics_cache_revision
-                .set(effects_revision);
-            self.runtime_cache
-                .calculated_characteristics_cache
-                .borrow_mut()
-                .insert(id, calculated.clone());
+            self.runtime_cache.characteristics_cache.insert(
+                id,
+                effects_revision,
+                calculated.clone(),
+            );
         }
         calculated
+    }
+
+    #[cfg(feature = "paranoid-invariants")]
+    fn assert_cached_characteristics_fresh(
+        &self,
+        id: ObjectId,
+        cached: Option<&crate::continuous::CalculatedCharacteristics>,
+    ) {
+        if id.0 % 16 != 0 || !self.continuous_state_is_clean() {
+            return;
+        }
+        let effects = self.cached_continuous_effects_snapshot();
+        let recomputed = self.calculated_characteristics_with_effects(id, &effects);
+        assert_eq!(
+            format!("{cached:?}"),
+            format!("{:?}", recomputed.as_ref()),
+            "stale calculated-characteristics cache entry for object #{}",
+            id.0
+        );
     }
 
     /// Return the object's current characteristics in its zone.
@@ -6103,15 +6528,15 @@ impl GameState {
         let mut chars =
             self.calculated_characteristics(id)
                 .unwrap_or_else(|| CalculatedCharacteristics {
-                    name: object.name.clone(),
+                    name: object.name.to_string(),
                     compiled_card_text: object.compiled_card_text.clone(),
                     power: object.power(),
                     toughness: object.toughness(),
-                    card_types: object.card_types.clone(),
-                    subtypes: object.subtypes.clone(),
-                    supertypes: object.supertypes.clone(),
+                    card_types: object.card_types.to_vec(),
+                    subtypes: object.subtypes.to_vec(),
+                    supertypes: object.supertypes.to_vec(),
                     colors: object.colors(),
-                    abilities: object.abilities.clone(),
+                    abilities: object.abilities_vec(),
                     static_abilities: object
                         .abilities
                         .iter()
@@ -6128,7 +6553,7 @@ impl GameState {
                                 .filter_map(|grant| grant.materialize()),
                         )
                         .collect(),
-                    aura_attach_filter: object.aura_attach_filter.clone(),
+                    aura_attach_filter: object.aura_attach_filter_owned(),
                     controller: self.controller_of(object),
                 });
 
@@ -6172,17 +6597,14 @@ impl GameState {
         skipped_effect: Option<ContinuousEffectId>,
     ) -> Option<PlayerId> {
         let object = self.object(id)?;
-        let mut controller = object.owner;
-        let mut effects = if self.continuous_state_is_clean() {
-            self.cached_continuous_effects_snapshot()
-        } else {
-            self.effect_store
-                .continuous_effects
-                .effects_sorted()
-                .into_iter()
-                .cloned()
-                .collect()
-        };
+        if skipped_effect.is_none()
+            && self.continuous_state_is_clean()
+            && let Some(controller) = self.cached_current_controller(id, object)
+        {
+            return Some(controller);
+        }
+
+        let mut effects = self.controller_change_effects_for_uncached_lookup();
         effects.sort_by(|a, b| {
             let layer_cmp = a.modification.layer().cmp(&b.modification.layer());
             if layer_cmp != std::cmp::Ordering::Equal {
@@ -6190,6 +6612,85 @@ impl GameState {
             }
             a.timestamp.cmp(&b.timestamp)
         });
+        Some(self.controller_from_change_effects(id, object, &effects, skipped_effect))
+    }
+
+    fn cached_current_controller(&self, id: ObjectId, object: &Object) -> Option<PlayerId> {
+        {
+            let needs_rebuild = self
+                .runtime_cache
+                .controller_cache
+                .borrow()
+                .as_ref()
+                .is_none_or(|cache| !cache.matches_state(self));
+            if needs_rebuild {
+                let change_effects = Arc::new(self.controller_change_effects_for_cached_lookup());
+                *self.runtime_cache.controller_cache.borrow_mut() = Some(ControllerCache {
+                    revision: self.effect_store.continuous_effects.revision(),
+                    turn_number: self.turn.turn_number,
+                    active_player: self.turn.active_player,
+                    phase: self.turn.phase,
+                    step: self.turn.step,
+                    change_effects,
+                    resolved: RefCell::new(FxMap::default()),
+                });
+            }
+        }
+
+        if let Some(controller) = self
+            .runtime_cache
+            .controller_cache
+            .borrow()
+            .as_ref()
+            .and_then(|cache| cache.resolved.borrow().get(&id).copied())
+        {
+            return Some(controller);
+        }
+
+        let change_effects = {
+            let cache = self.runtime_cache.controller_cache.borrow();
+            Arc::clone(&cache.as_ref()?.change_effects)
+        };
+        let controller = self.controller_from_change_effects(id, object, &change_effects, None);
+        if let Some(cache) = self.runtime_cache.controller_cache.borrow().as_ref() {
+            cache.resolved.borrow_mut().insert(id, controller);
+        }
+        Some(controller)
+    }
+
+    fn controller_change_effects_for_cached_lookup(&self) -> Vec<ContinuousEffect> {
+        let mut effects: Vec<_> = self
+            .cached_continuous_effects_snapshot_arc()
+            .iter()
+            .filter(|effect| matches!(effect.modification, Modification::ChangeController(_)))
+            .cloned()
+            .collect();
+        effects.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        effects
+    }
+
+    fn controller_change_effects_for_uncached_lookup(&self) -> Vec<ContinuousEffect> {
+        if self.continuous_state_is_clean() {
+            self.controller_change_effects_for_cached_lookup()
+        } else {
+            self.effect_store
+                .continuous_effects
+                .effects_sorted()
+                .into_iter()
+                .filter(|effect| matches!(effect.modification, Modification::ChangeController(_)))
+                .cloned()
+                .collect()
+        }
+    }
+
+    fn controller_from_change_effects(
+        &self,
+        id: ObjectId,
+        object: &Object,
+        effects: &[ContinuousEffect],
+        skipped_effect: Option<ContinuousEffectId>,
+    ) -> PlayerId {
+        let mut controller = object.owner;
         for effect in effects
             .iter()
             .filter(|effect| matches!(effect.modification, Modification::ChangeController(_)))
@@ -6245,7 +6746,7 @@ impl GameState {
                 controller = new_controller;
             }
         }
-        Some(controller)
+        controller
     }
 
     /// Return the object's current controller, falling back to its owner if the
@@ -6503,7 +7004,7 @@ impl GameState {
         self.effect_store
             .mana_spend_effects
             .retain_effect_permissions(self.turn.turn_number);
-        self.damage_persists.clear();
+        self.battlefield_flags_mut().damage_persists.clear();
         for player in &mut self.players {
             player.max_hand_size = 7;
             player.land_plays_per_turn = 1;
@@ -6515,6 +7016,15 @@ impl GameState {
         // reflected in restriction tracking.
         // We collect first to avoid borrow conflicts while applying restrictions.
         let all_effects = self.all_continuous_effects();
+        let battlefield_ids: Vec<_> = self
+            .objects
+            .iter()
+            .filter_map(|(&object_id, object)| {
+                (object.zone == Zone::Battlefield).then_some(object_id)
+            })
+            .collect();
+        let battlefield_characteristics =
+            self.calculated_characteristics_batch_with_effects(&battlefield_ids, &all_effects);
         let abilities_to_apply: Vec<(StaticAbility, ObjectId, PlayerId)> = self
             .objects
             .iter()
@@ -6523,14 +7033,16 @@ impl GameState {
                 let controller = self.controller_of(object);
                 match zone {
                     Zone::Battlefield => Some(
-                        self.calculated_characteristics_with_effects(object_id, &all_effects)
+                        battlefield_characteristics
+                            .get(&object_id)
                             .map(|chars| {
                                 chars
                                     .static_abilities
-                                    .into_iter()
+                                    .iter()
                                     .filter(|static_ability| {
                                         static_ability.is_active(self, object_id)
                                     })
+                                    .cloned()
                                     .map(|static_ability| (static_ability, object_id, controller))
                                     .collect::<Vec<_>>()
                             })
@@ -6622,7 +7134,11 @@ impl GameState {
     }
 
     pub fn keep_damage_marked(&mut self, object: ObjectId) {
-        self.damage_persists.insert(object);
+        self.battlefield_flags_mut().damage_persists.insert(object);
+    }
+
+    pub fn damage_persists_on(&self, object: ObjectId) -> bool {
+        self.battlefield_flags.damage_persists.contains(&object)
     }
 
     /// Update continuous effects from static abilities on the battlefield.
@@ -6633,9 +7149,23 @@ impl GameState {
     ///
     /// Per Rule 611.3a, static ability effects apply dynamically.
     pub fn update_static_ability_effects(&mut self) {
+        #[cfg(feature = "shadow-continuous")]
         use crate::static_ability_processor::generate_continuous_effects_from_static_abilities;
+        use crate::static_ability_processor::generate_continuous_effects_from_static_abilities_cached;
 
-        let effects = generate_continuous_effects_from_static_abilities(self);
+        self.count_static_ability_regen();
+        let effects = {
+            let mut cache = self.runtime_cache.static_effects_cache.borrow_mut();
+            generate_continuous_effects_from_static_abilities_cached(self, &mut cache)
+        };
+        #[cfg(feature = "shadow-continuous")]
+        {
+            let expected = generate_continuous_effects_from_static_abilities(self);
+            assert_eq!(
+                effects, expected,
+                "incremental static-ability effect generation diverged from wholesale generation"
+            );
+        }
         self.effect_store
             .continuous_effects
             .set_static_ability_effects(effects);
@@ -6779,11 +7309,13 @@ impl GameState {
     }
 
     pub fn cast_origin_snapshot(&self, stack_id: ObjectId) -> Option<&ObjectSnapshot> {
-        self.cast_origin_snapshots.get(&stack_id)
+        self.exile_tracking.cast_origin_snapshots.get(&stack_id)
     }
 
     pub fn set_cast_origin_snapshot(&mut self, stack_id: ObjectId, snapshot: ObjectSnapshot) {
-        self.cast_origin_snapshots.insert(stack_id, snapshot);
+        self.exile_tracking_mut()
+            .cast_origin_snapshots
+            .insert(stack_id, snapshot);
     }
 
     fn with_active_battlefield_static_abilities<T>(
@@ -6910,7 +7442,10 @@ impl GameState {
         object.zone == Zone::Battlefield
             && self.current_has_subtype(object_id, crate::types::Subtype::Room)
             && object.linked_face_layout == LinkedFaceLayout::Split
-            && !self.fully_unlocked_rooms.contains(&object_id)
+            && !self
+                .battlefield_flags
+                .fully_unlocked_rooms
+                .contains(&object_id)
             && self
                 .linked_face_definition_by_name_or_id(
                     object.other_face_name.as_deref(),
@@ -6920,7 +7455,9 @@ impl GameState {
     }
 
     pub(crate) fn mark_room_fully_unlocked(&mut self, object_id: ObjectId) {
-        self.fully_unlocked_rooms.insert(object_id);
+        self.battlefield_flags_mut()
+            .fully_unlocked_rooms
+            .insert(object_id);
     }
 
     fn required_sacrifice_count_for_cost(&self, cost: &crate::costs::Cost) -> usize {
@@ -7520,11 +8057,15 @@ impl GameState {
     }
 
     pub fn speed_increase_triggered_this_turn(&self, id: PlayerId) -> bool {
-        self.speed_increase_triggered_this_turn.contains(&id)
+        self.combat_transients
+            .speed_increase_triggered_this_turn
+            .contains(&id)
     }
 
     pub fn mark_speed_increase_triggered_this_turn(&mut self, id: PlayerId) {
-        self.speed_increase_triggered_this_turn.insert(id);
+        self.combat_transients_mut()
+            .speed_increase_triggered_this_turn
+            .insert(id);
     }
 
     /// Designate an object as a commander for a player.
@@ -7589,7 +8130,7 @@ impl GameState {
             return requested_zone;
         };
         let owner = obj.owner;
-        let name = obj.name.clone();
+        let name = obj.name.to_string();
         let choice_ctx = crate::decisions::context::BooleanContext::new(
             owner,
             Some(object_id),
@@ -7623,7 +8164,8 @@ impl GameState {
         let identity = self
             .commander_identity(commander_id)
             .unwrap_or(commander_id);
-        self.commander_casts_from_command_zone
+        self.commander_tracking
+            .commander_casts_from_command_zone
             .get(&identity)
             .copied()
             .unwrap_or(0)
@@ -7647,6 +8189,7 @@ impl GameState {
     pub fn record_commander_cast_from_command_zone(&mut self, commander_id: ObjectId) {
         if let Some(identity) = self.commander_identity(commander_id) {
             *self
+                .commander_tracking_mut()
                 .commander_casts_from_command_zone
                 .entry(identity)
                 .or_insert(0) += 1;
@@ -7673,13 +8216,16 @@ impl GameState {
 
     /// Returns true if this exact commander object already declined moving to command zone.
     pub fn commander_command_zone_move_declined(&self, object_id: ObjectId) -> bool {
-        self.declined_commander_command_zone_moves
+        self.commander_tracking
+            .declined_command_zone_moves
             .contains(&object_id)
     }
 
     /// Mark this commander object as having declined the current command-zone move.
     pub fn decline_commander_command_zone_move(&mut self, object_id: ObjectId) {
-        self.declined_commander_command_zone_moves.insert(object_id);
+        self.commander_tracking_mut()
+            .declined_command_zone_moves
+            .insert(object_id);
     }
 
     /// Set the current monarch designation holder.
@@ -7805,22 +8351,27 @@ impl GameState {
 
     /// Returns the player's active dungeon progress, if any.
     pub fn active_dungeon(&self, player: PlayerId) -> Option<&ActiveDungeonProgress> {
-        self.active_dungeons.get(&player)
+        self.auxiliary_tracking.active_dungeons.get(&player)
     }
 
     /// Set the player's active dungeon progress.
     pub fn set_active_dungeon(&mut self, player: PlayerId, progress: ActiveDungeonProgress) {
-        self.active_dungeons.insert(player, progress);
+        self.auxiliary_tracking_mut()
+            .active_dungeons
+            .insert(player, progress);
     }
 
     /// Clear the player's active dungeon progress.
     pub fn clear_active_dungeon(&mut self, player: PlayerId) {
-        self.active_dungeons.remove(&player);
+        self.auxiliary_tracking_mut()
+            .active_dungeons
+            .remove(&player);
     }
 
     /// Record that the player completed the named dungeon.
     pub fn record_completed_dungeon(&mut self, player: PlayerId, dungeon_name: impl Into<String>) {
-        self.completed_dungeons
+        self.auxiliary_tracking_mut()
+            .completed_dungeons
             .entry(player)
             .or_default()
             .push(dungeon_name.into());
@@ -7828,7 +8379,8 @@ impl GameState {
 
     /// Returns the names of dungeons the player has completed this game.
     pub fn completed_dungeons(&self, player: PlayerId) -> &[String] {
-        self.completed_dungeons
+        self.auxiliary_tracking
+            .completed_dungeons
             .get(&player)
             .map(Vec::as_slice)
             .unwrap_or(&[])
@@ -7867,31 +8419,35 @@ impl GameState {
 
     /// Returns all object IDs in a given zone.
     pub fn objects_in_zone(&self, zone: Zone) -> Vec<ObjectId> {
+        self.zone_ids(zone).collect()
+    }
+
+    pub fn zone_ids(&self, zone: Zone) -> Box<dyn Iterator<Item = ObjectId> + '_> {
         match zone {
-            Zone::Battlefield => self.battlefield.clone(),
-            Zone::Graveyard => self
-                .players
-                .iter()
-                .flat_map(|player| player.graveyard.iter().copied())
-                .collect(),
-            Zone::Hand => self
-                .players
-                .iter()
-                .flat_map(|player| player.hand.iter().copied())
-                .collect(),
-            Zone::Library => self
-                .players
-                .iter()
-                .flat_map(|player| player.library.iter().copied())
-                .collect(),
-            Zone::OutsideGame => self
-                .players
-                .iter()
-                .flat_map(|player| player.sideboard.iter().copied())
-                .collect(),
-            Zone::Stack => self.stack.iter().map(|entry| entry.object_id).collect(),
-            Zone::Exile => self.exile.clone(),
-            Zone::Command => self.command_zone.clone(),
+            Zone::Battlefield => Box::new(self.battlefield.iter().copied()),
+            Zone::Graveyard => Box::new(
+                self.players
+                    .iter()
+                    .flat_map(|player| player.graveyard.iter().copied()),
+            ),
+            Zone::Hand => Box::new(
+                self.players
+                    .iter()
+                    .flat_map(|player| player.hand.iter().copied()),
+            ),
+            Zone::Library => Box::new(
+                self.players
+                    .iter()
+                    .flat_map(|player| player.library.iter().copied()),
+            ),
+            Zone::OutsideGame => Box::new(
+                self.players
+                    .iter()
+                    .flat_map(|player| player.sideboard.iter().copied()),
+            ),
+            Zone::Stack => Box::new(self.stack.iter().map(|entry| entry.object_id)),
+            Zone::Exile => Box::new(self.exile.iter().copied()),
+            Zone::Command => Box::new(self.command_zone.iter().copied()),
         }
     }
 
@@ -7910,14 +8466,70 @@ impl GameState {
             .collect()
     }
 
+    pub(crate) fn cached_object_snapshot_with_calculated_characteristics_and_effects(
+        &self,
+        object: &Object,
+        effects: &[ContinuousEffect],
+    ) -> ObjectSnapshot {
+        let key = ObjectSnapshotCacheKey {
+            object_id: object.id,
+            mutation_revision: self.mutation_revision,
+            effect_revision: self.effect_store.continuous_effects.revision(),
+        };
+        if let Some(snapshot) = self.runtime_cache.object_snapshot_cache.borrow().get(&key) {
+            return snapshot.as_ref().clone();
+        }
+
+        let snapshot = Arc::new(
+            ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+                object, self, effects,
+            ),
+        );
+        self.runtime_cache
+            .object_snapshot_cache
+            .borrow_mut()
+            .insert(key, Arc::clone(&snapshot));
+        snapshot.as_ref().clone()
+    }
+
+    pub(crate) fn cached_object_snapshot_with_calculated_characteristics(
+        &self,
+        object: &Object,
+    ) -> ObjectSnapshot {
+        let all_effects = self.all_continuous_effects();
+        self.cached_object_snapshot_with_calculated_characteristics_and_effects(
+            object,
+            &all_effects,
+        )
+    }
+
     pub(crate) fn trigger_source_lookback_snapshots(&self) -> Vec<ObjectSnapshot> {
         let all_effects = self.all_continuous_effects();
+        let ability_effects_can_add_triggers = all_effects.iter().any(|effect| {
+            matches!(
+                effect.modification,
+                Modification::AddAbility(_)
+                    | Modification::AddAbilityGeneric(_)
+                    | Modification::SetAbilities(_)
+                    | Modification::CopyTriggeredAbilities { .. }
+                    | Modification::RemoveAbility(_)
+                    | Modification::RemoveAbilityGeneric(_)
+                    | Modification::RemoveAllAbilities
+                    | Modification::RemoveAllAbilitiesExceptMana
+            )
+        });
         self.objects_in_deterministic_order()
             .into_iter()
+            .filter(|object| {
+                ability_effects_can_add_triggers
+                    || object.abilities.iter().any(|ability| {
+                        matches!(ability.kind, AbilityKind::Triggered(_))
+                            && ability.functions_in(&object.zone)
+                    })
+            })
             .map(|object| {
-                ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+                self.cached_object_snapshot_with_calculated_characteristics_and_effects(
                     object,
-                    self,
                     &all_effects,
                 )
             })
@@ -8070,11 +8682,16 @@ impl GameState {
             self.set_daytime(false);
         }
         self.turn_store.grant_cast_uses_this_turn.clear();
-        self.saddled_until_end_of_turn.clear();
-        self.ninjutsu_attack_targets.clear();
-        self.sneak_attack_targets.clear();
-        self.combat_damage_player_batch_hits.clear();
-        self.speed_increase_triggered_this_turn.clear();
+        self.battlefield_flags_mut()
+            .saddled_until_end_of_turn
+            .clear();
+        {
+            let transients = self.combat_transients_mut();
+            transients.ninjutsu_attack_targets.clear();
+            transients.sneak_attack_targets.clear();
+            transients.combat_damage_player_batch_hits.clear();
+            transients.speed_increase_triggered_this_turn.clear();
+        }
 
         // Activate any pending player-control effects for the new active player.
         self.activate_pending_player_control(next_player);
@@ -8117,23 +8734,25 @@ impl GameState {
             return;
         }
 
-        self.player_control_timestamp = self.player_control_timestamp.saturating_add(1);
+        let current_turn = self.turn.turn_number;
+        let aux = self.auxiliary_tracking_mut();
+        aux.player_control_timestamp = aux.player_control_timestamp.saturating_add(1);
         let mut effect = PlayerControlEffect {
             controller,
             target,
             start,
             duration,
             source,
-            timestamp: self.player_control_timestamp,
+            timestamp: aux.player_control_timestamp,
             active: matches!(start, PlayerControlStart::Immediate),
             expires_on_turn: None,
         };
 
         if effect.active && matches!(duration, PlayerControlDuration::UntilEndOfTurn) {
-            effect.expires_on_turn = Some(self.turn.turn_number);
+            effect.expires_on_turn = Some(current_turn);
         }
 
-        self.player_control_effects.push(effect);
+        aux.player_control_effects.push(effect);
     }
 
     /// Add a player-control effect for the currently resolving instruction.
@@ -8148,10 +8767,11 @@ impl GameState {
         target: PlayerId,
         source: Option<ObjectId>,
     ) -> u64 {
-        self.player_control_timestamp = self.player_control_timestamp.saturating_add(1);
-        let timestamp = self.player_control_timestamp;
         let source = source.and_then(|id| self.object(id).map(|obj| obj.stable_id));
-        self.scoped_player_control_effects
+        let aux = self.auxiliary_tracking_mut();
+        aux.player_control_timestamp = aux.player_control_timestamp.saturating_add(1);
+        let timestamp = aux.player_control_timestamp;
+        aux.scoped_player_control_effects
             .push(ScopedPlayerControlEffect {
                 controller,
                 target,
@@ -8163,14 +8783,15 @@ impl GameState {
 
     /// Remove a resolving-scope player-control effect.
     pub fn remove_scoped_player_control(&mut self, token: u64) {
-        self.scoped_player_control_effects
+        self.auxiliary_tracking_mut()
+            .scoped_player_control_effects
             .retain(|effect| effect.timestamp != token);
     }
 
     /// Return the controlling player for the given player, if any effect applies.
     pub fn controlling_player_for(&self, player: PlayerId) -> PlayerId {
         let mut best: Option<(PlayerId, u64)> = None;
-        for effect in &self.player_control_effects {
+        for effect in &self.auxiliary_tracking.player_control_effects {
             if !effect.active || effect.target != player {
                 continue;
             }
@@ -8186,7 +8807,7 @@ impl GameState {
             }
         }
 
-        for effect in &self.scoped_player_control_effects {
+        for effect in &self.auxiliary_tracking.scoped_player_control_effects {
             if effect.target != player {
                 continue;
             }
@@ -8207,7 +8828,7 @@ impl GameState {
     /// Activate pending player-control effects for the current active player.
     pub fn activate_pending_player_control(&mut self, active_player: PlayerId) {
         let current_turn = self.turn.turn_number;
-        for effect in &mut self.player_control_effects {
+        for effect in &mut self.auxiliary_tracking_mut().player_control_effects {
             if effect.active {
                 continue;
             }
@@ -8233,21 +8854,23 @@ impl GameState {
             .iter()
             .filter_map(|&id| self.object(id).map(|obj| obj.stable_id))
             .collect();
-        self.player_control_effects.retain(|effect| {
-            if matches!(effect.duration, PlayerControlDuration::UntilEndOfTurn)
-                && effect.expires_on_turn == Some(current_turn)
-            {
-                return false;
-            }
-            if matches!(effect.duration, PlayerControlDuration::UntilSourceLeaves)
-                && effect
-                    .source
-                    .is_some_and(|stable| !battlefield_sources.contains(&stable))
-            {
-                return false;
-            }
-            true
-        });
+        self.auxiliary_tracking_mut()
+            .player_control_effects
+            .retain(|effect| {
+                if matches!(effect.duration, PlayerControlDuration::UntilEndOfTurn)
+                    && effect.expires_on_turn == Some(current_turn)
+                {
+                    return false;
+                }
+                if matches!(effect.duration, PlayerControlDuration::UntilSourceLeaves)
+                    && effect
+                        .source
+                        .is_some_and(|stable| !battlefield_sources.contains(&stable))
+                {
+                    return false;
+                }
+                true
+            });
     }
 
     /// Add a combat-choice control effect that lasts until end of turn.
@@ -8257,21 +8880,22 @@ impl GameState {
         choose_attackers: bool,
         choose_blockers: bool,
     ) {
-        self.combat_choice_control_timestamp =
-            self.combat_choice_control_timestamp.saturating_add(1);
-        self.combat_choice_control_effects
+        let current_turn = self.turn.turn_number;
+        let aux = self.auxiliary_tracking_mut();
+        aux.combat_choice_control_timestamp = aux.combat_choice_control_timestamp.saturating_add(1);
+        aux.combat_choice_control_effects
             .push(CombatChoiceControlEffect {
                 controller,
                 choose_attackers,
                 choose_blockers,
-                expires_on_turn: self.turn.turn_number,
-                timestamp: self.combat_choice_control_timestamp,
+                expires_on_turn: current_turn,
+                timestamp: aux.combat_choice_control_timestamp,
             });
     }
 
     fn combat_choice_controller_for(&self, choose_attackers: bool) -> Option<PlayerId> {
         let mut best: Option<&CombatChoiceControlEffect> = None;
-        for effect in &self.combat_choice_control_effects {
+        for effect in &self.auxiliary_tracking.combat_choice_control_effects {
             if effect.expires_on_turn != self.turn.turn_number {
                 continue;
             }
@@ -8298,15 +8922,18 @@ impl GameState {
 
     pub fn cleanup_combat_choice_control_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
-        self.combat_choice_control_effects
+        self.auxiliary_tracking_mut()
+            .combat_choice_control_effects
             .retain(|effect| effect.expires_on_turn != current_turn);
     }
 
     fn clear_player_control_from_source(&mut self, stable_id: StableId) {
-        self.player_control_effects.retain(|effect| {
-            !(matches!(effect.duration, PlayerControlDuration::UntilSourceLeaves)
-                && effect.source == Some(stable_id))
-        });
+        self.auxiliary_tracking_mut()
+            .player_control_effects
+            .retain(|effect| {
+                !(matches!(effect.duration, PlayerControlDuration::UntilSourceLeaves)
+                    && effect.source == Some(stable_id))
+            });
     }
 
     fn is_source_on_battlefield(&self, stable_id: StableId) -> bool {
@@ -8551,19 +9178,119 @@ impl GameState {
             .get(&TurnCounterKey::EventKind(event_kind))
     }
 
+    /// Record the attack target captured while paying a Ninjutsu cost.
+    pub fn record_ninjutsu_attack_target(
+        &mut self,
+        source: ObjectId,
+        target: crate::combat_state::AttackTarget,
+    ) {
+        self.combat_transients_mut()
+            .ninjutsu_attack_targets
+            .entry(source)
+            .or_default()
+            .push(target);
+    }
+
+    /// Return the most recent Ninjutsu attack target for a source without consuming it.
+    pub fn last_ninjutsu_attack_target(
+        &self,
+        source: ObjectId,
+    ) -> Option<&crate::combat_state::AttackTarget> {
+        self.combat_transients
+            .ninjutsu_attack_targets
+            .get(&source)
+            .and_then(|targets| targets.last())
+    }
+
+    /// Consume the most recent Ninjutsu attack target for a source.
+    pub fn pop_ninjutsu_attack_target(
+        &mut self,
+        source: ObjectId,
+    ) -> Option<crate::combat_state::AttackTarget> {
+        let transients = self.combat_transients_mut();
+        let (popped, remove_entry) = {
+            let targets = transients.ninjutsu_attack_targets.get_mut(&source)?;
+            let popped = targets.pop();
+            (popped, targets.is_empty())
+        };
+        if remove_entry {
+            transients.ninjutsu_attack_targets.remove(&source);
+        }
+        popped
+    }
+
+    /// Forget any pending Ninjutsu attack targets for a source.
+    pub fn clear_ninjutsu_attack_targets_for(&mut self, source: ObjectId) {
+        self.combat_transients_mut()
+            .ninjutsu_attack_targets
+            .remove(&source);
+    }
+
+    /// Record the attack target captured while paying a Sneak cost.
+    pub fn record_sneak_attack_target(
+        &mut self,
+        source: ObjectId,
+        target: crate::combat_state::AttackTarget,
+    ) {
+        self.combat_transients_mut()
+            .sneak_attack_targets
+            .entry(source)
+            .or_default()
+            .push(target);
+    }
+
+    /// Return the most recent Sneak attack target for a source without consuming it.
+    pub fn last_sneak_attack_target(
+        &self,
+        source: ObjectId,
+    ) -> Option<&crate::combat_state::AttackTarget> {
+        self.combat_transients
+            .sneak_attack_targets
+            .get(&source)
+            .and_then(|targets| targets.last())
+    }
+
+    /// Consume the most recent Sneak attack target for a source.
+    pub fn pop_sneak_attack_target(
+        &mut self,
+        source: ObjectId,
+    ) -> Option<crate::combat_state::AttackTarget> {
+        let transients = self.combat_transients_mut();
+        let (popped, remove_entry) = {
+            let targets = transients.sneak_attack_targets.get_mut(&source)?;
+            let popped = targets.pop();
+            (popped, targets.is_empty())
+        };
+        if remove_entry {
+            transients.sneak_attack_targets.remove(&source);
+        }
+        popped
+    }
+
+    /// Forget any pending Sneak attack targets for a source.
+    pub fn clear_sneak_attack_targets_for(&mut self, source: ObjectId) {
+        self.combat_transients_mut()
+            .sneak_attack_targets
+            .remove(&source);
+    }
+
     /// Clear combat-damage player hits tracked for the current trigger batch.
     pub fn clear_combat_damage_player_batch_hits(&mut self) {
-        self.combat_damage_player_batch_hits.clear();
+        self.combat_transients_mut()
+            .combat_damage_player_batch_hits
+            .clear();
     }
 
     /// Record a combat-damage player hit for the current trigger batch.
     pub fn record_combat_damage_player_batch_hit(&mut self, source: ObjectId, player: PlayerId) {
-        self.combat_damage_player_batch_hits.push((source, player));
+        self.combat_transients_mut()
+            .combat_damage_player_batch_hits
+            .push((source, player));
     }
 
     /// Return combat-damage player hits already seen in the current trigger batch.
     pub fn combat_damage_player_batch_hits(&self) -> &[(ObjectId, PlayerId)] {
-        &self.combat_damage_player_batch_hits
+        &self.combat_transients.combat_damage_player_batch_hits
     }
 
     /// Increment an arbitrary named turn counter.
@@ -8702,18 +9429,20 @@ impl GameState {
         mode_index: usize,
         this_turn: bool,
     ) {
-        let target_map = if this_turn {
-            &mut self
-                .turn_store
+        if this_turn {
+            self.turn_store
                 .turn_history
                 .chosen_modes_by_ability_this_turn
+                .entry((source, ability_index))
+                .or_default()
+                .insert(mode_index);
         } else {
-            &mut self.choice_store.chosen_modes_by_ability
-        };
-        target_map
-            .entry((source, ability_index))
-            .or_default()
-            .insert(mode_index);
+            self.choice_store_mut()
+                .chosen_modes_by_ability
+                .entry((source, ability_index))
+                .or_default()
+                .insert(mode_index);
+        }
     }
 
     /// Check whether a given mode index has already been chosen for an activated ability.
@@ -8784,7 +9513,7 @@ impl GameState {
             entry.source_stable_id.get_or_insert(snapshot.stable_id);
             entry
                 .source_name
-                .get_or_insert_with(|| snapshot.name.clone());
+                .get_or_insert_with(|| snapshot.name.to_string());
             entry.source_snapshot = Some(snapshot);
         }
         self.stack.push(entry);
@@ -9074,19 +9803,22 @@ impl GameState {
 
     /// Check if a permanent is tapped.
     pub fn is_tapped(&self, id: ObjectId) -> bool {
-        self.tapped_permanents.contains(&id)
+        self.battlefield_flags.tapped_permanents.contains(&id)
     }
 
     /// Tap a permanent.
     pub fn tap(&mut self, id: ObjectId) {
-        self.mark_continuous_state_dirty();
-        self.tapped_permanents.insert(id);
+        if self.battlefield_flags_mut().tapped_permanents.insert(id) {
+            self.mark_tapped_state_changed(id);
+        }
     }
 
     /// Untap a permanent.
     pub fn untap(&mut self, id: ObjectId) {
-        self.mark_continuous_state_dirty();
-        self.tapped_permanents.remove(&id);
+        let changed = self.battlefield_flags_mut().tapped_permanents.remove(&id);
+        if changed {
+            self.mark_continuous_state_dirty();
+        }
         self.effect_store
             .continuous_effects
             .remove_effects_from_source_with_duration(id, crate::effect::Until::SourceUntaps);
@@ -9099,49 +9831,468 @@ impl GameState {
         self.update_cant_effects();
     }
 
+    fn mark_tapped_state_changed(&mut self, id: ObjectId) {
+        if self.tapped_state_change_can_stay_local(id) {
+            self.mark_object_characteristics_dirty(id);
+        } else {
+            self.mark_continuous_state_dirty();
+        }
+    }
+
+    fn tapped_state_change_can_stay_local(&self, id: ObjectId) -> bool {
+        self.characteristic_extension_change_can_stay_local(
+            id,
+            Self::continuous_effect_reads_tapped_state,
+        )
+    }
+
+    fn characteristic_extension_change_can_stay_local(
+        &self,
+        id: ObjectId,
+        effect_reads_state: impl Fn(&ContinuousEffect, ObjectId) -> bool,
+    ) -> bool {
+        if !self.continuous_state_is_clean() {
+            return false;
+        }
+
+        let Some(object) = self.object(id) else {
+            return false;
+        };
+        if object.zone != Zone::Battlefield {
+            return false;
+        }
+        if object
+            .abilities
+            .iter()
+            .any(|ability| matches!(&ability.kind, crate::ability::AbilityKind::Static(_)))
+        {
+            return false;
+        }
+        if self
+            .current_characteristics(id)
+            .is_some_and(|chars| !chars.static_abilities.is_empty())
+        {
+            return false;
+        }
+
+        !self
+            .cached_continuous_effects_snapshot_arc()
+            .iter()
+            .any(|effect| effect_reads_state(effect, id))
+    }
+
+    fn continuous_effect_reads_tapped_state(effect: &ContinuousEffect, changed: ObjectId) -> bool {
+        if effect.source == changed {
+            return true;
+        }
+        if Self::effect_target_reads_tapped_state(&effect.applies_to) {
+            return true;
+        }
+        effect
+            .condition
+            .as_ref()
+            .is_some_and(Self::condition_reads_tapped_state)
+    }
+
+    fn effect_target_reads_tapped_state(target: &EffectTarget) -> bool {
+        match target {
+            EffectTarget::Filter(filter) => Self::filter_reads_tapped_state(filter),
+            _ => false,
+        }
+    }
+
+    fn condition_reads_tapped_state(condition: &crate::ConditionExpr) -> bool {
+        match condition {
+            crate::ConditionExpr::TargetIsTapped
+            | crate::ConditionExpr::SourceIsTapped
+            | crate::ConditionExpr::EquippedCreatureTapped
+            | crate::ConditionExpr::EquippedCreatureUntapped
+            | crate::ConditionExpr::SourceIsUntapped => true,
+            crate::ConditionExpr::SourceMatches(filter)
+            | crate::ConditionExpr::TargetMatches(filter)
+            | crate::ConditionExpr::TaggedObjectMatches(_, filter)
+            | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. } => {
+                Self::filter_reads_tapped_state(filter)
+            }
+            crate::ConditionExpr::SourceCrewedByExactly { filter, .. } => {
+                Self::filter_reads_tapped_state(filter)
+            }
+            crate::ConditionExpr::CountComparison { count, .. }
+            | crate::ConditionExpr::CountParity { count, .. } => {
+                Self::anthem_count_reads_tapped_state(count)
+            }
+            crate::ConditionExpr::Not(inner) => Self::condition_reads_tapped_state(inner),
+            crate::ConditionExpr::And(left, right) | crate::ConditionExpr::Or(left, right) => {
+                Self::condition_reads_tapped_state(left)
+                    || Self::condition_reads_tapped_state(right)
+            }
+            _ => false,
+        }
+    }
+
+    fn anthem_count_reads_tapped_state(count: &AnthemCountExpression) -> bool {
+        match count {
+            AnthemCountExpression::MatchingFilter(filter)
+            | AnthemCountExpression::GreatestManaValueAmong(filter)
+            | AnthemCountExpression::AttachedToSource(filter)
+            | AnthemCountExpression::AttachedToAffected(filter)
+            | AnthemCountExpression::CountersAmong(filter, _)
+            | AnthemCountExpression::DistinctCounterTypesAmong(filter)
+            | AnthemCountExpression::BasicLandTypesAmong(filter)
+            | AnthemCountExpression::CreatureTypesAmong(filter) => {
+                Self::filter_reads_tapped_state(filter)
+            }
+            _ => false,
+        }
+    }
+
+    fn filter_reads_tapped_state(filter: &crate::target::ObjectFilter) -> bool {
+        filter.tapped
+            || filter.untapped
+            || filter
+                .targets_object
+                .as_deref()
+                .is_some_and(Self::filter_reads_tapped_state)
+            || filter
+                .targets_only_object
+                .as_deref()
+                .is_some_and(Self::filter_reads_tapped_state)
+            || filter
+                .no_shared_creature_types_with
+                .iter()
+                .any(Self::filter_reads_tapped_state)
+            || filter.any_of.iter().any(Self::filter_reads_tapped_state)
+    }
+
+    fn mark_face_down_state_changed(&mut self, id: ObjectId) {
+        if self.face_down_state_change_can_stay_local(id) {
+            self.mark_object_characteristics_dirty(id);
+        } else {
+            self.mark_continuous_state_dirty();
+        }
+    }
+
+    fn face_down_state_change_can_stay_local(&self, id: ObjectId) -> bool {
+        self.characteristic_extension_change_can_stay_local(
+            id,
+            Self::continuous_effect_reads_face_down_state,
+        )
+    }
+
+    fn continuous_effect_reads_face_down_state(
+        effect: &ContinuousEffect,
+        changed: ObjectId,
+    ) -> bool {
+        if effect.source == changed {
+            return true;
+        }
+        if Self::effect_target_reads_face_down_state(&effect.applies_to) {
+            return true;
+        }
+        effect
+            .condition
+            .as_ref()
+            .is_some_and(Self::condition_reads_face_down_state)
+    }
+
+    fn effect_target_reads_face_down_state(target: &EffectTarget) -> bool {
+        match target {
+            EffectTarget::Filter(filter) => Self::filter_reads_face_down_state(filter),
+            _ => false,
+        }
+    }
+
+    fn condition_reads_face_down_state(condition: &crate::ConditionExpr) -> bool {
+        match condition {
+            crate::ConditionExpr::SourceIsFaceDown => true,
+            crate::ConditionExpr::SourceMatches(filter)
+            | crate::ConditionExpr::TargetMatches(filter)
+            | crate::ConditionExpr::TaggedObjectMatches(_, filter)
+            | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. } => {
+                Self::filter_reads_face_down_state(filter)
+            }
+            crate::ConditionExpr::SourceCrewedByExactly { filter, .. } => {
+                Self::filter_reads_face_down_state(filter)
+            }
+            crate::ConditionExpr::CountComparison { count, .. }
+            | crate::ConditionExpr::CountParity { count, .. } => {
+                Self::anthem_count_reads_face_down_state(count)
+            }
+            crate::ConditionExpr::Not(inner) => Self::condition_reads_face_down_state(inner),
+            crate::ConditionExpr::And(left, right) | crate::ConditionExpr::Or(left, right) => {
+                Self::condition_reads_face_down_state(left)
+                    || Self::condition_reads_face_down_state(right)
+            }
+            _ => false,
+        }
+    }
+
+    fn anthem_count_reads_face_down_state(count: &AnthemCountExpression) -> bool {
+        match count {
+            AnthemCountExpression::MatchingFilter(filter)
+            | AnthemCountExpression::GreatestManaValueAmong(filter)
+            | AnthemCountExpression::AttachedToSource(filter)
+            | AnthemCountExpression::AttachedToAffected(filter)
+            | AnthemCountExpression::CountersAmong(filter, _)
+            | AnthemCountExpression::DistinctCounterTypesAmong(filter)
+            | AnthemCountExpression::BasicLandTypesAmong(filter)
+            | AnthemCountExpression::CreatureTypesAmong(filter) => {
+                Self::filter_reads_face_down_state(filter)
+            }
+            _ => false,
+        }
+    }
+
+    fn filter_reads_face_down_state(filter: &crate::target::ObjectFilter) -> bool {
+        filter.face_down.is_some()
+            || filter
+                .targets_object
+                .as_deref()
+                .is_some_and(Self::filter_reads_face_down_state)
+            || filter
+                .targets_only_object
+                .as_deref()
+                .is_some_and(Self::filter_reads_face_down_state)
+            || filter
+                .no_shared_creature_types_with
+                .iter()
+                .any(Self::filter_reads_face_down_state)
+            || filter.any_of.iter().any(Self::filter_reads_face_down_state)
+    }
+
+    fn mark_summoning_sickness_changed(&mut self, id: ObjectId) {
+        if self.summoning_sickness_change_can_stay_local(id) {
+            self.mark_object_characteristics_dirty(id);
+        } else {
+            self.mark_continuous_state_dirty();
+        }
+    }
+
+    fn summoning_sickness_change_can_stay_local(&self, id: ObjectId) -> bool {
+        self.characteristic_extension_change_can_stay_local(
+            id,
+            Self::continuous_effect_reads_summoning_sickness_state,
+        )
+    }
+
+    fn continuous_effect_reads_summoning_sickness_state(
+        effect: &ContinuousEffect,
+        _changed: ObjectId,
+    ) -> bool {
+        if Self::effect_target_reads_summoning_sickness_state(&effect.applies_to) {
+            return true;
+        }
+        effect
+            .condition
+            .as_ref()
+            .is_some_and(Self::condition_reads_summoning_sickness_state)
+    }
+
+    fn effect_target_reads_summoning_sickness_state(target: &EffectTarget) -> bool {
+        match target {
+            EffectTarget::Filter(filter) => Self::filter_reads_summoning_sickness_state(filter),
+            _ => false,
+        }
+    }
+
+    fn condition_reads_summoning_sickness_state(condition: &crate::ConditionExpr) -> bool {
+        match condition {
+            crate::ConditionExpr::SourceMatches(filter)
+            | crate::ConditionExpr::TargetMatches(filter)
+            | crate::ConditionExpr::TaggedObjectMatches(_, filter)
+            | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. }
+            | crate::ConditionExpr::SourceCrewedByExactly { filter, .. } => {
+                Self::filter_reads_summoning_sickness_state(filter)
+            }
+            crate::ConditionExpr::CountComparison { count, .. }
+            | crate::ConditionExpr::CountParity { count, .. } => {
+                Self::anthem_count_reads_summoning_sickness_state(count)
+            }
+            crate::ConditionExpr::Not(inner) => {
+                Self::condition_reads_summoning_sickness_state(inner)
+            }
+            crate::ConditionExpr::And(left, right) | crate::ConditionExpr::Or(left, right) => {
+                Self::condition_reads_summoning_sickness_state(left)
+                    || Self::condition_reads_summoning_sickness_state(right)
+            }
+            _ => false,
+        }
+    }
+
+    fn anthem_count_reads_summoning_sickness_state(count: &AnthemCountExpression) -> bool {
+        match count {
+            AnthemCountExpression::MatchingFilter(filter)
+            | AnthemCountExpression::GreatestManaValueAmong(filter)
+            | AnthemCountExpression::AttachedToSource(filter)
+            | AnthemCountExpression::AttachedToAffected(filter)
+            | AnthemCountExpression::CountersAmong(filter, _)
+            | AnthemCountExpression::DistinctCounterTypesAmong(filter)
+            | AnthemCountExpression::BasicLandTypesAmong(filter)
+            | AnthemCountExpression::CreatureTypesAmong(filter) => {
+                Self::filter_reads_summoning_sickness_state(filter)
+            }
+            _ => false,
+        }
+    }
+
+    fn filter_reads_summoning_sickness_state(filter: &crate::target::ObjectFilter) -> bool {
+        filter.entered_since_your_last_turn_ended
+            || filter
+                .targets_object
+                .as_deref()
+                .is_some_and(Self::filter_reads_summoning_sickness_state)
+            || filter
+                .targets_only_object
+                .as_deref()
+                .is_some_and(Self::filter_reads_summoning_sickness_state)
+            || filter
+                .no_shared_creature_types_with
+                .iter()
+                .any(Self::filter_reads_summoning_sickness_state)
+            || filter
+                .any_of
+                .iter()
+                .any(Self::filter_reads_summoning_sickness_state)
+    }
+
+    fn mark_source_designation_changed(
+        &mut self,
+        id: ObjectId,
+        condition_reads_state: fn(&crate::ConditionExpr) -> bool,
+    ) {
+        if self.source_designation_change_can_stay_local(id, condition_reads_state) {
+            self.mark_object_characteristics_dirty(id);
+        } else {
+            self.mark_continuous_state_dirty();
+        }
+    }
+
+    fn source_designation_change_can_stay_local(
+        &self,
+        id: ObjectId,
+        condition_reads_state: fn(&crate::ConditionExpr) -> bool,
+    ) -> bool {
+        self.characteristic_extension_change_can_stay_local(id, |effect, _| {
+            effect.condition.as_ref().is_some_and(condition_reads_state)
+        })
+    }
+
+    fn condition_reads_monstrous_state(condition: &crate::ConditionExpr) -> bool {
+        Self::condition_matches_or_nested(condition, |condition| {
+            matches!(condition, crate::ConditionExpr::SourceIsMonstrous)
+        })
+    }
+
+    fn condition_reads_saddled_state(condition: &crate::ConditionExpr) -> bool {
+        Self::condition_matches_or_nested(condition, |condition| {
+            matches!(condition, crate::ConditionExpr::SourceIsSaddled)
+        })
+    }
+
+    fn condition_reads_devoured_count(condition: &crate::ConditionExpr) -> bool {
+        Self::condition_matches_or_nested(condition, |condition| {
+            matches!(
+                condition,
+                crate::ConditionExpr::SourceDevouredCreaturesOrMore(_)
+            )
+        })
+    }
+
+    fn condition_reads_suspected_state(condition: &crate::ConditionExpr) -> bool {
+        Self::condition_matches_or_nested(condition, |condition| {
+            matches!(condition, crate::ConditionExpr::SourceSuspected)
+        })
+    }
+
+    fn condition_matches_or_nested(
+        condition: &crate::ConditionExpr,
+        direct_match: fn(&crate::ConditionExpr) -> bool,
+    ) -> bool {
+        if direct_match(condition) {
+            return true;
+        }
+        match condition {
+            crate::ConditionExpr::Not(inner) => {
+                Self::condition_matches_or_nested(inner, direct_match)
+            }
+            crate::ConditionExpr::And(left, right) | crate::ConditionExpr::Or(left, right) => {
+                Self::condition_matches_or_nested(left, direct_match)
+                    || Self::condition_matches_or_nested(right, direct_match)
+            }
+            _ => false,
+        }
+    }
+
     /// Check if a creature has summoning sickness.
     pub fn is_summoning_sick(&self, id: ObjectId) -> bool {
-        self.summoning_sick.contains(&id)
+        self.battlefield_flags.summoning_sick.contains(&id)
     }
 
     /// Set summoning sickness on a creature.
     pub fn set_summoning_sick(&mut self, id: ObjectId) {
-        self.mark_continuous_state_dirty();
-        self.summoning_sick.insert(id);
+        if self.battlefield_flags_mut().summoning_sick.insert(id) {
+            self.mark_summoning_sickness_changed(id);
+        }
     }
 
     /// Remove summoning sickness from a creature (e.g., haste).
     pub fn remove_summoning_sickness(&mut self, id: ObjectId) {
-        self.mark_continuous_state_dirty();
-        self.summoning_sick.remove(&id);
+        if self.battlefield_flags_mut().summoning_sick.remove(&id) {
+            self.mark_summoning_sickness_changed(id);
+        }
     }
 
     /// Get the damage marked on an object.
     pub fn damage_on(&self, id: ObjectId) -> u32 {
-        self.damage_marked.get(&id).copied().unwrap_or(0)
+        self.battlefield_flags
+            .damage_marked
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Mark damage on an object.
     pub fn mark_damage(&mut self, id: ObjectId, amount: u32) {
         if amount > 0 {
-            *self.damage_marked.entry(id).or_insert(0) += amount;
+            *self
+                .battlefield_flags_mut()
+                .damage_marked
+                .entry(id)
+                .or_insert(0) += amount;
+        }
+    }
+
+    /// Set the exact damage marked on an object.
+    pub fn set_damage_marked(&mut self, id: ObjectId, amount: u32) {
+        if amount == 0 {
+            self.battlefield_flags_mut().damage_marked.remove(&id);
+        } else {
+            self.battlefield_flags_mut()
+                .damage_marked
+                .insert(id, amount);
         }
     }
 
     /// Record that a creature was dealt nonzero damage by a source with deathtouch.
     pub fn mark_deathtouch_damage_since_sba(&mut self, id: ObjectId) {
-        self.dealt_deathtouch_damage_since_sba.insert(id);
+        self.battlefield_flags_mut()
+            .dealt_deathtouch_damage_since_sba
+            .insert(id);
     }
 
     /// Returns true if the creature was dealt nonzero damage by a source with
     /// deathtouch since the last time state-based actions were checked.
     pub fn has_deathtouch_damage_since_sba(&self, id: ObjectId) -> bool {
-        self.dealt_deathtouch_damage_since_sba.contains(&id)
+        self.battlefield_flags
+            .dealt_deathtouch_damage_since_sba
+            .contains(&id)
     }
 
     /// Clears the transient deathtouch-damage tracker used by SBA evaluation.
     pub fn clear_deathtouch_damage_since_sba(&mut self) {
-        self.dealt_deathtouch_damage_since_sba.clear();
+        self.battlefield_flags_mut()
+            .dealt_deathtouch_damage_since_sba
+            .clear();
     }
 
     /// Returns true if `creature` was dealt damage by `source` this turn.
@@ -9182,187 +10333,262 @@ impl GameState {
 
     /// Clear damage from an object.
     pub fn clear_damage(&mut self, id: ObjectId) {
-        self.damage_marked.remove(&id);
+        self.battlefield_flags_mut().damage_marked.remove(&id);
     }
 
     /// Get the number of regeneration shields on an object.
     pub fn regeneration_shield_count(&self, id: ObjectId) -> u32 {
-        self.regeneration_shields.get(&id).copied().unwrap_or(0)
+        self.battlefield_flags
+            .regeneration_shields
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Add regeneration shields to an object.
     pub fn add_regeneration_shield(&mut self, id: ObjectId, count: u32) {
         if count > 0 {
-            *self.regeneration_shields.entry(id).or_insert(0) += count;
+            *self
+                .battlefield_flags_mut()
+                .regeneration_shields
+                .entry(id)
+                .or_insert(0) += count;
         }
     }
 
     /// Use one regeneration shield. Returns true if a shield was used.
     pub fn use_regeneration_shield(&mut self, id: ObjectId) -> bool {
-        if let Some(shields) = self.regeneration_shields.get_mut(&id)
-            && *shields > 0
+        let mut remove_empty_shield_entry = false;
+        let used_shield = if let Some(shields) = self
+            .battlefield_flags_mut()
+            .regeneration_shields
+            .get_mut(&id)
         {
-            *shields -= 1;
-            if *shields == 0 {
-                self.regeneration_shields.remove(&id);
+            if *shields > 0 {
+                *shields -= 1;
+                remove_empty_shield_entry = *shields == 0;
+                true
+            } else {
+                false
             }
-            *self.regenerated_this_turn.entry(id).or_insert(0) += 1;
-            return true;
+        } else {
+            false
+        };
+
+        if used_shield {
+            if remove_empty_shield_entry {
+                self.battlefield_flags_mut()
+                    .regeneration_shields
+                    .remove(&id);
+            }
+            *self
+                .battlefield_flags_mut()
+                .regenerated_this_turn
+                .entry(id)
+                .or_insert(0) += 1;
         }
-        false
+
+        used_shield
     }
 
     /// Get how many times an object regenerated this turn.
     pub fn regenerated_this_turn_count(&self, id: ObjectId) -> u32 {
-        self.regenerated_this_turn.get(&id).copied().unwrap_or(0)
+        self.battlefield_flags
+            .regenerated_this_turn
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Clear all per-object regeneration counts for this turn.
     pub fn clear_regenerated_this_turn(&mut self) {
-        self.regenerated_this_turn.clear();
+        self.battlefield_flags_mut().regenerated_this_turn.clear();
     }
 
     /// Clear all regeneration shields from an object.
     pub fn clear_regeneration_shields(&mut self, id: ObjectId) {
-        self.regeneration_shields.remove(&id);
+        self.battlefield_flags_mut()
+            .regeneration_shields
+            .remove(&id);
     }
 
     /// Check if a creature is monstrous.
     pub fn is_monstrous(&self, id: ObjectId) -> bool {
-        self.monstrous.contains(&id)
+        self.battlefield_flags.monstrous.contains(&id)
     }
 
     /// Mark a creature as monstrous.
     pub fn set_monstrous(&mut self, id: ObjectId) {
-        self.mark_continuous_state_dirty();
-        self.monstrous.insert(id);
+        if self.battlefield_flags_mut().monstrous.insert(id) {
+            self.mark_source_designation_changed(id, Self::condition_reads_monstrous_state);
+        }
     }
 
     /// Check if a creature is renowned.
     pub fn is_renowned(&self, id: ObjectId) -> bool {
-        self.renowned.contains(&id)
+        self.battlefield_flags.renowned.contains(&id)
     }
 
     /// Mark a creature as renowned.
     pub fn set_renowned(&mut self, id: ObjectId) {
-        self.renowned.insert(id);
+        self.battlefield_flags_mut().renowned.insert(id);
     }
 
     /// Return how many permanents this object devoured as it entered.
     pub fn devoured_count(&self, id: ObjectId) -> u32 {
-        self.devoured_counts.get(&id).copied().unwrap_or(0)
+        self.battlefield_flags
+            .devoured_counts
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Record how many permanents this object devoured as it entered.
     pub fn set_devoured_count(&mut self, id: ObjectId, count: u32) {
-        self.mark_continuous_state_dirty();
-        if count == 0 {
-            self.devoured_counts.remove(&id);
+        let changed = if count == 0 {
+            self.battlefield_flags_mut()
+                .devoured_counts
+                .remove(&id)
+                .is_some()
         } else {
-            self.devoured_counts.insert(id, count);
+            self.battlefield_flags_mut()
+                .devoured_counts
+                .insert(id, count)
+                != Some(count)
+        };
+        if changed {
+            self.mark_source_designation_changed(id, Self::condition_reads_devoured_count);
         }
     }
 
     /// Check if a permanent is suspected.
     pub fn is_suspected(&self, id: ObjectId) -> bool {
-        self.suspected.contains(&id)
+        self.battlefield_flags.suspected.contains(&id)
+    }
+
+    /// Return all currently suspected permanents.
+    pub(crate) fn suspected_ids(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        self.battlefield_flags.suspected.iter().copied()
     }
 
     /// Mark a permanent as suspected.
     pub fn set_suspected(&mut self, id: ObjectId) {
-        self.mark_continuous_state_dirty();
-        self.suspected.insert(id);
+        if self.battlefield_flags_mut().suspected.insert(id) {
+            self.mark_source_designation_changed(id, Self::condition_reads_suspected_state);
+        }
     }
 
     /// Clear the suspected designation from a permanent.
     pub fn clear_suspected(&mut self, id: ObjectId) -> bool {
-        let removed = self.suspected.remove(&id);
+        let removed = self.battlefield_flags_mut().suspected.remove(&id);
         if removed {
-            self.mark_continuous_state_dirty();
+            self.mark_source_designation_changed(id, Self::condition_reads_suspected_state);
         }
         removed
     }
 
     /// Check if a Case permanent has become solved.
     pub fn is_case_solved(&self, id: ObjectId) -> bool {
-        self.solved_cases.contains(&id)
+        self.battlefield_flags.solved_cases.contains(&id)
     }
 
     /// Mark a Case permanent solved. Returns true if this changed game state.
     pub fn solve_case(&mut self, id: ObjectId) -> bool {
-        let changed = self.solved_cases.insert(id);
+        let changed = self.battlefield_flags_mut().solved_cases.insert(id);
         if changed {
-            self.mark_continuous_state_dirty();
+            self.mark_object_characteristics_dirty(id);
         }
         changed
     }
 
     /// Check if a permanent is saddled (until end of turn).
     pub fn is_saddled(&self, id: ObjectId) -> bool {
-        self.saddled_until_end_of_turn.contains(&id)
+        self.battlefield_flags
+            .saddled_until_end_of_turn
+            .contains(&id)
     }
 
     /// Mark a permanent as saddled until end of turn.
     pub fn set_saddled_until_end_of_turn(&mut self, id: ObjectId) {
-        self.mark_continuous_state_dirty();
-        self.saddled_until_end_of_turn.insert(id);
+        if self
+            .battlefield_flags_mut()
+            .saddled_until_end_of_turn
+            .insert(id)
+        {
+            self.mark_source_designation_changed(id, Self::condition_reads_saddled_state);
+        }
     }
 
     /// Check if a permanent is flipped.
     pub fn is_flipped(&self, id: ObjectId) -> bool {
-        self.flipped.contains(&id)
+        self.battlefield_flags.flipped.contains(&id)
     }
 
     /// Flip a permanent.
     pub fn flip(&mut self, id: ObjectId) {
         self.mark_continuous_state_dirty();
-        self.flipped.insert(id);
+        self.battlefield_flags_mut().flipped.insert(id);
     }
 
     /// Check if a permanent is face-down.
     pub fn is_face_down(&self, id: ObjectId) -> bool {
-        self.face_down.contains(&id)
+        self.battlefield_flags.face_down.contains(&id)
     }
 
     /// Set a permanent as face-down.
     pub fn set_face_down(&mut self, id: ObjectId) {
-        self.mark_continuous_state_dirty();
-        self.face_down.insert(id);
+        if self.battlefield_flags_mut().face_down.insert(id) {
+            self.mark_face_down_state_changed(id);
+        }
     }
 
     /// Mark a face-down permanent as manifested.
     pub fn set_manifested(&mut self, id: ObjectId) {
-        self.mark_continuous_state_dirty();
-        self.manifested.insert(id);
+        if self.battlefield_flags_mut().manifested.insert(id) {
+            self.mark_object_characteristics_dirty(id);
+        }
     }
 
     /// Check if a permanent is manifested.
     pub fn is_manifested(&self, id: ObjectId) -> bool {
-        self.manifested.contains(&id)
+        self.battlefield_flags.manifested.contains(&id)
     }
 
     /// Turn a permanent face-up.
     pub fn set_face_up(&mut self, id: ObjectId) {
-        self.mark_continuous_state_dirty();
-        self.face_down.remove(&id);
-        self.manifested.remove(&id);
+        let (face_down_changed, manifested_changed) = {
+            let flags = self.battlefield_flags_mut();
+            (flags.face_down.remove(&id), flags.manifested.remove(&id))
+        };
+        if face_down_changed {
+            self.mark_face_down_state_changed(id);
+        } else if manifested_changed {
+            self.mark_object_characteristics_dirty(id);
+        }
     }
 
     /// Return how many times a permanent has transformed since it entered the battlefield.
     pub fn transform_count(&self, id: ObjectId) -> u64 {
-        self.transform_count.get(&id).copied().unwrap_or(0)
+        self.battlefield_flags
+            .transform_count
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Record that a permanent transformed and refresh its timestamp per CR 613.7g.
     pub fn mark_transformed(&mut self, id: ObjectId) {
         self.mark_continuous_state_dirty();
         let next = self
+            .battlefield_flags
             .transform_count
             .get(&id)
             .copied()
             .unwrap_or(0)
             .saturating_add(1);
-        self.transform_count.insert(id, next);
+        self.battlefield_flags_mut()
+            .transform_count
+            .insert(id, next);
         self.effect_store.continuous_effects.record_entry(id);
         if let Some(stable_id) = self.object(id).map(|o| o.stable_id) {
             self.record_ui_effect_event("transform", None, None, vec![stable_id], None, None);
@@ -9398,8 +10624,9 @@ impl GameState {
         {
             return false;
         }
+        let handles = self.object_store.shared_handles_for_definition(&other_def);
         if let Some(obj) = self.object_mut(id) {
-            obj.apply_definition_face(&other_def);
+            obj.apply_definition_face_with_shared(&other_def, &handles);
         }
         self.mark_transformed(id);
         true
@@ -9515,17 +10742,21 @@ impl GameState {
 
     /// Check if a permanent is phased out.
     pub fn is_phased_out(&self, id: ObjectId) -> bool {
-        self.phased_out.contains(&id)
+        self.battlefield_flags.phased_out.contains(&id)
+    }
+
+    pub(crate) fn phased_out_ids(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        self.battlefield_flags.phased_out.iter().copied()
     }
 
     /// Phase out a permanent.
     pub fn phase_out(&mut self, id: ObjectId) {
         let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
-        let permanent_snapshot = self.object(id).map(|object| {
-            ObjectSnapshot::from_object_with_calculated_characteristics(object, self)
-        });
+        let permanent_snapshot = self
+            .object(id)
+            .map(|object| self.cached_object_snapshot_with_calculated_characteristics(object));
         self.mark_continuous_state_dirty();
-        if self.phased_out.insert(id) {
+        if self.battlefield_flags_mut().phased_out.insert(id) {
             if let Some(snapshot) = permanent_snapshot {
                 self.record_ui_effect_event(
                     "phase_out",
@@ -9555,7 +10786,7 @@ impl GameState {
     /// Phase in a permanent.
     pub fn phase_in(&mut self, id: ObjectId) {
         self.mark_continuous_state_dirty();
-        if self.phased_out.remove(&id)
+        if self.battlefield_flags_mut().phased_out.remove(&id)
             && let Some(stable_id) = self.object(id).map(|o| o.stable_id)
         {
             self.record_ui_effect_event("phase_in", None, None, vec![stable_id], None, None);
@@ -9564,70 +10795,88 @@ impl GameState {
 
     /// Check if a card is exiled via madness.
     pub fn is_madness_exiled(&self, id: ObjectId) -> bool {
-        self.madness_exiled.contains(&id)
+        self.cast_permission_flags.madness_exiled.contains(&id)
     }
 
     /// Mark a card as exiled via madness.
     pub fn set_madness_exiled(&mut self, id: ObjectId) {
-        self.madness_exiled.insert(id);
+        self.cast_permission_flags_mut().madness_exiled.insert(id);
     }
 
     /// Clear madness exiled status.
     pub fn clear_madness_exiled(&mut self, id: ObjectId) {
-        self.madness_exiled.remove(&id);
+        self.cast_permission_flags_mut().madness_exiled.remove(&id);
     }
 
     /// Check if a card is exiled via foretell.
     pub fn is_foretold(&self, id: ObjectId) -> bool {
-        self.foretold_cards.contains(&id)
+        self.cast_permission_flags.foretold_cards.contains(&id)
     }
 
     /// Mark a card as exiled via foretell.
     pub fn set_foretold(&mut self, id: ObjectId) {
-        self.foretold_cards.insert(id);
+        self.cast_permission_flags_mut().foretold_cards.insert(id);
     }
 
     /// Clear foretell exiled status.
     pub fn clear_foretold(&mut self, id: ObjectId) {
-        self.foretold_cards.remove(&id);
+        self.cast_permission_flags_mut().foretold_cards.remove(&id);
     }
 
     /// Check if a card is exiled because its Adventure spell resolved.
     pub fn is_adventure_exiled(&self, id: ObjectId) -> bool {
-        self.adventure_exiled.contains(&id)
+        self.cast_permission_flags.adventure_exiled.contains(&id)
     }
 
     /// Mark a card as exiled because its Adventure spell resolved.
     pub fn set_adventure_exiled(&mut self, id: ObjectId) {
-        self.adventure_exiled.insert(id);
+        self.cast_permission_flags_mut().adventure_exiled.insert(id);
     }
 
     /// Clear adventure exiled status.
     pub fn clear_adventure_exiled(&mut self, id: ObjectId) {
-        self.adventure_exiled.remove(&id);
+        self.cast_permission_flags_mut()
+            .adventure_exiled
+            .remove(&id);
     }
 
     /// Check if a card is exiled via plot by the given player.
     pub fn is_plotted_by(&self, id: ObjectId, player: PlayerId) -> bool {
-        self.plotted_cards
+        self.exile_tracking
+            .plotted_cards
             .get(&id)
             .is_some_and(|(plotter, _)| *plotter == player)
     }
 
+    pub fn plotted_by(&self, id: ObjectId) -> Option<PlayerId> {
+        self.exile_tracking
+            .plotted_cards
+            .get(&id)
+            .map(|(player, _)| *player)
+    }
+
     /// Return the turn number on which a card was plotted.
     pub fn plotted_turn(&self, id: ObjectId) -> Option<u32> {
-        self.plotted_cards.get(&id).map(|(_, turn)| *turn)
+        self.exile_tracking
+            .plotted_cards
+            .get(&id)
+            .map(|(_, turn)| *turn)
     }
 
     /// Mark a card as plotted by a player on the current turn.
     pub fn set_plotted(&mut self, id: ObjectId, player: PlayerId) {
-        self.plotted_cards
-            .insert(id, (player, self.turn.turn_number));
+        self.set_plotted_on_turn(id, player, self.turn.turn_number);
+    }
+
+    pub fn set_plotted_on_turn(&mut self, id: ObjectId, player: PlayerId, turn: u32) {
+        self.exile_tracking_mut()
+            .plotted_cards
+            .insert(id, (player, turn));
     }
 
     /// Clear plot state for a card.
     pub fn clear_plotted(&mut self, id: ObjectId) {
-        self.plotted_cards.remove(&id);
+        self.exile_tracking_mut().plotted_cards.remove(&id);
     }
 
     /// Track that a player has taken the foretell special action this turn.
@@ -9654,40 +10903,46 @@ impl GameState {
     /// Designate an object as a commander.
     pub fn set_commander(&mut self, id: ObjectId) {
         self.mark_continuous_state_dirty();
-        self.commanders.insert(id);
+        self.commander_tracking_mut().commanders.insert(id);
     }
 
     /// Clear battlefield state for an object (when leaving battlefield).
     pub fn clear_battlefield_state(&mut self, id: ObjectId) {
         self.clear_soulbond_pair(id);
-        self.tapped_permanents.remove(&id);
-        self.summoning_sick.remove(&id);
-        self.damage_marked.remove(&id);
-        self.dealt_deathtouch_damage_since_sba.remove(&id);
-        self.regeneration_shields.remove(&id);
-        self.monstrous.remove(&id);
-        self.renowned.remove(&id);
-        self.devoured_counts.remove(&id);
-        self.suspected.remove(&id);
-        self.solved_cases.remove(&id);
-        self.flipped.remove(&id);
-        self.face_down.remove(&id);
-        self.manifested.remove(&id);
-        self.fully_unlocked_rooms.remove(&id);
-        self.transform_count.remove(&id);
-        self.phased_out.remove(&id);
-        self.imprinted_cards.remove(&id);
-        self.noted_life_totals.remove(&id);
-        self.choice_store.chosen_colors.remove(&id);
-        self.choice_store.chosen_basic_land_types.remove(&id);
-        self.choice_store.chosen_land_types.remove(&id);
-        self.choice_store.chosen_creature_types.remove(&id);
-        self.choice_store.chosen_card_types.remove(&id);
-        self.choice_store.chosen_players.remove(&id);
-        self.choice_store.chosen_named_options.remove(&id);
-        self.choice_store
-            .chosen_modes_by_ability
-            .retain(|(source, _), _| *source != id);
+        {
+            let flags = self.battlefield_flags_mut();
+            flags.tapped_permanents.remove(&id);
+            flags.summoning_sick.remove(&id);
+            flags.damage_marked.remove(&id);
+            flags.monstrous.remove(&id);
+            flags.suspected.remove(&id);
+            flags.dealt_deathtouch_damage_since_sba.remove(&id);
+            flags.regeneration_shields.remove(&id);
+            flags.devoured_counts.remove(&id);
+            flags.solved_cases.remove(&id);
+            flags.renowned.remove(&id);
+            flags.flipped.remove(&id);
+            flags.face_down.remove(&id);
+            flags.manifested.remove(&id);
+            flags.fully_unlocked_rooms.remove(&id);
+            flags.transform_count.remove(&id);
+            flags.phased_out.remove(&id);
+        }
+        self.exile_tracking_mut().imprinted_cards.remove(&id);
+        self.object_annotations_mut().noted_life_totals.remove(&id);
+        {
+            let choices = self.choice_store_mut();
+            choices.chosen_colors.remove(&id);
+            choices.chosen_basic_land_types.remove(&id);
+            choices.chosen_land_types.remove(&id);
+            choices.chosen_creature_types.remove(&id);
+            choices.chosen_card_types.remove(&id);
+            choices.chosen_players.remove(&id);
+            choices.chosen_named_options.remove(&id);
+            choices
+                .chosen_modes_by_ability
+                .retain(|(source, _), _| *source != id);
+        }
         self.turn_store
             .turn_history
             .chosen_modes_by_ability_this_turn
@@ -9715,9 +10970,10 @@ impl GameState {
     }
 
     pub fn clear_soulbond_pair(&mut self, object_id: ObjectId) {
-        let partner = self.soulbond_pairs.remove(&object_id);
+        let transients = self.combat_transients_mut();
+        let partner = transients.soulbond_pairs.remove(&object_id);
         if let Some(partner_id) = partner {
-            self.soulbond_pairs.remove(&partner_id);
+            transients.soulbond_pairs.remove(&partner_id);
         }
     }
 
@@ -9727,13 +10983,23 @@ impl GameState {
         }
         self.clear_soulbond_pair(left);
         self.clear_soulbond_pair(right);
-        self.soulbond_pairs.insert(left, right);
-        self.soulbond_pairs.insert(right, left);
+        let transients = self.combat_transients_mut();
+        transients.soulbond_pairs.insert(left, right);
+        transients.soulbond_pairs.insert(right, left);
+    }
+
+    pub(crate) fn soulbond_pairs(&self) -> &HashMap<ObjectId, ObjectId> {
+        &self.combat_transients.soulbond_pairs
     }
 
     pub fn soulbond_partner(&self, object_id: ObjectId) -> Option<ObjectId> {
-        let partner = self.soulbond_pairs.get(&object_id).copied()?;
+        let partner = self
+            .combat_transients
+            .soulbond_pairs
+            .get(&object_id)
+            .copied()?;
         if self
+            .combat_transients
             .soulbond_pairs
             .get(&partner)
             .is_none_or(|paired_back| *paired_back != object_id)
@@ -9748,8 +11014,13 @@ impl GameState {
         &self,
         object_id: ObjectId,
     ) -> Option<ObjectId> {
-        let partner = self.soulbond_pairs.get(&object_id).copied()?;
+        let partner = self
+            .combat_transients
+            .soulbond_pairs
+            .get(&object_id)
+            .copied()?;
         if self
+            .combat_transients
             .soulbond_pairs
             .get(&partner)
             .is_none_or(|paired_back| *paired_back != object_id)
@@ -9773,17 +11044,24 @@ impl GameState {
 
     /// Clear exile state for an object (when leaving exile).
     pub fn clear_exile_state(&mut self, id: ObjectId) {
-        self.madness_exiled.remove(&id);
-        self.foretold_cards.remove(&id);
-        self.adventure_exiled.remove(&id);
-        self.plotted_cards.remove(&id);
-        self.face_down_exile_viewers.remove(&id);
+        {
+            let flags = self.cast_permission_flags_mut();
+            flags.madness_exiled.remove(&id);
+            flags.foretold_cards.remove(&id);
+            flags.adventure_exiled.remove(&id);
+        }
+        {
+            let tracking = self.exile_tracking_mut();
+            tracking.plotted_cards.remove(&id);
+            tracking.face_down_exile_viewers.remove(&id);
+        }
         self.remove_exiled_with_source_link(id);
     }
 
     /// Allow a player to keep looking at a face-down exiled card.
     pub fn grant_face_down_exile_view(&mut self, id: ObjectId, viewer: PlayerId) {
-        self.face_down_exile_viewers
+        self.exile_tracking_mut()
+            .face_down_exile_viewers
             .entry(id)
             .or_default()
             .insert(viewer);
@@ -9791,7 +11069,8 @@ impl GameState {
 
     /// Check whether a player may inspect a face-down exiled card.
     pub fn can_player_look_at_face_down_exiled_card(&self, id: ObjectId, viewer: PlayerId) -> bool {
-        self.face_down_exile_viewers
+        self.exile_tracking
+            .face_down_exile_viewers
             .get(&id)
             .is_some_and(|viewers| viewers.contains(&viewer))
     }
@@ -9801,7 +11080,9 @@ impl GameState {
     /// Record a chosen color for a permanent.
     pub fn set_chosen_color(&mut self, permanent_id: ObjectId, color: crate::color::Color) {
         self.mark_continuous_state_dirty();
-        self.choice_store.chosen_colors.insert(permanent_id, color);
+        self.choice_store_mut()
+            .chosen_colors
+            .insert(permanent_id, color);
     }
 
     /// Get a chosen color for a permanent, if any.
@@ -9818,7 +11099,7 @@ impl GameState {
         subtype: crate::types::Subtype,
     ) {
         self.mark_continuous_state_dirty();
-        self.choice_store
+        self.choice_store_mut()
             .chosen_basic_land_types
             .insert(permanent_id, subtype);
     }
@@ -9836,7 +11117,7 @@ impl GameState {
     /// Record a chosen land type for a permanent.
     pub fn set_chosen_land_type(&mut self, permanent_id: ObjectId, subtype: crate::types::Subtype) {
         self.mark_continuous_state_dirty();
-        self.choice_store
+        self.choice_store_mut()
             .chosen_land_types
             .insert(permanent_id, subtype);
     }
@@ -9858,7 +11139,7 @@ impl GameState {
         subtype: crate::types::Subtype,
     ) {
         self.mark_continuous_state_dirty();
-        self.choice_store
+        self.choice_store_mut()
             .chosen_creature_types
             .insert(permanent_id, subtype);
     }
@@ -9876,7 +11157,7 @@ impl GameState {
     /// Record a chosen card type for a source object.
     pub fn set_chosen_card_type(&mut self, source_id: ObjectId, card_type: crate::types::CardType) {
         self.mark_continuous_state_dirty();
-        self.choice_store
+        self.choice_store_mut()
             .chosen_card_types
             .insert(source_id, card_type);
     }
@@ -9891,7 +11172,7 @@ impl GameState {
     /// Record a chosen player for a permanent.
     pub fn set_chosen_player(&mut self, permanent_id: ObjectId, player: PlayerId) {
         self.mark_continuous_state_dirty();
-        self.choice_store
+        self.choice_store_mut()
             .chosen_players
             .insert(permanent_id, player);
     }
@@ -9906,7 +11187,7 @@ impl GameState {
     /// Record a chosen named option for a permanent.
     pub fn set_chosen_named_option(&mut self, permanent_id: ObjectId, option: String) {
         self.mark_continuous_state_dirty();
-        self.choice_store
+        self.choice_store_mut()
             .chosen_named_options
             .insert(permanent_id, option);
     }
@@ -9919,7 +11200,7 @@ impl GameState {
     ) {
         let abilities = self
             .object(permanent_id)
-            .map(|object| object.abilities.clone())
+            .map(|object| object.abilities_vec())
             .unwrap_or_default();
         for ability in abilities {
             let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
@@ -9960,7 +11241,7 @@ impl GameState {
                     for granted in &option.abilities {
                         let ability = crate::ability::Ability::static_ability(granted.clone());
                         if !object.abilities.contains(&ability) {
-                            object.abilities.push(ability);
+                            object.abilities_mut().push(ability);
                         }
                     }
                     self.mark_continuous_state_dirty();
@@ -9981,7 +11262,8 @@ impl GameState {
 
     /// Imprint a card onto a permanent (used by Chrome Mox, Isochron Scepter, etc.).
     pub fn imprint_card(&mut self, permanent_id: ObjectId, exiled_card_id: ObjectId) {
-        self.imprinted_cards
+        self.exile_tracking_mut()
+            .imprinted_cards
             .entry(permanent_id)
             .or_default()
             .push(exiled_card_id);
@@ -9989,7 +11271,8 @@ impl GameState {
 
     /// Get the cards imprinted on a permanent.
     pub fn get_imprinted_cards(&self, permanent_id: ObjectId) -> &[ObjectId] {
-        self.imprinted_cards
+        self.exile_tracking
+            .imprinted_cards
             .get(&permanent_id)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
@@ -9997,7 +11280,8 @@ impl GameState {
 
     /// Check if a permanent has any imprinted cards.
     pub fn has_imprinted_cards(&self, permanent_id: ObjectId) -> bool {
-        self.imprinted_cards
+        self.exile_tracking
+            .imprinted_cards
             .get(&permanent_id)
             .map(|v| !v.is_empty())
             .unwrap_or(false)
@@ -10005,12 +11289,18 @@ impl GameState {
 
     /// Clear imprinted cards when a permanent leaves the battlefield.
     pub fn clear_imprinted_cards(&mut self, permanent_id: ObjectId) {
-        self.imprinted_cards.remove(&permanent_id);
+        self.exile_tracking_mut()
+            .imprinted_cards
+            .remove(&permanent_id);
     }
 
     /// Record that `exiled_card_id` was exiled by `source_id`.
     pub fn add_exiled_with_source_link(&mut self, source_id: ObjectId, exiled_card_id: ObjectId) {
-        let entry = self.exiled_with_source.entry(source_id).or_default();
+        let entry = self
+            .exile_tracking_mut()
+            .exiled_with_source
+            .entry(source_id)
+            .or_default();
         if !entry.contains(&exiled_card_id) {
             entry.push(exiled_card_id);
         }
@@ -10023,28 +11313,35 @@ impl GameState {
         return_zone: Zone,
     ) {
         self.add_exiled_with_source_link(source_id, exiled_card_id);
-        self.exiled_with_source_return_zones
+        self.exile_tracking_mut()
+            .exiled_with_source_return_zones
             .entry(source_id)
             .or_default()
             .insert(exiled_card_id, return_zone);
     }
 
     pub fn mark_return_exiled_when_source_leaves(&mut self, source_id: ObjectId) {
-        self.return_exiled_when_source_leaves.insert(source_id);
+        self.exile_tracking_mut()
+            .return_exiled_when_source_leaves
+            .insert(source_id);
     }
 
     pub fn return_exiled_for_source_leave(&mut self, source_id: ObjectId) {
-        if !self.return_exiled_when_source_leaves.remove(&source_id) {
-            return;
-        }
-        let linked = self
-            .exiled_with_source
-            .remove(&source_id)
-            .unwrap_or_default();
-        let return_zones = self
-            .exiled_with_source_return_zones
-            .remove(&source_id)
-            .unwrap_or_default();
+        let (linked, return_zones) = {
+            let tracking = self.exile_tracking_mut();
+            if !tracking.return_exiled_when_source_leaves.remove(&source_id) {
+                return;
+            }
+            let linked = tracking
+                .exiled_with_source
+                .remove(&source_id)
+                .unwrap_or_default();
+            let return_zones = tracking
+                .exiled_with_source_return_zones
+                .remove(&source_id)
+                .unwrap_or_default();
+            (linked, return_zones)
+        };
         for object_id in linked {
             if self
                 .object(object_id)
@@ -10061,10 +11358,27 @@ impl GameState {
 
     /// Get cards exiled by a specific source object ID.
     pub fn get_exiled_with_source_links(&self, source_id: ObjectId) -> &[ObjectId] {
-        self.exiled_with_source
+        self.exile_tracking
+            .exiled_with_source
             .get(&source_id)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
+    }
+
+    pub fn exiled_with_source_entries(&self) -> impl Iterator<Item = (&ObjectId, &Vec<ObjectId>)> {
+        self.exile_tracking.exiled_with_source.iter()
+    }
+
+    pub fn return_exiled_when_source_leaves_ids(&self) -> impl Iterator<Item = &ObjectId> {
+        self.exile_tracking.return_exiled_when_source_leaves.iter()
+    }
+
+    pub fn replace_exiled_with_source_links(&mut self, links: HashMap<ObjectId, Vec<ObjectId>>) {
+        self.exile_tracking_mut().exiled_with_source = links;
+    }
+
+    pub fn replace_return_exiled_when_source_leaves(&mut self, sources: HashSet<ObjectId>) {
+        self.exile_tracking_mut().return_exiled_when_source_leaves = sources;
     }
 
     pub fn transfer_exiled_with_source_links(
@@ -10077,6 +11391,7 @@ impl GameState {
         }
 
         let linked = self
+            .exile_tracking_mut()
             .exiled_with_source
             .remove(&old_source_id)
             .unwrap_or_default();
@@ -10084,25 +11399,37 @@ impl GameState {
             self.add_exiled_with_source_link(new_source_id, exiled_card_id);
         }
 
-        if let Some(return_zones) = self.exiled_with_source_return_zones.remove(&old_source_id) {
-            self.exiled_with_source_return_zones
+        if let Some(return_zones) = self
+            .exile_tracking_mut()
+            .exiled_with_source_return_zones
+            .remove(&old_source_id)
+        {
+            self.exile_tracking_mut()
+                .exiled_with_source_return_zones
                 .entry(new_source_id)
                 .or_default()
                 .extend(return_zones);
         }
 
-        if self.return_exiled_when_source_leaves.remove(&old_source_id) {
-            self.return_exiled_when_source_leaves.insert(new_source_id);
+        if self
+            .exile_tracking_mut()
+            .return_exiled_when_source_leaves
+            .remove(&old_source_id)
+        {
+            self.exile_tracking_mut()
+                .return_exiled_when_source_leaves
+                .insert(new_source_id);
         }
     }
 
     /// Remove an exiled card from all source-link lists.
     pub fn remove_exiled_with_source_link(&mut self, exiled_card_id: ObjectId) {
-        self.exiled_with_source.retain(|_, linked| {
+        let tracking = self.exile_tracking_mut();
+        tracking.exiled_with_source.retain(|_, linked| {
             linked.retain(|id| *id != exiled_card_id);
             !linked.is_empty()
         });
-        self.exiled_with_source_return_zones.retain(|_, zones| {
+        tracking.exiled_with_source_return_zones.retain(|_, zones| {
             zones.remove(&exiled_card_id);
             !zones.is_empty()
         });
@@ -10114,21 +11441,27 @@ impl GameState {
         permanent_id: ObjectId,
         components: Vec<MeldComponentState>,
     ) {
-        let Some(permanent) = self.object(permanent_id) else {
+        let Some(stable_id) = self
+            .object(permanent_id)
+            .map(|permanent| permanent.stable_id)
+        else {
             return;
         };
-        self.melded_permanents
-            .insert(permanent.stable_id, MeldedPermanentState { components });
+        self.commander_tracking_mut()
+            .melded_permanents
+            .insert(stable_id, MeldedPermanentState { components });
     }
 
     /// Get meld metadata for a permanent by its stable ID.
     pub fn melded_permanent(&self, stable_id: StableId) -> Option<&MeldedPermanentState> {
-        self.melded_permanents.get(&stable_id)
+        self.commander_tracking.melded_permanents.get(&stable_id)
     }
 
     /// Remove and return meld metadata for a permanent by stable ID.
     pub fn take_melded_permanent(&mut self, stable_id: StableId) -> Option<MeldedPermanentState> {
-        self.melded_permanents.remove(&stable_id)
+        self.commander_tracking_mut()
+            .melded_permanents
+            .remove(&stable_id)
     }
 
     /// Record the destination objects created by a zone change.
@@ -10172,9 +11505,10 @@ impl GameState {
         // Keep stable order while de-duplicating.
         stable_ids.dedup();
 
-        self.next_linked_exile_group_id = self.next_linked_exile_group_id.saturating_add(1);
-        let group_id = self.next_linked_exile_group_id;
-        self.linked_exile_groups.insert(
+        let tracking = self.exile_tracking_mut();
+        tracking.next_linked_exile_group_id = tracking.next_linked_exile_group_id.saturating_add(1);
+        let group_id = tracking.next_linked_exile_group_id;
+        tracking.linked_exile_groups.insert(
             group_id,
             LinkedExileGroup {
                 stable_ids,
@@ -10187,7 +11521,9 @@ impl GameState {
 
     /// Take (and clear) a linked exile group.
     pub fn take_linked_exile_group(&mut self, group_id: u64) -> Option<LinkedExileGroup> {
-        self.linked_exile_groups.remove(&group_id)
+        self.exile_tracking_mut()
+            .linked_exile_groups
+            .remove(&group_id)
     }
 
     /// Queue a trigger event to be processed by the game loop.
@@ -10454,15 +11790,21 @@ impl GameState {
         }
         self.metadata
             .ui_battlefield_transitions
-            .push(UiBattlefieldTransition { stable_id, kind });
+            .push_back(UiBattlefieldTransition { stable_id, kind });
     }
 
     pub fn take_ui_battlefield_transitions(&mut self) -> Vec<UiBattlefieldTransition> {
         std::mem::take(&mut self.metadata.ui_battlefield_transitions)
+            .into_iter()
+            .collect()
     }
 
-    pub fn ui_zone_transitions(&self) -> &[UiZoneTransition] {
-        &self.metadata.ui_zone_transitions
+    pub fn has_ui_battlefield_transitions(&self) -> bool {
+        !self.metadata.ui_battlefield_transitions.is_empty()
+    }
+
+    pub fn ui_zone_transitions(&self) -> impl Iterator<Item = &UiZoneTransition> {
+        self.metadata.ui_zone_transitions.iter()
     }
 
     fn record_ui_zone_transition(
@@ -10491,15 +11833,16 @@ impl GameState {
         };
         self.metadata.next_ui_zone_transition_id =
             self.metadata.next_ui_zone_transition_id.saturating_add(1);
-        self.metadata.ui_zone_transitions.push(transition);
+        self.metadata.ui_zone_transitions.push_back(transition);
         if self.metadata.ui_zone_transitions.len() > MAX_UI_ZONE_TRANSITIONS {
-            let excess = self.metadata.ui_zone_transitions.len() - MAX_UI_ZONE_TRANSITIONS;
-            self.metadata.ui_zone_transitions.drain(0..excess);
+            while self.metadata.ui_zone_transitions.len() > MAX_UI_ZONE_TRANSITIONS {
+                self.metadata.ui_zone_transitions.pop_front();
+            }
         }
     }
 
-    pub fn ui_effect_events(&self) -> &[UiEffectEvent] {
-        &self.metadata.ui_effect_events
+    pub fn ui_effect_events(&self) -> impl Iterator<Item = &UiEffectEvent> {
+        self.metadata.ui_effect_events.iter()
     }
 
     /// Record a UI-only effect event for the frontend animation layer.
@@ -10527,10 +11870,11 @@ impl GameState {
         };
         self.metadata.next_ui_effect_event_id =
             self.metadata.next_ui_effect_event_id.saturating_add(1);
-        self.metadata.ui_effect_events.push(event);
+        self.metadata.ui_effect_events.push_back(event);
         if self.metadata.ui_effect_events.len() > MAX_UI_EFFECT_EVENTS {
-            let excess = self.metadata.ui_effect_events.len() - MAX_UI_EFFECT_EVENTS;
-            self.metadata.ui_effect_events.drain(0..excess);
+            while self.metadata.ui_effect_events.len() > MAX_UI_EFFECT_EVENTS {
+                self.metadata.ui_effect_events.pop_front();
+            }
         }
     }
 
@@ -10600,6 +11944,478 @@ mod tests {
     }
 
     #[test]
+    fn cloned_hypothetical_state_does_not_burn_real_object_ids() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let first = game.new_object_id();
+        let next_before_clone = game.next_object_id_counter();
+
+        let mut hypothetical = game.clone();
+        assert_eq!(
+            hypothetical.new_object_id(),
+            ObjectId::from_raw(next_before_clone)
+        );
+        assert_eq!(
+            hypothetical.new_object_id(),
+            ObjectId::from_raw(next_before_clone + 1)
+        );
+
+        assert_eq!(game.next_object_id_counter(), next_before_clone);
+        assert_eq!(game.new_object_id(), ObjectId::from_raw(first.0 + 1));
+    }
+
+    #[test]
+    fn cloned_state_shares_battlefield_flags_until_mutation() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let first = ObjectId::from_raw(10_001);
+        let second = ObjectId::from_raw(10_002);
+
+        game.keep_damage_marked(first);
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(
+            &game.battlefield_flags,
+            &hypothetical.battlefield_flags
+        ));
+
+        hypothetical.keep_damage_marked(second);
+
+        assert!(!Arc::ptr_eq(
+            &game.battlefield_flags,
+            &hypothetical.battlefield_flags
+        ));
+        assert!(game.damage_persists_on(first));
+        assert!(!game.damage_persists_on(second));
+        assert!(hypothetical.damage_persists_on(first));
+        assert!(hypothetical.damage_persists_on(second));
+    }
+
+    #[test]
+    fn cloned_state_cows_regeneration_shields() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let object = ObjectId::from_raw(10_003);
+
+        game.add_regeneration_shield(object, 2);
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(
+            &game.battlefield_flags,
+            &hypothetical.battlefield_flags
+        ));
+        assert!(hypothetical.use_regeneration_shield(object));
+
+        assert!(!Arc::ptr_eq(
+            &game.battlefield_flags,
+            &hypothetical.battlefield_flags
+        ));
+        assert_eq!(game.regeneration_shield_count(object), 2);
+        assert_eq!(game.regenerated_this_turn_count(object), 0);
+        assert_eq!(hypothetical.regeneration_shield_count(object), 1);
+        assert_eq!(hypothetical.regenerated_this_turn_count(object), 1);
+    }
+
+    #[test]
+    fn cloned_state_cows_hot_battlefield_maps() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let tapped = ObjectId::from_raw(10_021);
+        let damaged = ObjectId::from_raw(10_022);
+        let summoning_sick = ObjectId::from_raw(10_023);
+        let monstrous = ObjectId::from_raw(10_024);
+        let suspected = ObjectId::from_raw(10_025);
+
+        game.tap(tapped);
+        game.mark_damage(damaged, 2);
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(
+            &game.battlefield_flags,
+            &hypothetical.battlefield_flags
+        ));
+
+        hypothetical.set_summoning_sick(summoning_sick);
+        hypothetical.mark_damage(damaged, 3);
+        hypothetical.set_monstrous(monstrous);
+        hypothetical.set_suspected(suspected);
+
+        assert!(!Arc::ptr_eq(
+            &game.battlefield_flags,
+            &hypothetical.battlefield_flags
+        ));
+        assert!(game.is_tapped(tapped));
+        assert_eq!(game.damage_on(damaged), 2);
+        assert!(!game.is_summoning_sick(summoning_sick));
+        assert!(!game.is_monstrous(monstrous));
+        assert!(!game.is_suspected(suspected));
+
+        assert!(hypothetical.is_tapped(tapped));
+        assert_eq!(hypothetical.damage_on(damaged), 5);
+        assert!(hypothetical.is_summoning_sick(summoning_sick));
+        assert!(hypothetical.is_monstrous(monstrous));
+        assert!(hypothetical.is_suspected(suspected));
+    }
+
+    #[test]
+    fn cloned_state_cows_extended_battlefield_flags() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let renowned = ObjectId::from_raw(10_004);
+        let face_down = ObjectId::from_raw(10_005);
+        let transformed = ObjectId::from_raw(10_006);
+        let phased = ObjectId::from_raw(10_007);
+
+        game.set_renowned(renowned);
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(
+            &game.battlefield_flags,
+            &hypothetical.battlefield_flags
+        ));
+
+        hypothetical.set_face_down(face_down);
+        hypothetical.set_manifested(face_down);
+        hypothetical.mark_transformed(transformed);
+        hypothetical.phase_out(phased);
+
+        assert!(!Arc::ptr_eq(
+            &game.battlefield_flags,
+            &hypothetical.battlefield_flags
+        ));
+        assert!(game.is_renowned(renowned));
+        assert!(!game.is_face_down(face_down));
+        assert!(!game.is_manifested(face_down));
+        assert_eq!(game.transform_count(transformed), 0);
+        assert!(!game.is_phased_out(phased));
+
+        assert!(hypothetical.is_renowned(renowned));
+        assert!(hypothetical.is_face_down(face_down));
+        assert!(hypothetical.is_manifested(face_down));
+        assert_eq!(hypothetical.transform_count(transformed), 1);
+        assert!(hypothetical.is_phased_out(phased));
+        assert_eq!(
+            hypothetical.phased_out_ids().collect::<Vec<_>>(),
+            vec![phased]
+        );
+    }
+
+    #[test]
+    fn cloned_state_cows_cast_permission_flags() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let madness = ObjectId::from_raw(10_008);
+        let foretold = ObjectId::from_raw(10_009);
+        let adventure = ObjectId::from_raw(10_010);
+
+        game.set_madness_exiled(madness);
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(
+            &game.cast_permission_flags,
+            &hypothetical.cast_permission_flags
+        ));
+
+        hypothetical.set_foretold(foretold);
+        hypothetical.set_adventure_exiled(adventure);
+
+        assert!(!Arc::ptr_eq(
+            &game.cast_permission_flags,
+            &hypothetical.cast_permission_flags
+        ));
+        assert!(game.is_madness_exiled(madness));
+        assert!(!game.is_foretold(foretold));
+        assert!(!game.is_adventure_exiled(adventure));
+        assert!(hypothetical.is_madness_exiled(madness));
+        assert!(hypothetical.is_foretold(foretold));
+        assert!(hypothetical.is_adventure_exiled(adventure));
+    }
+
+    #[test]
+    fn cloned_state_cows_exile_tracking() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(10_011);
+        let exiled = ObjectId::from_raw(10_012);
+        let plotted = ObjectId::from_raw(10_013);
+        let imprinted = ObjectId::from_raw(10_014);
+
+        game.add_exiled_with_source_link(source, exiled);
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(
+            &game.exile_tracking,
+            &hypothetical.exile_tracking
+        ));
+
+        hypothetical.set_plotted_on_turn(plotted, alice, 7);
+        hypothetical.imprint_card(source, imprinted);
+        hypothetical.grant_face_down_exile_view(exiled, alice);
+        hypothetical.mark_return_exiled_when_source_leaves(source);
+        let group_id = hypothetical.create_linked_exile_group(
+            vec![StableId::from(source)],
+            Zone::Battlefield,
+            false,
+        );
+
+        assert!(!Arc::ptr_eq(
+            &game.exile_tracking,
+            &hypothetical.exile_tracking
+        ));
+        assert_eq!(game.get_exiled_with_source_links(source), &[exiled]);
+        assert_eq!(game.plotted_by(plotted), None);
+        assert!(!game.has_imprinted_cards(source));
+        assert!(!game.can_player_look_at_face_down_exiled_card(exiled, alice));
+        assert_eq!(
+            game.return_exiled_when_source_leaves_ids()
+                .copied()
+                .collect::<Vec<_>>(),
+            Vec::<ObjectId>::new()
+        );
+
+        assert_eq!(hypothetical.get_exiled_with_source_links(source), &[exiled]);
+        assert_eq!(hypothetical.plotted_by(plotted), Some(alice));
+        assert_eq!(hypothetical.plotted_turn(plotted), Some(7));
+        assert_eq!(hypothetical.get_imprinted_cards(source), &[imprinted]);
+        assert!(hypothetical.can_player_look_at_face_down_exiled_card(exiled, alice));
+        assert_eq!(
+            hypothetical
+                .return_exiled_when_source_leaves_ids()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![source]
+        );
+        assert!(hypothetical.take_linked_exile_group(group_id).is_some());
+    }
+
+    #[test]
+    fn cloned_state_cows_object_annotations() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(10_015);
+        let other_source = ObjectId::from_raw(10_016);
+
+        assert_eq!(game.note_life_total_for_source(source, alice), Some(20));
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(
+            &game.object_annotations,
+            &hypothetical.object_annotations
+        ));
+
+        assert_eq!(
+            hypothetical.note_life_total_for_source(other_source, alice),
+            Some(20)
+        );
+
+        assert!(!Arc::ptr_eq(
+            &game.object_annotations,
+            &hypothetical.object_annotations
+        ));
+        assert_eq!(game.noted_life_total_for_source(source), Some(20));
+        assert_eq!(game.noted_life_total_for_source(other_source), None);
+        assert_eq!(hypothetical.noted_life_total_for_source(source), Some(20));
+        assert_eq!(
+            hypothetical.noted_life_total_for_source(other_source),
+            Some(20)
+        );
+    }
+
+    #[test]
+    fn cloned_state_cows_commander_tracking() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let commander = ObjectId::from_raw(10_017);
+
+        game.set_as_commander(commander, alice);
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(
+            &game.commander_tracking,
+            &hypothetical.commander_tracking
+        ));
+
+        hypothetical.record_commander_cast_from_command_zone(commander);
+        hypothetical.decline_commander_command_zone_move(commander);
+
+        assert!(!Arc::ptr_eq(
+            &game.commander_tracking,
+            &hypothetical.commander_tracking
+        ));
+        assert!(game.commander_objects().contains(&commander));
+        assert!(hypothetical.commander_objects().contains(&commander));
+        assert_eq!(game.commander_cast_count(commander), 0);
+        assert!(!game.commander_command_zone_move_declined(commander));
+        assert_eq!(hypothetical.commander_cast_count(commander), 1);
+        assert!(hypothetical.commander_command_zone_move_declined(commander));
+    }
+
+    #[test]
+    fn cloned_state_cows_combat_transients() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = ObjectId::from_raw(10_018);
+        let soulbond_left = ObjectId::from_raw(10_019);
+        let soulbond_right = ObjectId::from_raw(10_020);
+
+        game.record_ninjutsu_attack_target(source, crate::combat_state::AttackTarget::Player(bob));
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(
+            &game.combat_transients,
+            &hypothetical.combat_transients
+        ));
+
+        hypothetical
+            .record_sneak_attack_target(source, crate::combat_state::AttackTarget::Player(bob));
+        hypothetical.record_combat_damage_player_batch_hit(source, bob);
+        hypothetical.mark_speed_increase_triggered_this_turn(alice);
+        hypothetical
+            .combat_transients_mut()
+            .soulbond_pairs
+            .insert(soulbond_left, soulbond_right);
+
+        assert!(!Arc::ptr_eq(
+            &game.combat_transients,
+            &hypothetical.combat_transients
+        ));
+        assert_eq!(
+            game.last_ninjutsu_attack_target(source).cloned(),
+            Some(crate::combat_state::AttackTarget::Player(bob))
+        );
+        assert_eq!(game.last_sneak_attack_target(source), None);
+        assert!(game.combat_damage_player_batch_hits().is_empty());
+        assert!(!game.speed_increase_triggered_this_turn(alice));
+        assert!(!game.soulbond_pairs().contains_key(&soulbond_left));
+
+        assert_eq!(
+            hypothetical.last_ninjutsu_attack_target(source).cloned(),
+            Some(crate::combat_state::AttackTarget::Player(bob))
+        );
+        assert_eq!(
+            hypothetical.last_sneak_attack_target(source).cloned(),
+            Some(crate::combat_state::AttackTarget::Player(bob))
+        );
+        assert_eq!(
+            hypothetical.combat_damage_player_batch_hits(),
+            &[(source, bob)]
+        );
+        assert!(hypothetical.speed_increase_triggered_this_turn(alice));
+        assert_eq!(
+            hypothetical.soulbond_pairs().get(&soulbond_left).copied(),
+            Some(soulbond_right)
+        );
+    }
+
+    #[test]
+    fn cloned_state_cows_auxiliary_tracking() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        game.set_draft_noted_highest_number(alice, "Cogwork Librarian", 1);
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(
+            &game.auxiliary_tracking,
+            &hypothetical.auxiliary_tracking
+        ));
+
+        hypothetical.set_draft_noted_highest_number(alice, "Lore Seeker", 2);
+        hypothetical.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            7,
+            "commitment".to_string(),
+        );
+        hypothetical.set_active_dungeon(
+            alice,
+            crate::dungeon::ActiveDungeonProgress::new("Lost Mine of Phandelver", "Cave Entrance"),
+        );
+        hypothetical.record_completed_dungeon(alice, "Tomb of Annihilation");
+        hypothetical.add_player_control(
+            bob,
+            alice,
+            PlayerControlStart::Immediate,
+            PlayerControlDuration::UntilEndOfTurn,
+            None,
+        );
+        hypothetical.add_scoped_player_control(bob, alice, None);
+        hypothetical.add_combat_choice_control(bob, true, false);
+
+        assert!(!Arc::ptr_eq(
+            &game.auxiliary_tracking,
+            &hypothetical.auxiliary_tracking
+        ));
+        assert_eq!(
+            game.draft_noted_highest_number(alice, "Cogwork Librarian"),
+            1
+        );
+        assert_eq!(game.draft_noted_highest_number(alice, "Lore Seeker"), 0);
+        assert_eq!(game.hidden_card_entries().count(), 0);
+        assert!(game.active_dungeon(alice).is_none());
+        assert!(game.completed_dungeons(alice).is_empty());
+        assert_eq!(game.controlling_player_for(alice), alice);
+        assert_eq!(game.combat_choice_controller_for_attackers(), None);
+
+        assert_eq!(
+            hypothetical.draft_noted_highest_number(alice, "Cogwork Librarian"),
+            1
+        );
+        assert_eq!(
+            hypothetical.draft_noted_highest_number(alice, "Lore Seeker"),
+            2
+        );
+        assert_eq!(hypothetical.hidden_card_entries().count(), 1);
+        assert_eq!(
+            hypothetical
+                .active_dungeon(alice)
+                .map(|progress| progress.room_name.as_str()),
+            Some("Cave Entrance")
+        );
+        assert_eq!(
+            hypothetical.completed_dungeons(alice),
+            &["Tomb of Annihilation".to_string()]
+        );
+        assert_eq!(hypothetical.controlling_player_for(alice), bob);
+        assert_eq!(
+            hypothetical.combat_choice_controller_for_attackers(),
+            Some(bob)
+        );
+    }
+
+    #[test]
+    fn cloned_state_cows_choice_store() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(10_026);
+
+        game.set_chosen_color(source, crate::color::Color::Blue);
+        let mut hypothetical = game.clone();
+
+        assert!(Arc::ptr_eq(&game.choice_store, &hypothetical.choice_store));
+
+        hypothetical.set_chosen_player(source, alice);
+        hypothetical.set_chosen_card_type(source, CardType::Creature);
+        hypothetical.set_chosen_named_option(source, "left".to_string());
+        hypothetical.record_ability_mode_choice(source, 0, 1, false);
+
+        assert!(!Arc::ptr_eq(&game.choice_store, &hypothetical.choice_store));
+        assert_eq!(game.chosen_color(source), Some(crate::color::Color::Blue));
+        assert_eq!(game.chosen_player(source), None);
+        assert_eq!(game.chosen_card_type(source), None);
+        assert_eq!(game.chosen_named_option(source), None);
+        assert!(!game.ability_mode_was_chosen(source, 0, 1, false));
+
+        assert_eq!(
+            hypothetical.chosen_color(source),
+            Some(crate::color::Color::Blue)
+        );
+        assert_eq!(hypothetical.chosen_player(source), Some(alice));
+        assert_eq!(
+            hypothetical.chosen_card_type(source),
+            Some(CardType::Creature)
+        );
+        assert_eq!(hypothetical.chosen_named_option(source), Some("left"));
+        assert!(hypothetical.ability_mode_was_chosen(source, 0, 1, false));
+    }
+
+    #[test]
     fn crypto_audit_journal_records_hidden_library_to_hand_move() {
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = PlayerId::from_index(0);
@@ -10654,7 +12470,7 @@ mod tests {
             .move_object_by_effect(stack_id, Zone::Graveyard)
             .expect("spell should move to graveyard");
 
-        let transitions = game.ui_zone_transitions();
+        let transitions: Vec<_> = game.ui_zone_transitions().collect();
         assert!(
             transitions.iter().any(|transition| {
                 transition.old_object_id == hand_id

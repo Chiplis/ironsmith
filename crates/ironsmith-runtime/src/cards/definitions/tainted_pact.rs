@@ -192,7 +192,7 @@ mod tests {
             .expect("alice exists")
             .hand
             .iter()
-            .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+            .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
             .collect();
         assert!(
             hand_names.iter().any(|name| name == "Second Card"),
@@ -202,7 +202,7 @@ mod tests {
         let exile_names: Vec<_> = game
             .exile
             .iter()
-            .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+            .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
             .collect();
         assert!(
             exile_names.iter().any(|name| name == "First Card"),

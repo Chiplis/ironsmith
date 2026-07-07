@@ -521,7 +521,7 @@ fn reprocess_sacrifices_selected_controlled_permanents_and_draws_that_many() {
     let graveyard_names = game
         .objects_in_zone(Zone::Graveyard)
         .iter()
-        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
         .collect::<Vec<_>>();
 
     assert!(
@@ -690,7 +690,7 @@ fn necromancers_covenant_exiles_target_graveyard_creatures_and_creates_that_many
     let exiled_names = game
         .objects_in_zone(Zone::Exile)
         .iter()
-        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
         .collect::<Vec<_>>();
     assert!(
         exiled_names
@@ -5770,7 +5770,7 @@ fn open_the_way_x_choice_is_capped_by_players_in_game() {
 
     let open_the_way = open_the_way_definition();
     let spell_id = game.create_object_from_definition(&open_the_way, alice, Zone::Stack);
-    let mana_cost = game.object(spell_id).unwrap().mana_cost.clone();
+    let mana_cost = game.object(spell_id).unwrap().mana_cost_owned();
 
     let (needs_x, _min_x, max_x) = compute_spell_cast_x_bounds(
         &game,
@@ -8322,7 +8322,7 @@ fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell() {
     );
     game.object_mut(source_id)
         .expect("source permanent should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::grants(grant_spec)));
 
     let sacrifice = CardBuilder::new(CardId::from_raw(7013), "Air Elemental")
@@ -11964,7 +11964,7 @@ fn all_hallows_eve_exiles_with_counters_and_returns_graveyard_creatures_after_co
     let spell_id = game.create_object_from_definition(&all_hallows_eve, alice, Zone::Stack);
     let (spell_stable_id, spell_name) = game
         .object(spell_id)
-        .map(|object| (object.stable_id, object.name.clone()))
+        .map(|object| (object.stable_id, object.name.to_string()))
         .expect("spell should exist on stack");
     game.push_to_stack(
         StackEntry::new(spell_id, alice).with_source_info(spell_stable_id, spell_name),
@@ -13785,7 +13785,7 @@ fn test_triggered_mana_ability_resolves_immediately_without_stack() {
         .build();
     let swamp_id = game.create_object_from_card(&swamp_card, alice, Zone::Battlefield);
     if let Some(swamp) = game.object_mut(swamp_id) {
-        swamp.abilities.push(Ability::mana(
+        swamp.abilities_mut().push(Ability::mana(
             crate::cost::TotalCost::free(),
             vec![crate::mana::ManaSymbol::Black],
         ));
@@ -13796,7 +13796,7 @@ fn test_triggered_mana_ability_resolves_immediately_without_stack() {
         .build();
     let enchantment_id = game.create_object_from_card(&enchantment_card, alice, Zone::Battlefield);
     if let Some(enchantment) = game.object_mut(enchantment_id) {
-        enchantment.abilities.push(Ability::triggered(
+        enchantment.abilities_mut().push(Ability::triggered(
             Trigger::player_taps_for_mana(
                 crate::target::PlayerFilter::You,
                 crate::filter::ObjectFilter::land().with_subtype(crate::types::Subtype::Swamp),
@@ -13849,7 +13849,7 @@ fn test_mana_added_event_triggers_mana_ability_immediately() {
         .build();
     let echo_id = game.create_object_from_card(&echo_card, alice, Zone::Battlefield);
     if let Some(echo) = game.object_mut(echo_id) {
-        echo.abilities.push(Ability::triggered(
+        echo.abilities_mut().push(Ability::triggered(
             Trigger::mana_added(crate::target::PlayerFilter::You),
             vec![Effect::add_mana_player(
                 vec![crate::mana::ManaSymbol::Black],
@@ -13901,7 +13901,7 @@ fn test_triggered_mana_ability_target_requirement_uses_stack() {
         .build();
     let echo_id = game.create_object_from_card(&echo_card, alice, Zone::Battlefield);
     if let Some(echo) = game.object_mut(echo_id) {
-        echo.abilities.push(Ability {
+        echo.abilities_mut().push(Ability {
             kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: Trigger::mana_added(crate::target::PlayerFilter::You),
                 effects: vec![Effect::add_mana_player(
@@ -13959,7 +13959,7 @@ fn test_triggered_mana_ability_ignores_non_target_choices() {
         .build();
     let echo_id = game.create_object_from_card(&echo_card, alice, Zone::Battlefield);
     if let Some(echo) = game.object_mut(echo_id) {
-        echo.abilities.push(Ability {
+        echo.abilities_mut().push(Ability {
             kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: Trigger::mana_added(crate::target::PlayerFilter::You),
                 effects: vec![Effect::add_mana_player(
@@ -14008,7 +14008,7 @@ fn test_activated_mana_ability_emits_mana_added_event_for_triggers() {
         .build();
     let land_id = game.create_object_from_card(&land_card, alice, Zone::Battlefield);
     if let Some(land) = game.object_mut(land_id) {
-        land.abilities.push(Ability::mana(
+        land.abilities_mut().push(Ability::mana(
             crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
             vec![crate::mana::ManaSymbol::Black],
         ));
@@ -14019,7 +14019,7 @@ fn test_activated_mana_ability_emits_mana_added_event_for_triggers() {
         .build();
     let echo_id = game.create_object_from_card(&echo_card, alice, Zone::Battlefield);
     if let Some(echo) = game.object_mut(echo_id) {
-        echo.abilities.push(Ability::triggered(
+        echo.abilities_mut().push(Ability::triggered(
             Trigger::mana_added(crate::target::PlayerFilter::You),
             vec![Effect::add_mana_player(
                 vec![crate::mana::ManaSymbol::Green],
@@ -14074,7 +14074,7 @@ fn test_non_mana_tap_for_mana_trigger_still_uses_stack() {
         .build();
     let swamp_id = game.create_object_from_card(&swamp_card, alice, Zone::Battlefield);
     if let Some(swamp) = game.object_mut(swamp_id) {
-        swamp.abilities.push(Ability::mana(
+        swamp.abilities_mut().push(Ability::mana(
             crate::cost::TotalCost::free(),
             vec![crate::mana::ManaSymbol::Black],
         ));
@@ -14085,7 +14085,7 @@ fn test_non_mana_tap_for_mana_trigger_still_uses_stack() {
         .build();
     let enchantment_id = game.create_object_from_card(&enchantment_card, alice, Zone::Battlefield);
     if let Some(enchantment) = game.object_mut(enchantment_id) {
-        enchantment.abilities.push(Ability::triggered(
+        enchantment.abilities_mut().push(Ability::triggered(
             Trigger::player_taps_for_mana(
                 crate::target::PlayerFilter::Any,
                 crate::filter::ObjectFilter::land(),
@@ -14168,7 +14168,7 @@ fn emrakul_cast_trigger_prompts_for_opponent_in_four_player_game() {
         game.create_object_from_definition(&emrakul_the_promised_end(), alice, Zone::Stack);
     let (emrakul_stable_id, emrakul_name) = game
         .object(emrakul_id)
-        .map(|object| (object.stable_id, object.name.clone()))
+        .map(|object| (object.stable_id, object.name.to_string()))
         .expect("Emrakul spell object should exist");
     game.push_to_stack(
         StackEntry::new(emrakul_id, alice).with_source_info(emrakul_stable_id, emrakul_name),
@@ -14270,7 +14270,7 @@ fn emrakul_cast_trigger_prompt_does_not_autofill_or_stack_before_choice() {
         game.create_object_from_definition(&emrakul_the_promised_end(), alice, Zone::Stack);
     let (emrakul_stable_id, emrakul_name) = game
         .object(emrakul_id)
-        .map(|object| (object.stable_id, object.name.clone()))
+        .map(|object| (object.stable_id, object.name.to_string()))
         .expect("Emrakul spell object should exist");
     game.push_to_stack(
         StackEntry::new(emrakul_id, alice).with_source_info(emrakul_stable_id, emrakul_name),
@@ -15240,7 +15240,7 @@ fn test_pending_zone_change_still_drives_non_delayed_triggered_abilities() {
 
     if let Some(stangg) = game.object_mut(stangg_id) {
         let filter = ObjectFilter::default().token().named("Stangg Twin");
-        stangg.abilities.push(Ability::triggered(
+        stangg.abilities_mut().push(Ability::triggered(
             Trigger::leaves_battlefield(filter),
             vec![Effect::sacrifice_source()],
         ));
@@ -16691,7 +16691,7 @@ fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
         Zone::Battlefield,
     );
     if let Some(obj) = game.object_mut(mortuary_id) {
-        obj.abilities.push(Ability::triggered(
+        obj.abilities_mut().push(Ability::triggered(
             Trigger::dies(crate::target::ObjectFilter::creature().owned_by(PlayerFilter::You)),
             crate::resolution::ResolutionProgram::from_effects(vec![
                 Effect::tag_triggering_object("triggering"),
@@ -16764,7 +16764,7 @@ fn destroy_all_batches_dies_events_for_sources_destroyed_at_the_same_time() {
 
     let harvester = create_creature(&mut game, "Harvester Probe", alice, 5, 5);
     if let Some(obj) = game.object_mut(harvester) {
-        obj.abilities.push(Ability::triggered(
+        obj.abilities_mut().push(Ability::triggered(
             Trigger::dies(crate::target::ObjectFilter::creature().nontoken().other()),
             crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
         ));
@@ -16793,7 +16793,7 @@ fn simultaneous_sba_deaths_use_source_lki_for_all_dying_objects() {
     let necromancer = create_creature(&mut game, "Necromancer Probe", alice, 2, 2);
     if let Some(obj) = game.object_mut(necromancer) {
         obj.subtypes.push(Subtype::Human);
-        obj.abilities.push(Ability::triggered(
+        obj.abilities_mut().push(Ability::triggered(
             Trigger::either(
                 Trigger::this_dies(),
                 Trigger::dies(
@@ -16991,11 +16991,11 @@ fn test_turn_face_up_action_puts_turned_face_up_trigger_on_stack() {
     let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
 
     if let Some(obj) = game.object_mut(creature_id) {
-        obj.abilities
+        obj.abilities_mut()
             .push(Ability::static_ability(StaticAbility::morph(
                 crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Green]])),
             )));
-        obj.abilities.push(Ability::triggered(
+        obj.abilities_mut().push(Ability::triggered(
             Trigger::this_is_turned_face_up(),
             vec![Effect::draw(1)],
         ));
@@ -17415,7 +17415,7 @@ fn roshan_hidden_magister_face_up_trigger_only_for_your_permanents() {
     let bob_morph_id = game.create_object_from_card(&morph, bob, Zone::Battlefield);
     for id in [alice_morph_id, bob_morph_id] {
         if let Some(obj) = game.object_mut(id) {
-            obj.abilities
+            obj.abilities_mut()
                 .push(Ability::static_ability(StaticAbility::morph(
                     crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
                         ManaSymbol::Green,
@@ -17517,7 +17517,7 @@ fn test_experiment_twelve_puts_counters_when_itself_is_turned_face_up() {
     let experiment_id = game.create_object_from_definition(&experiment, alice, Zone::Battlefield);
     game.object_mut(experiment_id)
         .expect("Experiment Twelve permanent should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::morph(
             crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Green]])),
         )));
@@ -17591,7 +17591,7 @@ fn test_experiment_twelve_puts_counters_on_another_turned_face_up_creature() {
     let morph_id = game.create_object_from_definition(&morph_probe, alice, Zone::Battlefield);
     game.object_mut(morph_id)
         .expect("morph target permanent should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::morph(
             crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Green]])),
         )));
@@ -18146,7 +18146,7 @@ fn joint_assault_is_castable_with_creature_target_and_green_mana() {
             &game,
             spell_object,
             spell,
-            spell_object.spell_effect.as_ref(),
+            spell_object.spell_effect.as_deref(),
             None,
             alice,
             &view,
@@ -18613,7 +18613,7 @@ fn run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornitho
         .calculated_characteristics(ornithopter_id)
         .expect("Ornithopter should still have calculated characteristics after the exchange");
     assert_eq!(
-        ornithopter_chars.compiled_card_text,
+        ornithopter_chars.compiled_card_text.as_ref(),
         crate::compiled_text::debug_compiled_lines(&myr_def).join("\n"),
         "Ornithopter should now carry Myr Moonvessel's text box"
     );
@@ -18628,7 +18628,7 @@ fn run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornitho
     let sacrifice_id = game.create_object_from_definition(&sacrifice_def, alice, Zone::Stack);
     let (sacrifice_stable_id, sacrifice_name) = game
         .object(sacrifice_id)
-        .map(|object| (object.stable_id, object.name.clone()))
+        .map(|object| (object.stable_id, object.name.to_string()))
         .expect("Sacrifice spell object should exist");
     game.push_to_stack(
         StackEntry::new(sacrifice_id, alice)
@@ -18907,12 +18907,12 @@ fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter
         .expect("Yawgmoth should still have calculated characteristics");
 
     assert_eq!(
-        ornithopter_chars.compiled_card_text,
+        ornithopter_chars.compiled_card_text.as_ref(),
         crate::compiled_text::debug_compiled_lines(&fixture.yawgmoth).join("\n"),
         "Ornithopter should pick up Yawgmoth's text box after the exchange"
     );
     assert_eq!(
-        yawgmoth_chars.compiled_card_text,
+        yawgmoth_chars.compiled_card_text.as_ref(),
         crate::compiled_text::debug_compiled_lines(&fixture.ornithopter).join("\n"),
         "Yawgmoth should pick up Ornithopter's text box after the exchange"
     );
@@ -20337,7 +20337,7 @@ fn stack_spell_with_granted_static_ability_still_executes_spell_effect() {
     let bolt_id = game.create_object_from_definition(&bolt, alice, Zone::Stack);
     game.object_mut(bolt_id)
         .expect("spell should be on the stack")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(
             StaticAbility::cant_be_countered_ability(),
         ));
@@ -21351,7 +21351,7 @@ fn protected_stack_spell_still_resolves_after_failed_counterspell() {
     let bolt_id = game.create_object_from_definition(&bolt, alice, Zone::Stack);
     game.object_mut(bolt_id)
         .expect("spell should be on the stack")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(
             StaticAbility::cant_be_countered_ability(),
         ));
@@ -21411,7 +21411,7 @@ fn priority_loop_resolves_failed_counter_then_protected_spell_effect() {
     let bolt_id = game.create_object_from_definition(&bolt, alice, Zone::Stack);
     game.object_mut(bolt_id)
         .expect("spell should be on the stack")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(
             StaticAbility::cant_be_countered_ability(),
         ));
@@ -22376,7 +22376,7 @@ fn test_apply_blocker_declarations_allows_blocking_multiple_attackers_with_abili
     // Grant: "can block an additional creature each combat" so it can block two attackers.
     game.object_mut(blocker)
         .expect("blocker exists")
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(1)),
             functional_zones: vec![Zone::Battlefield],
@@ -22418,7 +22418,7 @@ fn watcher_in_the_web_can_block_eight_attackers() {
 
     game.object_mut(watcher)
         .expect("watcher exists")
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(7)),
             functional_zones: vec![Zone::Battlefield],
@@ -22453,7 +22453,7 @@ fn watcher_in_the_web_cannot_block_nine_attackers() {
 
     game.object_mut(watcher)
         .expect("watcher exists")
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(7)),
             functional_zones: vec![Zone::Battlefield],
@@ -22497,7 +22497,7 @@ fn test_apply_blocker_declarations_enforces_maximum_blockers() {
     // "Can't be blocked by more than one creature."
     game.object_mut(attacker)
         .expect("attacker exists")
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Static(StaticAbility::cant_be_blocked_by_more_than(1)),
             functional_zones: vec![Zone::Battlefield],
@@ -22774,7 +22774,7 @@ fn test_marhault_elsdragon_rampage_buffs_for_blockers_beyond_first() {
     let marhault_id = game.create_object_from_card(&marhault_card, alice, Zone::Battlefield);
     game.object_mut(marhault_id)
         .expect("Marhault should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::triggered(
             Trigger::this_becomes_blocked(),
             vec![Effect::pump(
@@ -24999,7 +24999,7 @@ fn create_delayed_reanimator(game: &mut GameState, owner: PlayerId, name: &str) 
         .build();
     let id = game.create_object_from_card(&card, owner, Zone::Battlefield);
     if let Some(obj) = game.object_mut(id) {
-        obj.abilities.push(Ability::triggered(
+        obj.abilities_mut().push(Ability::triggered(
             Trigger::this_dies(),
             vec![
                 Effect::tag_triggering_object("triggering"),
@@ -25706,10 +25706,12 @@ fn resolving_spell_can_insert_additional_combat_and_main_phases() {
         .card_types(vec![CardType::Sorcery])
         .build();
     let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
-    game.object_mut(spell_id).expect("spell").spell_effect =
-        Some(crate::resolution::ResolutionProgram::from_effects(vec![
-            Effect::new(crate::effects::AdditionalPhasesEffect::combat_then_main()),
-        ]));
+    game.object_mut(spell_id).expect("spell").spell_effect = Some(
+        crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+            crate::effects::AdditionalPhasesEffect::combat_then_main(),
+        )])
+        .into(),
+    );
 
     game.push_to_stack(StackEntry::new(spell_id, alice));
     resolve_stack_entry(&mut game).expect("spell should resolve");
@@ -25746,8 +25748,8 @@ fn resolving_spell_with_tag_and_untap_then_additional_phases_runs_all_effects() 
         card_types: vec![CardType::Creature],
         ..Default::default()
     };
-    game.object_mut(spell_id).expect("spell").spell_effect =
-        Some(crate::resolution::ResolutionProgram::from_effects(vec![
+    game.object_mut(spell_id).expect("spell").spell_effect = Some(
+        crate::resolution::ResolutionProgram::from_effects(vec![
             Effect::new(crate::effects::TagMatchingObjectsEffect::new(
                 filter.clone(),
                 crate::tag::TagKey::from("untapped_0"),
@@ -25756,7 +25758,9 @@ fn resolving_spell_with_tag_and_untap_then_additional_phases_runs_all_effects() 
                 crate::target::ChooseSpec::All(filter),
             )),
             Effect::new(crate::effects::AdditionalPhasesEffect::combat_then_main()),
-        ]));
+        ])
+        .into(),
+    );
 
     game.push_to_stack(StackEntry::new(spell_id, alice));
     resolve_stack_entry(&mut game).expect("spell should resolve");
@@ -25980,7 +25984,7 @@ fn test_echo_trigger_ignores_source_after_zone_change() {
         })
         .expect("echo trigger effects should exist");
     let entry = StackEntry::ability(original_id, alice, echo_effects)
-        .with_source_info(source_snapshot.stable_id, source_snapshot.name.clone())
+        .with_source_info(source_snapshot.stable_id, source_snapshot.name.to_string())
         .with_source_snapshot(source_snapshot);
 
     let exiled_id = game
@@ -26501,10 +26505,7 @@ fn sakashimas_student_ninjutsu_cost_returns_unblocked_attacker_and_records_targe
         "returned attacker should be removed from combat"
     );
     assert_eq!(
-        game.ninjutsu_attack_targets
-            .get(&student_id)
-            .and_then(|targets| targets.last())
-            .cloned(),
+        game.last_ninjutsu_attack_target(student_id).cloned(),
         Some(AttackTarget::Player(bob)),
         "ninjutsu cost should remember the original attack target for the entering Student"
     );
@@ -26529,8 +26530,7 @@ fn sakashimas_student_ninjutsu_enters_tapped_attacking_as_copy_with_added_ninja_
 
     let student = sakashimas_student_test_definition();
     let student_id = game.create_object_from_definition(&student, alice, Zone::Hand);
-    game.ninjutsu_attack_targets
-        .insert(student_id, vec![AttackTarget::Player(bob)]);
+    game.record_ninjutsu_attack_target(student_id, AttackTarget::Player(bob));
     game.combat = Some(crate::combat_state::CombatState::default());
     game.turn.phase = Phase::Combat;
     game.turn.step = Some(crate::game_state::Step::CombatDamage);
@@ -26968,7 +26968,7 @@ fn test_resolution_target_validation_uses_source_lki_for_protection() {
     let protected_id = create_creature(&mut game, "Protected Creature", bob, 2, 2);
     game.object_mut(protected_id)
         .expect("protected creature should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::protection(
             crate::ability::ProtectionFrom::Color(crate::color::ColorSet::RED),
         )));
@@ -27064,7 +27064,7 @@ fn emrakul_the_world_anew_cast_trigger_gains_control_of_target_players_creatures
     let emrakul_id = game.create_object_from_definition(&emrakul, alice, Zone::Stack);
     let (emrakul_stable_id, emrakul_name) = game
         .object(emrakul_id)
-        .map(|object| (object.stable_id, object.name.clone()))
+        .map(|object| (object.stable_id, object.name.to_string()))
         .expect("Emrakul spell should exist on the stack");
     game.push_to_stack(
         StackEntry::new(emrakul_id, alice).with_source_info(emrakul_stable_id, emrakul_name),
@@ -27254,7 +27254,7 @@ fn test_stack_entry_captures_source_lki_when_ability_source_leaves_before_resolu
     let protected_id = create_creature(&mut game, "Protected Creature", bob, 2, 2);
     game.object_mut(protected_id)
         .expect("protected creature should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::protection(
             crate::ability::ProtectionFrom::Color(crate::color::ColorSet::RED),
         )));
@@ -27299,7 +27299,7 @@ fn test_resolution_uses_source_lki_from_when_source_left_expected_zone() {
 
     game.object_mut(source_id)
         .expect("source should still be on the battlefield")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::deathtouch()));
     game.refresh_continuous_state();
     game.move_object_by_effect(source_id, Zone::Graveyard)
@@ -27685,7 +27685,7 @@ fn test_resolution_refreshes_source_lki_when_effect_moves_its_own_source() {
     let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
     game.object_mut(anthem_id)
         .expect("anthem should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::anthem(
             crate::filter::ObjectFilter::creature(),
             3,
@@ -27720,7 +27720,7 @@ fn test_source_lki_survives_self_move_through_another_zone() {
     let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
     game.object_mut(anthem_id)
         .expect("anthem should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::anthem(
             crate::filter::ObjectFilter::creature(),
             3,
@@ -27781,7 +27781,7 @@ fn test_source_lki_refreshes_when_sacrifice_source_moves_it() {
     let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
     game.object_mut(anthem_id)
         .expect("anthem should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::anthem(
             crate::filter::ObjectFilter::creature(),
             3,
@@ -27824,7 +27824,7 @@ fn test_activation_cost_source_lki_uses_state_after_prior_costs() {
     ]);
     game.object_mut(source_id)
         .expect("source should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: costs,
@@ -28215,7 +28215,7 @@ fn test_source_lki_refreshes_when_exile_source_moves_it() {
     let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
     game.object_mut(anthem_id)
         .expect("anthem should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::anthem(
             crate::filter::ObjectFilter::creature(),
             3,
@@ -28260,7 +28260,7 @@ fn test_source_lki_refreshes_when_destroy_source_moves_it() {
     let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
     game.object_mut(anthem_id)
         .expect("anthem should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::anthem(
             crate::filter::ObjectFilter::creature(),
             3,
@@ -28305,7 +28305,7 @@ fn test_source_lki_refreshes_when_return_source_to_hand_moves_it() {
     let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
     game.object_mut(anthem_id)
         .expect("anthem should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::anthem(
             crate::filter::ObjectFilter::creature(),
             3,
@@ -28340,7 +28340,7 @@ fn test_source_lki_is_from_expected_zone_not_later_zone_changes() {
     let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
     game.object_mut(anthem_id)
         .expect("anthem should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::anthem(
             crate::filter::ObjectFilter::creature(),
             3,
@@ -28406,7 +28406,7 @@ fn test_source_lki_ignores_returned_new_object_in_expected_zone() {
     let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
     game.object_mut(anthem_id)
         .expect("anthem should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::anthem(
             crate::filter::ObjectFilter::creature(),
             3,
@@ -28446,7 +28446,7 @@ fn test_resolution_uses_target_lki_after_effect_moves_it_to_hidden_zone() {
     let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
     game.object_mut(anthem_id)
         .expect("anthem should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::anthem(
             crate::filter::ObjectFilter::creature(),
             3,
@@ -28781,7 +28781,7 @@ fn optional_cost_intervening_if_trigger_uses_stack_entry_paid_state_after_source
     let mut paid = crate::cost::OptionalCostsPaid::from_costs(&optional_costs);
     paid.pay(0);
     if let Some(obj) = game.object_mut(source) {
-        obj.optional_costs = optional_costs;
+        obj.optional_costs = optional_costs.into();
         obj.optional_costs_paid = paid.clone();
     }
     let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
@@ -28794,7 +28794,7 @@ fn optional_cost_intervening_if_trigger_uses_stack_entry_paid_state_after_source
     );
     let stack_entry = StackEntry::ability(source, alice, vec![Effect::gain_life(3)])
         .with_optional_costs_paid(paid)
-        .with_source_info(source_snapshot.stable_id, source_snapshot.name.clone())
+        .with_source_info(source_snapshot.stable_id, source_snapshot.name.to_string())
         .with_source_snapshot(source_snapshot)
         .with_triggering_event(event)
         .with_intervening_if(crate::effect::Condition::ThisSpellPaidLabel(
@@ -28854,7 +28854,7 @@ fn test_offspring_trigger_resolves_after_source_leaves_battlefield() {
 
     let stack_entry = StackEntry::ability(source, alice, triggered.effects.clone())
         .with_optional_costs_paid(paid)
-        .with_source_info(source_snapshot.stable_id, source_snapshot.name.clone())
+        .with_source_info(source_snapshot.stable_id, source_snapshot.name.to_string())
         .with_source_snapshot(source_snapshot)
         .with_intervening_if(crate::effect::Condition::ThisSpellPaidLabel(
             "Offspring".into(),
@@ -29283,7 +29283,7 @@ fn test_unblocked_attacker_uses_calculated_power_from_conditional_anthem() {
         };
         let anthem =
             crate::static_abilities::Anthem::for_source(2, 0).with_condition(swamp_condition);
-        attacker.abilities.push(Ability::static_ability(
+        attacker.abilities_mut().push(Ability::static_ability(
             crate::static_abilities::StaticAbility::new(anthem),
         ));
     }
@@ -29371,7 +29371,7 @@ fn test_unblocked_attacker_uses_toughness_for_combat_damage_when_static_applies(
         .build();
     let enabler_id = game.create_object_from_card(&enabler, alice, Zone::Battlefield);
     if let Some(object) = game.object_mut(enabler_id) {
-        object.abilities.push(Ability::static_ability(
+        object.abilities_mut().push(Ability::static_ability(
                 crate::static_abilities::StaticAbility::creatures_you_control_assign_combat_damage_using_toughness(),
             ));
     }
@@ -29641,7 +29641,7 @@ fn test_first_strike_damage() {
 
     // Add first strike
     if let Some(obj) = game.object_mut(attacker_id) {
-        obj.abilities.push(Ability::static_ability(
+        obj.abilities_mut().push(Ability::static_ability(
             crate::static_abilities::StaticAbility::first_strike(),
         ));
     }
@@ -29675,7 +29675,7 @@ fn test_lifelink_damage() {
 
     // Add lifelink
     if let Some(obj) = game.object_mut(attacker_id) {
-        obj.abilities.push(Ability::static_ability(
+        obj.abilities_mut().push(Ability::static_ability(
             crate::static_abilities::StaticAbility::lifelink(),
         ));
     }
@@ -29709,7 +29709,7 @@ fn test_trample_damage() {
 
     // Add trample
     if let Some(obj) = game.object_mut(attacker_id) {
-        obj.abilities.push(Ability::static_ability(
+        obj.abilities_mut().push(Ability::static_ability(
             crate::static_abilities::StaticAbility::trample(),
         ));
     }
@@ -29766,7 +29766,7 @@ fn test_sba_deathtouch_damage_destroys_creature() {
 
     let attacker_id = create_creature(&mut game, "Deathtoucher", alice, 1, 1);
     if let Some(obj) = game.object_mut(attacker_id) {
-        obj.abilities
+        obj.abilities_mut()
             .push(Ability::static_ability(StaticAbility::deathtouch()));
     }
     let victim_id = create_creature(&mut game, "Victim", bob, 3, 3);
@@ -29805,12 +29805,12 @@ fn test_deathtouch_sba_marker_clears_after_each_check() {
 
     let attacker_id = create_creature(&mut game, "Deathtoucher", alice, 1, 1);
     if let Some(obj) = game.object_mut(attacker_id) {
-        obj.abilities
+        obj.abilities_mut()
             .push(Ability::static_ability(StaticAbility::deathtouch()));
     }
     let victim_id = create_creature(&mut game, "Stubborn Victim", bob, 3, 3);
     if let Some(obj) = game.object_mut(victim_id) {
-        obj.abilities
+        obj.abilities_mut()
             .push(Ability::static_ability(StaticAbility::indestructible()));
     }
     game.refresh_continuous_state();
@@ -29835,7 +29835,7 @@ fn test_deathtouch_sba_marker_clears_after_each_check() {
     );
 
     if let Some(obj) = game.object_mut(victim_id) {
-        obj.abilities.retain(|ability| {
+        obj.abilities_mut().retain(|ability| {
             !matches!(
                 &ability.kind,
                 AbilityKind::Static(static_ability)
@@ -31276,7 +31276,7 @@ fn test_etb_trigger_fires() {
     // Create creature with ETB trigger
     let creature_id = create_creature(&mut game, "ETB Creature", alice, 2, 2);
     if let Some(obj) = game.object_mut(creature_id) {
-        obj.abilities.push(Ability::triggered(
+        obj.abilities_mut().push(Ability::triggered(
             Trigger::this_enters_battlefield(),
             vec![Effect::draw(1)],
         ));
@@ -31478,7 +31478,7 @@ fn test_dies_trigger_from_sba() {
     // Create Blood Artist-like creature
     let blood_artist_id = create_creature(&mut game, "Blood Artist", alice, 0, 1);
     if let Some(obj) = game.object_mut(blood_artist_id) {
-        obj.abilities.push(Ability::triggered(
+        obj.abilities_mut().push(Ability::triggered(
             Trigger::dies(crate::target::ObjectFilter::creature()),
             vec![Effect::gain_life(1)],
         ));
@@ -31507,7 +31507,7 @@ fn test_combat_damage_with_triggers() {
     // Create attacker with "deals combat damage to player" trigger
     let attacker_id = create_creature(&mut game, "Ninja", alice, 2, 2);
     if let Some(obj) = game.object_mut(attacker_id) {
-        obj.abilities.push(Ability::triggered(
+        obj.abilities_mut().push(Ability::triggered(
             Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
             vec![Effect::draw(1)],
         ));
@@ -32807,7 +32807,7 @@ fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission()
     let exiled_ids: Vec<_> = game.exile.clone();
     let exiled_names: Vec<_> = exiled_ids
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| (id, obj.name.clone())))
+        .filter_map(|&id| game.object(id).map(|obj| (id, obj.name.to_string())))
         .collect();
     let exiled_land_id = exiled_names
         .iter()
@@ -33650,7 +33650,7 @@ fn riveteers_charm_mode_two_play_permission_lasts_through_next_end_step_window()
     let exiled_ids = game.exile.clone();
     let exiled_names: Vec<_> = exiled_ids
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| (id, obj.name.clone())))
+        .filter_map(|&id| game.object(id).map(|obj| (id, obj.name.to_string())))
         .collect();
     let exiled_land_id = exiled_names
         .iter()
@@ -33880,7 +33880,7 @@ fn rakdos_the_muscle_trigger_exiles_mana_value_cards_and_grants_next_end_step_an
     let exiled_names: Vec<_> = game
         .exile
         .iter()
-        .filter_map(|&id| game.object(id).map(|object| (id, object.name.clone())))
+        .filter_map(|&id| game.object(id).map(|object| (id, object.name.to_string())))
         .collect();
     let exiled_land_id = exiled_names
         .iter()
@@ -35208,7 +35208,7 @@ fn test_once_per_turn_ability_tracking() {
     // Add a OncePerTurn activated ability (e.g., "{T}: Draw a card")
     game.object_mut(creature_id)
         .unwrap()
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::from_cost(crate::costs::Cost::tap()),
@@ -35253,7 +35253,7 @@ fn test_activate_no_more_than_twice_each_turn_restriction() {
 
     game.object_mut(creature_id)
         .unwrap()
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::free(),
@@ -35309,7 +35309,7 @@ fn test_non_mana_activation_condition_max_activations_per_turn_is_enforced() {
 
     game.object_mut(creature_id)
         .unwrap()
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::free(),
@@ -35377,7 +35377,7 @@ fn test_protection_from_permanents_blocking() {
     };
     game.object_mut(attacker_id)
         .unwrap()
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(
             crate::static_abilities::StaticAbility::protection(ProtectionFrom::Permanents(
                 green_filter,
@@ -35509,21 +35509,21 @@ fn necropotence_cleanup_discard_exiles_discarded_card() {
         .expect("alice")
         .graveyard
         .iter()
-        .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+        .filter_map(|id| game.object(*id).map(|obj| obj.name.to_string()))
         .collect();
     let exile_names: Vec<_> = game
         .exile
         .iter()
-        .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+        .filter_map(|id| game.object(*id).map(|obj| obj.name.to_string()))
         .collect();
 
     assert_eq!(game.player(alice).expect("alice").hand.len(), 7);
     assert!(
-        !graveyard_names.contains(&discarded_name),
+        !graveyard_names.contains(&discarded_name.to_string()),
         "{discarded_name} should not remain in graveyard after Necropotence trigger"
     );
     assert!(
-        exile_names.contains(&discarded_name),
+        exile_names.contains(&discarded_name.to_string()),
         "{discarded_name} should be exiled by Necropotence after cleanup discard"
     );
 }
@@ -35730,7 +35730,7 @@ fn test_undying_trigger_generation() {
     let creature_id = create_creature(&mut game, "Undying Creature", alice, 2, 2);
     game.object_mut(creature_id)
         .unwrap()
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::undying(),
@@ -35789,7 +35789,7 @@ fn test_undying_does_not_trigger_with_plus_counters() {
     let creature_id = create_creature(&mut game, "Undying Creature", alice, 2, 2);
     game.object_mut(creature_id)
         .unwrap()
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::undying(),
@@ -35850,7 +35850,7 @@ fn test_persist_trigger_generation() {
     let creature_id = create_creature(&mut game, "Persist Creature", alice, 2, 2);
     game.object_mut(creature_id)
         .unwrap()
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::persist(),
@@ -35976,7 +35976,7 @@ fn test_once_per_turn_in_legal_actions() {
     let creature_id = create_creature(&mut game, "Test Creature", alice, 2, 2);
     game.object_mut(creature_id)
         .unwrap()
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::free(), // Free ability for testing
@@ -36048,7 +36048,7 @@ fn test_loyalty_activation_is_tracked_per_permanent_without_text_cap() {
 
     game.object_mut(chandra_id)
         .expect("Chandra should exist")
-        .abilities
+        .abilities_mut()
         .extend([
             Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
@@ -36171,7 +36171,7 @@ fn test_negative_loyalty_cost_requires_enough_loyalty_in_legal_actions() {
 
     game.object_mut(planeswalker_id)
         .expect("planeswalker should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::from_cost(Cost::remove_counters(CounterType::Loyalty, 3)),
@@ -36211,13 +36211,13 @@ fn elvish_refueler_exhaust_permission_allows_one_used_exhaust_on_your_turn() {
     let refueler_id = create_creature(&mut game, "Elvish Refueler", alice, 2, 3);
     game.object_mut(refueler_id)
         .expect("Elvish Refueler should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(
             StaticAbility::exhaust_abilities_as_though_unactivated_this_turn(),
         ));
     game.object_mut(refueler_id)
         .expect("Elvish Refueler should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::mana(ManaCost::from_pips(vec![
@@ -36308,7 +36308,7 @@ fn test_nonactive_player_keeps_priority_after_activating_ability() {
     let creature_id = create_creature(&mut game, "Quick Test Creature", alice, 2, 2);
     game.object_mut(creature_id)
         .expect("test creature should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::free(),
@@ -36389,7 +36389,7 @@ fn test_once_per_turn_restriction_survives_control_change() {
     let creature_id = create_creature(&mut game, "Control Change Test", alice, 2, 2);
     game.object_mut(creature_id)
         .expect("test creature should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::free(),
@@ -38118,7 +38118,7 @@ fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
 
     game.object_mut(rebel_id)
         .expect("rebel exists")
-        .abilities
+        .abilities_mut()
         .push(Ability::activated(
             TotalCost::free(),
             crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
@@ -39057,7 +39057,7 @@ fn test_cleanup_discard_via_game_loop() {
     // The cards get new IDs when moving zones, so we check by name
     let discarded_names: Vec<String> = graveyard
         .iter()
-        .filter_map(|id| game.object(*id).map(|o| o.name.clone()))
+        .filter_map(|id| game.object(*id).map(|o| o.name.to_string()))
         .collect();
 
     // Cards 0, 1, 2 should be in graveyard
@@ -39097,8 +39097,8 @@ fn test_cleanup_discard_specific_card_choice() {
     assert_eq!(initial_hand.len(), 9);
 
     // Get the names of cards at indices 3 and 7 (the ones we'll discard)
-    let card_3_name = game.object(initial_hand[3]).unwrap().name.clone();
-    let card_7_name = game.object(initial_hand[7]).unwrap().name.clone();
+    let card_3_name = game.object(initial_hand[3]).unwrap().name.to_string();
+    let card_7_name = game.object(initial_hand[7]).unwrap().name.to_string();
 
     // Create a decision maker that discards cards at indices 3 and 7
     let mut dm = CleanupDiscardDecisionMaker::new(vec![3, 7]);
@@ -39119,7 +39119,7 @@ fn test_cleanup_discard_specific_card_choice() {
         .unwrap()
         .graveyard
         .iter()
-        .filter_map(|id| game.object(*id).map(|o| o.name.clone()))
+        .filter_map(|id| game.object(*id).map(|o| o.name.to_string()))
         .collect();
 
     assert!(
@@ -39139,7 +39139,7 @@ fn test_cleanup_discard_specific_card_choice() {
         .unwrap()
         .hand
         .iter()
-        .filter_map(|id| game.object(*id).map(|o| o.name.clone()))
+        .filter_map(|id| game.object(*id).map(|o| o.name.to_string()))
         .collect();
 
     assert!(
@@ -41536,7 +41536,7 @@ fn test_prototyped_spell_on_stack_snapshots_with_prototype_mana_value() {
         .object(stack_id)
         .expect("prototype stack object should exist");
     assert_eq!(
-        stack_object.mana_cost.as_ref().map(ManaCost::mana_value),
+        stack_object.mana_cost.as_deref().map(ManaCost::mana_value),
         Some(3),
         "prototyped spell object should have its prototype mana cost on the stack"
     );
@@ -43359,7 +43359,7 @@ fn test_face_down_cast_matches_panoptic_filter_and_enters_battlefield_face_down(
     let morph_id = game.create_object_from_card(&morph_card, alice, Zone::Hand);
     game.object_mut(morph_id)
         .expect("morph card should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::morph(
             crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Green]])),
         )));
@@ -44135,7 +44135,7 @@ fn test_illegal_equipment_becomes_unattached_instead_of_dying() {
 
     game.object_mut(creature)
         .expect("equipped creature should exist")
-        .card_types = vec![CardType::Land];
+        .card_types = vec![CardType::Land].into();
 
     crate::rules::state_based::apply_state_based_actions(&mut game);
 
@@ -44757,7 +44757,7 @@ fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
     assert!(
         matches!(
             &stack_obj.cast_alternative_method,
-            Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
+            Some(method) if matches!(method.as_ref(), crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
         ),
         "disturbed spell should retain the selected alternative method after applying the back face"
     );
@@ -44777,7 +44777,10 @@ fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
 
     let requirements = super::targeting::extract_target_requirements(
         &game,
-        stack_obj.spell_effect.as_deref().unwrap_or(&[]),
+        stack_obj
+            .spell_effect
+            .as_deref()
+            .map_or(&[][..], |program| program.flattened_default_effects()),
         alice,
         Some(stack_id),
     );
@@ -44827,11 +44830,12 @@ fn test_gift_promise_updates_cast_time_target_requirements() {
         }]);
 
     if let Some(obj) = game.object_mut(spell_id) {
-        obj.spell_effect = Some(program);
+        obj.spell_effect = Some(program.into());
         obj.optional_costs = vec![crate::cost::OptionalCost::custom(
             "Gift a card",
             crate::cost::TotalCost::free(),
-        )];
+        )]
+        .into();
         obj.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&obj.optional_costs);
     }
 
@@ -44919,11 +44923,12 @@ fn test_gift_optional_cost_choice_refreshes_pending_target_prompt() {
         }]);
 
     if let Some(obj) = game.object_mut(spell_id) {
-        obj.spell_effect = Some(program);
+        obj.spell_effect = Some(program.into());
         obj.optional_costs = vec![crate::cost::OptionalCost::custom(
             "Gift a tapped Fish",
             crate::cost::TotalCost::free(),
-        )];
+        )]
+        .into();
         obj.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&obj.optional_costs);
     }
 
@@ -45146,7 +45151,10 @@ fn test_overload_cast_swaps_in_rewritten_effects_and_hits_all_matches() {
         .expect("overloaded spell should exist");
     let requirements = super::targeting::extract_target_requirements(
         &game,
-        stack_obj.spell_effect.as_deref().unwrap_or(&[]),
+        stack_obj
+            .spell_effect
+            .as_deref()
+            .map_or(&[][..], |program| program.flattened_default_effects()),
         alice,
         Some(stack_id),
     );
@@ -45332,7 +45340,7 @@ fn add_test_play_from_grant_source(
     let grant = crate::grant::GrantSpec::new(crate::grant::Grantable::play_from(), filter, zone);
     game.object_mut(source_id)
         .expect("grant source should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::grants(grant)));
     source_id
 }
@@ -46387,10 +46395,7 @@ fn cemetery_illuminator_casts_top_spell_sharing_type_with_source_exiled_card() {
         vec![CardType::Instant],
         Zone::Exile,
     );
-    game.exiled_with_source
-        .entry(source_id)
-        .or_default()
-        .push(exiled_instant);
+    game.add_exiled_with_source_link(source_id, exiled_instant);
     let top_instant = create_zero_cost_card(
         &mut game,
         alice,
@@ -46444,10 +46449,7 @@ fn cemetery_illuminator_does_not_cast_top_spell_with_nonmatching_source_exiled_t
         vec![CardType::Creature],
         Zone::Exile,
     );
-    game.exiled_with_source
-        .entry(source_id)
-        .or_default()
-        .push(exiled_creature);
+    game.add_exiled_with_source_link(source_id, exiled_creature);
     let top_instant = create_zero_cost_card(
         &mut game,
         alice,
@@ -46479,10 +46481,7 @@ fn cemetery_illuminator_can_cast_matching_top_instant_on_opponents_turn() {
         vec![CardType::Instant],
         Zone::Exile,
     );
-    game.exiled_with_source
-        .entry(source_id)
-        .or_default()
-        .push(exiled_instant);
+    game.add_exiled_with_source_link(source_id, exiled_instant);
     let top_instant = create_zero_cost_card(
         &mut game,
         alice,
@@ -46513,10 +46512,7 @@ fn cemetery_illuminator_top_library_cast_is_limited_to_once_each_turn() {
         vec![CardType::Instant],
         Zone::Exile,
     );
-    game.exiled_with_source
-        .entry(source_id)
-        .or_default()
-        .push(exiled_instant);
+    game.add_exiled_with_source_link(source_id, exiled_instant);
     let first_top = create_zero_cost_card(
         &mut game,
         alice,
@@ -46681,7 +46677,7 @@ fn test_granted_enter_with_counters_applies_to_adventure_creature_entering() {
     );
     game.object_mut(source_id)
         .expect("grant source should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::grant_ability(
             grant_filter,
             granted,
@@ -50691,7 +50687,7 @@ fn test_underworld_breach_escape_needs_3_other_cards() {
             .iter()
             .map(|a| if let LegalAction::CastSpell { spell_id, .. } = a {
                 game.object(*spell_id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_default()
             } else {
                 String::new()
@@ -53362,7 +53358,7 @@ fn test_doubling_chant_same_name_search_prompts_are_user_facing() {
                 .candidates
                 .iter()
                 .filter(|candidate| candidate.legal)
-                .map(|candidate| candidate.name.clone())
+                .map(|candidate| candidate.name.to_string())
                 .collect();
             self.object_candidate_ids = ctx
                 .candidates
@@ -54048,7 +54044,7 @@ fn test_the_one_ring_prevents_combat_damage_until_your_next_turn() {
     let ring_id = game.create_object_from_definition(&one_ring, alice, Zone::Stack);
     let (ring_stable_id, ring_name) = game
         .object(ring_id)
-        .map(|object| (object.stable_id, object.name.clone()))
+        .map(|object| (object.stable_id, object.name.to_string()))
         .expect("The One Ring spell should exist");
     game.push_to_stack(StackEntry::new(ring_id, alice).with_source_info(ring_stable_id, ring_name));
 
@@ -56022,7 +56018,7 @@ fn splinters_technique_sneak_cast_returns_attacker_and_searches_library() {
         .expect("Splinter's Technique should have a sneak total cost");
     let spell_effect = game
         .object(spell_id)
-        .and_then(|object| object.spell_effect.clone())
+        .and_then(|object| object.spell_effect_owned())
         .expect("Splinter's Technique should have a spell effect");
     let mut decision_maker = SelectFirstDecisionMaker;
     let mut ctx = crate::effects::ExecutionContext::new(spell_id, alice, &mut decision_maker);
@@ -56229,7 +56225,7 @@ fn kitsunes_technique_sneak_cost_returns_attacker_and_mills_odd_library_rounded_
         .expect("Kitsune's Technique should have a sneak total cost");
     let spell_effect = game
         .object(spell_id)
-        .and_then(|object| object.spell_effect.clone())
+        .and_then(|object| object.spell_effect_owned())
         .expect("Kitsune's Technique should have a spell effect");
     let mut decision_maker = SelectFirstDecisionMaker;
     let mut ctx = crate::effects::ExecutionContext::new(spell_id, alice, &mut decision_maker);
@@ -56610,7 +56606,7 @@ fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
         .expect("alice exists")
         .hand
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert_eq!(
         hand_names,
@@ -56623,7 +56619,7 @@ fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
         .expect("alice exists")
         .library
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert_eq!(
         library_names.len(),
@@ -56704,7 +56700,7 @@ fn quandrix_apprentice_magecraft_can_decline_the_land_pick() {
         .expect("alice exists")
         .library
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert_eq!(
         library_names.len(),
@@ -56811,7 +56807,7 @@ fn see_the_truth_cast_from_exile_puts_each_looked_card_into_hand() {
     let mut hand_names: Vec<_> = player
         .hand
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     hand_names.sort();
 

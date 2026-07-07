@@ -59,6 +59,10 @@ impl TriggerMatcher for PlayerDrawsCardExceptFirstInDrawStepTrigger {
             .unwrap_or(0)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CardsDrawn])
+    }
+
     fn display(&self) -> String {
         match &self.player {
             PlayerFilter::You => {

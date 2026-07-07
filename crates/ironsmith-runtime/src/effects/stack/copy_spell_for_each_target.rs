@@ -35,7 +35,7 @@ fn effects_for_stack_entry(game: &GameState, entry: &StackEntry) -> Vec<crate::e
     }
 
     game.object(entry.object_id)
-        .and_then(|object| object.spell_effect.clone())
+        .and_then(|object| object.spell_effect_owned())
         .map(|effects| effects.to_vec())
         .unwrap_or_default()
 }
@@ -262,9 +262,12 @@ mod tests {
         let spell_id = game.create_object_from_card(&card, controller, Zone::Stack);
         game.object_mut(spell_id)
             .expect("spell object should exist")
-            .spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
-            Effect::new(crate::effects::TargetOnlyEffect::new(target_spec.clone())),
-        ]));
+            .spell_effect = Some(
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                crate::effects::TargetOnlyEffect::new(target_spec.clone()),
+            )])
+            .into(),
+        );
         game.push_to_stack(
             StackEntry::new(spell_id, controller).with_targets(vec![Target::Object(target)]),
         );
@@ -284,9 +287,12 @@ mod tests {
         let spell_id = game.create_object_from_card(&card, controller, Zone::Stack);
         game.object_mut(spell_id)
             .expect("spell object should exist")
-            .spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
-            Effect::new(crate::effects::TargetOnlyEffect::new(target_spec)),
-        ]));
+            .spell_effect = Some(
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                crate::effects::TargetOnlyEffect::new(target_spec),
+            )])
+            .into(),
+        );
         game.push_to_stack(
             StackEntry::new(spell_id, controller).with_targets(vec![Target::Player(target)]),
         );
@@ -310,10 +316,13 @@ mod tests {
         let spell_id = game.create_object_from_card(&card, controller, Zone::Stack);
         game.object_mut(spell_id)
             .expect("spell object should exist")
-            .spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
-            Effect::new(crate::effects::TargetOnlyEffect::new(creature_spec)),
-            Effect::new(crate::effects::TargetOnlyEffect::new(player_spec)),
-        ]));
+            .spell_effect = Some(
+            crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::new(crate::effects::TargetOnlyEffect::new(creature_spec)),
+                Effect::new(crate::effects::TargetOnlyEffect::new(player_spec)),
+            ])
+            .into(),
+        );
         game.push_to_stack(StackEntry::new(spell_id, controller).with_targets(vec![
             Target::Object(creature_target),
             Target::Player(player_target),

@@ -148,6 +148,10 @@ impl TriggerMatcher for SpellCastTrigger {
         }
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::SpellCast])
+    }
+
     fn display(&self) -> String {
         let caster_text = match &self.caster {
             PlayerFilter::You => "you cast",

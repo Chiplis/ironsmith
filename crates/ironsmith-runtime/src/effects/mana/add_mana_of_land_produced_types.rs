@@ -117,7 +117,7 @@ fn collect_available_mana_symbols(
 
         let abilities = game
             .current_abilities(perm_id)
-            .unwrap_or_else(|| perm.abilities.clone());
+            .unwrap_or_else(|| perm.abilities_vec());
         for ability in &abilities {
             let AbilityKind::Activated(mana_ability) = &ability.kind else {
                 continue;

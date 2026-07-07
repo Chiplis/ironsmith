@@ -345,7 +345,7 @@ pub(super) fn cast_effect_driven_spell_with_payment(
             .mana_cost
             .as_ref()
             .and_then(|cost| if cost.has_x() { Some(0u32) } else { None });
-        (spell.name.clone(), spell.stable_id, x_value)
+        (spell.name.to_string(), spell.stable_id, x_value)
     };
     if let Some(spell) = game.object_mut(stack_id) {
         spell.x_value = x_value;

@@ -33,7 +33,7 @@ pub fn choose_source_of_your_choice(
         .map(|id| {
             let name = game
                 .object(id)
-                .map(|object| object.name.clone())
+                .map(|object| object.name.to_string())
                 .unwrap_or_else(|| format!("object {}", id.0));
             crate::decisions::context::SelectableObject::new(id, name)
         })

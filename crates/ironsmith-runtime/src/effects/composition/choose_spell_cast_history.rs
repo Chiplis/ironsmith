@@ -46,7 +46,7 @@ impl EffectExecutor for ChooseSpellCastHistoryEffect {
                     let description = snapshot
                         .cast_order_this_turn
                         .map(|order| format!("{} (cast #{order})", snapshot.name))
-                        .unwrap_or_else(|| snapshot.name.clone());
+                        .unwrap_or_else(|| snapshot.name.to_string());
                     SelectableOption::new(idx, description).with_object(snapshot.object_id)
                 })
                 .collect::<Vec<_>>();

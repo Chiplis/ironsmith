@@ -357,7 +357,7 @@ mod tests {
             .expect("alice exists")
             .hand
             .iter()
-            .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+            .filter_map(|id| game.object(*id).map(|obj| obj.name.to_string()))
             .collect();
         assert!(hand_names.iter().any(|name| name == "Forest"));
         assert!(hand_names.iter().any(|name| name == "Plains"));
@@ -443,7 +443,7 @@ mod tests {
         let battlefield_names: Vec<_> = game
             .battlefield
             .iter()
-            .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+            .filter_map(|id| game.object(*id).map(|obj| obj.name.to_string()))
             .collect();
         for name in ["Plains", "Island", "Swamp", "Mountain", "Forest"] {
             assert!(
@@ -492,7 +492,7 @@ mod tests {
             .expect("alice exists")
             .graveyard
             .iter()
-            .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+            .filter_map(|id| game.object(*id).map(|obj| obj.name.to_string()))
             .collect();
         assert!(
             graveyard_names.iter().any(|name| name == "Graveyard Swamp"),

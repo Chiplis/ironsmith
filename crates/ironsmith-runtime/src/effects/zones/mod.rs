@@ -268,7 +268,7 @@ pub(crate) fn maybe_prompt_for_split_result_order(
         .map(|&id| {
             let name = game
                 .object(id)
-                .map(|object| object.name.clone())
+                .map(|object| object.name.to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
             (id, name)
         })

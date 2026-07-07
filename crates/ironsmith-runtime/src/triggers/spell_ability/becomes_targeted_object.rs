@@ -35,6 +35,10 @@ impl TriggerMatcher for BecomesTargetedObjectTrigger {
         self.filter.matches(target, &ctx.filter_ctx, ctx.game)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::BecomesTargeted])
+    }
+
     fn display(&self) -> String {
         format!(
             "Whenever {} becomes the target of a spell or ability",

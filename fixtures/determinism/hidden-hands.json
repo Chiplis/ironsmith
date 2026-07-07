@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "scenario": "hidden-hands",
+  "roots": [
+    {
+      "label": "after setup",
+      "public_audit_sha256": "81ba3bd6138011000173399df71301e4fee86b28e8559c92f253e90075756a80",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "4318204a517895726cc7a90083a70fa09db6648ea677eceaf57b1a6c23678c2e"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "d86035c7fc63ae2d4c1d493599292c7d36a2a06aa25ac22a388b3bbdceb2f8c2"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "9107bf8799344ec3a5b4581a3b6262f104536860bac0576a079fa898c19047d6"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "404a8cbfaae1b64d2d22257186da095aaaf332e35d74d28b45127ef6e05e1dca"
+        }
+      ]
+    },
+    {
+      "label": "after action 1",
+      "public_audit_sha256": "effcb71b91a260c487afdf322894bb93eeb71f469b4dea3d4cace47c58dc9984",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "4318204a517895726cc7a90083a70fa09db6648ea677eceaf57b1a6c23678c2e"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "2543027f9599bbd11aaf9341a76fb2d02a3afdb7ac398a3c39e990a60526eb1a"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "9107bf8799344ec3a5b4581a3b6262f104536860bac0576a079fa898c19047d6"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "404a8cbfaae1b64d2d22257186da095aaaf332e35d74d28b45127ef6e05e1dca"
+        }
+      ]
+    },
+    {
+      "label": "after action 2",
+      "public_audit_sha256": "1a4b10d839520331b45aa570b68ff6f1663722bd0b213fccfa2652c39db0fbac",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "4318204a517895726cc7a90083a70fa09db6648ea677eceaf57b1a6c23678c2e"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "fb58ebc43ced8c97f2f07537d984835677644c1b250a6c144b5ec1e8ac45855c"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "9107bf8799344ec3a5b4581a3b6262f104536860bac0576a079fa898c19047d6"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "404a8cbfaae1b64d2d22257186da095aaaf332e35d74d28b45127ef6e05e1dca"
+        }
+      ]
+    },
+    {
+      "label": "after action 3",
+      "public_audit_sha256": "76ee85b20b48a59b66bbd5633c337e813ee0245dcf78962510eadb0d9e40d720",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "4318204a517895726cc7a90083a70fa09db6648ea677eceaf57b1a6c23678c2e"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "fb58ebc43ced8c97f2f07537d984835677644c1b250a6c144b5ec1e8ac45855c"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "9107bf8799344ec3a5b4581a3b6262f104536860bac0576a079fa898c19047d6"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "1d8f052ab73a9a7a2c482042587dc26686fd1b274060f7d1bbcf2f749a80d513"
+        }
+      ]
+    },
+    {
+      "label": "after action 4",
+      "public_audit_sha256": "b271aab010bb242a08199e9d8d16fe9b25f239db1a8b54d9b85395e013c42231",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "4318204a517895726cc7a90083a70fa09db6648ea677eceaf57b1a6c23678c2e"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "fb58ebc43ced8c97f2f07537d984835677644c1b250a6c144b5ec1e8ac45855c"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "9107bf8799344ec3a5b4581a3b6262f104536860bac0576a079fa898c19047d6"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "8d1664d52d7b1ed10b7f7774e8ae7ef2b835bc2fe7be75e608da0d62e247aa55"
+        }
+      ]
+    },
+    {
+      "label": "late joiner import",
+      "public_audit_sha256": "b271aab010bb242a08199e9d8d16fe9b25f239db1a8b54d9b85395e013c42231",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "4318204a517895726cc7a90083a70fa09db6648ea677eceaf57b1a6c23678c2e"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "fb58ebc43ced8c97f2f07537d984835677644c1b250a6c144b5ec1e8ac45855c"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "9107bf8799344ec3a5b4581a3b6262f104536860bac0576a079fa898c19047d6"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "8d1664d52d7b1ed10b7f7774e8ae7ef2b835bc2fe7be75e608da0d62e247aa55"
+        }
+      ]
+    }
+  ]
+}

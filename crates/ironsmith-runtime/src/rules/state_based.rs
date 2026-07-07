@@ -140,6 +140,7 @@ pub(crate) fn check_state_based_actions_with_context(
     view: &crate::derived_view::DerivedGameView<'_>,
     context: &StateBasedActionContext,
 ) -> Vec<StateBasedAction> {
+    game.count_sba_scan_objects(game.battlefield.len());
     let mut actions = Vec::new();
 
     // Check player state-based actions
@@ -174,7 +175,7 @@ fn check_soulbond_pair_sbas_with_view(
     actions: &mut Vec<StateBasedAction>,
 ) {
     let mut seen = HashSet::new();
-    for (&left, &right) in &game.soulbond_pairs {
+    for (&left, &right) in game.soulbond_pairs() {
         if !seen.insert(left) {
             continue;
         }
@@ -1002,7 +1003,7 @@ fn apply_single_sba_with_snapshots(
                 return;
             };
             let owner = obj.owner;
-            let name = obj.name.clone();
+            let name = obj.name.to_string();
             let choice_ctx = crate::decisions::context::BooleanContext::new(
                 owner,
                 Some(obj_id),
@@ -1131,7 +1132,7 @@ mod tests {
         let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
         game.object_mut(creature_id)
             .expect("indestructible zero should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::indestructible()));
 
         let actions = check_state_based_actions(&game);
@@ -1155,7 +1156,7 @@ mod tests {
         let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
         game.object_mut(anthem_id)
             .expect("anthem creature should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::new(
                 Anthem::creatures_you_control(1, 1),
             )));

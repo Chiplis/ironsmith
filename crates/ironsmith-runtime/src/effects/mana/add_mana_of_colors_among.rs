@@ -11,7 +11,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;
-use crate::object_query::candidate_ids_for_filter;
+use crate::object_query::for_each_candidate_id_for_filter;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::target::ObjectFilter;
@@ -77,12 +77,12 @@ fn colors_among_filter(
         .filter_context_for(controller, Some(source))
         .with_tagged_objects(&tagged_objects);
     let mut colors = Vec::new();
-    for id in candidate_ids_for_filter(game, filter) {
+    for_each_candidate_id_for_filter(game, filter, |id| {
         let Some(obj) = game.object(id) else {
-            continue;
+            return;
         };
         if !filter.matches(obj, &filter_ctx, game) {
-            continue;
+            return;
         }
         let color_set = obj.colors();
         push_color_if_present(&mut colors, color_set, Color::White, ManaSymbol::White);
@@ -90,7 +90,7 @@ fn colors_among_filter(
         push_color_if_present(&mut colors, color_set, Color::Black, ManaSymbol::Black);
         push_color_if_present(&mut colors, color_set, Color::Red, ManaSymbol::Red);
         push_color_if_present(&mut colors, color_set, Color::Green, ManaSymbol::Green);
-    }
+    });
     colors
 }
 

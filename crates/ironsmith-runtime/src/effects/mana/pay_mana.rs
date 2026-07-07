@@ -73,7 +73,7 @@ fn try_pay_interactively(
 
         let source_name = game
             .object(ctx.source)
-            .map(|obj| obj.name.clone())
+            .map(|obj| obj.name.to_string())
             .unwrap_or_else(|| "effect".to_string());
         let decision_ctx =
             SelectOptionsContext::mana_payment(player_id, ctx.source, source_name, options);
@@ -297,7 +297,7 @@ fn describe_mana_ability(
 
 fn describe_permanent(game: &GameState, id: ObjectId) -> String {
     game.object(id)
-        .map(|obj| obj.name.clone())
+        .map(|obj| obj.name.to_string())
         .unwrap_or_else(|| "Unknown".to_string())
 }
 
@@ -331,7 +331,7 @@ mod tests {
         let source_id = game.create_object_from_card(&source, controller, Zone::Battlefield);
         game.object_mut(source_id)
             .expect("static-ability source should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
     }
 

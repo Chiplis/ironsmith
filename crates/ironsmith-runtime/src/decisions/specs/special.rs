@@ -67,7 +67,7 @@ impl DecisionSpec for ScrySpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 (id, name)
             })
@@ -130,7 +130,7 @@ impl DecisionSpec for SurveilSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 (id, name)
             })
@@ -186,7 +186,7 @@ impl DecisionSpec for OrderGraveyardSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 (id, name)
             })
@@ -247,7 +247,7 @@ impl DecisionSpec for OrderLibraryTopSpec {
             .map(|&id| {
                 let name = game
                     .object(id)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
                 (id, name)
             })
@@ -341,7 +341,7 @@ impl DecisionSpec for DistributeSpec {
                 let name = match target {
                     Target::Object(id) => game
                         .object(*id)
-                        .map(|o| o.name.clone())
+                        .map(|o| o.name.to_string())
                         .unwrap_or_else(|| "Unknown".to_string()),
                     Target::Player(pid) => format!("Player {}", pid.index() + 1),
                 };
@@ -588,7 +588,7 @@ impl DecisionSpec for CounterRemovalSpec {
     ) -> DecisionContext {
         let target_name = game
             .object(self.target)
-            .map(|o| o.name.clone())
+            .map(|o| o.name.to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
         DecisionContext::Counters(CountersContext::new(

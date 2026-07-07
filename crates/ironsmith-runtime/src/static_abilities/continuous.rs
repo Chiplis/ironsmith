@@ -650,7 +650,7 @@ impl AnthemValueRuntimeExt for AnthemValue {
                 game.objects_map(),
                 &[],
                 &game.battlefield,
-                &game.commanders,
+                game.commander_objects(),
                 source,
                 controller,
                 game,
@@ -1771,7 +1771,7 @@ fn entered_battlefield_this_turn_count(
                                     .retain(|card_type| !card_types.contains(card_type));
                             }
                             Modification::SetCardTypes(card_types) => {
-                                adjusted.card_types = card_types.clone();
+                                adjusted.card_types = card_types.clone().into();
                             }
                             _ => {}
                         }
@@ -3585,7 +3585,7 @@ impl StaticAbilityKind for SetNameForFilter {
                 source,
                 controller,
                 effect_target_for_filter(source, &self.filter),
-                Modification::SetName(self.name.clone()),
+                Modification::SetName(self.name.to_string()),
             )
             .with_source_type(EffectSourceType::StaticAbility),
         ]
@@ -5901,7 +5901,7 @@ mod tests {
         let source = game.create_object_from_card(&soulbond_card, alice, Zone::Battlefield);
         game.object_mut(source)
             .expect("source should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::soulbond_shared_power_toughness(1, 1),
             ));

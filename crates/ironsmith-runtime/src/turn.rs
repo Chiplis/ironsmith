@@ -327,9 +327,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     game.update_cant_effects();
 
     let phased_in: Vec<_> = game
-        .phased_out
-        .iter()
-        .copied()
+        .phased_out_ids()
         .filter(|&id| {
             game.object(id).is_some_and(|obj| {
                 obj.zone == crate::zone::Zone::Battlefield
@@ -660,7 +658,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
 
     // Remove all damage marked on creatures and clear regeneration shields
     for &id in &game.battlefield.clone() {
-        if !game.damage_persists.contains(&id) {
+        if !game.damage_persists_on(id) {
             game.clear_damage(id);
         }
         game.clear_regeneration_shields(id);
@@ -768,7 +766,7 @@ mod tests {
             .build();
         let mut obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         for ability in abilities {
-            obj.abilities.push(Ability::static_ability(ability));
+            obj.abilities_mut().push(Ability::static_ability(ability));
         }
         game.add_object(obj);
         id

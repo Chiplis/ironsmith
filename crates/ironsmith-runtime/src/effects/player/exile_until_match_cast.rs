@@ -78,7 +78,7 @@ impl EffectExecutor for ExileUntilMatchCastEffect {
                 return Ok(EffectOutcome::count(0));
             };
 
-            let candidate_name = candidate_obj.name.clone();
+            let candidate_name = candidate_obj.name.to_string();
             let prompt = if self.without_paying_mana_cost {
                 format!("Cast {candidate_name} without paying its mana cost?")
             } else {
@@ -96,7 +96,7 @@ impl EffectExecutor for ExileUntilMatchCastEffect {
 
             if should_cast {
                 let from_zone = candidate_obj.zone;
-                let mana_cost = candidate_obj.mana_cost.clone();
+                let mana_cost = candidate_obj.mana_cost_owned();
                 let stable_id = candidate_obj.stable_id;
                 let x_value = mana_cost
                     .as_ref()

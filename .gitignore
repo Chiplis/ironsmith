@@ -13,6 +13,7 @@ scripts/__pycache__*
 *.txt
 *.json
 !/fixtures/audit/*.json
+!/fixtures/determinism/*.json
 !/web/ui/package.json
 *.csv
 web/ui/node_modules

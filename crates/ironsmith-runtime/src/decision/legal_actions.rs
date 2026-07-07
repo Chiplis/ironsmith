@@ -287,7 +287,10 @@ fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
             &adventure_view,
             card_id,
             mana_cost,
-            adventure_view.spell_effect.as_deref(),
+            adventure_view
+                .spell_effect
+                .as_deref()
+                .map(|program| &**program),
             &requirements,
             &casting_method,
             view,
@@ -384,27 +387,27 @@ fn append_granted_land_play_actions_from_public_zone(
     zone: Zone,
     view: &DerivedGameView<'_>,
 ) {
-    for card_id in crate::object_query::candidate_ids_for_zone(game, Some(zone)) {
+    crate::object_query::for_each_candidate_id_for_zone(game, Some(zone), |card_id| {
         let Some(card) = game.object(card_id) else {
-            continue;
+            return;
         };
         if !card.is_land()
             && crate::decision::linked_other_face_land_definition(game, card).is_none()
         {
-            continue;
+            return;
         }
         if view
             .granted_play_from_for_card(card_id, zone, player)
             .is_empty()
         {
-            continue;
+            return;
         }
 
         let action = SpecialAction::PlayLand { card_id };
         if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
             actions.push(LegalAction::PlayLand { land_id: card_id });
         }
-    }
+    });
 }
 
 fn append_adventure_exiled_land_play_actions(
@@ -1244,7 +1247,7 @@ fn player_may_activate_equip_abilities_any_time(
         }
         let abilities = view
             .abilities_rc(object_id)
-            .unwrap_or_else(|| std::rc::Rc::new(object.abilities.clone()));
+            .unwrap_or_else(|| std::rc::Rc::new(object.abilities_vec()));
         abilities.iter().any(|ability| {
             matches!(
                 &ability.kind,
@@ -1276,7 +1279,7 @@ fn player_may_activate_exhaust_abilities_as_unactivated_this_turn(
         }
         let abilities = view
             .abilities_rc(object_id)
-            .unwrap_or_else(|| std::rc::Rc::new(object.abilities.clone()));
+            .unwrap_or_else(|| std::rc::Rc::new(object.abilities_vec()));
         abilities.iter().any(|ability| {
             matches!(
                 &ability.kind,

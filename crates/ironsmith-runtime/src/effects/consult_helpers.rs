@@ -329,7 +329,7 @@ impl BottomCandidate {
             object_id: current_id,
             owner: object.owner,
             zone: object.zone,
-            name: object.name.clone(),
+            name: object.name.to_string(),
         })
     }
 }
@@ -364,7 +364,7 @@ fn order_bottom_candidates(
                 "Order the selected cards for the bottom of your library. The first option becomes the bottom-most card.",
                 candidates
                     .iter()
-                    .map(|candidate| (candidate.object_id, candidate.name.clone()))
+                    .map(|candidate| (candidate.object_id, candidate.name.to_string()))
                     .collect::<Vec<_>>(),
             );
             ctx.decision_maker.decide_order(game, &context)
@@ -418,7 +418,7 @@ mod tests {
                 game.object(*id)
                     .expect("library object exists")
                     .name
-                    .clone()
+                    .to_string()
             })
             .collect()
     }
@@ -433,7 +433,7 @@ mod tests {
 
     fn names_for_ids(game: &GameState, ids: &[ObjectId]) -> Vec<String> {
         ids.iter()
-            .map(|id| game.object(*id).expect("object exists").name.clone())
+            .map(|id| game.object(*id).expect("object exists").name.to_string())
             .collect()
     }
 

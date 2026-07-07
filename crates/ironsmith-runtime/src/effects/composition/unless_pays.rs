@@ -316,7 +316,7 @@ mod tests {
         let source_id = game.create_object_from_card(&source, controller, Zone::Battlefield);
         game.object_mut(source_id)
             .expect("static-ability source should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
     }
 

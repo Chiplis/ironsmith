@@ -36,6 +36,10 @@ impl TriggerMatcher for ThisDealsCombatDamageToPlayerTrigger {
             && self.player.matches_player(damaged_player, &ctx.filter_ctx)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::Damage])
+    }
+
     fn display(&self) -> String {
         let player = match &self.player {
             PlayerFilter::Any => "a player".to_string(),

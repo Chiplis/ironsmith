@@ -14,6 +14,7 @@
 //!   that has left a zone, it uses the object's last known information.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::ability::{Ability, AbilityKind};
 use crate::card::LinkedFaceLayout;
@@ -86,7 +87,7 @@ pub struct ObjectSnapshot {
     /// Defense (if battle).
     pub defense: Option<u32>,
     /// Abilities the object had.
-    pub abilities: Vec<Ability>,
+    pub abilities: Arc<Vec<Ability>>,
     /// For Auras: what this object can enchant.
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
     /// For sagas: maximum chapter number.
@@ -145,15 +146,18 @@ impl ObjectSnapshot {
             owner: obj.owner,
 
             // Copiable characteristics
-            name: obj.name.clone(),
-            mana_cost: obj.mana_cost.clone(),
+            name: obj.name.to_string(),
+            mana_cost: obj.mana_cost_owned(),
             colors: obj.colors(),
-            supertypes: obj.supertypes.clone(),
-            card_types: obj.card_types.clone(),
-            subtypes: obj.subtypes.clone(),
-            compiled_card_text: obj.compiled_card_text.clone(),
+            supertypes: obj.supertypes.to_vec(),
+            card_types: obj.card_types.to_vec(),
+            subtypes: obj.subtypes.to_vec(),
+            compiled_card_text: obj.compiled_card_text.to_string(),
             other_face: obj.other_face,
-            other_face_name: obj.other_face_name.clone(),
+            other_face_name: obj
+                .other_face_name
+                .as_ref()
+                .map(|name| name.to_owned_string()),
             linked_face_layout: obj.linked_face_layout,
             power: obj.power(),
             toughness: obj.toughness(),
@@ -162,7 +166,7 @@ impl ObjectSnapshot {
             loyalty: obj.loyalty(),
             defense: obj.base_defense,
             abilities: obj.abilities.clone(),
-            aura_attach_filter: obj.aura_attach_filter.clone(),
+            aura_attach_filter: obj.aura_attach_filter_owned(),
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
             mana_spent_to_cast: obj.mana_spent_to_cast.clone(),
@@ -247,14 +251,14 @@ impl ObjectSnapshot {
         // which include continuous effects like anthems, pumps, etc.
         if let Some(calculated) = game.calculated_characteristics_with_effects(obj.id, effects) {
             // Override with calculated values (these include continuous effects)
-            snapshot.compiled_card_text = calculated.compiled_card_text;
+            snapshot.compiled_card_text = calculated.compiled_card_text.to_string();
             snapshot.power = calculated.power;
             snapshot.toughness = calculated.toughness;
             snapshot.card_types = calculated.card_types;
             snapshot.subtypes = calculated.subtypes;
             snapshot.supertypes = calculated.supertypes;
             snapshot.colors = calculated.colors;
-            snapshot.abilities = calculated.abilities;
+            snapshot.abilities = Arc::new(calculated.abilities);
         }
 
         snapshot
@@ -455,7 +459,7 @@ impl ObjectSnapshot {
             base_toughness: None,
             loyalty: None,
             defense: None,
-            abilities: vec![],
+            abilities: Arc::new(vec![]),
             aura_attach_filter: None,
             x_value: None,
             cast_order_this_turn: None,
@@ -609,7 +613,7 @@ mod tests {
         let mut obj = grizzly_bears_object();
 
         // Add undying trigger (now using Trigger struct)
-        obj.abilities
+        obj.abilities_mut()
             .push(Ability::triggered(Trigger::undying(), vec![]));
 
         let game = test_game_state();
@@ -629,7 +633,7 @@ mod tests {
         let mut obj = grizzly_bears_object();
 
         // Add persist trigger (now using Trigger struct)
-        obj.abilities
+        obj.abilities_mut()
             .push(Ability::triggered(Trigger::persist(), vec![]));
 
         let game = test_game_state();

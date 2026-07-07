@@ -104,7 +104,7 @@ fn aura_card_can_attach_to_target(
     if aura.zone != Zone::Hand || !aura.subtypes.contains(&Subtype::Aura) {
         return false;
     }
-    let Some(filter) = aura.aura_attach_filter.clone() else {
+    let Some(filter) = aura.aura_attach_filter_owned() else {
         return false;
     };
     let filter_ctx = game.filter_context_for(controller, Some(aura_id));

@@ -33,9 +33,9 @@ impl EffectExecutor for CastSourceEffect {
         }
 
         let from_zone = source_obj.zone;
-        let mana_cost = source_obj.mana_cost.clone();
+        let mana_cost = source_obj.mana_cost_owned();
         let stable_id = source_obj.stable_id;
-        let source_name = source_obj.name.clone();
+        let source_name = source_obj.name.to_string();
         let mut suspend_alternative_index = if from_zone == Zone::Exile {
             source_obj
                 .alternative_casts

@@ -19,6 +19,10 @@ impl TriggerMatcher for YouLoseLifeTrigger {
         e.player == ctx.controller
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::LifeLoss])
+    }
+
     fn display(&self) -> String {
         "Whenever you lose life".to_string()
     }

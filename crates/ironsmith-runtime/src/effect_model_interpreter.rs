@@ -825,7 +825,7 @@ where
                         .iter()
                         .map(|option| {
                             Ok(crate::effects::VoteOption::new(
-                                option.name.clone(),
+                                option.name.to_string(),
                                 convert_effects(option.effects_per_vote.iter().cloned(), hooks)?,
                             ))
                         })

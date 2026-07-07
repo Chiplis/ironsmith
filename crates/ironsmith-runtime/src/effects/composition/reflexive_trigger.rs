@@ -146,7 +146,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             base_toughness: memory.toughness,
             loyalty: None,
             defense: None,
-            abilities: Vec::new(),
+            abilities: std::sync::Arc::new(Vec::new()),
             aura_attach_filter: None,
             x_value: None,
             cast_order_this_turn: None,
@@ -379,10 +379,10 @@ impl EffectExecutor for ReflexiveTriggerEffect {
             entry = entry.with_defending_player(defending_player);
         }
         if let Some(source) = game.object(ctx.source) {
-            entry = entry.with_source_info(source.stable_id, source.name.clone());
+            entry = entry.with_source_info(source.stable_id, source.name.to_string());
         } else if let Some(snapshot) = ctx.source_snapshot.clone() {
             entry = entry
-                .with_source_info(snapshot.stable_id, snapshot.name.clone())
+                .with_source_info(snapshot.stable_id, snapshot.name.to_string())
                 .with_source_snapshot(snapshot);
         }
 

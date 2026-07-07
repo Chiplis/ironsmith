@@ -74,7 +74,7 @@ impl EffectExecutor for RemoveFromCombatEffect {
                 };
 
                 if removed {
-                    game.ninjutsu_attack_targets.remove(&object_id);
+                    game.clear_ninjutsu_attack_targets_for(object_id);
                 }
 
                 Ok(removed)

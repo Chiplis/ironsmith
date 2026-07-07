@@ -97,33 +97,9 @@ fn candidate_object_ids_for_vote(
     ctx: &ExecutionContext,
 ) -> Vec<ObjectId> {
     let filter_ctx = ctx.filter_context(game);
-    let candidate_ids: Vec<ObjectId> = match filter.zone {
-        Some(Zone::Battlefield) => game.battlefield.clone(),
-        Some(Zone::Graveyard) => game
-            .players
-            .iter()
-            .flat_map(|player| player.graveyard.iter().copied())
-            .collect(),
-        Some(Zone::Hand) => game
-            .players
-            .iter()
-            .flat_map(|player| player.hand.iter().copied())
-            .collect(),
-        Some(Zone::Library) => game
-            .players
-            .iter()
-            .flat_map(|player| player.library.iter().copied())
-            .collect(),
-        Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-        Some(Zone::Exile) => game.exile.clone(),
-        Some(Zone::Command) => game.command_zone.clone(),
-        Some(Zone::OutsideGame) => game.objects_in_zone(Zone::OutsideGame),
-        None => game.battlefield.clone(),
-    };
-
-    candidate_ids
-        .iter()
-        .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+    let zone = filter.zone.unwrap_or(Zone::Battlefield);
+    game.zone_ids(zone)
+        .filter_map(|id| game.object(id).map(|obj| (id, obj)))
         .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
         .map(|(id, _)| id)
         .collect()
@@ -218,7 +194,7 @@ fn collect_votes(
                 votes.push(PlayerVote {
                     player: player_id,
                     option_index: vote_index,
-                    option_name: options[vote_index].name.clone(),
+                    option_name: options[vote_index].name.to_string(),
                     object_vote: None,
                 });
             }
@@ -275,7 +251,7 @@ fn collect_object_votes(
                 votes.push(PlayerVote {
                     player: player_id,
                     option_index: object_id.0 as usize,
-                    option_name: object.name.clone(),
+                    option_name: object.name.to_string(),
                     object_vote: Some(object_id),
                 });
             }
@@ -332,7 +308,7 @@ fn collect_player_votes(
                 .iter()
                 .filter_map(|candidate| {
                     game.player(*candidate)
-                        .map(|player| (player.name.clone(), *candidate))
+                        .map(|player| (player.name.to_string(), *candidate))
                 })
                 .collect::<Vec<_>>();
             let Some(chosen) = (!options.is_empty())
@@ -355,7 +331,7 @@ fn collect_player_votes(
 
             let option_name = game
                 .player(chosen)
-                .map(|player| player.name.clone())
+                .map(|player| player.name.to_string())
                 .unwrap_or_else(|| "player".to_string());
             *vote_counts.entry(chosen).or_default() += 1;
             votes.push(PlayerVote {
@@ -415,9 +391,10 @@ fn queue_vote_events(
     vote_counts: HashMap<usize, usize>,
 ) {
     let option_names: Vec<String> = match &effect.choice {
-        VoteChoice::NamedOptions(options) => {
-            options.iter().map(|option| option.name.clone()).collect()
-        }
+        VoteChoice::NamedOptions(options) => options
+            .iter()
+            .map(|option| option.name.to_string())
+            .collect(),
         VoteChoice::Objects { .. } | VoteChoice::Players { .. } => {
             votes.iter().map(|vote| vote.option_name.clone()).collect()
         }
@@ -583,7 +560,7 @@ pub(crate) fn run_vote(
             result.total_votes = votes.len();
             for (idx, count) in &vote_counts_map {
                 if let Some(option) = options.get(*idx) {
-                    result.option_counts.insert(option.name.clone(), *count);
+                    result.option_counts.insert(option.name.to_string(), *count);
                 }
             }
             ctx.vote_results.insert(ctx.source, result);
@@ -765,7 +742,7 @@ mod tests {
         );
         game.object_mut(bonus_source)
             .expect("bonus permanent should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::vote_additional_vote_while_voting(),
             ));

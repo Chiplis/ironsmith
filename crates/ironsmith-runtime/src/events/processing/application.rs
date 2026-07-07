@@ -307,14 +307,14 @@ pub(super) fn apply_trait_replacement(
                     .map(|&id| {
                         let name = game
                             .object(id)
-                            .map(|o| o.name.clone())
+                            .map(|o| o.name.to_string())
                             .unwrap_or_else(|| "Unknown".to_string());
                         crate::decisions::context::SelectableObject::new(id, name)
                     })
                     .collect();
                 let source_name = game
                     .object(effect.source)
-                    .map(|o| o.name.clone())
+                    .map(|o| o.name.to_string())
                     .unwrap_or_else(|| "permanent".to_string());
                 let discard_phrase = describe_discard_filter_card_phrase(filter);
                 let redirect_phrase = describe_redirect_zone_phrase(*redirect_zone);
@@ -356,7 +356,7 @@ pub(super) fn apply_trait_replacement(
                     None => TraitApplyResult::Unchanged(event),
                 }
             } else {
-                let source_name = game.object(effect.source).map(|o| o.name.clone());
+                let source_name = game.object(effect.source).map(|o| o.name.to_string());
                 let mut bool_ctx = crate::decisions::context::BooleanContext::new(
                     controller,
                     Some(effect.source),

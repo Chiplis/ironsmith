@@ -179,7 +179,7 @@ mod tests {
             .expect("alice exists")
             .library
             .iter()
-            .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+            .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
             .collect();
         assert_eq!(
             library_names.last(),

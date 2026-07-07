@@ -154,10 +154,7 @@ impl EffectExecutor for NinjutsuCostEffect {
                 ExecutionError::Impossible("Failed to return chosen attacker to hand".to_string())
             })?;
 
-        game.ninjutsu_attack_targets
-            .entry(ctx.source)
-            .or_default()
-            .push(attack_target);
+        game.record_ninjutsu_attack_target(ctx.source, attack_target);
 
         Ok(EffectOutcome::resolved())
     }
@@ -298,10 +295,7 @@ impl EffectExecutor for SneakCostEffect {
                 ExecutionError::Impossible("Failed to return chosen attacker to hand".to_string())
             })?;
 
-        game.sneak_attack_targets
-            .entry(ctx.source)
-            .or_default()
-            .push(attack_target);
+        game.record_sneak_attack_target(ctx.source, attack_target);
 
         Ok(EffectOutcome::resolved())
     }
@@ -346,21 +340,7 @@ impl CostExecutableEffect for SneakCostEffect {
 }
 
 fn pop_ninjutsu_attack_target(game: &mut GameState, source: ObjectId) -> Option<AttackTarget> {
-    let mut remove_entry = false;
-    let target = game
-        .ninjutsu_attack_targets
-        .get_mut(&source)
-        .and_then(|targets| {
-            let popped = targets.pop();
-            if targets.is_empty() {
-                remove_entry = true;
-            }
-            popped
-        });
-    if remove_entry {
-        game.ninjutsu_attack_targets.remove(&source);
-    }
-    target
+    game.pop_ninjutsu_attack_target(source)
 }
 
 fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
@@ -496,11 +476,7 @@ mod tests {
                 .any(|obj| obj.name == "Attacker"),
             "returned attacker should be in hand"
         );
-        let recorded = game
-            .ninjutsu_attack_targets
-            .get(&source)
-            .and_then(|targets| targets.last())
-            .cloned();
+        let recorded = game.last_ninjutsu_attack_target(source).cloned();
         assert_eq!(recorded, Some(AttackTarget::Player(bob)));
     }
 
@@ -511,8 +487,7 @@ mod tests {
         let bob = PlayerId::from_index(1);
 
         let source = create_creature_in_zone(&mut game, "Ninja", alice, Zone::Hand);
-        game.ninjutsu_attack_targets
-            .insert(source, vec![AttackTarget::Player(bob)]);
+        game.record_ninjutsu_attack_target(source, AttackTarget::Player(bob));
         game.combat = Some(CombatState::default());
         game.turn.phase = Phase::Combat;
         game.turn.step = Some(Step::CombatDamage);

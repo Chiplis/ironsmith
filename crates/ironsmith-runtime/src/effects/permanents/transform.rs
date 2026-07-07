@@ -372,7 +372,7 @@ mod tests {
             object.base_toughness.map(|value| value.base_value()),
             Some(4)
         );
-        assert_eq!(object.compiled_card_text, "Trample");
+        assert_eq!(object.compiled_card_text.as_ref(), "Trample");
 
         let mut ctx = ExecutionContext::new_default(source, alice);
         let outcome = TransformEffect::source()
@@ -387,7 +387,7 @@ mod tests {
             .expect("source permanent should still exist");
         assert_eq!(object.name, "Trail Scout");
         assert_eq!(object.subtypes, vec![Subtype::Human, Subtype::Scout]);
-        assert_eq!(object.compiled_card_text, "Vigilance");
+        assert_eq!(object.compiled_card_text.as_ref(), "Vigilance");
     }
 
     #[test]

@@ -228,7 +228,7 @@ fn same_name_reference_name(
 ) -> Option<String> {
     if let Some(object_id) = ctx.iteration.iterated_object {
         if let Some(object) = game.object(object_id) {
-            return Some(object.name.clone());
+            return Some(object.name.to_string());
         }
     }
 
@@ -236,7 +236,7 @@ fn same_name_reference_name(
         constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
     })?;
     ctx.get_tagged(constraint.tag.as_str())
-        .map(|snapshot| snapshot.name.clone())
+        .map(|snapshot| snapshot.name.to_string())
 }
 
 fn search_card_noun(filter: &ObjectFilter, singular: bool) -> String {

@@ -123,7 +123,7 @@ impl EffectExecutor for RearrangeLookedCardsInLibraryEffect {
             .iter()
             .filter_map(|&id| {
                 game.object(id)
-                    .map(|obj| SelectableObject::new(id, obj.name.clone()))
+                    .map(|obj| SelectableObject::new(id, obj.name.to_string()))
             })
             .collect();
         let choice_ctx = SelectObjectsContext::new(
@@ -290,7 +290,7 @@ mod tests {
 
         let library = game.player(alice).expect("alice").library.clone();
         let top = *library.last().expect("top exists");
-        let top_name = game.object(top).expect("top object").name.clone();
+        let top_name = game.object(top).expect("top object").name.to_string();
         assert_eq!(top_name, "Viewed A");
     }
 }

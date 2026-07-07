@@ -81,7 +81,7 @@ fn choose_attack_target(
 
     let player_name = game
         .player(player_id)
-        .map(|player| player.name.clone())
+        .map(|player| player.name.to_string())
         .unwrap_or_else(|| "that player".to_string());
     let options: Vec<SelectableOption> = targets
         .iter()
@@ -92,7 +92,7 @@ fn choose_attack_target(
                 AttackTarget::Planeswalker(planeswalker_id) => {
                     let walker_name = game
                         .object(*planeswalker_id)
-                        .map(|object| object.name.clone())
+                        .map(|object| object.name.to_string())
                         .unwrap_or_else(|| "a planeswalker".to_string());
                     format!("Attack {walker_name} controlled by {player_name}")
                 }
@@ -153,10 +153,10 @@ fn build_token_copy_object(
         token.mana_cost = None;
     }
     if let Some(card_types) = &effect.set_card_types {
-        token.card_types = card_types.clone();
+        token.card_types = card_types.clone().into();
     }
     if let Some(subtypes) = &effect.set_subtypes {
-        token.subtypes = subtypes.clone();
+        token.subtypes = subtypes.clone().into();
     }
     for card_type in &effect.added_card_types {
         if !token.card_types.contains(card_type) {
@@ -175,7 +175,7 @@ fn build_token_copy_object(
     }
     for static_ability in static_abilities_to_grant {
         token
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(static_ability.clone()));
     }
 

@@ -144,6 +144,10 @@ impl TriggerMatcher for ThisAttacksWithNOthersTrigger {
         }
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
+    }
+
     fn display(&self) -> String {
         let subject = self.displayed_other_subject();
         if self.exact {

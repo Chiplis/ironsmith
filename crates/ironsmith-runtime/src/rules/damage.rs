@@ -187,7 +187,7 @@ pub(crate) fn apply_processed_damage_assignment(
 
             let current_card_types = game
                 .current_card_types(object_id)
-                .unwrap_or_else(|| obj.card_types.clone());
+                .unwrap_or_else(|| obj.card_types.to_vec());
             let is_creature = current_card_types.contains(&CardType::Creature);
             let is_planeswalker = current_card_types.contains(&CardType::Planeswalker);
             if !is_creature && !is_planeswalker {
@@ -587,17 +587,18 @@ mod tests {
         Object {
             id,
             stable_id: StableId::from(id),
+            last_modified: 0,
             kind: crate::object::ObjectKind::Card,
             card: None,
             zone: Zone::Battlefield,
             owner: PlayerId::from_index(0),
-            name: name.to_string(),
+            name: name.to_string().into(),
             mana_cost: None,
             color_override: None,
-            supertypes: vec![],
-            card_types: vec![CardType::Creature],
-            subtypes: vec![],
-            compiled_card_text: String::new(),
+            supertypes: vec![].into(),
+            card_types: vec![CardType::Creature].into(),
+            subtypes: vec![].into(),
+            compiled_card_text: String::new().into(),
             rules_text_color_identity: crate::color::ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
@@ -606,23 +607,23 @@ mod tests {
             base_toughness: Some(PtValue::Fixed(toughness)),
             base_loyalty: None,
             base_defense: None,
-            abilities: vec![],
+            abilities: std::sync::Arc::new(vec![]),
             counters: HashMap::new(),
             attached_to: None,
             attachments: vec![],
             spell_effect: None,
             aura_attach_filter: None,
-            alternative_casts: vec![],
+            alternative_casts: vec![].into(),
             cast_alternative_method: None,
             has_fuse: false,
-            optional_costs: vec![],
+            optional_costs: vec![].into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
             temporary_static_ability_grants: vec![],
             x_value: None,
             keyword_payment_contributions_to_cast: vec![],
             cast_tagged_objects: HashMap::new(),
-            additional_cost: crate::cost::TotalCost::free(),
+            additional_cost: crate::cost::TotalCost::free().into(),
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
@@ -630,7 +631,8 @@ mod tests {
     }
 
     fn add_ability(obj: &mut Object, static_ability: StaticAbility) {
-        obj.abilities.push(Ability::static_ability(static_ability));
+        obj.abilities_mut()
+            .push(Ability::static_ability(static_ability));
     }
 
     #[test]
@@ -726,7 +728,7 @@ mod tests {
         game.add_object(source);
 
         let mut land = make_creature("Animated Land", 0, 3);
-        land.card_types = vec![CardType::Land];
+        land.card_types = vec![CardType::Land].into();
         let land_id = land.id;
         game.add_object(land);
         game.effect_store.continuous_effects.add_effect(
@@ -760,7 +762,7 @@ mod tests {
         game.add_object(source);
 
         let mut planeswalker = make_creature("Test Planeswalker", 0, 0);
-        planeswalker.card_types = vec![CardType::Planeswalker];
+        planeswalker.card_types = vec![CardType::Planeswalker].into();
         planeswalker.base_power = None;
         planeswalker.base_toughness = None;
         planeswalker.base_loyalty = Some(5);
@@ -797,7 +799,7 @@ mod tests {
         game.add_object(source);
 
         let mut land = make_creature("Animated Land", 0, 3);
-        land.card_types = vec![CardType::Land];
+        land.card_types = vec![CardType::Land].into();
         let land_id = land.id;
         game.add_object(land);
         game.effect_store.continuous_effects.add_effect(

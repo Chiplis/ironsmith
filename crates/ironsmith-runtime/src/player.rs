@@ -1,6 +1,7 @@
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;
-use rand::{SeedableRng, rngs::StdRng};
+use rand::SeedableRng;
+use rand_chacha::ChaCha12Rng;
 use std::collections::HashMap;
 
 /// Mana pool tracking by color/type.
@@ -977,7 +978,7 @@ impl Player {
             seed = 0x9e37_79b9_7f4a_7c15;
         }
 
-        let mut rng = StdRng::seed_from_u64(seed);
+        let mut rng = ChaCha12Rng::seed_from_u64(seed);
         self.library.shuffle(&mut rng);
     }
 }

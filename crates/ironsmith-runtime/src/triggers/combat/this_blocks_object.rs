@@ -34,6 +34,10 @@ impl TriggerMatcher for ThisBlocksObjectTrigger {
             .is_some_and(|obj| self.blocked_filter.matches(obj, &ctx.filter_ctx, ctx.game))
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureBlocked])
+    }
+
     fn display(&self) -> String {
         format!(
             "Whenever this creature blocks {}",

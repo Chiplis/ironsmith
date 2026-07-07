@@ -47,6 +47,352 @@ fn mana_ability_index(game: &GameState, source: crate::ids::ObjectId, symbol: Ma
         .expect("expected mana ability to exist")
 }
 
+#[test]
+fn test_characteristic_prewarm_uses_layer_batch_for_multiple_objects() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let bear = CardBuilder::new(CardId::from_raw(9100), "Batch Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bear_id = game.create_object_from_card(&bear, alice, Zone::Battlefield);
+
+    let wall = CardBuilder::new(CardId::from_raw(9101), "Batch Wall")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 4))
+        .build();
+    let wall_id = game.create_object_from_card(&wall, alice, Zone::Battlefield);
+
+    let source = game.new_object_id();
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            source,
+            alice,
+            EffectTarget::AllCreatures,
+            Modification::ModifyPowerToughness {
+                power: 1,
+                toughness: 1,
+            },
+        ));
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            source,
+            alice,
+            EffectTarget::AllCreatures,
+            Modification::ModifyPowerToughness {
+                power: 2,
+                toughness: 0,
+            },
+        ));
+
+    game.refresh_continuous_state();
+    game.prewarm_calculated_characteristics(&[bear_id, wall_id]);
+
+    let before = game.work_counters();
+    let bear_chars = game
+        .calculated_characteristics(bear_id)
+        .expect("bear should have characteristics");
+    let wall_chars = game
+        .calculated_characteristics(wall_id)
+        .expect("wall should have characteristics");
+    let after = game.work_counters();
+
+    assert_eq!((bear_chars.power, bear_chars.toughness), (Some(5), Some(3)));
+    assert_eq!((wall_chars.power, wall_chars.toughness), (Some(4), Some(5)));
+    assert_eq!(
+        after.characteristics_full_recomputes, before.characteristics_full_recomputes,
+        "prewarmed characteristics should avoid per-object recomputation"
+    );
+    assert!(
+        after.characteristics_cache_hits >= before.characteristics_cache_hits + 2,
+        "prewarmed characteristics should be served from cache"
+    );
+}
+
+#[test]
+fn test_tapping_plain_permanent_only_invalidates_that_objects_characteristics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let bear = CardBuilder::new(CardId::from_raw(9102), "Local Tap Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bear_id = game.create_object_from_card(&bear, alice, Zone::Battlefield);
+
+    let wall = CardBuilder::new(CardId::from_raw(9103), "Local Tap Wall")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 4))
+        .build();
+    let wall_id = game.create_object_from_card(&wall, alice, Zone::Battlefield);
+
+    game.refresh_continuous_state();
+    game.prewarm_calculated_characteristics(&[bear_id, wall_id]);
+
+    let before = game.work_counters();
+    game.tap(bear_id);
+    assert!(game.is_tapped(bear_id));
+
+    let wall_chars = game
+        .calculated_characteristics(wall_id)
+        .expect("wall should have characteristics");
+    let after_wall = game.work_counters();
+
+    assert_eq!((wall_chars.power, wall_chars.toughness), (Some(1), Some(4)));
+    assert_eq!(
+        after_wall.characteristics_full_recomputes, before.characteristics_full_recomputes,
+        "tapping a plain permanent should not invalidate unrelated cached characteristics"
+    );
+    assert!(
+        after_wall.characteristics_cache_hits > before.characteristics_cache_hits,
+        "unrelated permanent should stay cacheable after a local tap change"
+    );
+
+    let bear_chars = game
+        .calculated_characteristics(bear_id)
+        .expect("bear should have characteristics");
+    let after_bear = game.work_counters();
+
+    assert_eq!((bear_chars.power, bear_chars.toughness), (Some(2), Some(2)));
+    assert_eq!(
+        after_bear.characteristics_full_recomputes,
+        before.characteristics_full_recomputes + 1,
+        "only the tapped permanent should need a fresh characteristic calculation"
+    );
+}
+
+#[test]
+fn test_summoning_sick_plain_permanent_only_invalidates_that_objects_characteristics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let recruit = CardBuilder::new(CardId::from_raw(9104), "Local Sick Recruit")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .build();
+    let recruit_id = game.create_object_from_card(&recruit, alice, Zone::Battlefield);
+
+    let sentry = CardBuilder::new(CardId::from_raw(9105), "Local Sick Sentry")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 4))
+        .build();
+    let sentry_id = game.create_object_from_card(&sentry, alice, Zone::Battlefield);
+
+    game.refresh_continuous_state();
+    game.prewarm_calculated_characteristics(&[recruit_id, sentry_id]);
+
+    let before = game.work_counters();
+    game.set_summoning_sick(recruit_id);
+    assert!(game.is_summoning_sick(recruit_id));
+
+    let sentry_chars = game
+        .calculated_characteristics(sentry_id)
+        .expect("sentry should have characteristics");
+    let after_sentry = game.work_counters();
+
+    assert_eq!(
+        (sentry_chars.power, sentry_chars.toughness),
+        (Some(0), Some(4))
+    );
+    assert_eq!(
+        after_sentry.characteristics_full_recomputes, before.characteristics_full_recomputes,
+        "summoning-sick flag changes on a plain permanent should not invalidate unrelated cached characteristics"
+    );
+    assert!(
+        after_sentry.characteristics_cache_hits > before.characteristics_cache_hits,
+        "unrelated permanent should stay cacheable after a local summoning-sick change"
+    );
+
+    let recruit_chars = game
+        .calculated_characteristics(recruit_id)
+        .expect("recruit should have characteristics");
+    let after_recruit = game.work_counters();
+
+    assert_eq!(
+        (recruit_chars.power, recruit_chars.toughness),
+        (Some(2), Some(1))
+    );
+    assert_eq!(
+        after_recruit.characteristics_full_recomputes,
+        before.characteristics_full_recomputes + 1,
+        "only the summoning-sick permanent should need a fresh characteristic calculation"
+    );
+}
+
+#[test]
+fn test_monstrous_plain_permanent_only_invalidates_that_objects_characteristics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let beast = CardBuilder::new(CardId::from_raw(9106), "Local Monstrous Beast")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let beast_id = game.create_object_from_card(&beast, alice, Zone::Battlefield);
+
+    let lookout = CardBuilder::new(CardId::from_raw(9107), "Local Monstrous Lookout")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 3))
+        .build();
+    let lookout_id = game.create_object_from_card(&lookout, alice, Zone::Battlefield);
+
+    game.refresh_continuous_state();
+    game.prewarm_calculated_characteristics(&[beast_id, lookout_id]);
+
+    let before = game.work_counters();
+    game.set_monstrous(beast_id);
+    assert!(game.is_monstrous(beast_id));
+
+    let lookout_chars = game
+        .calculated_characteristics(lookout_id)
+        .expect("lookout should have characteristics");
+    let after_lookout = game.work_counters();
+
+    assert_eq!(
+        (lookout_chars.power, lookout_chars.toughness),
+        (Some(1), Some(3))
+    );
+    assert_eq!(
+        after_lookout.characteristics_full_recomputes, before.characteristics_full_recomputes,
+        "monstrous designation on a plain permanent should not invalidate unrelated cached characteristics"
+    );
+    assert!(
+        after_lookout.characteristics_cache_hits > before.characteristics_cache_hits,
+        "unrelated permanent should stay cacheable after a local monstrous designation"
+    );
+
+    let beast_chars = game
+        .calculated_characteristics(beast_id)
+        .expect("beast should have characteristics");
+    let after_beast = game.work_counters();
+
+    assert_eq!(
+        (beast_chars.power, beast_chars.toughness),
+        (Some(4), Some(4))
+    );
+    assert_eq!(
+        after_beast.characteristics_full_recomputes,
+        before.characteristics_full_recomputes + 1,
+        "only the designated permanent should need a fresh characteristic calculation"
+    );
+}
+
+#[test]
+fn test_face_down_plain_permanent_only_invalidates_that_objects_characteristics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let mystery = CardBuilder::new(CardId::from_raw(9108), "Local Face-Down Mystery")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mystery_id = game.create_object_from_card(&mystery, alice, Zone::Battlefield);
+
+    let observer = CardBuilder::new(CardId::from_raw(9109), "Local Face-Down Observer")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 4))
+        .build();
+    let observer_id = game.create_object_from_card(&observer, alice, Zone::Battlefield);
+
+    game.refresh_continuous_state();
+    game.prewarm_calculated_characteristics(&[mystery_id, observer_id]);
+
+    let before = game.work_counters();
+    game.set_face_down(mystery_id);
+    assert!(game.is_face_down(mystery_id));
+
+    let observer_chars = game
+        .calculated_characteristics(observer_id)
+        .expect("observer should have characteristics");
+    let after_observer = game.work_counters();
+
+    assert_eq!(
+        (observer_chars.power, observer_chars.toughness),
+        (Some(1), Some(4))
+    );
+    assert_eq!(
+        after_observer.characteristics_full_recomputes, before.characteristics_full_recomputes,
+        "face-down state on a plain permanent should not invalidate unrelated cached characteristics"
+    );
+    assert!(
+        after_observer.characteristics_cache_hits > before.characteristics_cache_hits,
+        "unrelated permanent should stay cacheable after a local face-down state change"
+    );
+
+    let mystery_chars = game
+        .calculated_characteristics(mystery_id)
+        .expect("mystery should have characteristics");
+    let after_mystery = game.work_counters();
+
+    assert_eq!(
+        (mystery_chars.power, mystery_chars.toughness),
+        (Some(2), Some(2))
+    );
+    assert_eq!(
+        after_mystery.characteristics_full_recomputes,
+        before.characteristics_full_recomputes + 1,
+        "only the face-down permanent should need a fresh characteristic calculation"
+    );
+}
+
+#[test]
+fn test_solve_case_only_invalidates_that_objects_characteristics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let case = CardBuilder::new(CardId::from_raw(9110), "Local Solved Case")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .build();
+    let case_id = game.create_object_from_card(&case, alice, Zone::Battlefield);
+
+    let witness = CardBuilder::new(CardId::from_raw(9111), "Local Case Witness")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let witness_id = game.create_object_from_card(&witness, alice, Zone::Battlefield);
+
+    game.refresh_continuous_state();
+    game.prewarm_calculated_characteristics(&[case_id, witness_id]);
+
+    let before = game.work_counters();
+    assert!(game.solve_case(case_id));
+    assert!(game.is_case_solved(case_id));
+
+    let witness_chars = game
+        .calculated_characteristics(witness_id)
+        .expect("witness should have characteristics");
+    let after_witness = game.work_counters();
+
+    assert_eq!(
+        (witness_chars.power, witness_chars.toughness),
+        (Some(1), Some(1))
+    );
+    assert_eq!(
+        after_witness.characteristics_full_recomputes, before.characteristics_full_recomputes,
+        "solving a case should not invalidate unrelated cached characteristics"
+    );
+    assert!(
+        after_witness.characteristics_cache_hits > before.characteristics_cache_hits,
+        "unrelated permanent should stay cacheable after a case is solved"
+    );
+
+    let case_chars = game
+        .calculated_characteristics(case_id)
+        .expect("case should have characteristics");
+    let after_case = game.work_counters();
+
+    assert_eq!((case_chars.power, case_chars.toughness), (Some(0), Some(0)));
+    assert_eq!(
+        after_case.characteristics_full_recomputes,
+        before.characteristics_full_recomputes + 1,
+        "only the solved case should need a fresh characteristic calculation"
+    );
+}
+
 // =============================================================================
 // Blood Moon Interaction Tests
 // =============================================================================
@@ -963,7 +1309,7 @@ fn test_humility_plus_crusade_results_in_2_2() {
     // Add flying ability
     game.object_mut(creature_id)
         .unwrap()
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(StaticAbility::flying()));
 
     // Create Humility using the proper card definition (earlier timestamp)
@@ -996,6 +1342,84 @@ fn test_humility_plus_crusade_results_in_2_2() {
 }
 
 #[test]
+fn filter_with_keyword_ability_sees_layer_six_grants() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let wonder_card = CardBuilder::new(CardId::from_raw(6120), "Wonder Stand-In")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let wonder_id = game.create_object_from_card(&wonder_card, alice, Zone::Battlefield);
+
+    let wyvern_card = CardBuilder::new(CardId::from_raw(6121), "Thunderclap Wyvern Stand-In")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .build();
+    let wyvern_id = game.create_object_from_card(&wyvern_card, alice, Zone::Battlefield);
+    game.object_mut(wyvern_id)
+        .expect("wyvern should exist")
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::flying()));
+
+    let ground_creature = CardBuilder::new(CardId::from_raw(6122), "Ground Recruit")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let recruit_id = game.create_object_from_card(&ground_creature, alice, Zone::Battlefield);
+
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            wonder_id,
+            alice,
+            EffectTarget::AllCreatures,
+            Modification::AddAbility(StaticAbility::flying()),
+        ));
+
+    let mut flying_other_creatures = crate::filter::ObjectFilter::creature()
+        .you_control()
+        .other();
+    flying_other_creatures
+        .static_abilities
+        .push(StaticAbilityId::Flying);
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            wyvern_id,
+            alice,
+            EffectTarget::Filter(flying_other_creatures),
+            Modification::ModifyPowerToughness {
+                power: 1,
+                toughness: 1,
+            },
+        ));
+
+    game.refresh_continuous_state();
+
+    assert!(
+        game.object_has_ability(recruit_id, &StaticAbility::flying()),
+        "layer 6 grant should give the recruit flying"
+    );
+    assert_eq!(
+        (
+            game.calculated_power(recruit_id),
+            game.calculated_toughness(recruit_id)
+        ),
+        (Some(2), Some(2)),
+        "keyword-filtered pump should see flying granted in layer 6"
+    );
+    assert_eq!(
+        (
+            game.calculated_power(wyvern_id),
+            game.calculated_toughness(wyvern_id)
+        ),
+        (Some(2), Some(3)),
+        "the source's other-creatures filter should not pump itself"
+    );
+}
+
+#[test]
 fn test_multilayer_effect_continues_after_source_ability_removed() {
     fn run_scenario(
         effect_timestamp: u64,
@@ -1012,7 +1436,7 @@ fn test_multilayer_effect_continues_after_source_ability_removed() {
         let source_ability = StaticAbility::haste();
         game.object_mut(source_id)
             .unwrap()
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(source_ability.clone()));
 
         let target_card = CardBuilder::new(CardId::from_raw(6101), "Animated Enchantment")
@@ -1087,7 +1511,7 @@ fn test_multilayer_effect_continues_after_source_ability_removed() {
             game.objects_map(),
             &effects,
             &game.battlefield,
-            &game.commanders,
+            game.commander_objects(),
             &game,
         )
         .expect("target should have calculated characteristics");
@@ -3054,7 +3478,7 @@ fn test_yawgmoth_undying_loop_draws_cards_until_death() {
             .map(|obj| {
                 (
                     obj.id,
-                    obj.name.clone(),
+                    obj.name.to_string(),
                     obj.counters
                         .get(&CounterType::PlusOnePlusOne)
                         .copied()

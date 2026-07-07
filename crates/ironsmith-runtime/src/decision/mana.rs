@@ -472,7 +472,7 @@ pub(crate) fn casting_method_matches_alternative_kind(
             zone,
             ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
-            .or_else(|| spell.cast_alternative_method.clone())
+            .or_else(|| spell.cast_alternative_method_owned())
             .as_ref()
             .is_some_and(|method| alternative_cast_method_matches_kind(method, kind)),
         CastingMethod::Normal => spell
@@ -510,7 +510,7 @@ fn casting_method_is_bestow(
             zone,
             ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
-            .or_else(|| spell.cast_alternative_method.clone())
+            .or_else(|| spell.cast_alternative_method_owned())
             .as_ref()
             .is_some_and(|method| method.is_bestow()),
         _ => false,
@@ -534,7 +534,7 @@ fn spell_view_for_cost_filter_match(
             .alternative_casts
             .get(*idx)
             .cloned()
-            .or_else(|| spell.cast_alternative_method.clone()),
+            .or_else(|| spell.cast_alternative_method_owned()),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
             zone,
@@ -545,8 +545,8 @@ fn spell_view_for_cost_filter_match(
             zone,
             ..
         } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
-            .or_else(|| spell.cast_alternative_method.clone()),
-        _ => spell.cast_alternative_method.clone(),
+            .or_else(|| spell.cast_alternative_method_owned()),
+        _ => spell.cast_alternative_method_owned(),
     };
 
     if matches!(
@@ -583,10 +583,10 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
             || {
                 let mut spell_for_filter = spell.clone();
                 if let Some(chars) = game.current_characteristics(spell_id) {
-                    spell_for_filter.name = chars.name;
-                    spell_for_filter.card_types = chars.card_types;
-                    spell_for_filter.subtypes = chars.subtypes;
-                    spell_for_filter.supertypes = chars.supertypes;
+                    spell_for_filter.name = chars.name.into();
+                    spell_for_filter.card_types = chars.card_types.into();
+                    spell_for_filter.subtypes = chars.subtypes.into();
+                    spell_for_filter.supertypes = chars.supertypes.into();
                     spell_for_filter.color_override = Some(chars.colors);
                 }
                 spell_for_filter
@@ -1066,7 +1066,7 @@ fn casting_method_grants_flash_timing(
             ..
         } => {
             crate::decision::resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
-                .or_else(|| spell.cast_alternative_method.clone())
+                .or_else(|| spell.cast_alternative_method_owned())
         }
         _ => None,
     };
@@ -1152,27 +1152,27 @@ pub fn spell_mana_cost_for_cast(
     from_zone: Zone,
 ) -> Option<crate::mana::ManaCost> {
     let base_cost = match casting_method {
-        CastingMethod::Normal => spell.mana_cost.clone(),
+        CastingMethod::Normal => spell.mana_cost_owned(),
         CastingMethod::FaceDown => Some(face_down_cast_mana_cost()),
         CastingMethod::SplitOtherHalf => {
             if spell.zone == Zone::Stack {
-                spell.mana_cost.clone()
+                spell.mana_cost_owned()
             } else {
                 linked_face_definition(game, spell).and_then(|def| def.card.mana_cost)
             }
         }
         CastingMethod::Fuse => {
             if spell.zone == Zone::Stack {
-                spell.mana_cost.clone()
+                spell.mana_cost_owned()
             } else {
-                spell_view_for_fused_split_cast(game, spell).and_then(|view| view.mana_cost)
+                spell_view_for_fused_split_cast(game, spell).and_then(|view| view.mana_cost_owned())
             }
         }
         CastingMethod::Alternative(idx) => {
             if let Some(method) = spell
                 .alternative_casts
                 .get(*idx)
-                .or(spell.cast_alternative_method.as_ref())
+                .or(spell.cast_alternative_method.as_deref())
             {
                 if matches!(
                     method,
@@ -1185,18 +1185,18 @@ pub fn spell_mana_cost_for_cast(
                     method
                         .mana_cost()
                         .cloned()
-                        .or_else(|| spell.mana_cost.clone())
+                        .or_else(|| spell.mana_cost_owned())
                 }
             } else {
-                spell.mana_cost.clone()
+                spell.mana_cost_owned()
             }
         }
-        CastingMethod::GrantedEscape { .. } => spell.mana_cost.clone(),
-        CastingMethod::GrantedFlashback => spell.mana_cost.clone(),
+        CastingMethod::GrantedEscape { .. } => spell.mana_cost_owned(),
+        CastingMethod::GrantedFlashback => spell.mana_cost_owned(),
         CastingMethod::PlayFrom {
             use_alternative: None,
             ..
-        } => spell.mana_cost.clone(),
+        } => spell.mana_cost_owned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
             zone,
@@ -1209,7 +1209,7 @@ pub fn spell_mana_cost_for_cast(
         } => {
             if let Some(method) =
                 resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
-                    .or_else(|| spell.cast_alternative_method.clone())
+                    .or_else(|| spell.cast_alternative_method_owned())
             {
                 if matches!(
                     method,
@@ -1222,10 +1222,10 @@ pub fn spell_mana_cost_for_cast(
                     method
                         .mana_cost()
                         .cloned()
-                        .or_else(|| spell.mana_cost.clone())
+                        .or_else(|| spell.mana_cost_owned())
                 }
             } else {
-                spell.mana_cost.clone()
+                spell.mana_cost_owned()
             }
         }
     };
@@ -1262,7 +1262,7 @@ fn alternative_method_for_casting_method(
         CastingMethod::Alternative(idx) => spell
             .alternative_casts
             .get(*idx)
-            .or(spell.cast_alternative_method.as_ref())
+            .or(spell.cast_alternative_method.as_deref())
             .cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -1274,8 +1274,8 @@ fn alternative_method_for_casting_method(
             zone,
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
-            .or_else(|| spell.cast_alternative_method.clone()),
-        CastingMethod::Normal => spell.cast_alternative_method.clone(),
+            .or_else(|| spell.cast_alternative_method_owned()),
+        CastingMethod::Normal => spell.cast_alternative_method_owned(),
         CastingMethod::FaceDown
         | CastingMethod::SplitOtherHalf
         | CastingMethod::Fuse
@@ -1326,7 +1326,7 @@ pub(crate) fn casting_method_requires_printed_mana_cost(
             zone,
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
-            .or_else(|| spell.cast_alternative_method.clone())
+            .or_else(|| spell.cast_alternative_method_owned())
             .as_ref()
             .is_some_and(alternative_method_uses_printed_mana_cost),
         _ => false,
@@ -1387,7 +1387,7 @@ pub(crate) fn spell_has_legal_targets_for_cast_with_view(
             || view.spell_has_legal_targets(effects, player, Some(spell_id), None);
     }
 
-    if let Some(program) = program_override.or(spell.spell_effect.as_ref()) {
+    if let Some(program) = program_override.or(spell.spell_effect.as_deref()) {
         return crate::game_loop::spell_program_has_legal_targets_with_modes_and_view(
             game,
             program,
@@ -1619,8 +1619,8 @@ pub(crate) fn can_cast_spell_with_context(
             zone,
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
-            .or_else(|| spell.cast_alternative_method.clone()),
-        _ => spell.cast_alternative_method.clone(),
+            .or_else(|| spell.cast_alternative_method_owned()),
+        _ => spell.cast_alternative_method_owned(),
     } && let Some(condition) = method.cast_condition()
         && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
             game,
@@ -1675,8 +1675,8 @@ pub(crate) fn can_cast_spell_with_context(
     let target_started_at = PerfTimer::start();
     let program = cast_view
         .as_ref()
-        .and_then(|view| view.spell_effect.as_ref())
-        .or(spell.spell_effect.as_ref());
+        .and_then(|view| view.spell_effect.as_deref())
+        .or(spell.spell_effect.as_deref());
     let has_legal_targets =
         spell_has_legal_targets_for_cast_or_payable_non_mana_optional_cost_with_view(
             game,
@@ -1860,8 +1860,8 @@ pub(crate) fn can_cast_with_cost_with_context(
             zone,
             ..
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
-            .or_else(|| spell.cast_alternative_method.clone()),
-        _ => spell.cast_alternative_method.clone(),
+            .or_else(|| spell.cast_alternative_method_owned()),
+        _ => spell.cast_alternative_method_owned(),
     } && let Some(condition) = method.cast_condition()
         && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
             game,
@@ -1913,7 +1913,7 @@ pub(crate) fn can_cast_with_cost_with_context(
     let program = if effects_override.is_some() {
         None
     } else {
-        spell_for_checks.spell_effect.as_ref()
+        spell_for_checks.spell_effect.as_deref()
     };
     let has_legal_targets =
         spell_has_legal_targets_for_cast_or_payable_non_mana_optional_cost_with_view(
@@ -2089,7 +2089,7 @@ pub(crate) fn get_mana_cost_for_method<'a>(
 
     // Method's cost takes priority, fallback to spell's cost for methods that
     // explicitly say they reuse the spell's normal mana cost.
-    method.mana_cost().or(spell.mana_cost.as_ref())
+    method.mana_cost().or(spell.mana_cost.as_deref())
 }
 
 pub(crate) fn spell_view_for_disturb_cast(
@@ -2097,7 +2097,7 @@ pub(crate) fn spell_view_for_disturb_cast(
     spell: &crate::object::Object,
 ) -> Option<crate::object::Object> {
     let already_overlaid_disturb_spell = matches!(
-        spell.cast_alternative_method,
+        spell.cast_alternative_method.as_deref(),
         Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
     ) && !spell.alternative_casts.iter().any(|method| {
         matches!(
@@ -2245,7 +2245,7 @@ pub(crate) fn can_cast_with_alternative_with_context(
         .any(|candidate| candidate == method))
     .then(|| {
         let mut view = base_spell_for_checks.clone();
-        view.cast_alternative_method = Some(method.clone());
+        view.cast_alternative_method = Some(Box::new(method.clone()));
         view
     });
     let spell_for_checks = provisional_alternative_spell
@@ -2258,6 +2258,7 @@ pub(crate) fn can_cast_with_alternative_with_context(
             disturbed_view
                 .as_ref()
                 .and_then(|view| view.spell_effect.as_deref())
+                .map(|program| &**program)
         });
     let free_plot_cost = crate::mana::ManaCost::new();
     if let Some(condition) = method.cast_condition()
@@ -3005,7 +3006,7 @@ pub(crate) fn apply_spell_cost_modifiers(
         spell.id,
     );
 
-    for ability in &spell.abilities {
+    for ability in spell.abilities.iter() {
         let AbilityKind::Static(static_ability) = &ability.kind else {
             continue;
         };
@@ -3848,7 +3849,7 @@ fn available_mana_sources_for_payment(
         };
         let abilities = view
             .abilities_rc(perm_id)
-            .unwrap_or_else(|| std::rc::Rc::new(object.abilities.clone()));
+            .unwrap_or_else(|| std::rc::Rc::new(object.abilities_vec()));
         let mut outputs_for_permanent = Vec::new();
         for &ability_index in analysis.mana_ability_indices_for(perm_id) {
             let Some(ability) = abilities.get(ability_index) else {

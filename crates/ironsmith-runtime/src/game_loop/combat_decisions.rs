@@ -19,7 +19,7 @@ pub fn get_declare_attackers_decision(
         .map(|opt| {
             let creature_name = game
                 .object(opt.creature)
-                .map(|o| o.name.clone())
+                .map(|o| o.name.to_string())
                 .unwrap_or_else(|| format!("Creature #{}", opt.creature.0));
             crate::decisions::context::AttackerOptionContext {
                 creature: opt.creature,
@@ -54,7 +54,7 @@ pub(super) fn generic_mana_cost(amount: u32) -> crate::mana::ManaCost {
 
 pub(super) fn object_label(game: &GameState, id: ObjectId, fallback: &str) -> String {
     game.object(id)
-        .map(|o| o.name.clone())
+        .map(|o| o.name.to_string())
         .unwrap_or_else(|| format!("{fallback} #{}", id.0))
 }
 
@@ -572,7 +572,7 @@ pub fn get_declare_blockers_decision(
         .map(|opt| {
             let attacker_name = game
                 .object(opt.attacker)
-                .map(|o| o.name.clone())
+                .map(|o| o.name.to_string())
                 .unwrap_or_else(|| format!("Attacker #{}", opt.attacker.0));
             let valid_blockers: Vec<(ObjectId, String)> = opt
                 .valid_blockers
@@ -580,7 +580,7 @@ pub fn get_declare_blockers_decision(
                 .map(|id| {
                     let name = game
                         .object(id)
-                        .map(|o| o.name.clone())
+                        .map(|o| o.name.to_string())
                         .unwrap_or_else(|| format!("Creature #{}", id.0));
                     (id, name)
                 })
@@ -804,13 +804,13 @@ pub fn get_blocker_order_decision(
         .map(|&id| {
             let name = game
                 .object(id)
-                .map(|o| o.name.clone())
+                .map(|o| o.name.to_string())
                 .unwrap_or_else(|| format!("Blocker #{}", id.0));
             (id, name)
         })
         .collect();
 
-    let attacker_name = attacker_obj.name.clone();
+    let attacker_name = attacker_obj.name.to_string();
     let ctx = crate::decisions::context::OrderContext::new(
         assignment_player,
         Some(attacker),

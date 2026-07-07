@@ -214,7 +214,7 @@ impl StaticAbilityKind for ExertAttack {
         if !self.is_available(game, source) {
             return None;
         }
-        let source_name = game.object(source).map(|object| object.name.clone())?;
+        let source_name = game.object(source).map(|object| object.name.to_string())?;
         Some(
             crate::decisions::context::BooleanContext::new(
                 controller,
@@ -273,7 +273,7 @@ impl StaticAbilityKind for ExertAttack {
                     ability: linked_trigger.clone(),
                     triggering_event: exert_event,
                     source_stable_id: source_object.stable_id,
-                    source_name: source_object.name.clone(),
+                    source_name: source_object.name.to_string(),
                     source_snapshot: None,
                     tagged_objects: Default::default(),
                     source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,

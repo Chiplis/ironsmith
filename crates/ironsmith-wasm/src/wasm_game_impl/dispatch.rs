@@ -203,6 +203,47 @@ mod dispatch_tests {
 
 #[wasm_bindgen]
 impl WasmGame {
+    fn snapshot_state_shape_hash(&self) -> u64 {
+        hash_debug_value(&(
+            self.game.players.len(),
+            self.game
+                .players
+                .iter()
+                .map(|p| (&p.name, p.life))
+                .collect::<Vec<_>>(),
+            self.game.turn.turn_number,
+            self.game.turn.active_player,
+            self.game.turn.phase,
+            self.game.turn.step,
+            self.game.object_ids_in_deterministic_order().len(),
+            self.game.stack.len(),
+        ))
+    }
+
+    fn snapshot_cache_key(
+        &self,
+        pending_cast_stack_id: Option<ObjectId>,
+        cancelable: bool,
+        undo_land_stable_id: Option<u64>,
+        mana_payment_view: &Option<ManaPaymentView>,
+    ) -> SnapshotCacheKey {
+        SnapshotCacheKey {
+            mutation_revision: self.game.mutation_revision(),
+            state_shape_hash: self.snapshot_state_shape_hash(),
+            zone_revision: self.game.zone_revisions().all,
+            perspective: self.perspective,
+            pending_decision_hash: hash_debug_value(&self.pending_decision),
+            mana_payment_hash: hash_debug_value(mana_payment_view),
+            game_over_hash: hash_debug_value(&self.game_over),
+            pending_cast_stack_id,
+            active_resolving_stack_hash: hash_debug_value(&self.active_resolving_stack_object),
+            active_viewed_cards_hash: hash_debug_value(&self.active_viewed_cards),
+            crypto_requirements_hash: hash_debug_value(&self.last_crypto_requirements),
+            cancelable,
+            undo_land_stable_id,
+        }
+    }
+
     fn finish_dispatch_with_snapshot(
         &mut self,
         started_at: PerfTimer,
@@ -299,8 +340,7 @@ impl WasmGame {
             continuation
                 .checkpoint
                 .game
-                .hidden_cards
-                .iter()
+                .hidden_card_entries()
                 .find_map(|(object_id, info)| {
                     if info.owner != owner {
                         return None;
@@ -351,7 +391,7 @@ impl WasmGame {
         };
         continuation.speculative_progress = None;
         let target = hidden_position_continuation_target(
-            continuation.checkpoint.game.hidden_cards.iter(),
+            continuation.checkpoint.game.hidden_card_entries(),
             owner,
             position,
             position_commitment,
@@ -502,6 +542,11 @@ impl WasmGame {
             last_replay_execution_perf: None,
             last_advance_until_decision_perf: None,
             last_dispatch_perf: None,
+            snapshot_object_view_cache: SnapshotObjectViewCache::default(),
+            #[cfg(target_arch = "wasm32")]
+            snapshot_js_encoding_cache: SnapshotJsEncodingCache::default(),
+            manabrew_overlay_cache: ManabrewOverlayCache::default(),
+            cached_snapshot: None,
         }
     }
 
@@ -659,8 +704,7 @@ impl WasmGame {
         let owner = PlayerId::from_index(input.owner);
         let Some((&object_id, info)) = self
             .game
-            .hidden_cards
-            .iter()
+            .hidden_card_entries()
             .find(|(_, info)| info.owner == owner && info.slot == input.slot)
         else {
             return Err(JsValue::from_str(
@@ -766,8 +810,7 @@ impl WasmGame {
         };
         let target = explicit_target.or_else(|| {
             self.game
-                .hidden_cards
-                .iter()
+                .hidden_card_entries()
                 .find(|(object_id, info)| {
                     info.owner == owner
                         && self.game.is_hidden_card_placeholder(**object_id)
@@ -1128,7 +1171,7 @@ impl WasmGame {
             object_id: object_id.0,
             owner: info.owner.index() as u8,
             slot: info.slot,
-            card: object.name.clone(),
+            card: object.name.to_string(),
             commitment: info.commitment.clone(),
             public_slot: info.public_slot,
             public_commitment: info.public_commitment.clone(),
@@ -1155,22 +1198,41 @@ impl WasmGame {
             .map(|p| p.stack_id);
         let cancelable = self.is_cancelable();
         let undo_land_stable_id = self.visible_undo_land_stable_id(cancelable);
+        let mana_payment_view = self.current_mana_payment_view();
+        let cache_key = self.snapshot_cache_key(
+            pending_cast_stack_id,
+            cancelable,
+            undo_land_stable_id,
+            &mana_payment_view,
+        );
+        #[cfg(target_arch = "wasm32")]
+        if !self.game.has_ui_battlefield_transitions()
+            && self.pending_crypto_audit_before.is_none()
+            && let Some(cached) = self.cached_snapshot.as_ref()
+            && cached.key == cache_key
+        {
+            self.last_snapshot_perf = Some(cached.perf.clone());
+            return Ok(cached.value.clone());
+        }
         self.snapshot_serial = self.snapshot_serial.saturating_add(1);
         let snapshot_id = self.snapshot_serial;
         let transitions_started_at = PerfTimer::start();
         let battlefield_transitions =
             battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
+        let had_battlefield_transitions = !battlefield_transitions.is_empty();
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = had_battlefield_transitions;
         let battlefield_transition_ms = transitions_started_at.elapsed_ms();
         self.game.refresh_continuous_state();
         let build_started_at = PerfTimer::start();
         if let Some(before) = self.pending_crypto_audit_before.take() {
             self.update_crypto_requirements_from(before);
         }
-        let mut snap = GameSnapshot::from_game(
+        let mut snap = GameSnapshot::from_game_with_object_view_cache(
             &self.game,
             self.perspective,
             self.pending_decision.as_ref(),
-            self.current_mana_payment_view(),
+            mana_payment_view,
             self.game_over.as_ref(),
             pending_cast_stack_id,
             self.active_resolving_stack_object.clone(),
@@ -1179,6 +1241,7 @@ impl WasmGame {
             cancelable,
             undo_land_stable_id,
             snapshot_id,
+            &self.snapshot_object_view_cache,
         );
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         let snapshot_build_ms = build_started_at.elapsed_ms();
@@ -1190,13 +1253,15 @@ impl WasmGame {
         let stack_size = snap.stack_size;
         let encode_started_at = PerfTimer::start();
         #[cfg(target_arch = "wasm32")]
-        let encoded = serde_wasm_bindgen::to_value(&snap)
-            .map_err(|e| JsValue::from_str(&format!("snapshot encode failed: {e}")))?;
+        let encoded = self
+            .snapshot_js_encoding_cache
+            .encode_snapshot(&snap)
+            .map_err(|e| JsValue::from_str(&format!("snapshot encode failed: {e:?}")))?;
         #[cfg(not(target_arch = "wasm32"))]
         let encoded = JsValue::NULL;
         let snapshot_encode_ms = encode_started_at.elapsed_ms();
         let total_snapshot_ms = snapshot_started_at.elapsed_ms();
-        self.last_snapshot_perf = Some(SnapshotPerfMetrics {
+        let perf = SnapshotPerfMetrics {
             snapshot_id,
             battlefield_transition_ms,
             snapshot_build_ms,
@@ -1206,7 +1271,23 @@ impl WasmGame {
             player_count,
             battlefield_size,
             stack_size,
-        });
+        };
+        self.last_snapshot_perf = Some(perf.clone());
+        #[cfg(target_arch = "wasm32")]
+        if !had_battlefield_transitions && self.pending_crypto_audit_before.is_none() {
+            self.cached_snapshot = Some(CachedSnapshot {
+                key: cache_key,
+                value: encoded.clone(),
+                perf,
+            });
+        } else {
+            self.cached_snapshot = None;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = cache_key;
+            self.cached_snapshot = None;
+        }
         Ok(encoded)
     }
 
@@ -1227,6 +1308,12 @@ impl WasmGame {
     pub fn last_dispatch_perf_js(&self) -> Result<JsValue, JsValue> {
         serde_wasm_bindgen::to_value(&self.last_dispatch_perf)
             .map_err(|e| JsValue::from_str(&format!("lastDispatchPerf encode failed: {e}")))
+    }
+
+    #[wasm_bindgen(js_name = lastWorkCounters)]
+    pub fn last_work_counters_js(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.game.work_counters())
+            .map_err(|e| JsValue::from_str(&format!("lastWorkCounters encode failed: {e}")))
     }
 
     #[wasm_bindgen(js_name = lastReplayExecutionPerf)]
@@ -1282,6 +1369,7 @@ impl WasmGame {
     /// Return game snapshot as pretty JSON.
     #[wasm_bindgen(js_name = snapshotJson)]
     pub fn snapshot_json(&mut self) -> Result<String, JsValue> {
+        self.cached_snapshot = None;
         let pending_cast_stack_id = self
             .priority_state
             .pending_cast
@@ -1294,7 +1382,7 @@ impl WasmGame {
         let battlefield_transitions =
             battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
         self.game.refresh_continuous_state();
-        let mut snap = GameSnapshot::from_game(
+        let mut snap = GameSnapshot::from_game_with_object_view_cache(
             &self.game,
             self.perspective,
             self.pending_decision.as_ref(),
@@ -1307,6 +1395,7 @@ impl WasmGame {
             cancelable,
             undo_land_stable_id,
             snapshot_id,
+            &self.snapshot_object_view_cache,
         );
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
@@ -1548,7 +1637,7 @@ impl WasmGame {
                 ironsmith::mana::ManaSymbol::Generic(ward_generic_cost),
             ]);
             object
-                .abilities
+                .abilities_mut()
                 .push(ironsmith::ability::Ability::static_ability(
                     ironsmith::static_abilities::StaticAbility::ward(
                         ironsmith::cost::TotalCost::mana(mana_cost),

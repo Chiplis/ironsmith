@@ -205,7 +205,7 @@ impl WasmGame {
                 let name = self
                     .game
                     .object(id)
-                    .map(|object| object.name.clone())
+                    .map(|object| object.name.to_string())
                     .unwrap_or_else(|| format!("Card {}", id.0));
                 ironsmith::decisions::context::SelectableObject::new(id, name)
             })
@@ -419,7 +419,7 @@ impl WasmGame {
                         .filter_map(|id| {
                             self.game
                                 .object(*id)
-                                .map(|object| (*id, object.name.clone()))
+                                .map(|object| (*id, object.name.to_string()))
                         })
                         .collect();
                     DecisionContext::Order(ironsmith::decisions::context::OrderContext::new(

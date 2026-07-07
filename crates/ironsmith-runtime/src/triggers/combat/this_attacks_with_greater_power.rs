@@ -53,6 +53,10 @@ impl TriggerMatcher for ThisAttacksWithGreaterPowerTrigger {
         })
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
+    }
+
     fn display(&self) -> String {
         "Whenever this creature attacks with another creature with greater power".to_string()
     }

@@ -66,7 +66,7 @@ pub(crate) fn attachment_can_attach_to_target(
         let Some(filter) = game
             .current_characteristics(attachment_id)
             .and_then(|chars| chars.aura_attach_filter)
-            .or_else(|| attachment.aura_attach_filter.clone())
+            .or_else(|| attachment.aura_attach_filter_owned())
         else {
             return false;
         };
@@ -84,7 +84,7 @@ pub(crate) fn attachment_can_attach_to_target(
         if let Some(crate::object::AuraAttachmentFilter::Object(filter)) = game
             .current_characteristics(attachment_id)
             .and_then(|chars| chars.aura_attach_filter)
-            .or_else(|| attachment.aura_attach_filter.clone())
+            .or_else(|| attachment.aura_attach_filter_owned())
         {
             let filter_ctx =
                 game.filter_context_for(game.controller_of(attachment), Some(attachment_id));

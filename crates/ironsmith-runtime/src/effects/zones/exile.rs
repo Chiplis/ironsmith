@@ -11,7 +11,7 @@ use crate::events::processing::EventOutcome;
 use crate::filter::FilterContext;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::object_query::candidate_ids_for_filter;
+use crate::object_query::for_each_candidate_id_for_filter;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
@@ -164,13 +164,16 @@ fn matching_cost_candidates(
     controller: crate::ids::PlayerId,
 ) -> Vec<crate::ids::ObjectId> {
     let filter_ctx = FilterContext::new(controller).with_source(source);
-    candidate_ids_for_filter(game, filter)
-        .into_iter()
-        .filter(|id| {
-            game.object(*id)
-                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
-        })
-        .collect()
+    let mut candidates = Vec::new();
+    for_each_candidate_id_for_filter(game, filter, |id| {
+        if game
+            .object(id)
+            .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+        {
+            candidates.push(id);
+        }
+    });
+    candidates
 }
 
 impl EffectExecutor for ExileEffect {

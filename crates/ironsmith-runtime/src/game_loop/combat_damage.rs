@@ -827,7 +827,7 @@ mod tests {
             .build();
         let mut obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         for ability in abilities {
-            obj.abilities.push(Ability::static_ability(ability));
+            obj.abilities_mut().push(Ability::static_ability(ability));
         }
         game.add_object(obj);
         id

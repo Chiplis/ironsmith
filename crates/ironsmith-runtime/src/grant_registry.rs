@@ -14,6 +14,7 @@ use crate::grant::{
     DerivedAlternativeCast, DerivedAlternativeCastRuntimeExt, GrantUsageLimit, Grantable,
 };
 use crate::ids::{ObjectId, PlayerId, StableId};
+use crate::object_query::for_each_candidate_id_for_zone;
 use crate::static_abilities::StaticAbility;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
@@ -658,7 +659,7 @@ impl GrantRegistry {
 
             let controller = game.controller_of(source);
 
-            for ability in &source.abilities {
+            for ability in source.abilities.iter() {
                 let AbilityKind::Static(s) = &ability.kind else {
                     continue;
                 };
@@ -708,12 +709,12 @@ impl GrantRegistry {
         }
 
         for zone in [Zone::Graveyard, Zone::Exile, Zone::Command] {
-            for source_id in crate::object_query::candidate_ids_for_zone(game, Some(zone)) {
+            for_each_candidate_id_for_zone(game, Some(zone), |source_id| {
                 if game.battlefield.contains(&source_id) {
-                    continue;
+                    return;
                 }
                 collect_from_source(source_id, false);
-            }
+            });
         }
 
         grants
@@ -906,7 +907,7 @@ mod tests {
         .expect("play-from grant should accept a static condition");
         game.object_mut(card_id)
             .expect("graveyard card should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(play_self));
 
         assert!(
@@ -950,7 +951,7 @@ mod tests {
         );
         game.object_mut(source_id)
             .expect("source permanent should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::grants(grant_spec)));
 
         let card = CardBuilder::new(crate::ids::CardId::from_raw(62), "Buried Artifact")
@@ -986,7 +987,7 @@ mod tests {
         let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
         game.object_mut(source_id)
             .expect("source permanent should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::grants(
                 crate::grant::GrantSpec::flash_to_spells().with_beneficiary(PlayerFilter::Any),
             )));
@@ -1047,7 +1048,7 @@ mod tests {
         let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
         game.object_mut(source_id)
             .expect("source should exist")
-            .abilities
+            .abilities_mut()
             .extend([
                 Ability::static_ability(play_grant),
                 Ability::static_ability(life_grant),

@@ -6,13 +6,15 @@
 use crate::filter::ObjectFilterExt as _;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
+use crate::FxMap;
 use crate::ability::{
     Ability, AbilityKind, ActivatedAbilityRuntimeExt as _, extract_static_abilities,
 };
 use crate::color::{Color, ColorSet};
 use crate::effect::{Until, Value};
-use crate::filter::PlayerFilterExt;
+use crate::filter::{ComparisonRuntimeExt, LayeredSubject, PlayerFilterExt};
 use crate::game_state::ObjectMap;
 use crate::ids::{ObjectId, PlayerId};
 use crate::marker::CounterTypeExt;
@@ -228,6 +230,9 @@ pub struct ContinuousEffectGroupId(pub u64);
 
 impl ContinuousEffectGroupId {
     const STATIC_GROUP_PREFIX: u64 = 1 << 63;
+    const STATIC_SOURCE_PREFIX: u64 = 1 << 62;
+    const STATIC_SOURCE_ORDINAL_BITS: u64 = 16;
+    const STATIC_SOURCE_ID_MASK: u64 = (1 << 46) - 1;
 
     pub fn runtime(id: u64) -> Self {
         Self(id)
@@ -235,6 +240,14 @@ impl ContinuousEffectGroupId {
 
     pub fn static_generated(id: u64) -> Self {
         Self(Self::STATIC_GROUP_PREFIX | id)
+    }
+
+    pub fn static_source(source: ObjectId, ordinal: u16) -> Self {
+        Self(
+            Self::STATIC_SOURCE_PREFIX
+                | ((source.0 & Self::STATIC_SOURCE_ID_MASK) << Self::STATIC_SOURCE_ORDINAL_BITS)
+                | u64::from(ordinal),
+        )
     }
 }
 
@@ -585,14 +598,14 @@ impl Modification {
 /// A rules-text overlay used by text-changing effects such as text-box exchange.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextBoxOverlay {
-    pub compiled_card_text: String,
+    pub compiled_card_text: Arc<str>,
     pub abilities: Vec<Ability>,
 }
 
 impl TextBoxOverlay {
-    pub fn new(compiled_card_text: String, abilities: Vec<Ability>) -> Self {
+    pub fn new(compiled_card_text: impl Into<Arc<str>>, abilities: Vec<Ability>) -> Self {
         Self {
-            compiled_card_text,
+            compiled_card_text: compiled_card_text.into(),
             abilities,
         }
     }
@@ -602,12 +615,12 @@ impl TextBoxOverlay {
 #[derive(Debug, Clone, Default)]
 pub struct ContinuousEffectManager {
     /// All active continuous effects from resolved spells/abilities
-    effects: Vec<ContinuousEffect>,
+    effects: Arc<Vec<ContinuousEffect>>,
 
     /// Continuous effects generated from static abilities on permanents.
     /// These are regenerated periodically and don't need explicit removal.
     /// Per Rule 611.3a, these apply dynamically.
-    static_ability_effects: Vec<ContinuousEffect>,
+    static_ability_effects: Arc<Vec<ContinuousEffect>>,
 
     /// Next effect ID to assign
     next_id: u64,
@@ -625,16 +638,16 @@ pub struct ContinuousEffectManager {
     // === Timestamp tracking per Rule 613.7 ===
     /// Timestamps for when objects entered their current zone.
     /// Per Rule 613.7d, objects get a timestamp when entering a zone.
-    object_entry_timestamps: HashMap<ObjectId, u64>,
+    object_entry_timestamps: FxMap<ObjectId, u64>,
 
     /// Timestamps for when counters were last modified on objects.
     /// Per Rule 613.7c, counters of the same type share a timestamp
     /// that's updated when new counters are added.
-    counter_timestamps: HashMap<ObjectId, u64>,
+    counter_timestamps: FxMap<ObjectId, u64>,
 
     /// Timestamps for when auras/equipment became attached.
     /// Per Rule 613.7e, attachments get a new timestamp when attached.
-    attachment_timestamps: HashMap<ObjectId, u64>,
+    attachment_timestamps: FxMap<ObjectId, u64>,
 }
 
 impl ContinuousEffectManager {
@@ -653,7 +666,7 @@ impl ContinuousEffectManager {
             effect.timestamp = self.next_timestamp();
         }
 
-        self.effects.push(effect);
+        Arc::make_mut(&mut self.effects).push(effect);
         self.revision += 1;
         id
     }
@@ -666,28 +679,42 @@ impl ContinuousEffectManager {
 
     /// Remove an effect by ID.
     pub fn remove_effect(&mut self, id: ContinuousEffectId) {
-        self.effects.retain(|e| e.id != id);
-        self.revision += 1;
+        let effects = Arc::make_mut(&mut self.effects);
+        let before = effects.len();
+        effects.retain(|e| e.id != id);
+        if effects.len() != before {
+            self.revision += 1;
+        }
     }
 
     /// Remove all effects from a specific source.
     pub fn remove_effects_from_source(&mut self, source: ObjectId) {
-        self.effects.retain(|e| e.source != source);
-        self.revision += 1;
+        let effects = Arc::make_mut(&mut self.effects);
+        let before = effects.len();
+        effects.retain(|e| e.source != source);
+        if effects.len() != before {
+            self.revision += 1;
+        }
     }
 
     /// Remove effects from a specific source with the given duration.
     pub fn remove_effects_from_source_with_duration(&mut self, source: ObjectId, duration: Until) {
-        self.effects
-            .retain(|e| !(e.source == source && e.duration == duration));
-        self.revision += 1;
+        let effects = Arc::make_mut(&mut self.effects);
+        let before = effects.len();
+        effects.retain(|e| !(e.source == source && e.duration == duration));
+        if effects.len() != before {
+            self.revision += 1;
+        }
     }
 
     /// Remove all effects with duration UntilEndOfTurn.
     pub fn cleanup_end_of_turn(&mut self) {
-        self.effects
-            .retain(|e| !matches!(e.duration, Until::EndOfTurn));
-        self.revision += 1;
+        let effects = Arc::make_mut(&mut self.effects);
+        let before = effects.len();
+        effects.retain(|e| !matches!(e.duration, Until::EndOfTurn));
+        if effects.len() != before {
+            self.revision += 1;
+        }
     }
 
     /// Get all effects that apply to a specific object.
@@ -745,18 +772,21 @@ impl ContinuousEffectManager {
     ///
     /// Per Rule 611.3a, static ability effects apply dynamically.
     pub fn set_static_ability_effects(&mut self, effects: Vec<ContinuousEffect>) {
-        self.static_ability_effects = effects;
+        if self.static_ability_effects.as_slice() == effects.as_slice() {
+            return;
+        }
+        self.static_ability_effects = Arc::new(effects);
         self.revision += 1;
     }
 
     /// Get the static ability effects (for iteration/inspection).
     pub fn static_ability_effects(&self) -> &[ContinuousEffect] {
-        &self.static_ability_effects
+        self.static_ability_effects.as_slice()
     }
 
     /// Get the registered continuous effects (non-static).
     pub fn effects(&self) -> &[ContinuousEffect] {
-        &self.effects
+        self.effects.as_slice()
     }
 
     /// Get the next effect id (for deterministic state hashing).
@@ -1026,7 +1056,7 @@ impl ContinuousEffect {
 #[derive(Debug, Clone)]
 pub struct CalculatedCharacteristics {
     pub name: String,
-    pub compiled_card_text: String,
+    pub compiled_card_text: Arc<str>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
     pub card_types: Vec<CardType>,
@@ -1051,15 +1081,9 @@ fn ability_is_mana_for_object(
     activated.is_runtime_mana_ability(game, object.id, game.controller_of(object))
 }
 
-#[derive(Debug, Clone)]
-struct InProgressCharacteristicCalculation {
-    object_id: ObjectId,
-    chars: CalculatedCharacteristics,
-}
-
 thread_local! {
-    static IN_PROGRESS_CHARACTERISTIC_CALCULATIONS: RefCell<Vec<InProgressCharacteristicCalculation>> =
-        const { RefCell::new(Vec::new()) };
+    static IN_PROGRESS_CHARACTERISTIC_CALCULATIONS: RefCell<HashMap<ObjectId, Vec<CalculatedCharacteristics>>> =
+        RefCell::new(HashMap::new());
 }
 
 struct CharacteristicCalculationGuard {
@@ -1068,26 +1092,24 @@ struct CharacteristicCalculationGuard {
 
 impl CharacteristicCalculationGuard {
     fn begin(object_id: ObjectId, chars: &CalculatedCharacteristics) -> Self {
-        IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|stack| {
-            stack
+        IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
+            calculations
                 .borrow_mut()
-                .push(InProgressCharacteristicCalculation {
-                    object_id,
-                    chars: chars.clone(),
-                });
+                .entry(object_id)
+                .or_default()
+                .push(chars.clone());
         });
         Self { object_id }
     }
 
     fn update(&self, chars: &CalculatedCharacteristics) {
-        IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|stack| {
-            if let Some(entry) = stack
+        IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
+            if let Some(entry) = calculations
                 .borrow_mut()
-                .iter_mut()
-                .rev()
-                .find(|entry| entry.object_id == self.object_id)
+                .get_mut(&self.object_id)
+                .and_then(|entries| entries.last_mut())
             {
-                entry.chars = chars.clone();
+                *entry = chars.clone();
             }
         });
     }
@@ -1095,13 +1117,16 @@ impl CharacteristicCalculationGuard {
 
 impl Drop for CharacteristicCalculationGuard {
     fn drop(&mut self) {
-        IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|stack| {
-            let mut stack = stack.borrow_mut();
-            if let Some(idx) = stack
-                .iter()
-                .rposition(|entry| entry.object_id == self.object_id)
-            {
-                stack.remove(idx);
+        IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
+            let mut calculations = calculations.borrow_mut();
+            let should_remove = if let Some(entries) = calculations.get_mut(&self.object_id) {
+                entries.pop();
+                entries.is_empty()
+            } else {
+                false
+            };
+            if should_remove {
+                calculations.remove(&self.object_id);
             }
         });
     }
@@ -1110,13 +1135,11 @@ impl Drop for CharacteristicCalculationGuard {
 pub(crate) fn in_progress_characteristics(
     object_id: ObjectId,
 ) -> Option<CalculatedCharacteristics> {
-    IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|stack| {
-        stack
+    IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
+        calculations
             .borrow()
-            .iter()
-            .rev()
-            .find(|entry| entry.object_id == object_id)
-            .map(|entry| entry.chars.clone())
+            .get(&object_id)
+            .and_then(|entries| entries.last().cloned())
     })
 }
 
@@ -1129,17 +1152,17 @@ fn initial_characteristics(object: &Object) -> CalculatedCharacteristics {
 
 fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristics {
     CalculatedCharacteristics {
-        name: object.name.clone(),
+        name: object.name.to_string(),
         compiled_card_text: object.compiled_card_text.clone(),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
-        card_types: object.card_types.clone(),
-        subtypes: object.subtypes.clone(),
-        supertypes: object.supertypes.clone(),
+        card_types: object.card_types.to_vec(),
+        subtypes: object.subtypes.to_vec(),
+        supertypes: object.supertypes.to_vec(),
         colors: object.colors(),
-        abilities: object.abilities.clone(),
+        abilities: object.abilities_vec(),
         static_abilities: extract_static_abilities(&object.abilities),
-        aura_attach_filter: object.aura_attach_filter.clone(),
+        aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.owner,
     }
 }
@@ -1299,6 +1322,71 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
+    if ids.len() > 1 {
+        let mut calculated = HashMap::with_capacity(ids.len());
+        let mut pending = Vec::with_capacity(ids.len());
+        for &id in ids {
+            if let Some(chars) = in_progress_characteristics(id) {
+                calculated.insert(id, chars);
+                continue;
+            }
+            if !objects.contains_key(&id) {
+                continue;
+            }
+            pending.push(id);
+        }
+
+        if pending.len() > 1 {
+            let batch = calculate_characteristics_layer_batch_with_effects(
+                &pending,
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                game,
+            );
+            #[cfg(feature = "shadow-continuous")]
+            for (&id, chars) in &batch {
+                let object = objects
+                    .get(&id)
+                    .expect("batch returned characteristics for an unknown object");
+                let expected = calculate_with_layers_direct_internal(
+                    object,
+                    objects,
+                    effects,
+                    battlefield,
+                    commanders,
+                    game,
+                    DependencySortMode::Baseline,
+                );
+                assert_eq!(
+                    format!("{chars:?}"),
+                    format!("{expected:?}"),
+                    "layer batch characteristic path diverged for object #{}",
+                    id.0
+                );
+            }
+            calculated.extend(batch);
+        } else {
+            for id in pending {
+                let object = objects
+                    .get(&id)
+                    .expect("pending batch id should have an object");
+                let chars = calculate_with_layers_direct_internal(
+                    object,
+                    objects,
+                    effects,
+                    battlefield,
+                    commanders,
+                    game,
+                    DependencySortMode::Baseline,
+                );
+                calculated.insert(id, chars);
+            }
+        }
+        return calculated;
+    }
+
     let mut calculated = HashMap::with_capacity(ids.len());
 
     for &id in ids {
@@ -1321,6 +1409,313 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
                 DependencySortMode::Baseline,
             ),
         );
+    }
+
+    calculated
+}
+
+fn calculate_characteristics_layer_batch_with_effects(
+    ids: &[ObjectId],
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+) -> HashMap<ObjectId, CalculatedCharacteristics> {
+    use crate::dependency::needs_baseline_dependency_sort;
+    use crate::dependency::sort_layer_effects;
+    use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
+
+    let mut order = Vec::with_capacity(objects.len());
+    let mut seen = HashSet::with_capacity(objects.len());
+    for &id in battlefield {
+        if objects.contains_key(&id) && seen.insert(id) {
+            order.push(id);
+        }
+    }
+
+    let mut remaining: Vec<_> = objects
+        .keys()
+        .copied()
+        .filter(|id| seen.insert(*id))
+        .collect();
+    remaining.sort_unstable();
+    order.extend(remaining);
+
+    let mut chars_by_id = HashMap::with_capacity(order.len());
+    let mut guards = Vec::with_capacity(order.len());
+    for &id in &order {
+        let Some(object) = objects.get(&id) else {
+            continue;
+        };
+        let chars = initial_characteristics(object);
+        guards.push(CharacteristicCalculationGuard::begin(id, &chars));
+        chars_by_id.insert(id, chars);
+    }
+
+    let mut effects_by_layer: HashMap<Layer, Vec<&ContinuousEffect>> = HashMap::with_capacity(7);
+    for effect in effects {
+        effects_by_layer
+            .entry(effect.modification.layer())
+            .or_default()
+            .push(effect);
+    }
+
+    let mut abilities_removed = HashSet::new();
+    let mut started_groups_by_object = HashSet::new();
+    let mut started_groups_for_sort = HashSet::new();
+
+    for layer in [
+        Layer::Copy,
+        Layer::Control,
+        Layer::Text,
+        Layer::Type,
+        Layer::Color,
+        Layer::Ability,
+    ] {
+        let Some(layer_effects) = effects_by_layer.get(&layer) else {
+            if layer == Layer::Type {
+                for (idx, &id) in order.iter().enumerate() {
+                    let Some(object) = objects.get(&id) else {
+                        continue;
+                    };
+                    let Some(chars) = chars_by_id.get_mut(&id) else {
+                        continue;
+                    };
+                    apply_reconfigure_attached_type_rule(object, chars);
+                    guards[idx].update(chars);
+                }
+            }
+            continue;
+        };
+        let needs_source_tracking =
+            layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer);
+
+        let sorted_effects = if needs_baseline_dependency_sort(layer_effects) {
+            let baseline = chars_by_id.clone();
+            sort_layer_effects_with_baseline_and_started_groups(
+                layer_effects,
+                &baseline,
+                objects,
+                game,
+                &started_groups_for_sort,
+            )
+        } else {
+            sort_layer_effects(layer_effects)
+        };
+
+        for effect in sorted_effects {
+            let mut affected = Vec::new();
+            for (idx, &id) in order.iter().enumerate() {
+                let group_started = continuous_effect_group_started_for_object(
+                    effect,
+                    id,
+                    &started_groups_by_object,
+                );
+                if needs_source_tracking
+                    && !group_started
+                    && !effect_source_is_active(effect, &chars_by_id)
+                {
+                    continue;
+                }
+                let Some(object) = objects.get(&id) else {
+                    continue;
+                };
+                let Some(chars) = chars_by_id.get(&id) else {
+                    continue;
+                };
+                if effect_applies_to_direct_or_group_started(
+                    effect,
+                    group_started,
+                    object,
+                    chars,
+                    objects,
+                    battlefield,
+                    commanders,
+                    game,
+                ) {
+                    affected.push((idx, id));
+                }
+            }
+
+            for (_, id) in &affected {
+                let Some(object) = objects.get(id) else {
+                    continue;
+                };
+                let Some(chars) = chars_by_id.get_mut(id) else {
+                    continue;
+                };
+                let mut removed = abilities_removed.contains(id);
+                apply_modification_to_chars(
+                    &effect.modification,
+                    chars,
+                    objects,
+                    &mut removed,
+                    effect.controller,
+                    effect.source,
+                    object,
+                    effects,
+                    battlefield,
+                    commanders,
+                    game,
+                );
+                if removed {
+                    abilities_removed.insert(*id);
+                }
+            }
+
+            for (idx, id) in affected {
+                if let Some(group) = effect.group {
+                    started_groups_by_object.insert((group, id));
+                    started_groups_for_sort.insert(group);
+                }
+                if let Some(chars) = chars_by_id.get(&id) {
+                    guards[idx].update(chars);
+                }
+            }
+        }
+    }
+
+    for (idx, &id) in order.iter().enumerate() {
+        if abilities_removed.contains(&id) {
+            continue;
+        }
+        let Some(object) = objects.get(&id) else {
+            continue;
+        };
+        let Some(chars) = chars_by_id.get_mut(&id) else {
+            continue;
+        };
+        if let Some((lp, lt)) = get_level_ability_pt(object) {
+            chars.power = Some(lp);
+            chars.toughness = Some(lt);
+            guards[idx].update(chars);
+        }
+        let level_abilities = get_level_granted_abilities(object);
+        for ability in level_abilities {
+            chars
+                .abilities
+                .push(Ability::static_ability(ability.clone()));
+            chars.static_abilities.push(ability);
+        }
+        guards[idx].update(chars);
+    }
+
+    if let Some(pt_effects) = effects_by_layer.get(&Layer::PowerToughness) {
+        let needs_source_tracking =
+            layer_needs_source_activity_tracking(pt_effects, effects.iter(), Layer::PowerToughness);
+        let sorted_pt = if needs_baseline_dependency_sort(pt_effects) {
+            let baseline = chars_by_id.clone();
+            sort_layer_effects_with_baseline_and_started_groups(
+                pt_effects,
+                &baseline,
+                objects,
+                game,
+                &started_groups_for_sort,
+            )
+        } else {
+            sort_layer_effects(pt_effects)
+        };
+
+        for effect in sorted_pt {
+            let mut affected = Vec::new();
+            for (idx, &id) in order.iter().enumerate() {
+                let group_started = continuous_effect_group_started_for_object(
+                    effect,
+                    id,
+                    &started_groups_by_object,
+                );
+                if needs_source_tracking
+                    && !group_started
+                    && !effect_source_is_active(effect, &chars_by_id)
+                {
+                    continue;
+                }
+                let Some(object) = objects.get(&id) else {
+                    continue;
+                };
+                let Some(chars) = chars_by_id.get(&id) else {
+                    continue;
+                };
+                if effect_applies_to_direct_or_group_started(
+                    effect,
+                    group_started,
+                    object,
+                    chars,
+                    objects,
+                    battlefield,
+                    commanders,
+                    game,
+                ) {
+                    affected.push((idx, id));
+                }
+            }
+
+            for (_, id) in &affected {
+                let Some(object) = objects.get(id) else {
+                    continue;
+                };
+                let Some(chars) = chars_by_id.get_mut(id) else {
+                    continue;
+                };
+                let mut removed = abilities_removed.contains(id);
+                apply_modification_to_chars(
+                    &effect.modification,
+                    chars,
+                    objects,
+                    &mut removed,
+                    effect.controller,
+                    effect.source,
+                    object,
+                    effects,
+                    battlefield,
+                    commanders,
+                    game,
+                );
+                if removed {
+                    abilities_removed.insert(*id);
+                }
+            }
+
+            for (idx, id) in affected {
+                if let Some(group) = effect.group {
+                    started_groups_by_object.insert((group, id));
+                    started_groups_for_sort.insert(group);
+                }
+                if let Some(chars) = chars_by_id.get(&id) {
+                    guards[idx].update(chars);
+                }
+            }
+        }
+    }
+
+    for (idx, &id) in order.iter().enumerate() {
+        let Some(object) = objects.get(&id) else {
+            continue;
+        };
+        let Some(chars) = chars_by_id.get_mut(&id) else {
+            continue;
+        };
+
+        apply_reconfigure_attached_type_rule(object, chars);
+        guards[idx].update(chars);
+
+        apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+        guards[idx].update(chars);
+
+        add_intrinsic_basic_land_mana_abilities(chars);
+        guards[idx].update(chars);
+
+        retain_active_static_abilities(chars, game, id);
+        guards[idx].update(chars);
+    }
+
+    let requested: HashSet<_> = ids.iter().copied().collect();
+    let mut calculated = HashMap::with_capacity(requested.len());
+    for id in requested {
+        if let Some(chars) = chars_by_id.get(&id) {
+            calculated.insert(id, chars.clone());
+        }
     }
 
     calculated
@@ -1478,15 +1873,15 @@ fn apply_text_box_modification_to_chars(
     ) {
         let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
 
-        chars.name = target.name.clone();
+        chars.name = target.name.to_string();
         chars.compiled_card_text = target.compiled_card_text.clone();
         chars.power = target.base_power.as_ref().map(|p| p.base_value());
         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-        chars.card_types = target.card_types.clone();
-        chars.subtypes = target.subtypes.clone();
-        chars.supertypes = target.supertypes.clone();
+        chars.card_types = target.card_types.to_vec();
+        chars.subtypes = target.subtypes.to_vec();
+        chars.supertypes = target.supertypes.to_vec();
         chars.colors = target.colors();
-        chars.abilities = target.abilities.clone();
+        chars.abilities = target.abilities_vec();
 
         if let Some(preserved_abilities) = preserved_abilities {
             for ability in preserved_abilities {
@@ -1831,259 +2226,6 @@ fn calculate_with_layers_direct_internal(
     chars
 }
 
-#[allow(dead_code)]
-struct PreparedLayerEffects<'a> {
-    sorted_effects: Vec<&'a ContinuousEffect>,
-}
-
-#[allow(dead_code)]
-struct PreparedDirectCalculation<'a> {
-    layers_1_to_6: HashMap<Layer, PreparedLayerEffects<'a>>,
-    layer_7: Option<PreparedLayerEffects<'a>>,
-}
-
-#[allow(dead_code)]
-impl<'a> PreparedDirectCalculation<'a> {
-    fn new(
-        objects: &ObjectMap,
-        effects: &'a [ContinuousEffect],
-        battlefield: &[ObjectId],
-        commanders: &HashSet<ObjectId>,
-        game: &crate::game_state::GameState,
-        sort_mode: DependencySortMode,
-    ) -> Self {
-        use crate::dependency::needs_baseline_dependency_sort;
-        use crate::dependency::sort_layer_effects;
-        use crate::dependency::sort_layer_effects_with_baseline;
-
-        let mut effects_by_layer: HashMap<Layer, Vec<&ContinuousEffect>> =
-            HashMap::with_capacity(7);
-        for effect in effects {
-            effects_by_layer
-                .entry(effect.modification.layer())
-                .or_default()
-                .push(effect);
-        }
-
-        let mut prepared_layers = HashMap::with_capacity(6);
-        for layer in [
-            Layer::Copy,
-            Layer::Control,
-            Layer::Text,
-            Layer::Type,
-            Layer::Color,
-            Layer::Ability,
-        ] {
-            let Some(layer_effects) = effects_by_layer.get(&layer) else {
-                continue;
-            };
-            let needs_sort_baseline = matches!(sort_mode, DependencySortMode::Baseline)
-                && needs_baseline_dependency_sort(layer_effects);
-            let baseline = needs_sort_baseline.then(|| {
-                build_layer_baseline(objects, effects, battlefield, commanders, game, layer, None)
-            });
-            let sorted_effects = match sort_mode {
-                DependencySortMode::Heuristic => sort_layer_effects(layer_effects),
-                DependencySortMode::Baseline => {
-                    if needs_sort_baseline {
-                        let baseline = baseline
-                            .as_ref()
-                            .expect("baseline should exist when dependency sorting needs it");
-                        sort_layer_effects_with_baseline(layer_effects, baseline, objects, game)
-                    } else {
-                        sort_layer_effects(layer_effects)
-                    }
-                }
-            };
-
-            let filtered_effects =
-                if layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer) {
-                    let tracked_source_ids = tracked_source_ids_for_layer(layer_effects);
-                    let mut source_state = build_object_baseline_for_ids(
-                        objects,
-                        effects,
-                        battlefield,
-                        commanders,
-                        game,
-                        layer,
-                        None,
-                        &tracked_source_ids,
-                    );
-                    let mut active_effects = Vec::with_capacity(sorted_effects.len());
-                    for effect in sorted_effects {
-                        let effect_active = effect_source_is_active(effect, &source_state);
-                        if effect_active {
-                            advance_layer_source_state(
-                                &mut source_state,
-                                effect,
-                                objects,
-                                battlefield,
-                                commanders,
-                                game,
-                            );
-                            active_effects.push(effect);
-                        }
-                    }
-                    active_effects
-                } else {
-                    sorted_effects
-                };
-
-            prepared_layers.insert(
-                layer,
-                PreparedLayerEffects {
-                    sorted_effects: filtered_effects,
-                },
-            );
-        }
-
-        let layer_7 = effects_by_layer
-            .get(&Layer::PowerToughness)
-            .map(|pt_effects| {
-                let sorted_effects = match sort_mode {
-                    DependencySortMode::Heuristic => sort_layer_effects(pt_effects),
-                    DependencySortMode::Baseline => {
-                        if needs_baseline_dependency_sort(pt_effects) {
-                            let baseline = build_layer_baseline(
-                                objects,
-                                effects,
-                                battlefield,
-                                commanders,
-                                game,
-                                Layer::PowerToughness,
-                                None,
-                            );
-                            sort_layer_effects_with_baseline(pt_effects, &baseline, objects, game)
-                        } else {
-                            sort_layer_effects(pt_effects)
-                        }
-                    }
-                };
-                PreparedLayerEffects { sorted_effects }
-            });
-
-        Self {
-            layers_1_to_6: prepared_layers,
-            layer_7,
-        }
-    }
-}
-
-#[allow(dead_code)]
-fn calculate_with_prepared_layers_for_object(
-    object: &Object,
-    prepared: &PreparedDirectCalculation<'_>,
-    objects: &ObjectMap,
-    battlefield: &[ObjectId],
-    commanders: &HashSet<ObjectId>,
-    game: &crate::game_state::GameState,
-) -> CalculatedCharacteristics {
-    let mut chars = initial_characteristics(object);
-    let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
-
-    let mut abilities_removed = false;
-
-    for layer in [
-        Layer::Copy,
-        Layer::Control,
-        Layer::Text,
-        Layer::Type,
-        Layer::Color,
-        Layer::Ability,
-    ] {
-        let Some(layer_effects) = prepared.layers_1_to_6.get(&layer) else {
-            continue;
-        };
-
-        for effect in &layer_effects.sorted_effects {
-            if !effect_applies_to_direct(
-                effect,
-                object,
-                &chars,
-                objects,
-                battlefield,
-                commanders,
-                game,
-            ) {
-                continue;
-            }
-
-            apply_modification_to_chars(
-                &effect.modification,
-                &mut chars,
-                objects,
-                &mut abilities_removed,
-                effect.controller,
-                effect.source,
-                object,
-                &[],
-                battlefield,
-                commanders,
-                game,
-            );
-            calc_guard.update(&chars);
-        }
-    }
-
-    if !abilities_removed {
-        if let Some((lp, lt)) = get_level_ability_pt(object) {
-            chars.power = Some(lp);
-            chars.toughness = Some(lt);
-            calc_guard.update(&chars);
-        }
-        let level_abilities = get_level_granted_abilities(object);
-        for ability in level_abilities {
-            chars
-                .abilities
-                .push(Ability::static_ability(ability.clone()));
-            chars.static_abilities.push(ability);
-        }
-        calc_guard.update(&chars);
-    }
-
-    if let Some(layer_7) = prepared.layer_7.as_ref() {
-        for effect in &layer_7.sorted_effects {
-            if !effect_applies_to_direct(
-                effect,
-                object,
-                &chars,
-                objects,
-                battlefield,
-                commanders,
-                game,
-            ) {
-                continue;
-            }
-
-            apply_modification_to_chars(
-                &effect.modification,
-                &mut chars,
-                objects,
-                &mut abilities_removed,
-                effect.controller,
-                effect.source,
-                object,
-                &[],
-                battlefield,
-                commanders,
-                game,
-            );
-            calc_guard.update(&chars);
-        }
-    }
-
-    apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
-    calc_guard.update(&chars);
-
-    add_intrinsic_basic_land_mana_abilities(&mut chars);
-    calc_guard.update(&chars);
-
-    retain_active_static_abilities(&mut chars, game, object.id);
-    calc_guard.update(&chars);
-
-    chars
-}
-
 /// Check if an effect applies to a specific object (direct version without CalculationContext).
 fn effect_applies_to_direct(
     effect: &ContinuousEffect,
@@ -2099,6 +2241,35 @@ fn effect_applies_to_direct(
     }
 
     effect_target_applies_to_direct(effect, object, chars, objects, game)
+}
+
+fn effect_applies_to_direct_or_group_started(
+    effect: &ContinuousEffect,
+    group_started: bool,
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+    objects: &ObjectMap,
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+) -> bool {
+    if !continuous_effect_duration_and_condition_are_active(effect, game) {
+        return false;
+    }
+
+    if group_started {
+        return true;
+    }
+
+    effect_applies_to_direct(
+        effect,
+        object,
+        chars,
+        objects,
+        battlefield,
+        commanders,
+        game,
+    )
 }
 
 fn effect_applies_to_direct_or_started(
@@ -2137,6 +2308,16 @@ fn continuous_effect_group_started(
     effect
         .group
         .is_some_and(|group| started_groups.contains(&group))
+}
+
+fn continuous_effect_group_started_for_object(
+    effect: &ContinuousEffect,
+    object_id: ObjectId,
+    started_groups: &HashSet<(ContinuousEffectGroupId, ObjectId)>,
+) -> bool {
+    effect
+        .group
+        .is_some_and(|group| started_groups.contains(&(group, object_id)))
 }
 
 fn mark_continuous_effect_group_started(
@@ -2279,22 +2460,28 @@ fn filter_matches_with_characteristics(
     effect_controller: PlayerId,
     effect_source: ObjectId,
 ) -> bool {
-    let mut adjusted_object = object.clone();
-    adjusted_object.name = chars.name.clone();
-    adjusted_object.card_types = chars.card_types.clone();
-    adjusted_object.subtypes = chars.subtypes.clone();
-    adjusted_object.supertypes = chars.supertypes.clone();
-    adjusted_object.color_override = Some(chars.colors);
-
-    let mut structural_filter = filter.clone();
-    structural_filter.power = None;
-    structural_filter.toughness = None;
-    structural_filter.power_relative_to_source = None;
-    structural_filter.power_toughness_relation = None;
-
     let filter_ctx = game.filter_context_for(effect_controller, Some(effect_source));
-    if !structural_filter.matches_non_recursive(&adjusted_object, &filter_ctx, game) {
-        return false;
+    match filter_matches_layered_fast(filter, object, chars, game, &filter_ctx) {
+        Some(true) => {}
+        Some(false) => return false,
+        None => {
+            let mut adjusted_object = object.clone();
+            adjusted_object.name = chars.name.to_string().into();
+            adjusted_object.card_types = chars.card_types.clone().into();
+            adjusted_object.subtypes = chars.subtypes.clone().into();
+            adjusted_object.supertypes = chars.supertypes.clone().into();
+            adjusted_object.color_override = Some(chars.colors);
+
+            let mut structural_filter = filter.clone();
+            structural_filter.power = None;
+            structural_filter.toughness = None;
+            structural_filter.power_relative_to_source = None;
+            structural_filter.power_toughness_relation = None;
+
+            if !structural_filter.matches_non_recursive(&adjusted_object, &filter_ctx, game) {
+                return false;
+            }
+        }
     }
 
     if let Some(power_cmp) = &filter.power {
@@ -2367,6 +2554,308 @@ fn filter_matches_with_characteristics(
     }
 
     true
+}
+
+fn filter_matches_layered_fast(
+    filter: &ObjectFilter,
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+    game: &crate::game_state::GameState,
+    filter_ctx: &crate::target::FilterContext,
+) -> Option<bool> {
+    if object.zone == Zone::Stack || filter_requires_layered_clone_fallback(filter) {
+        return None;
+    }
+
+    if let Some(id) = filter.specific
+        && object.id != id
+    {
+        return Some(false);
+    }
+    if filter.source
+        && filter_ctx
+            .source
+            .is_none_or(|source_id| object.id != source_id)
+    {
+        return Some(false);
+    }
+    if let Some(zone) = filter.zone
+        && object.zone != zone
+    {
+        return Some(false);
+    }
+    if let Some(controller_filter) = &filter.controller
+        && !controller_filter.matches_player(chars.controller, filter_ctx)
+    {
+        return Some(false);
+    }
+    if let Some(owner_filter) = &filter.owner
+        && !owner_filter.matches_player(object.owner, filter_ctx)
+    {
+        return Some(false);
+    }
+
+    if filter.type_or_subtype_union {
+        let type_match = !filter.card_types.is_empty()
+            && filter
+                .card_types
+                .iter()
+                .any(|card_type| chars.card_types.contains(card_type));
+        let subtype_match = !filter.subtypes.is_empty()
+            && filter
+                .subtypes
+                .iter()
+                .any(|subtype| layered_matches_subtype(object, chars, *subtype, game));
+        if (!filter.card_types.is_empty() || !filter.subtypes.is_empty())
+            && !(type_match || subtype_match)
+        {
+            return Some(false);
+        }
+    } else {
+        if !filter.card_types.is_empty()
+            && !filter
+                .card_types
+                .iter()
+                .any(|card_type| chars.card_types.contains(card_type))
+        {
+            return Some(false);
+        }
+        if !filter.subtypes.is_empty()
+            && !filter
+                .subtypes
+                .iter()
+                .any(|subtype| layered_matches_subtype(object, chars, *subtype, game))
+        {
+            return Some(false);
+        }
+    }
+
+    if !filter.all_card_types.is_empty()
+        && !filter
+            .all_card_types
+            .iter()
+            .all(|card_type| chars.card_types.contains(card_type))
+    {
+        return Some(false);
+    }
+    if filter
+        .excluded_card_types
+        .iter()
+        .any(|card_type| chars.card_types.contains(card_type))
+    {
+        return Some(false);
+    }
+    if filter
+        .excluded_subtypes
+        .iter()
+        .any(|subtype| layered_matches_subtype(object, chars, *subtype, game))
+    {
+        return Some(false);
+    }
+    if !filter.supertypes.is_empty()
+        && !filter
+            .supertypes
+            .iter()
+            .any(|supertype| chars.supertypes.contains(supertype))
+    {
+        return Some(false);
+    }
+    if filter
+        .excluded_supertypes
+        .iter()
+        .any(|supertype| chars.supertypes.contains(supertype))
+    {
+        return Some(false);
+    }
+
+    if let Some(required_colors) = &filter.colors
+        && required_colors.intersection(chars.colors).is_empty()
+    {
+        return Some(false);
+    }
+    if !filter.excluded_colors.is_empty()
+        && !filter.excluded_colors.intersection(chars.colors).is_empty()
+    {
+        return Some(false);
+    }
+    if filter.colorless && !chars.colors.is_empty() {
+        return Some(false);
+    }
+    if filter.multicolored && chars.colors.count() < 2 {
+        return Some(false);
+    }
+    if filter.monocolored && chars.colors.count() != 1 {
+        return Some(false);
+    }
+    if let Some(require_all_colors) = filter.all_colors {
+        let is_all_colors = chars.colors.count() == 5;
+        if require_all_colors != is_all_colors {
+            return Some(false);
+        }
+    }
+    if let Some(require_exactly_two_colors) = filter.exactly_two_colors {
+        let is_exactly_two = chars.colors.count() == 2;
+        if require_exactly_two_colors != is_exactly_two {
+            return Some(false);
+        }
+    }
+    if let Some(color_count_cmp) = &filter.color_count
+        && !color_count_cmp.satisfies_with_context(
+            chars.colors.count() as i32,
+            game,
+            filter_ctx,
+            None,
+        )
+    {
+        return Some(false);
+    }
+
+    let is_historic = chars.card_types.contains(&CardType::Artifact)
+        || chars.supertypes.contains(&Supertype::Legendary)
+        || chars.subtypes.contains(&Subtype::Saga);
+    if filter.historic && !is_historic {
+        return Some(false);
+    }
+    if filter.nonhistoric && is_historic {
+        return Some(false);
+    }
+    if filter.token && object.kind != crate::object::ObjectKind::Token {
+        return Some(false);
+    }
+    if filter.nontoken && object.kind == crate::object::ObjectKind::Token {
+        return Some(false);
+    }
+    if let Some(require_face_down) = filter.face_down
+        && game.is_face_down(object.id) != require_face_down
+    {
+        return Some(false);
+    }
+    if filter.other
+        && filter_ctx.target_objects.is_empty()
+        && let Some(source_id) = filter_ctx.source
+        && object.id == source_id
+    {
+        return Some(false);
+    }
+    if filter.other
+        && filter_ctx
+            .target_objects
+            .iter()
+            .any(|target| target.object_id == object.id || target.stable_id == object.stable_id)
+    {
+        return Some(false);
+    }
+    let is_tapped = game.is_tapped(object.id);
+    if filter.tapped && !is_tapped {
+        return Some(false);
+    }
+    if filter.untapped && is_tapped {
+        return Some(false);
+    }
+    if let Some(mana_value_cmp) = &filter.mana_value {
+        let mana_value = object
+            .mana_cost
+            .as_ref()
+            .map_or(0, |mana_cost| mana_cost.mana_value() as i32);
+        if !mana_value_cmp.satisfies_with_context(mana_value, game, filter_ctx, None) {
+            return Some(false);
+        }
+    }
+    if filter.has_mana_cost {
+        match &object.mana_cost {
+            Some(cost) if !cost.is_empty() => {}
+            _ => return Some(false),
+        }
+    }
+    if filter.no_x_in_cost
+        && let Some(cost) = &object.mana_cost
+        && cost.has_x()
+    {
+        return Some(false);
+    }
+    if filter.has_x_in_cost && !object.mana_cost.as_ref().is_some_and(|cost| cost.has_x()) {
+        return Some(false);
+    }
+
+    let layered = LayeredSubject { object, chars };
+    Some(filter.matches_layered_tail(&layered, filter_ctx, game))
+}
+
+fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
+    filter.cast_by.is_some()
+        || filter.cast_this_turn
+        || filter.first_spell_cast_each_turn
+        || filter.single_graveyard
+        || filter.targets_player.is_some()
+        || filter.targets_object.is_some()
+        || filter.targets_any_of
+        || filter.stack_kind.is_some()
+        || filter.zone == Some(Zone::Stack)
+        || filter.target_count.is_some()
+        || filter.target_set_same_controller
+        || filter.target_set_different_controllers
+        || filter.targets_only_player.is_some()
+        || filter.targets_only_object.is_some()
+        || filter.targets_only_any_of
+        || filter.could_be_targeted_by.is_some()
+        || filter.chosen_color
+        || filter.chosen_land_type
+        || filter.chosen_creature_type
+        || filter.chosen_card_type
+        || filter.excluded_chosen_creature_type
+        || filter.modified
+        || filter.attacking
+        || filter.attacked_this_turn
+        || filter
+            .attacking_player_or_planeswalker_controlled_by
+            .is_some()
+        || filter.nonattacking
+        || filter.enlist_eligible
+        || filter.blocking
+        || filter.nonblocking
+        || filter.blocked
+        || filter.blocked_by.is_some()
+        || filter.blocked_by_source
+        || filter.unblocked
+        || filter.in_combat_with_source
+        || filter.entered_since_your_last_turn_ended
+        || filter.entered_battlefield_this_turn
+        || filter.entered_battlefield_controller.is_some()
+        || filter.entered_graveyard_this_turn
+        || filter.entered_graveyard_from_battlefield_this_turn
+        || filter.surveilled_this_turn
+        || filter.discarded_or_cycled_this_turn_by.is_some()
+        || filter.was_dealt_damage_this_turn
+        || filter.dealt_damage_by_source_this_turn.is_some()
+        || filter.dealt_damage_to_player_this_turn.is_some()
+        || filter.drawn_this_turn
+        || filter.power_parity.is_some()
+        || filter.power_greater_than_base_power
+        || filter.total_power_toughness.is_some()
+        || filter.mana_value_parity.is_some()
+        || filter.mana_value_eq_counters_on_source.is_some()
+        || filter.total_counters_parity.is_some()
+        || filter.distinct_names
+        || filter.distinct_powers
+        || filter.distinct_creature_types
+        || !filter.any_of.is_empty()
+        || filter.source_surface.is_some()
+}
+
+fn layered_matches_subtype(
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+    subtype: Subtype,
+    game: &crate::game_state::GameState,
+) -> bool {
+    chars.subtypes.contains(&subtype)
+        || (subtype == Subtype::Adventure
+            && game
+                .linked_face_definition_by_name_or_id(
+                    object.other_face_name.as_deref(),
+                    object.other_face,
+                )
+                .is_some_and(|definition| definition.card.subtypes.contains(&Subtype::Adventure)))
 }
 
 fn bind_effect_controller_in_player_filter(
@@ -2444,15 +2933,15 @@ fn apply_modification_to_chars(
     ) {
         let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
 
-        chars.name = target.name.clone();
+        chars.name = target.name.to_string();
         chars.compiled_card_text = target.compiled_card_text.clone();
         chars.power = target.base_power.as_ref().map(|p| p.base_value());
         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-        chars.card_types = target.card_types.clone();
-        chars.subtypes = target.subtypes.clone();
-        chars.supertypes = target.supertypes.clone();
+        chars.card_types = target.card_types.to_vec();
+        chars.subtypes = target.subtypes.to_vec();
+        chars.supertypes = target.supertypes.to_vec();
         chars.colors = target.colors();
-        chars.abilities = target.abilities.clone();
+        chars.abilities = target.abilities_vec();
 
         if let Some(preserved_abilities) = preserved_abilities {
             for ability in preserved_abilities {
@@ -2605,7 +3094,7 @@ fn apply_modification_to_chars(
             use crate::static_ability_processor::get_all_continuous_effects;
 
             let effects = get_all_continuous_effects(game);
-            let commanders = &game.commanders;
+            let commanders = game.commander_objects();
             let battlefield = &game.battlefield;
 
             let mut candidate_ids: Vec<_> = objects.keys().copied().collect();
@@ -2678,7 +3167,7 @@ fn apply_modification_to_chars(
             use crate::static_ability_processor::get_all_continuous_effects;
 
             let effects = get_all_continuous_effects(game);
-            let commanders = &game.commanders;
+            let commanders = game.commander_objects();
             let battlefield = &game.battlefield;
 
             let mut candidate_ids: Vec<_> = objects.keys().copied().collect();
@@ -3004,9 +3493,9 @@ pub(crate) fn resolve_value_direct(
                 commanders,
                 game,
             ) {
-                candidate.card_types = chars.card_types;
-                candidate.subtypes = chars.subtypes;
-                candidate.supertypes = chars.supertypes;
+                candidate.card_types = chars.card_types.into();
+                candidate.subtypes = chars.subtypes.into();
+                candidate.supertypes = chars.supertypes.into();
             }
             if filter.matches_non_recursive(&candidate, filter_ctx, game) {
                 count += 1;
@@ -3202,7 +3691,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 ctx.objects,
                 all_effects,
                 ctx.battlefield,
-                &ctx.game.commanders,
+                ctx.game.commander_objects(),
                 ctx.game,
                 layer,
                 None,
@@ -3219,7 +3708,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 ctx.objects,
                 all_effects,
                 ctx.battlefield,
-                &ctx.game.commanders,
+                ctx.game.commander_objects(),
                 ctx.game,
                 layer,
                 None,
@@ -3265,7 +3754,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     effect,
                     ctx.objects,
                     ctx.battlefield,
-                    &ctx.game.commanders,
+                    ctx.game.commander_objects(),
                     ctx.game,
                 );
             }
@@ -3297,16 +3786,16 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     if let Some(target) = ctx.objects.get(target_id) {
                         let preserved_abilities =
                             preserve_source_abilities.then(|| chars.abilities.clone());
-                        chars.name = target.name.clone();
+                        chars.name = target.name.to_string();
                         chars.compiled_card_text = target.compiled_card_text.clone();
                         // Copy base characteristics from the target
                         chars.power = target.base_power.as_ref().map(|p| p.base_value());
                         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-                        chars.card_types = target.card_types.clone();
-                        chars.subtypes = target.subtypes.clone();
-                        chars.supertypes = target.supertypes.clone();
+                        chars.card_types = target.card_types.to_vec();
+                        chars.subtypes = target.subtypes.to_vec();
+                        chars.supertypes = target.supertypes.to_vec();
                         chars.colors = target.colors();
-                        chars.abilities = target.abilities.clone();
+                        chars.abilities = target.abilities_vec();
                         if let Some(preserved_abilities) = preserved_abilities {
                             for ability in preserved_abilities {
                                 if !chars.abilities.contains(&ability) {
@@ -3445,6 +3934,10 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
 
                 // Layer 6: Ability changes
                 Modification::AddAbility(ability) => {
+                    let new_ability = Ability::static_ability(ability.clone());
+                    if !chars.abilities.contains(&new_ability) {
+                        chars.abilities.push(new_ability);
+                    }
                     if !chars.static_abilities.contains(ability) {
                         chars.static_abilities.push(ability.clone());
                     }
@@ -3500,7 +3993,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                             ctx.objects,
                             &effects,
                             ctx.battlefield,
-                            &ctx.game.commanders,
+                            ctx.game.commander_objects(),
                             ctx.game,
                         ) else {
                             continue;
@@ -3567,7 +4060,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                             ctx.objects,
                             &effects,
                             ctx.battlefield,
-                            &ctx.game.commanders,
+                            ctx.game.commander_objects(),
                             ctx.game,
                         ) else {
                             continue;
@@ -3749,7 +4242,7 @@ fn apply_layer_7_effects(
             ctx.objects,
             all_effects,
             ctx.battlefield,
-            &ctx.game.commanders,
+            ctx.game.commander_objects(),
             ctx.game,
             Layer::PowerToughness,
             None,
@@ -3770,7 +4263,7 @@ fn apply_layer_7_effects(
                 ctx.objects,
                 all_effects,
                 ctx.battlefield,
-                &ctx.game.commanders,
+                ctx.game.commander_objects(),
                 ctx.game,
                 Layer::PowerToughness,
                 None,
@@ -3809,7 +4302,7 @@ fn apply_layer_7_effects(
                 effect,
                 ctx.objects,
                 ctx.battlefield,
-                &ctx.game.commanders,
+                ctx.game.commander_objects(),
                 ctx.game,
             );
         }
@@ -4377,7 +4870,7 @@ fn resolve_value_with_context(
             let mut seen: HashSet<String> = HashSet::new();
             for_each_filter_candidate(ctx, filter, |obj| {
                 if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
-                    seen.insert(obj.name.clone());
+                    seen.insert(obj.name.to_string());
                 }
             });
             seen.len() as i32
@@ -4969,7 +5462,7 @@ fn get_level_ability_pt(object: &Object) -> Option<(i32, i32)> {
         .copied()
         .unwrap_or(0);
 
-    for ability in &object.abilities {
+    for ability in object.abilities.iter() {
         if let AbilityKind::Static(s) = &ability.kind
             && let Some(levels) = s.level_abilities()
         {
@@ -4992,7 +5485,7 @@ fn get_level_granted_abilities(object: &Object) -> Vec<StaticAbility> {
         .copied()
         .unwrap_or(0);
 
-    for ability in &object.abilities {
+    for ability in object.abilities.iter() {
         if let AbilityKind::Static(s) = &ability.kind
             && let Some(levels) = s.level_abilities()
         {
@@ -5202,17 +5695,17 @@ mod tests {
 
         // Calculate characteristics
         let mut chars = CalculatedCharacteristics {
-            name: creature.name.clone(),
+            name: creature.name.to_string(),
             compiled_card_text: creature.compiled_card_text.clone(),
             power: creature.base_power.as_ref().map(|p| p.base_value()),
             toughness: creature.base_toughness.as_ref().map(|t| t.base_value()),
-            card_types: creature.card_types.clone(),
-            subtypes: creature.subtypes.clone(),
-            supertypes: creature.supertypes.clone(),
+            card_types: creature.card_types.to_vec(),
+            subtypes: creature.subtypes.to_vec(),
+            supertypes: creature.supertypes.to_vec(),
             colors: creature.colors(),
-            abilities: creature.abilities.clone(),
+            abilities: creature.abilities_vec(),
             static_abilities: extract_static_abilities(&creature.abilities),
-            aura_attach_filter: creature.aura_attach_filter.clone(),
+            aura_attach_filter: creature.aura_attach_filter_owned(),
             controller: creature.owner,
         };
 
@@ -5255,17 +5748,17 @@ mod tests {
         creature.add_counters(CounterType::Vigilance, 1);
 
         let mut chars = CalculatedCharacteristics {
-            name: creature.name.clone(),
+            name: creature.name.to_string(),
             compiled_card_text: creature.compiled_card_text.clone(),
             power: None,
             toughness: None,
-            card_types: creature.card_types.clone(),
+            card_types: creature.card_types.to_vec(),
             subtypes: Vec::new(),
             supertypes: Vec::new(),
             colors: ColorSet::COLORLESS,
             abilities: Vec::new(),
             static_abilities: Vec::new(),
-            aura_attach_filter: creature.aura_attach_filter.clone(),
+            aura_attach_filter: creature.aura_attach_filter_owned(),
             controller: creature.owner,
         };
 
@@ -5321,17 +5814,17 @@ mod tests {
 
         // Start with flying ability already present
         let mut chars = CalculatedCharacteristics {
-            name: creature.name.clone(),
+            name: creature.name.to_string(),
             compiled_card_text: creature.compiled_card_text.clone(),
             power: None,
             toughness: None,
-            card_types: creature.card_types.clone(),
+            card_types: creature.card_types.to_vec(),
             subtypes: Vec::new(),
             supertypes: Vec::new(),
             colors: ColorSet::COLORLESS,
             abilities: Vec::new(),
             static_abilities: vec![StaticAbility::flying()], // Already has flying
-            aura_attach_filter: creature.aura_attach_filter.clone(),
+            aura_attach_filter: creature.aura_attach_filter_owned(),
             controller: creature.owner,
         };
 

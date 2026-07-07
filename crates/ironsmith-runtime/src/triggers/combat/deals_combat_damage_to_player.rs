@@ -83,6 +83,10 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         self.first_matching_hit_to_player_in_batch(damaged_player, ctx)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::Damage])
+    }
+
     fn display(&self) -> String {
         // Combat damage already implies a creature; oracle says "a Vehicle
         // you control deals combat damage", not "a Vehicle creature ...".

@@ -185,11 +185,11 @@ pub(crate) fn offer_library_search_casts(
 
         let card_name = game
             .object(card_id)
-            .map(|object| object.name.clone())
+            .map(|object| object.name.to_string())
             .unwrap_or_else(|| "this card".to_string());
         let owner_name = game
             .player(library_owner)
-            .map(|player| player.name.clone())
+            .map(|player| player.name.to_string())
             .unwrap_or_else(|| "that player".to_string());
 
         for option in cast_options {
@@ -495,7 +495,7 @@ fn library_search_cast_effect_program(
     {
         return Some(ResolutionProgram::from_effects(effects.to_vec()));
     }
-    spell.spell_effect.clone()
+    spell.spell_effect_owned()
 }
 
 fn format_alternative_library_search_method(
@@ -556,7 +556,7 @@ fn cast_from_library_while_searching(
             &base_cost,
             &casting_method,
         );
-        (effective_cost, object.name.clone(), object.stable_id)
+        (effective_cost, object.name.to_string(), object.stable_id)
     };
 
     if !pay_library_cast_mana_cost(game, ctx, caster, card_id, &mana_cost) {
@@ -677,7 +677,7 @@ fn pay_library_cast_mana_cost(
 
         let source_name = game
             .object(spell_id)
-            .map(|object| object.name.clone())
+            .map(|object| object.name.to_string())
             .unwrap_or_else(|| "spell".to_string());
         let decision_ctx =
             SelectOptionsContext::mana_payment(payer, spell_id, source_name, options);
@@ -796,7 +796,7 @@ fn describe_mana_ability(
 
 fn describe_permanent(game: &GameState, id: ObjectId) -> String {
     game.object(id)
-        .map(|object| object.name.clone())
+        .map(|object| object.name.to_string())
         .unwrap_or_else(|| "Unknown".to_string())
 }
 

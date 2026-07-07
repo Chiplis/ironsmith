@@ -101,7 +101,7 @@ pub(super) fn tribute_opponents(game: &GameState, controller: PlayerId) -> Vec<P
 
 fn tribute_source_name(game: &GameState, source: ObjectId) -> String {
     game.object(source)
-        .map(|object| object.name.clone())
+        .map(|object| object.name.to_string())
         .unwrap_or_else(|| "this creature".to_string())
 }
 
@@ -163,7 +163,7 @@ pub(super) fn tribute_opponent_choice_context(
         .map(|(index, opponent)| {
             let name = game
                 .player(*opponent)
-                .map(|player| player.name.clone())
+                .map(|player| player.name.to_string())
                 .unwrap_or_else(|| format!("Player {}", opponent.index() + 1));
             crate::decisions::context::SelectableOption::new(index, name)
         })
@@ -1204,7 +1204,7 @@ fn resolve_madness_discard(
         crate::game_state::StackEntry::new(stack_id, player).with_provenance(provenance);
     if let Some(program) = game
         .object(stack_id)
-        .and_then(|obj| obj.spell_effect.clone())
+        .and_then(|obj| obj.spell_effect_owned())
     {
         let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
             game,
@@ -1216,7 +1216,7 @@ fn resolve_madness_discard(
         if !requirements.is_empty() {
             let context = game
                 .object(stack_id)
-                .map(|obj| obj.name.clone())
+                .map(|obj| obj.name.to_string())
                 .unwrap_or_else(|| "madness spell".to_string());
             let target_ctx = crate::decisions::context::TargetsContext::new(
                 player,
@@ -2309,7 +2309,7 @@ fn copied_object_etb_replacement_effects(
 
     let mut copied_abilities = game
         .object(copy_source_id)
-        .map(|source| source.abilities.clone())
+        .map(|source| source.abilities_vec())
         .unwrap_or_default();
     copied_abilities.extend(etb.added_abilities.clone());
 
@@ -2646,7 +2646,7 @@ fn apply_prevention_for_damage_assignment(
     }
 
     let (source_colors, source_card_types) = if let Some(obj) = game.object(source) {
-        (obj.colors(), obj.card_types.clone())
+        (obj.colors(), obj.card_types.to_vec())
     } else if let Some(snapshot) = source_snapshot {
         (snapshot.colors, snapshot.card_types.clone())
     } else {
@@ -4020,7 +4020,7 @@ mod tests {
         let creature = create_creature(&mut game, "Anthem Bear", alice);
         game.object_mut(creature)
             .expect("creature exists")
-            .abilities
+            .abilities_mut()
             .push(crate::ability::Ability::static_ability(StaticAbility::new(
                 Anthem::for_source(2, 0),
             )));
@@ -4155,8 +4155,7 @@ mod tests {
         let protected = create_creature(&mut game, "Stormwild Stand-In", alice);
         game.object_mut(protected)
             .expect("creature exists")
-            .abilities
-            .push(crate::ability::Ability::static_ability(
+            .abilities_mut().push(crate::ability::Ability::static_ability(
                 StaticAbility::prevent_constrained_damage_to_self_put_counters_instead(
                     CounterType::PlusOnePlusOne,
                     "If noncombat damage would be dealt to this creature, prevent that damage. Put a +1/+1 counter on it for each 1 damage prevented this way.",

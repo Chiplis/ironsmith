@@ -7,7 +7,6 @@ use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
-use crate::object::Object;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
@@ -72,7 +71,7 @@ impl EffectExecutor for CreateTokenEffect {
             crate::effects::helpers::resolve_player_filter(game, &self.controller, ctx)?;
         let base_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
         let token_preview =
-            Object::from_token_definition(ObjectId::from_raw(0), &self.token, controller_id);
+            game.object_from_token_definition(ObjectId::from_raw(0), &self.token, controller_id);
         let replacement = crate::events::processing::process_token_creation_for_token_with_event(
             game,
             controller_id,
@@ -97,7 +96,7 @@ impl EffectExecutor for CreateTokenEffect {
 
         for _ in 0..count {
             let id = game.new_object_id();
-            let mut token_obj = Object::from_token_definition(id, &self.token, controller_id);
+            let mut token_obj = game.object_from_token_definition(id, &self.token, controller_id);
             token_obj.zone = Zone::Command;
             let token_is_creature = token_obj.is_creature();
 
@@ -230,7 +229,7 @@ impl EffectExecutor for CreateTokenEffect {
                 None,
                 created_stable_ids,
                 Some(created_ids.len() as i64),
-                Some(self.token.card.name.clone()),
+                Some(self.token.card.name.to_string()),
             );
         }
 

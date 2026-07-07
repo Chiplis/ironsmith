@@ -70,6 +70,10 @@ impl TriggerMatcher for ThisBecomesBlockedByObjectTrigger {
         })
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureBecameBlocked])
+    }
+
     fn display(&self) -> String {
         format!(
             "Whenever this creature becomes blocked by {}",

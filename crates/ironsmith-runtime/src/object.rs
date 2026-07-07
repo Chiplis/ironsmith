@@ -1,5 +1,6 @@
 use crate::filter::ObjectFilterExt as _;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::ability::Ability;
 use crate::alternative_cast::AlternativeCastingMethod;
@@ -17,6 +18,238 @@ use crate::target::FilterContext;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 pub use ironsmith_core::CounterType;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SharedStr(Arc<str>);
+
+impl From<String> for SharedStr {
+    fn from(value: String) -> Self {
+        Self(Arc::from(value.into_boxed_str()))
+    }
+}
+
+impl From<&str> for SharedStr {
+    fn from(value: &str) -> Self {
+        Self(Arc::from(value))
+    }
+}
+
+impl From<Arc<str>> for SharedStr {
+    fn from(value: Arc<str>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<SharedStr> for String {
+    fn from(value: SharedStr) -> Self {
+        value.to_owned_string()
+    }
+}
+
+impl From<&SharedStr> for String {
+    fn from(value: &SharedStr) -> Self {
+        value.to_owned_string()
+    }
+}
+
+impl std::ops::Deref for SharedStr {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<str> for SharedStr {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl std::fmt::Display for SharedStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl PartialEq<&str> for SharedStr {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<String> for SharedStr {
+    fn eq(&self, other: &String) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl PartialEq<SharedStr> for &str {
+    fn eq(&self, other: &SharedStr) -> bool {
+        *self == other.as_str()
+    }
+}
+
+impl PartialEq<SharedStr> for String {
+    fn eq(&self, other: &SharedStr) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl SharedStr {
+    pub fn as_str(&self) -> &str {
+        self.0.as_ref()
+    }
+
+    pub fn to_owned_string(&self) -> String {
+        self.as_str().to_string()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedVec<T>(Arc<Vec<T>>);
+
+impl<T> Default for SharedVec<T> {
+    fn default() -> Self {
+        Self(Arc::new(Vec::new()))
+    }
+}
+
+impl<T> From<Vec<T>> for SharedVec<T> {
+    fn from(value: Vec<T>) -> Self {
+        Self(Arc::new(value))
+    }
+}
+
+impl<T> std::ops::Deref for SharedVec<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: Clone> std::ops::DerefMut for SharedVec<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        Arc::make_mut(&mut self.0)
+    }
+}
+
+impl<'a, T> IntoIterator for &'a SharedVec<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<'a, T: Clone> IntoIterator for &'a mut SharedVec<T> {
+    type Item = &'a mut T;
+    type IntoIter = std::slice::IterMut<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Arc::make_mut(&mut self.0).iter_mut()
+    }
+}
+
+impl<T> SharedVec<T> {
+    pub fn as_slice(&self) -> &[T] {
+        self.0.as_slice()
+    }
+}
+
+impl<T: Clone> SharedVec<T> {
+    pub fn to_vec(&self) -> Vec<T> {
+        self.0.as_ref().clone()
+    }
+}
+
+impl<T: PartialEq, const N: usize> PartialEq<[T; N]> for SharedVec<T> {
+    fn eq(&self, other: &[T; N]) -> bool {
+        self.as_slice() == other
+    }
+}
+
+impl<T: PartialEq> PartialEq<[T]> for SharedVec<T> {
+    fn eq(&self, other: &[T]) -> bool {
+        self.as_slice() == other
+    }
+}
+
+impl<T: PartialEq> PartialEq<Vec<T>> for SharedVec<T> {
+    fn eq(&self, other: &Vec<T>) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedValue<T>(Arc<T>);
+
+impl<T> From<T> for SharedValue<T> {
+    fn from(value: T) -> Self {
+        Self(Arc::new(value))
+    }
+}
+
+impl<T> std::ops::Deref for SharedValue<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: Clone> SharedValue<T> {
+    pub fn to_owned_value(&self) -> T {
+        self.0.as_ref().clone()
+    }
+}
+
+fn shared_optional_value<T>(value: Option<T>) -> Option<SharedValue<T>> {
+    value.map(SharedValue::from)
+}
+
+fn owned_optional_value<T: Clone>(value: &Option<SharedValue<T>>) -> Option<T> {
+    value.as_ref().map(SharedValue::to_owned_value)
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CardSharedHandles {
+    name: SharedStr,
+    mana_cost: Option<SharedValue<ManaCost>>,
+    supertypes: SharedVec<Supertype>,
+    card_types: SharedVec<CardType>,
+    subtypes: SharedVec<Subtype>,
+    compiled_card_text: Arc<str>,
+    other_face_name: Option<SharedStr>,
+    abilities: Arc<Vec<Ability>>,
+    spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
+    aura_attach_filter: Option<SharedValue<AuraAttachmentFilter>>,
+    alternative_casts: SharedVec<AlternativeCastingMethod>,
+    optional_costs: SharedVec<OptionalCost>,
+    additional_cost: SharedValue<TotalCost>,
+}
+
+impl CardSharedHandles {
+    pub(crate) fn from_definition(def: &crate::cards::CardDefinition) -> Self {
+        Self {
+            name: def.card.name.clone().into(),
+            mana_cost: shared_optional_value(def.card.mana_cost.clone()),
+            supertypes: def.card.supertypes.clone().into(),
+            card_types: def.card.card_types.clone().into(),
+            subtypes: def.card.subtypes.clone().into(),
+            compiled_card_text: Object::compiled_display_text(def),
+            other_face_name: def.card.other_face_name.clone().map(Into::into),
+            abilities: Arc::new(def.abilities.clone()),
+            spell_effect: shared_optional_value(def.spell_effect.clone()),
+            aura_attach_filter: shared_optional_value(def.aura_attach_filter.clone()),
+            alternative_casts: def.alternative_casts.clone().into(),
+            optional_costs: def.optional_costs.clone().into(),
+            additional_cost: def.additional_cost.clone().into(),
+        }
+    }
+}
 
 /// The kind of game object.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,37 +335,37 @@ impl AuraAttachmentFilterRuntimeExt for AuraAttachmentFilter {
 /// Stored copiable fields needed to end a bestow cast and restore creature form.
 #[derive(Debug, Clone)]
 pub struct BestowCastState {
-    pub card_types: Vec<CardType>,
-    pub subtypes: Vec<Subtype>,
-    pub aura_attach_filter: Option<AuraAttachmentFilter>,
-    pub spell_effect: Option<crate::resolution::ResolutionProgram>,
+    pub card_types: SharedVec<CardType>,
+    pub subtypes: SharedVec<Subtype>,
+    pub aura_attach_filter: Option<SharedValue<AuraAttachmentFilter>>,
+    pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
 }
 
 /// Stored copiable fields needed to restore a card after a face-down cast.
 #[derive(Debug, Clone)]
 pub struct FaceDownCastState {
-    pub name: String,
-    pub mana_cost: Option<ManaCost>,
+    pub name: SharedStr,
+    pub mana_cost: Option<SharedValue<ManaCost>>,
     pub color_override: Option<ColorSet>,
-    pub supertypes: Vec<Supertype>,
-    pub card_types: Vec<CardType>,
-    pub subtypes: Vec<Subtype>,
-    pub compiled_card_text: String,
+    pub supertypes: SharedVec<Supertype>,
+    pub card_types: SharedVec<CardType>,
+    pub subtypes: SharedVec<Subtype>,
+    pub compiled_card_text: Arc<str>,
     pub rules_text_color_identity: ColorSet,
     pub base_power: Option<PtValue>,
     pub base_toughness: Option<PtValue>,
     pub base_loyalty: Option<u32>,
     pub base_defense: Option<u32>,
-    pub abilities: Vec<Ability>,
-    pub spell_effect: Option<crate::resolution::ResolutionProgram>,
-    pub aura_attach_filter: Option<AuraAttachmentFilter>,
+    pub abilities: Arc<Vec<Ability>>,
+    pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
+    pub aura_attach_filter: Option<SharedValue<AuraAttachmentFilter>>,
 }
 
 /// Stored copiable fields needed to restore a prototype card outside the stack
 /// or battlefield.
 #[derive(Debug, Clone)]
 pub struct PrototypeCastState {
-    pub mana_cost: Option<ManaCost>,
+    pub mana_cost: Option<SharedValue<ManaCost>>,
     pub color_override: Option<ColorSet>,
     pub base_power: Option<PtValue>,
     pub base_toughness: Option<PtValue>,
@@ -149,6 +382,10 @@ pub struct Object {
     /// `stable_id` stays constant for the lifetime of this card/token instance.
     /// Useful for tracking "this specific card" for display and triggered abilities.
     pub stable_id: StableId,
+    /// Game-local mutation revision stamped by `GameState::object_mut`.
+    ///
+    /// This is clone/rollback state, not an id source and not a serialization surface.
+    pub last_modified: u64,
     pub kind: ObjectKind,
     /// Reference to the original card definition (None for pure tokens)
     pub card: Option<CardId>,
@@ -158,20 +395,20 @@ pub struct Object {
     pub owner: PlayerId,
 
     // Copiable values (what Clone effects copy)
-    pub name: String,
-    pub mana_cost: Option<ManaCost>,
+    pub name: SharedStr,
+    pub mana_cost: Option<SharedValue<ManaCost>>,
     pub color_override: Option<ColorSet>,
-    pub supertypes: Vec<Supertype>,
-    pub card_types: Vec<CardType>,
-    pub subtypes: Vec<Subtype>,
-    pub compiled_card_text: String,
+    pub supertypes: SharedVec<Supertype>,
+    pub card_types: SharedVec<CardType>,
+    pub subtypes: SharedVec<Subtype>,
+    pub compiled_card_text: Arc<str>,
     pub rules_text_color_identity: ColorSet,
     /// Optional reference to another face for flip/DFC style cards.
     ///
     /// This is copied from `Card::other_face` when the object is created.
     pub other_face: Option<CardId>,
     /// Linked face name for on-demand compilation without a global registry preload.
-    pub other_face_name: Option<String>,
+    pub other_face_name: Option<SharedStr>,
     /// Layout semantics for linked-face cards.
     pub linked_face_layout: LinkedFaceLayout,
     pub base_power: Option<PtValue>,
@@ -179,7 +416,7 @@ pub struct Object {
     pub base_loyalty: Option<u32>,
     pub base_defense: Option<u32>,
     /// Abilities this object has (copiable)
-    pub abilities: Vec<Ability>,
+    pub abilities: Arc<Vec<Ability>>,
 
     // Non-copiable values (kept on Object)
     pub counters: HashMap<CounterType, u32>,
@@ -188,23 +425,23 @@ pub struct Object {
 
     // Spell-related state
     /// Spell effects (for instants/sorceries)
-    pub spell_effect: Option<crate::resolution::ResolutionProgram>,
+    pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
     /// For Auras: what this card can enchant (used for non-target attachments)
-    pub aura_attach_filter: Option<AuraAttachmentFilter>,
+    pub aura_attach_filter: Option<SharedValue<AuraAttachmentFilter>>,
     /// Original copiable fields to restore if this permanent ends bestow.
-    pub bestow_cast_state: Option<BestowCastState>,
+    pub bestow_cast_state: Option<Box<BestowCastState>>,
     /// Original copiable fields to restore if this card was cast face down.
     pub face_down_cast_state: Option<Box<FaceDownCastState>>,
     /// Original copiable fields to restore if this card was cast prototyped.
     pub prototype_cast_state: Option<PrototypeCastState>,
     /// Alternative casting methods (flashback, escape, etc.)
-    pub alternative_casts: Vec<AlternativeCastingMethod>,
+    pub alternative_casts: SharedVec<AlternativeCastingMethod>,
     /// Alternative method chosen for the current spell cast.
-    pub cast_alternative_method: Option<AlternativeCastingMethod>,
+    pub cast_alternative_method: Option<Box<AlternativeCastingMethod>>,
     /// True if this split card can be cast fused from hand.
     pub has_fuse: bool,
     /// Optional costs (kicker, buyback, etc.)
-    pub optional_costs: Vec<OptionalCost>,
+    pub optional_costs: SharedVec<OptionalCost>,
     /// Which optional costs were paid when this spell was cast (for ETB triggers)
     pub optional_costs_paid: OptionalCostsPaid,
     /// Mana actually spent to cast this object while it was a spell.
@@ -227,7 +464,7 @@ pub struct Object {
     /// used to pay costs, such as "the discarded card's mana value".
     pub cast_tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
     /// Additional non-printed costs paid while casting this object as a spell.
-    pub additional_cost: TotalCost,
+    pub additional_cost: SharedValue<TotalCost>,
     // Note: The following fields have been moved to GameState extension maps:
     // - tapped -> GameState::tapped_permanents
     // - flipped -> GameState::flipped
@@ -280,8 +517,20 @@ fn static_ability_from_id(ability: StaticAbilityId) -> Option<StaticAbility> {
 }
 
 impl Object {
-    fn compiled_display_text(def: &crate::cards::CardDefinition) -> String {
-        crate::compiled_text::compiled_text_lines(def).join("\n")
+    /// Returns a mutable view of this object's copiable abilities.
+    ///
+    /// Abilities are shared across object clones and repeated definitions, so live
+    /// object mutations must pass through Arc COW to preserve value semantics.
+    pub fn abilities_mut(&mut self) -> &mut Vec<Ability> {
+        Arc::make_mut(&mut self.abilities)
+    }
+
+    pub fn abilities_vec(&self) -> Vec<Ability> {
+        self.abilities.as_ref().clone()
+    }
+
+    fn compiled_display_text(def: &crate::cards::CardDefinition) -> Arc<str> {
+        Arc::from(crate::compiled_text::compiled_text_lines(def).join("\n"))
     }
 
     fn extend_unique<T: PartialEq + Clone>(base: &mut Vec<T>, extra: &[T]) {
@@ -297,6 +546,24 @@ impl Object {
         self.additional_cost.non_mana_costs().cloned().collect()
     }
 
+    pub fn mana_cost_owned(&self) -> Option<ManaCost> {
+        owned_optional_value(&self.mana_cost)
+    }
+
+    pub fn spell_effect_owned(&self) -> Option<crate::resolution::ResolutionProgram> {
+        owned_optional_value(&self.spell_effect)
+    }
+
+    pub fn aura_attach_filter_owned(&self) -> Option<AuraAttachmentFilter> {
+        owned_optional_value(&self.aura_attach_filter)
+    }
+
+    pub fn cast_alternative_method_owned(&self) -> Option<AlternativeCastingMethod> {
+        self.cast_alternative_method
+            .as_ref()
+            .map(|method| method.as_ref().clone())
+    }
+
     /// Creates a new object from a card definition.
     pub fn from_card(id: ObjectId, card: &Card, owner: PlayerId, zone: Zone) -> Self {
         let (base_power, base_toughness) = card
@@ -307,26 +574,27 @@ impl Object {
         Self {
             id,
             stable_id: StableId::from(id), // Set to same as id initially; preserved across zone changes
+            last_modified: 0,
             kind: ObjectKind::Card,
             card: Some(card.id),
             zone,
             owner,
-            name: card.name.clone(),
-            mana_cost: card.mana_cost.clone(),
+            name: card.name.clone().into(),
+            mana_cost: shared_optional_value(card.mana_cost.clone()),
             color_override: card.color_indicator,
-            supertypes: card.supertypes.clone(),
-            card_types: card.card_types.clone(),
-            subtypes: card.subtypes.clone(),
-            compiled_card_text: String::new(),
+            supertypes: card.supertypes.clone().into(),
+            card_types: card.card_types.clone().into(),
+            subtypes: card.subtypes.clone().into(),
+            compiled_card_text: Arc::from(""),
             rules_text_color_identity: card.rules_text_color_identity,
             other_face: card.other_face,
-            other_face_name: card.other_face_name.clone(),
+            other_face_name: card.other_face_name.clone().map(Into::into),
             linked_face_layout: card.linked_face_layout,
             base_power,
             base_toughness,
             base_loyalty: card.loyalty,
             base_defense: card.defense,
-            abilities: Vec::new(),
+            abilities: Arc::new(Vec::new()),
             counters: HashMap::new(),
             attached_to: None,
             attachments: Vec::new(),
@@ -335,17 +603,17 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
-            alternative_casts: Vec::new(),
+            alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             has_fuse: false,
-            optional_costs: Vec::new(),
+            optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
-            additional_cost: TotalCost::free(),
+            additional_cost: TotalCost::free().into(),
         }
     }
 
@@ -356,18 +624,19 @@ impl Object {
         owner: PlayerId,
         zone: Zone,
     ) -> Self {
+        let handles = CardSharedHandles::from_definition(def);
+        Self::from_card_definition_with_shared(id, def, owner, zone, &handles)
+    }
+
+    pub(crate) fn from_card_definition_with_shared(
+        id: ObjectId,
+        def: &crate::cards::CardDefinition,
+        owner: PlayerId,
+        zone: Zone,
+        handles: &CardSharedHandles,
+    ) -> Self {
         let mut obj = Self::from_card(id, &def.card, owner, zone);
-        obj.compiled_card_text = Self::compiled_display_text(def);
-        obj.abilities = def.abilities.clone();
-        obj.spell_effect = def.spell_effect.clone();
-        obj.aura_attach_filter = def.aura_attach_filter.clone();
-        obj.bestow_cast_state = None;
-        obj.face_down_cast_state = None;
-        obj.alternative_casts = def.alternative_casts.clone();
-        obj.cast_alternative_method = None;
-        obj.has_fuse = def.has_fuse;
-        obj.optional_costs = def.optional_costs.clone();
-        obj.additional_cost = def.additional_cost.clone();
+        obj.apply_card_definition_with_shared(def, handles);
         obj
     }
 
@@ -380,17 +649,18 @@ impl Object {
         Self {
             id,
             stable_id: StableId::from(id),
+            last_modified: 0,
             kind: ObjectKind::Card,
             card: None,
             zone,
             owner,
-            name: "Hidden Card".to_string(),
+            name: "Hidden Card".into(),
             mana_cost: None,
             color_override: None,
-            supertypes: Vec::new(),
-            card_types: Vec::new(),
-            subtypes: Vec::new(),
-            compiled_card_text: String::new(),
+            supertypes: Vec::new().into(),
+            card_types: Vec::new().into(),
+            subtypes: Vec::new().into(),
+            compiled_card_text: Arc::from(""),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
@@ -399,7 +669,7 @@ impl Object {
             base_toughness: None,
             base_loyalty: None,
             base_defense: None,
-            abilities: Vec::new(),
+            abilities: Arc::new(Vec::new()),
             counters: HashMap::new(),
             attached_to: None,
             attachments: Vec::new(),
@@ -408,17 +678,17 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
-            alternative_casts: Vec::new(),
+            alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             has_fuse: false,
-            optional_costs: Vec::new(),
+            optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
-            additional_cost: TotalCost::free(),
+            additional_cost: TotalCost::free().into(),
         }
     }
 
@@ -432,15 +702,24 @@ impl Object {
     }
 
     pub fn apply_card_definition(&mut self, def: &crate::cards::CardDefinition) {
+        let handles = CardSharedHandles::from_definition(def);
+        self.apply_card_definition_with_shared(def, &handles);
+    }
+
+    pub(crate) fn apply_card_definition_with_shared(
+        &mut self,
+        def: &crate::cards::CardDefinition,
+        handles: &CardSharedHandles,
+    ) {
         self.kind = ObjectKind::Card;
         self.card = Some(def.card.id);
-        self.apply_definition_face(def);
-        self.spell_effect = def.spell_effect.clone();
-        self.aura_attach_filter = def.aura_attach_filter.clone();
-        self.alternative_casts = def.alternative_casts.clone();
+        self.apply_definition_face_with_shared(def, handles);
+        self.spell_effect = handles.spell_effect.clone();
+        self.aura_attach_filter = handles.aura_attach_filter.clone();
+        self.alternative_casts = handles.alternative_casts.clone();
         self.has_fuse = def.has_fuse;
-        self.optional_costs = def.optional_costs.clone();
-        self.additional_cost = def.additional_cost.clone();
+        self.optional_costs = handles.optional_costs.clone();
+        self.additional_cost = handles.additional_cost.clone();
     }
 
     /// Apply the printed/copied characteristics of another card definition.
@@ -448,39 +727,48 @@ impl Object {
     /// Used for flip cards and similar "becomes this other face" mechanics.
     /// This preserves identity, ownership, controller, zone, counters, and attachments.
     pub fn apply_definition_face(&mut self, def: &crate::cards::CardDefinition) {
+        let handles = CardSharedHandles::from_definition(def);
+        self.apply_definition_face_with_shared(def, &handles);
+    }
+
+    pub(crate) fn apply_definition_face_with_shared(
+        &mut self,
+        def: &crate::cards::CardDefinition,
+        handles: &CardSharedHandles,
+    ) {
         let (base_power, base_toughness) = def
             .card
             .power_toughness
             .map(|pt| (Some(pt.power), Some(pt.toughness)))
             .unwrap_or((None, None));
 
-        self.name = def.card.name.clone();
-        self.mana_cost = def.card.mana_cost.clone();
+        self.name = handles.name.clone();
+        self.mana_cost = handles.mana_cost.clone();
         self.color_override = def.card.color_indicator;
-        self.supertypes = def.card.supertypes.clone();
-        self.card_types = def.card.card_types.clone();
-        self.subtypes = def.card.subtypes.clone();
-        self.compiled_card_text = Self::compiled_display_text(def);
+        self.supertypes = handles.supertypes.clone();
+        self.card_types = handles.card_types.clone();
+        self.subtypes = handles.subtypes.clone();
+        self.compiled_card_text = handles.compiled_card_text.clone();
         self.rules_text_color_identity = def.card.rules_text_color_identity;
         self.other_face = def.card.other_face;
-        self.other_face_name = def.card.other_face_name.clone();
+        self.other_face_name = handles.other_face_name.clone();
         self.linked_face_layout = def.card.linked_face_layout;
         self.base_power = base_power;
         self.base_toughness = base_toughness;
         self.base_loyalty = def.card.loyalty;
         self.base_defense = def.card.defense;
-        self.abilities = def.abilities.clone();
+        self.abilities = handles.abilities.clone();
 
-        self.spell_effect = def.spell_effect.clone();
-        self.aura_attach_filter = def.aura_attach_filter.clone();
+        self.spell_effect = handles.spell_effect.clone();
+        self.aura_attach_filter = handles.aura_attach_filter.clone();
         self.bestow_cast_state = None;
         self.face_down_cast_state = None;
         self.prototype_cast_state = None;
-        self.alternative_casts = def.alternative_casts.clone();
+        self.alternative_casts = handles.alternative_casts.clone();
         self.cast_alternative_method = None;
         self.has_fuse = def.has_fuse;
-        self.optional_costs = def.optional_costs.clone();
-        self.additional_cost = def.additional_cost.clone();
+        self.optional_costs = handles.optional_costs.clone();
+        self.additional_cost = handles.additional_cost.clone();
     }
 
     /// Apply the temporary stack characteristics of a fused split spell.
@@ -493,11 +781,11 @@ impl Object {
             mana_pips.extend(cost.pips().iter().cloned());
         }
 
-        self.name = format!("{} // {}", self.name, other.card.name);
+        self.name = format!("{} // {}", self.name, other.card.name).into();
         self.mana_cost = if mana_pips.is_empty() {
             None
         } else {
-            Some(ManaCost::from_pips(mana_pips))
+            Some(ManaCost::from_pips(mana_pips).into())
         };
         self.color_override = match (self.color_override, other.card.color_indicator) {
             (Some(left), Some(right)) => Some(left.union(right)),
@@ -515,11 +803,11 @@ impl Object {
         self.base_toughness = None;
         self.base_loyalty = None;
         self.base_defense = None;
-        self.abilities.extend(other.abilities.iter().cloned());
+        self.abilities_mut().extend(other.abilities.iter().cloned());
 
-        let mut effects = self.spell_effect.clone().unwrap_or_default();
+        let mut effects = self.spell_effect_owned().unwrap_or_default();
         effects.extend(other.spell_effect.clone().unwrap_or_default());
-        self.spell_effect = Some(effects);
+        self.spell_effect = Some(effects.into());
         self.aura_attach_filter = None;
         self.bestow_cast_state = None;
         self.prototype_cast_state = None;
@@ -538,28 +826,31 @@ impl Object {
         crate::cards::CardDefinition {
             card: Card {
                 id: self.card.unwrap_or(CardId::new()),
-                name: self.name.clone(),
-                mana_cost: self.mana_cost.clone(),
+                name: self.name.to_owned_string(),
+                mana_cost: self.mana_cost_owned(),
                 color_indicator: self.color_override,
-                supertypes: self.supertypes.clone(),
-                card_types: self.card_types.clone(),
-                subtypes: self.subtypes.clone(),
+                supertypes: self.supertypes.to_vec(),
+                card_types: self.card_types.to_vec(),
+                subtypes: self.subtypes.to_vec(),
                 rules_text_color_identity: self.rules_text_color_identity,
                 power_toughness,
                 loyalty: self.base_loyalty,
                 defense: self.base_defense,
                 other_face: self.other_face,
-                other_face_name: self.other_face_name.clone(),
+                other_face_name: self
+                    .other_face_name
+                    .as_ref()
+                    .map(SharedStr::to_owned_string),
                 linked_face_layout: self.linked_face_layout,
                 is_token: matches!(self.kind, ObjectKind::Token),
             },
-            abilities: self.abilities.clone(),
-            spell_effect: self.spell_effect.clone(),
-            aura_attach_filter: self.aura_attach_filter.clone(),
-            alternative_casts: self.alternative_casts.clone(),
+            abilities: self.abilities_vec(),
+            spell_effect: self.spell_effect_owned(),
+            aura_attach_filter: self.aura_attach_filter_owned(),
+            alternative_casts: self.alternative_casts.to_vec(),
             has_fuse: self.has_fuse,
-            optional_costs: self.optional_costs.clone(),
-            additional_cost: self.additional_cost.clone(),
+            optional_costs: self.optional_costs.to_vec(),
+            additional_cost: self.additional_cost.to_owned_value(),
         }
     }
 
@@ -578,17 +869,18 @@ impl Object {
         Self {
             id,
             stable_id: StableId::from(id), // New token gets its own stable_id
+            last_modified: 0,
             kind: ObjectKind::Token,
             card: None,
             zone: Zone::Battlefield,
             owner,
-            name,
+            name: name.into(),
             mana_cost: None,
             color_override: Some(color),
-            supertypes: Vec::new(),
-            card_types,
-            subtypes,
-            compiled_card_text: String::new(),
+            supertypes: Vec::new().into(),
+            card_types: card_types.into(),
+            subtypes: subtypes.into(),
+            compiled_card_text: Arc::from(""),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
@@ -597,7 +889,7 @@ impl Object {
             base_toughness: toughness.map(PtValue::Fixed),
             base_loyalty: None,
             base_defense: None,
-            abilities: Vec::new(),
+            abilities: Arc::new(Vec::new()),
             counters: HashMap::new(),
             attached_to: None,
             attachments: Vec::new(),
@@ -606,17 +898,17 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
-            alternative_casts: Vec::new(),
+            alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             has_fuse: false,
-            optional_costs: Vec::new(),
+            optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
-            additional_cost: TotalCost::free(),
+            additional_cost: TotalCost::free().into(),
         }
     }
 
@@ -640,6 +932,7 @@ impl Object {
         let mut token = Self {
             id,
             stable_id: StableId::from(id), // Token copy is a new instance
+            last_modified: 0,
             kind: ObjectKind::Token,
             card: None,
             zone: Zone::Battlefield,
@@ -705,6 +998,7 @@ impl Object {
         let mut copy = Self {
             id,
             stable_id: StableId::from(id),
+            last_modified: 0,
             kind: ObjectKind::SpellCopy,
             card: None,
             zone: Zone::Stack,
@@ -765,20 +1059,21 @@ impl Object {
         let mut token = Self {
             id,
             stable_id: StableId::from(id),
+            last_modified: 0,
             kind: ObjectKind::Token,
             card: None,
             zone: Zone::Battlefield,
             owner,
-            name: snapshot.name.clone(),
-            mana_cost: snapshot.mana_cost.clone(),
+            name: snapshot.name.clone().into(),
+            mana_cost: shared_optional_value(snapshot.mana_cost.clone()),
             color_override: (!snapshot.colors.is_empty()).then_some(snapshot.colors),
-            supertypes: snapshot.supertypes.clone(),
-            card_types: snapshot.card_types.clone(),
-            subtypes: snapshot.subtypes.clone(),
-            compiled_card_text: snapshot.compiled_card_text.clone(),
+            supertypes: snapshot.supertypes.clone().into(),
+            card_types: snapshot.card_types.clone().into(),
+            subtypes: snapshot.subtypes.clone().into(),
+            compiled_card_text: Arc::from(snapshot.compiled_card_text.as_str()),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: snapshot.other_face,
-            other_face_name: snapshot.other_face_name.clone(),
+            other_face_name: snapshot.other_face_name.clone().map(Into::into),
             linked_face_layout: snapshot.linked_face_layout,
             base_power: snapshot.base_power.map(PtValue::Fixed),
             base_toughness: snapshot.base_toughness.map(PtValue::Fixed),
@@ -789,21 +1084,21 @@ impl Object {
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
-            aura_attach_filter: snapshot.aura_attach_filter.clone(),
+            aura_attach_filter: shared_optional_value(snapshot.aura_attach_filter.clone()),
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
-            alternative_casts: Vec::new(),
+            alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             has_fuse: false,
-            optional_costs: Vec::new(),
+            optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
-            additional_cost: TotalCost::free(),
+            additional_cost: TotalCost::free().into(),
         };
         if let Some(loyalty) = snapshot.loyalty {
             token.add_counters(CounterType::Loyalty, loyalty);
@@ -825,17 +1120,18 @@ impl Object {
         Self {
             id,
             stable_id: StableId::from(id), // Emblems get their own stable_id
+            last_modified: 0,
             kind: ObjectKind::Emblem,
             card: None,
             zone: Zone::Command,
             owner,
-            name,
+            name: name.into(),
             mana_cost: None,
             color_override: None,
-            supertypes: Vec::new(),
-            card_types: Vec::new(),
-            subtypes: Vec::new(),
-            compiled_card_text: String::new(),
+            supertypes: Vec::new().into(),
+            card_types: Vec::new().into(),
+            subtypes: Vec::new().into(),
+            compiled_card_text: Arc::from(""),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
@@ -844,7 +1140,7 @@ impl Object {
             base_toughness: None,
             base_loyalty: None,
             base_defense: None,
-            abilities,
+            abilities: Arc::new(abilities),
             counters: HashMap::new(),
             attached_to: None,
             attachments: Vec::new(),
@@ -853,17 +1149,17 @@ impl Object {
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
-            alternative_casts: Vec::new(),
+            alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
             has_fuse: false,
-            optional_costs: Vec::new(),
+            optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
-            additional_cost: TotalCost::free(),
+            additional_cost: TotalCost::free().into(),
         }
     }
 
@@ -908,12 +1204,12 @@ impl Object {
             return;
         }
 
-        self.bestow_cast_state = Some(BestowCastState {
+        self.bestow_cast_state = Some(Box::new(BestowCastState {
             card_types: self.card_types.clone(),
             subtypes: self.subtypes.clone(),
             aura_attach_filter: self.aura_attach_filter.clone(),
             spell_effect: self.spell_effect.clone(),
-        });
+        }));
 
         let mut card_types = self.card_types.clone();
         card_types.retain(|card_type| *card_type != CardType::Creature);
@@ -927,7 +1223,8 @@ impl Object {
         subtypes.push(Subtype::Aura);
         self.subtypes = subtypes;
 
-        self.aura_attach_filter = Some(crate::target::ObjectFilter::creature().into());
+        self.aura_attach_filter =
+            Some(AuraAttachmentFilter::from(crate::target::ObjectFilter::creature()).into());
         self.ensure_aura_cast_spell_effect();
     }
 
@@ -938,14 +1235,17 @@ impl Object {
             return;
         }
 
-        let Some(filter) = self.aura_attach_filter.clone() else {
+        let Some(filter) = self.aura_attach_filter_owned() else {
             return;
         };
 
         let target_spec = filter.target_spec();
-        self.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
-            crate::effect::Effect::attach_to(target_spec),
-        ]));
+        self.spell_effect = Some(
+            crate::resolution::ResolutionProgram::from_effects(vec![
+                crate::effect::Effect::attach_to(target_spec),
+            ])
+            .into(),
+        );
     }
 
     /// Returns true if this object is currently in the temporary bestow Aura form.
@@ -1015,7 +1315,7 @@ impl Object {
         });
 
         let colors = Self::colors_from_mana_cost(&cost);
-        self.mana_cost = Some(cost);
+        self.mana_cost = Some(cost.into());
         self.color_override = (!colors.is_empty()).then_some(colors);
         self.base_power = Some(power);
         self.base_toughness = Some(toughness);
@@ -1078,18 +1378,18 @@ impl Object {
             aura_attach_filter: self.aura_attach_filter.clone(),
         }));
 
-        self.name = "Face-down creature".to_string();
+        self.name = "Face-down creature".into();
         self.mana_cost = None;
         self.color_override = Some(ColorSet::COLORLESS);
         self.supertypes.clear();
-        self.card_types = vec![CardType::Creature];
+        self.card_types = vec![CardType::Creature].into();
         self.subtypes.clear();
-        self.compiled_card_text.clear();
+        self.compiled_card_text = Arc::from("");
         self.base_power = Some(PtValue::Fixed(2));
         self.base_toughness = Some(PtValue::Fixed(2));
         self.base_loyalty = None;
         self.base_defense = None;
-        self.abilities.retain(|ability| {
+        self.abilities_mut().retain(|ability| {
             matches!(
                 &ability.kind,
                 crate::ability::AbilityKind::Static(static_ability)
@@ -1097,7 +1397,7 @@ impl Object {
             )
         });
         if has_disguise {
-            self.abilities
+            self.abilities_mut()
                 .push(Ability::static_ability(StaticAbility::ward(
                     TotalCost::mana(ManaCost::from_pips(vec![vec![
                         crate::mana::ManaSymbol::Generic(2),
@@ -1257,7 +1557,7 @@ impl Object {
 
         let level_count = self.counters.get(&CounterType::Level).copied().unwrap_or(0);
 
-        for ability in &self.abilities {
+        for ability in self.abilities.iter() {
             if let AbilityKind::Static(s) = &ability.kind
                 && let Some(levels) = s.level_abilities()
             {
@@ -1280,7 +1580,7 @@ impl Object {
 
         let level_count = self.counters.get(&CounterType::Level).copied().unwrap_or(0);
 
-        for ability in &self.abilities {
+        for ability in self.abilities.iter() {
             if let AbilityKind::Static(s) = &ability.kind
                 && let Some(levels) = s.level_abilities()
             {
@@ -1465,48 +1765,59 @@ impl Object {
         def: &crate::cards::CardDefinition,
         controller: PlayerId,
     ) -> Self {
+        let handles = CardSharedHandles::from_definition(def);
+        Self::from_token_definition_with_shared(id, def, controller, &handles)
+    }
+
+    pub(crate) fn from_token_definition_with_shared(
+        id: ObjectId,
+        def: &crate::cards::CardDefinition,
+        controller: PlayerId,
+        handles: &CardSharedHandles,
+    ) -> Self {
         Self {
             id,
             stable_id: StableId::from(id),
+            last_modified: 0,
             kind: ObjectKind::Token,
             card: None,
             zone: Zone::Battlefield,
             owner: controller,
-            name: def.card.name.clone(),
+            name: handles.name.clone(),
             mana_cost: None,                          // Tokens don't have mana costs
             color_override: def.card.color_indicator, // Use color indicator if set
-            supertypes: def.card.supertypes.clone(),
-            card_types: def.card.card_types.clone(),
-            subtypes: def.card.subtypes.clone(),
-            compiled_card_text: Self::compiled_display_text(def),
+            supertypes: handles.supertypes.clone(),
+            card_types: handles.card_types.clone(),
+            subtypes: handles.subtypes.clone(),
+            compiled_card_text: handles.compiled_card_text.clone(),
             rules_text_color_identity: def.card.rules_text_color_identity,
             other_face: def.card.other_face,
-            other_face_name: def.card.other_face_name.clone(),
+            other_face_name: handles.other_face_name.clone(),
             linked_face_layout: def.card.linked_face_layout,
             base_power: def.card.power_toughness.map(|pt| pt.power),
             base_toughness: def.card.power_toughness.map(|pt| pt.toughness),
             base_loyalty: def.card.loyalty,
             base_defense: def.card.defense,
-            abilities: def.abilities.clone(),
+            abilities: handles.abilities.clone(),
             counters: HashMap::new(),
             attached_to: None,
             attachments: Vec::new(),
-            spell_effect: def.spell_effect.clone(),
-            aura_attach_filter: def.aura_attach_filter.clone(),
+            spell_effect: handles.spell_effect.clone(),
+            aura_attach_filter: handles.aura_attach_filter.clone(),
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
-            alternative_casts: def.alternative_casts.clone(),
+            alternative_casts: handles.alternative_casts.clone(),
             cast_alternative_method: None,
             has_fuse: def.has_fuse,
-            optional_costs: def.optional_costs.clone(),
+            optional_costs: handles.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
-            additional_cost: def.additional_cost.clone(),
+            additional_cost: handles.additional_cost.clone(),
         }
     }
 }
@@ -1545,6 +1856,42 @@ mod tests {
         assert_eq!(obj.toughness(), Some(2));
         assert!(obj.is_creature());
         assert!(obj.colors().contains(Color::Green));
+    }
+
+    #[test]
+    fn cloned_object_shared_payload_mutations_do_not_leak() {
+        let mut original = Object::new_token(
+            ObjectId::from_raw(44),
+            PlayerId::from_index(0),
+            "Payload Probe".to_string(),
+            vec![CardType::Creature],
+            vec![Subtype::Human],
+            Some(1),
+            Some(1),
+            ColorSet::WHITE,
+        );
+        original.compiled_card_text = Arc::from("Original text");
+        original
+            .optional_costs
+            .push(OptionalCost::custom("Probe", TotalCost::free()));
+
+        let mut clone = original.clone();
+        clone.card_types.push(CardType::Artifact);
+        clone.subtypes.push(Subtype::Construct);
+        clone.compiled_card_text = Arc::from("Changed text");
+        clone
+            .optional_costs
+            .push(OptionalCost::custom("Clone-only", TotalCost::free()));
+
+        assert!(!original.card_types.contains(&CardType::Artifact));
+        assert!(!original.subtypes.contains(&Subtype::Construct));
+        assert_eq!(original.compiled_card_text.as_ref(), "Original text");
+        assert_eq!(original.optional_costs.len(), 1);
+
+        assert!(clone.card_types.contains(&CardType::Artifact));
+        assert!(clone.subtypes.contains(&Subtype::Construct));
+        assert_eq!(clone.compiled_card_text.as_ref(), "Changed text");
+        assert_eq!(clone.optional_costs.len(), 2);
     }
 
     #[test]
@@ -1622,7 +1969,7 @@ mod tests {
             PlayerId::from_index(0),
             Zone::Hand,
         );
-        obj.abilities.push(
+        obj.abilities_mut().push(
             Ability::static_ability(StaticAbility::make_colorless(ObjectFilter::source()))
                 .in_zones(vec![
                     Zone::Battlefield,
@@ -1658,7 +2005,7 @@ mod tests {
             PlayerId::from_index(0),
             Zone::Hand,
         );
-        obj.abilities
+        obj.abilities_mut()
             .push(Ability::static_ability(StaticAbility::make_colorless(
                 ObjectFilter::source(),
             )));

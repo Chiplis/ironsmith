@@ -19,6 +19,10 @@ impl TriggerMatcher for ThisBecomesBlockedTrigger {
         e.attacker == ctx.source_id
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureBecameBlocked])
+    }
+
     fn display(&self) -> String {
         "Whenever this creature becomes blocked".to_string()
     }

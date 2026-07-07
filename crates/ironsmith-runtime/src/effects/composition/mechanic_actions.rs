@@ -1020,7 +1020,7 @@ impl EffectExecutor for CipherEffect {
             )],
         );
         if let Some(creature) = game.object_mut(chosen_creature) {
-            creature.abilities.push(ability);
+            creature.abilities_mut().push(ability);
         }
 
         Ok(
@@ -2223,7 +2223,7 @@ mod tests {
         let created_names = ids
             .iter()
             .filter_map(|id| game.object(*id))
-            .map(|obj| obj.name.clone())
+            .map(|obj| obj.name.to_string())
             .collect::<Vec<_>>();
         assert!(created_names.contains(&"Soldier".to_string()));
         assert!(created_names.contains(&"Rhino".to_string()));

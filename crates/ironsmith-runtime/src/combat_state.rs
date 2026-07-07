@@ -1267,8 +1267,7 @@ mod tests {
         let buddy_two_id = game.create_object_from_card(&buddy_two, alice, Zone::Battlefield);
         game.object_mut(restricted_id)
             .expect("restricted creature should exist")
-            .abilities
-            .push(Ability::static_ability(
+            .abilities_mut().push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
                     CantAttackUnlessConditionSpec::AttackingGroupCondition(
                         crate::static_abilities::AttackingGroupAttackCondition::AtLeastNOtherCreaturesAttack(
@@ -1319,7 +1318,7 @@ mod tests {
         let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
         game.object_mut(attacker_id)
             .expect("attacker should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
                     CantAttackUnlessConditionSpec::AttackCost(
@@ -1375,8 +1374,7 @@ mod tests {
         let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
         game.object_mut(attacker_id)
             .expect("attacker should exist")
-            .abilities
-            .push(Ability::static_ability(
+            .abilities_mut().push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
                     CantAttackUnlessConditionSpec::AttackCost(
                         crate::static_abilities::AttackCostCondition::ReturnPermanentsToOwnersHand {
@@ -1434,7 +1432,7 @@ mod tests {
                 .object_mut(attacker_id)
                 .expect("attacker should exist on battlefield");
             attacker_obj.add_counters(CounterType::PlusOnePlusOne, 2);
-            attacker_obj.abilities.push(Ability::static_ability(
+            attacker_obj.abilities_mut().push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
                     CantAttackUnlessConditionSpec::AttackCost(
                         crate::static_abilities::AttackCostCondition::PayGenericPerSourceCounter {
@@ -1489,7 +1487,7 @@ mod tests {
         let crawlspace_id = game.create_object_from_card(&crawlspace_like, bob, Zone::Battlefield);
         game.object_mut(crawlspace_id)
             .expect("crawlspace object should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::max_attackers_can_attack_you_each_combat(2),
             ));
@@ -1545,7 +1543,7 @@ mod tests {
         let crawlspace_id = game.create_object_from_card(&crawlspace_like, bob, Zone::Battlefield);
         game.object_mut(crawlspace_id)
             .expect("crawlspace object should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::max_attackers_can_attack_you_each_combat(2),
             ));

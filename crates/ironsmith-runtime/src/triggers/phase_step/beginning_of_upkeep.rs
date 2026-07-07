@@ -43,6 +43,10 @@ impl TriggerMatcher for BeginningOfUpkeepTrigger {
         player_filter_matches(&self.player, player, ctx)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::BeginningOfUpkeep])
+    }
+
     fn display(&self) -> String {
         match &self.player {
             PlayerFilter::You => "At the beginning of your upkeep".to_string(),

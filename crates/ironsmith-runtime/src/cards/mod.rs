@@ -965,7 +965,7 @@ mod tests {
             .expect("alice should exist")
             .library
             .iter()
-            .filter_map(|&id| game.object(id).map(|object| object.name.clone()))
+            .filter_map(|&id| game.object(id).map(|object| object.name.to_string()))
             .collect();
         assert!(
             library_names.iter().any(|name| name == "Abrade"),

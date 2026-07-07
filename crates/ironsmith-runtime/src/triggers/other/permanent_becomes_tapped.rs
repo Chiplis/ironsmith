@@ -33,6 +33,10 @@ impl TriggerMatcher for PermanentBecomesTappedTrigger {
         }
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::PermanentTapped])
+    }
+
     fn display(&self) -> String {
         format!("Whenever {} becomes tapped", self.filter.description())
     }

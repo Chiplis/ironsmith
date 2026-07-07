@@ -110,6 +110,10 @@ impl TriggerMatcher for ThisDealsDamageTrigger {
         true
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::Damage])
+    }
+
     fn display(&self) -> String {
         let amount = self.amount.as_ref().map(describe_comparison);
         let mut text = if self.combat_only {

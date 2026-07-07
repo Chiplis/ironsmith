@@ -1926,7 +1926,7 @@ mod live_action_rollback_tests {
 
     fn object_names(game: &GameState, ids: &[ObjectId]) -> Vec<String> {
         ids.iter()
-            .filter_map(|&id| game.object(id).map(|object| object.name.clone()))
+            .filter_map(|&id| game.object(id).map(|object| object.name.to_string()))
             .collect()
     }
 

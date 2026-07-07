@@ -107,6 +107,10 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         }
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::AbilityActivated])
+    }
+
     fn display(&self) -> String {
         let subject = self.activator.description();
         let verb = activate_verb(&subject);

@@ -927,7 +927,7 @@ impl TurnRunner {
                                         Some(card_id),
                                         "move it to the command zone instead of putting it into its owner's hand",
                                     )
-                                    .with_source_name(obj.name.clone()),
+                                    .with_source_name(obj.name.to_string()),
                                 );
                                 self.pending_commander_choice =
                                     Some(PendingCommanderChoice::DrawToHand { object_id: card_id });
@@ -1164,7 +1164,7 @@ impl TurnRunner {
             };
             let ctx = DecisionContext::Boolean(
                 BooleanContext::new(obj.owner, Some(obj_id), "move it to the command zone")
-                    .with_source_name(obj.name.clone()),
+                    .with_source_name(obj.name.to_string()),
             );
             self.pending_commander_choice =
                 Some(PendingCommanderChoice::StateBasedReturn { object_id: obj_id });

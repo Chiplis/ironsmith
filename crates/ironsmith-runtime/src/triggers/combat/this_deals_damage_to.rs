@@ -54,6 +54,10 @@ impl TriggerMatcher for ThisDealsDamageToTrigger {
             .matches(target_obj, &ctx.filter_ctx, ctx.game)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::Damage])
+    }
+
     fn display(&self) -> String {
         let target = damage_target_description(&self.target_filter);
         if self.combat_only {

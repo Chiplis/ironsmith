@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "scenario": "opening-hands-shuffled",
+  "roots": [
+    {
+      "label": "after setup",
+      "public_audit_sha256": "f077dc1d04364a9d0844131e864d18037da5db77957b7b794cba74ad0f17be4f",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "eb12aba25689f03270225e76881161ce9fcc235cf0d202e4dcbf6207eb0c5ab2"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "90907809b02e43cb8d11f34a12e1017b22b59bd13c4955b6d6e3f8fee97672f2"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "8a9bf1e85fd04060dbbc032e738364151fcebb0e202a625bd0392761d2ea650f"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "cb603d4d6a3dc4cd5c01b8df5c7770a365d29493702d3212ca470e5e4a20f48b"
+        }
+      ]
+    },
+    {
+      "label": "late joiner import",
+      "public_audit_sha256": "f077dc1d04364a9d0844131e864d18037da5db77957b7b794cba74ad0f17be4f",
+      "hidden_zone_roots": [
+        {
+          "owner": 0,
+          "zone": "library",
+          "commitmentRoot": "eb12aba25689f03270225e76881161ce9fcc235cf0d202e4dcbf6207eb0c5ab2"
+        },
+        {
+          "owner": 0,
+          "zone": "hand",
+          "commitmentRoot": "90907809b02e43cb8d11f34a12e1017b22b59bd13c4955b6d6e3f8fee97672f2"
+        },
+        {
+          "owner": 1,
+          "zone": "library",
+          "commitmentRoot": "8a9bf1e85fd04060dbbc032e738364151fcebb0e202a625bd0392761d2ea650f"
+        },
+        {
+          "owner": 1,
+          "zone": "hand",
+          "commitmentRoot": "cb603d4d6a3dc4cd5c01b8df5c7770a365d29493702d3212ca470e5e4a20f48b"
+        }
+      ]
+    }
+  ]
+}

@@ -129,7 +129,7 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                     .map(|id| {
                         let name = game
                             .object(id)
-                            .map(|o| o.name.clone())
+                            .map(|o| o.name.to_string())
                             .unwrap_or_else(|| format!("object {}", id.0));
                         crate::decisions::context::SelectableObject::new(id, name)
                     })

@@ -4,6 +4,7 @@
 //! must implement. Each trigger type (ETB, dies, upkeep, etc.) implements this trait
 //! with its own matching logic.
 
+use crate::events::EventKind;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
@@ -121,6 +122,14 @@ pub trait TriggerMatcher:
     ///
     /// `true` if this trigger should fire for the given event.
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool;
+
+    /// Superset of event kinds this matcher can return true for.
+    ///
+    /// Returning `None` keeps the matcher in the wildcard bucket. Implementors
+    /// may return a broad superset; under-approximating would drop triggers.
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        None
+    }
 
     /// Human-readable display text for this trigger.
     ///

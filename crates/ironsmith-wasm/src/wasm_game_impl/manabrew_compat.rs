@@ -439,6 +439,55 @@ fn permanent_card(value: &Value, owner_id: &str) -> Value {
     })
 }
 
+fn cached_hidden_card(
+    cache: &mut ManabrewOverlayCache,
+    seat: PlayerId,
+    owner_id: &str,
+    index: usize,
+) -> Value {
+    let source = json!({ "owner": owner_id, "index": index });
+    cache.get_or_insert_with(
+        seat,
+        ManabrewOverlayKind::HiddenCard,
+        owner_id,
+        &source,
+        || hidden_card(owner_id, index),
+    )
+}
+
+fn cached_card_from_zone_card(
+    cache: &mut ManabrewOverlayCache,
+    seat: PlayerId,
+    value: &Value,
+    owner_id: &str,
+    controller_id: &str,
+    zone_id: &str,
+) -> Value {
+    let discriminator = format!("{owner_id}|{controller_id}|{zone_id}");
+    cache.get_or_insert_with(
+        seat,
+        ManabrewOverlayKind::ZoneCard,
+        &discriminator,
+        value,
+        || card_from_zone_card(value, owner_id, controller_id, zone_id),
+    )
+}
+
+fn cached_permanent_card(
+    cache: &mut ManabrewOverlayCache,
+    seat: PlayerId,
+    value: &Value,
+    owner_id: &str,
+) -> Value {
+    cache.get_or_insert_with(
+        seat,
+        ManabrewOverlayKind::Permanent,
+        owner_id,
+        value,
+        || permanent_card(value, owner_id),
+    )
+}
+
 fn target_refs(value: &Value) -> Vec<Value> {
     let target = object_value(value);
     match string_value(get_any(target, &["kind"]), "").as_str() {
@@ -533,7 +582,11 @@ fn game_over(snapshot: &JsonMap) -> (bool, Value) {
     }
 }
 
-fn game_view_from_snapshot(snapshot_value: &Value) -> Value {
+fn game_view_from_snapshot(
+    snapshot_value: &Value,
+    seat: PlayerId,
+    overlay_cache: &mut ManabrewOverlayCache,
+) -> Value {
     let snapshot = object_value(snapshot_value);
     let players_source = array_value(get_any(snapshot, &["players"]));
     let players: Vec<Value> = players_source
@@ -549,7 +602,7 @@ fn game_view_from_snapshot(snapshot_value: &Value) -> Value {
             };
             let hand_cards: Vec<Value> = array_value(get_any(player, &["hand_cards", "handCards"]))
                 .iter()
-                .map(|card| card_from_zone_card(card, &id, &id, "hand"))
+                .map(|card| cached_card_from_zone_card(overlay_cache, seat, card, &id, &id, "hand"))
                 .collect();
             let hand_size = number_value(
                 get_any(player, &["hand_size", "handSize"]),
@@ -567,19 +620,19 @@ fn game_view_from_snapshot(snapshot_value: &Value) -> Value {
                 "hand": if visible_hand {
                     Value::Array(hand_cards)
                 } else {
-                    Value::Array((0..hand_size).map(|index| hidden_card(&id, index)).collect())
+                    Value::Array((0..hand_size).map(|index| cached_hidden_card(overlay_cache, seat, &id, index)).collect())
                 },
                 "graveyard": Value::Array(array_value(get_any(player, &["graveyard_cards", "graveyardCards"]))
                     .iter()
-                    .map(|card| card_from_zone_card(card, &id, &id, "graveyard"))
+                    .map(|card| cached_card_from_zone_card(overlay_cache, seat, card, &id, &id, "graveyard"))
                     .collect()),
                 "exile": Value::Array(array_value(get_any(player, &["exile_cards", "exileCards"]))
                     .iter()
-                    .map(|card| card_from_zone_card(card, &id, &id, "exile"))
+                    .map(|card| cached_card_from_zone_card(overlay_cache, seat, card, &id, &id, "exile"))
                     .collect()),
                 "commandZone": Value::Array(array_value(get_any(player, &["command_cards", "commandCards"]))
                     .iter()
-                    .map(|card| card_from_zone_card(card, &id, &id, "command"))
+                    .map(|card| cached_card_from_zone_card(overlay_cache, seat, card, &id, &id, "command"))
                     .collect()),
                 "libraryCount": number_value(get_any(player, &["library_size", "librarySize"]), 0),
                 "manaPool": mana_pool(get_any(player, &["mana_pool", "manaPool"])),
@@ -594,16 +647,19 @@ fn game_view_from_snapshot(snapshot_value: &Value) -> Value {
             })
         })
         .collect();
-    let battlefield: Vec<Value> = players_source
-        .iter()
-        .flat_map(|player_value| {
-            let player = object_value(player_value);
-            let owner_id = player_slot(get_any(player, &["id"]));
-            array_value(get_any(player, &["battlefield"]))
-                .iter()
-                .map(move |permanent| permanent_card(permanent, &owner_id))
-        })
-        .collect();
+    let mut battlefield = Vec::new();
+    for player_value in players_source {
+        let player = object_value(player_value);
+        let owner_id = player_slot(get_any(player, &["id"]));
+        for permanent in array_value(get_any(player, &["battlefield"])) {
+            battlefield.push(cached_permanent_card(
+                overlay_cache,
+                seat,
+                permanent,
+                &owner_id,
+            ));
+        }
+    }
     let (over, winner_id) = game_over(snapshot);
     json!({
         "gameId": format!(
@@ -631,8 +687,12 @@ fn game_view_from_snapshot(snapshot_value: &Value) -> Value {
     })
 }
 
-fn state_from_snapshot(snapshot: &Value) -> Value {
-    json!({ "gameView": game_view_from_snapshot(snapshot) })
+fn state_from_snapshot(
+    snapshot: &Value,
+    seat: PlayerId,
+    overlay_cache: &mut ManabrewOverlayCache,
+) -> Value {
+    json!({ "gameView": game_view_from_snapshot(snapshot, seat, overlay_cache) })
 }
 
 fn redact_private_state(state: &Value) -> Value {
@@ -1695,8 +1755,13 @@ impl WasmGame {
         let snapshot_js = self.ui_state()?;
         let snapshot: Value = serde_wasm_bindgen::from_value(snapshot_js)
             .map_err(|error| JsValue::from_str(&format!("failed to decode Ironsmith UI state: {error}")))?;
+        let state = state_from_snapshot(
+            &snapshot,
+            self.perspective,
+            &mut self.manabrew_overlay_cache,
+        );
         let view = json!({
-            "state": state_from_snapshot(&snapshot),
+            "state": state,
             "promptResult": manabrew_prompt_from_snapshot(&snapshot, &prompt_id),
         });
         serde_wasm_bindgen::to_value(&view)
@@ -1708,7 +1773,12 @@ impl WasmGame {
         let snapshot_js = self.ui_state()?;
         let snapshot: Value = serde_wasm_bindgen::from_value(snapshot_js)
             .map_err(|error| JsValue::from_str(&format!("failed to decode Ironsmith UI state: {error}")))?;
-        serde_wasm_bindgen::to_value(&redact_private_state(&state_from_snapshot(&snapshot)))
+        let state = state_from_snapshot(
+            &snapshot,
+            self.perspective,
+            &mut self.manabrew_overlay_cache,
+        );
+        serde_wasm_bindgen::to_value(&redact_private_state(&state))
             .map_err(|error| JsValue::from_str(&format!("failed to encode Manabrew public state: {error}")))
     }
 

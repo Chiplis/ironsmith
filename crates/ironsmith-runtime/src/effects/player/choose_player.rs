@@ -106,7 +106,7 @@ impl EffectExecutor for ChoosePlayerEffect {
                 .iter()
                 .filter_map(|player_id| {
                     game.player(*player_id)
-                        .map(|player| (player.name.clone(), *player_id))
+                        .map(|player| (player.name.to_string(), *player_id))
                 })
                 .collect::<Vec<_>>();
             (!options.is_empty())

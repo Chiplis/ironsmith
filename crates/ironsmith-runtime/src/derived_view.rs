@@ -1,7 +1,10 @@
 use crate::filter::ObjectFilterExt as _;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+
+use crate::FxMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::ability::{Ability, AbilityKind, ActivatedAbilityRuntimeExt as _};
 use crate::continuous::{CalculatedCharacteristics, ContinuousEffect, EffectTarget, Layer};
@@ -25,29 +28,29 @@ use crate::zone::Zone;
 /// global invalidation concerns on `GameState`.
 pub(crate) struct DerivedGameView<'a> {
     game: &'a GameState,
-    all_effects: Vec<ContinuousEffect>,
+    all_effects: Arc<Vec<ContinuousEffect>>,
     battlefield_characteristic_scope: BattlefieldCharacteristicScope,
     use_game_characteristics_cache: bool,
-    characteristics: RefCell<HashMap<ObjectId, Option<CalculatedCharacteristics>>>,
-    abilities_cache: RefCell<HashMap<ObjectId, Rc<Vec<Ability>>>>,
-    ability_index_summary_cache: RefCell<HashMap<ObjectId, Rc<AbilityIndexSummary>>>,
+    characteristics: RefCell<FxMap<ObjectId, Option<CalculatedCharacteristics>>>,
+    abilities_cache: RefCell<FxMap<ObjectId, Rc<Vec<Ability>>>>,
+    ability_index_summary_cache: RefCell<FxMap<ObjectId, Rc<AbilityIndexSummary>>>,
     static_abilities_cache:
-        RefCell<HashMap<ObjectId, Rc<Vec<crate::static_abilities::StaticAbility>>>>,
-    zone_candidates: RefCell<HashMap<Option<Zone>, Vec<ObjectId>>>,
+        RefCell<FxMap<ObjectId, Rc<Vec<crate::static_abilities::StaticAbility>>>>,
+    zone_candidates: RefCell<FxMap<Option<Zone>, Vec<ObjectId>>>,
     battlefield_creatures: RefCell<Option<Vec<ObjectId>>>,
     battlefield_noncreatures: RefCell<Option<Vec<ObjectId>>>,
-    battlefield_controlled: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
-    battlefield_controlled_creatures: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
-    battlefield_opponents: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
-    battlefield_opponent_creatures: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
-    potential_mana: RefCell<HashMap<PlayerId, ManaPool>>,
+    battlefield_controlled: RefCell<FxMap<PlayerId, Vec<ObjectId>>>,
+    battlefield_controlled_creatures: RefCell<FxMap<PlayerId, Vec<ObjectId>>>,
+    battlefield_opponents: RefCell<FxMap<PlayerId, Vec<ObjectId>>>,
+    battlefield_opponent_creatures: RefCell<FxMap<PlayerId, Vec<ObjectId>>>,
+    potential_mana: RefCell<FxMap<PlayerId, ManaPool>>,
     potential_mana_compute_ms: RefCell<f64>,
-    black_mana_life_permission: RefCell<HashMap<PlayerId, bool>>,
+    black_mana_life_permission: RefCell<FxMap<PlayerId, bool>>,
     granted_alternative_casts:
-        RefCell<HashMap<(ObjectId, Zone, PlayerId), Vec<GrantedAlternativeCast>>>,
-    granted_play_from: RefCell<HashMap<(ObjectId, Zone, PlayerId), Vec<GrantedPlayFrom>>>,
+        RefCell<FxMap<(ObjectId, Zone, PlayerId), Vec<GrantedAlternativeCast>>>,
+    granted_play_from: RefCell<FxMap<(ObjectId, Zone, PlayerId), Vec<GrantedPlayFrom>>>,
     granted_static_ability_presence: RefCell<
-        HashMap<
+        FxMap<
             (
                 ObjectId,
                 Zone,
@@ -58,13 +61,13 @@ pub(crate) struct DerivedGameView<'a> {
         >,
     >,
     active_grants: RefCell<Option<Rc<Vec<Grant>>>>,
-    active_grant_zone_presence: RefCell<HashMap<(PlayerId, Zone), bool>>,
+    active_grant_zone_presence: RefCell<FxMap<(PlayerId, Zone), bool>>,
     battlefield_spell_cost_modifier_sources: RefCell<Option<Vec<ObjectId>>>,
     activated_ability_cost_modifier_sources: RefCell<Option<Vec<ObjectId>>>,
     has_battlefield_spell_cost_modifiers: RefCell<Option<bool>>,
     has_activated_ability_cost_modifiers: RefCell<Option<bool>>,
-    simple_battlefield_mana_analysis: RefCell<HashMap<PlayerId, Rc<SimpleBattlefieldManaAnalysis>>>,
-    spell_target_legality: RefCell<HashMap<SpellTargetLegalityKey, bool>>,
+    simple_battlefield_mana_analysis: RefCell<FxMap<PlayerId, Rc<SimpleBattlefieldManaAnalysis>>>,
+    spell_target_legality: RefCell<FxMap<SpellTargetLegalityKey, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -80,10 +83,10 @@ struct SpellTargetLegalityKey {
 pub(crate) struct SimpleBattlefieldManaAnalysis {
     relevant_source_ids: Vec<ObjectId>,
     mana_source_ids: Vec<ObjectId>,
-    activatable_indices: HashMap<ObjectId, Vec<usize>>,
-    mana_ability_indices: HashMap<ObjectId, Vec<usize>>,
-    activated_ability_indices: HashMap<ObjectId, Vec<usize>>,
-    first_output_by_permanent: HashMap<ObjectId, Vec<ManaSymbol>>,
+    activatable_indices: FxMap<ObjectId, Vec<usize>>,
+    mana_ability_indices: FxMap<ObjectId, Vec<usize>>,
+    activated_ability_indices: FxMap<ObjectId, Vec<usize>>,
+    first_output_by_permanent: FxMap<ObjectId, Vec<ManaSymbol>>,
 }
 
 impl SimpleBattlefieldManaAnalysis {
@@ -242,76 +245,89 @@ impl<'a> DerivedGameView<'a> {
     /// Callers should only use this when they know the cached static-ability
     /// effects on `GameState` are current for the state they are about to read.
     pub(crate) fn from_refreshed_state(game: &'a GameState) -> Self {
-        let all_effects = game.cached_continuous_effects_snapshot();
+        let all_effects = game.cached_continuous_effects_snapshot_arc();
+        game.count_derived_view_rebuild();
         Self {
             game,
-            battlefield_characteristic_scope: battlefield_characteristic_scope(game, &all_effects),
+            battlefield_characteristic_scope: battlefield_characteristic_scope(
+                game,
+                all_effects.as_slice(),
+            ),
             all_effects,
             use_game_characteristics_cache: true,
-            characteristics: RefCell::new(HashMap::new()),
-            abilities_cache: RefCell::new(HashMap::new()),
-            ability_index_summary_cache: RefCell::new(HashMap::new()),
-            static_abilities_cache: RefCell::new(HashMap::new()),
-            zone_candidates: RefCell::new(HashMap::new()),
+            characteristics: RefCell::new(FxMap::default()),
+            abilities_cache: RefCell::new(FxMap::default()),
+            ability_index_summary_cache: RefCell::new(FxMap::default()),
+            static_abilities_cache: RefCell::new(FxMap::default()),
+            zone_candidates: RefCell::new(FxMap::default()),
             battlefield_creatures: RefCell::new(None),
             battlefield_noncreatures: RefCell::new(None),
-            battlefield_controlled: RefCell::new(HashMap::new()),
-            battlefield_controlled_creatures: RefCell::new(HashMap::new()),
-            battlefield_opponents: RefCell::new(HashMap::new()),
-            battlefield_opponent_creatures: RefCell::new(HashMap::new()),
-            potential_mana: RefCell::new(HashMap::new()),
+            battlefield_controlled: RefCell::new(FxMap::default()),
+            battlefield_controlled_creatures: RefCell::new(FxMap::default()),
+            battlefield_opponents: RefCell::new(FxMap::default()),
+            battlefield_opponent_creatures: RefCell::new(FxMap::default()),
+            potential_mana: RefCell::new(FxMap::default()),
             potential_mana_compute_ms: RefCell::new(0.0),
-            black_mana_life_permission: RefCell::new(HashMap::new()),
-            granted_alternative_casts: RefCell::new(HashMap::new()),
-            granted_play_from: RefCell::new(HashMap::new()),
-            granted_static_ability_presence: RefCell::new(HashMap::new()),
+            black_mana_life_permission: RefCell::new(FxMap::default()),
+            granted_alternative_casts: RefCell::new(FxMap::default()),
+            granted_play_from: RefCell::new(FxMap::default()),
+            granted_static_ability_presence: RefCell::new(FxMap::default()),
             active_grants: RefCell::new(None),
-            active_grant_zone_presence: RefCell::new(HashMap::new()),
+            active_grant_zone_presence: RefCell::new(FxMap::default()),
             battlefield_spell_cost_modifier_sources: RefCell::new(None),
             activated_ability_cost_modifier_sources: RefCell::new(None),
             has_battlefield_spell_cost_modifiers: RefCell::new(None),
             has_activated_ability_cost_modifiers: RefCell::new(None),
-            simple_battlefield_mana_analysis: RefCell::new(HashMap::new()),
-            spell_target_legality: RefCell::new(HashMap::new()),
+            simple_battlefield_mana_analysis: RefCell::new(FxMap::default()),
+            spell_target_legality: RefCell::new(FxMap::default()),
         }
     }
 
     pub(crate) fn from_effects(game: &'a GameState, all_effects: Vec<ContinuousEffect>) -> Self {
+        game.count_derived_view_rebuild();
+        let all_effects = Arc::new(all_effects);
         Self {
             game,
-            battlefield_characteristic_scope: battlefield_characteristic_scope(game, &all_effects),
+            battlefield_characteristic_scope: battlefield_characteristic_scope(
+                game,
+                all_effects.as_slice(),
+            ),
             all_effects,
             use_game_characteristics_cache: false,
-            characteristics: RefCell::new(HashMap::new()),
-            abilities_cache: RefCell::new(HashMap::new()),
-            ability_index_summary_cache: RefCell::new(HashMap::new()),
-            static_abilities_cache: RefCell::new(HashMap::new()),
-            zone_candidates: RefCell::new(HashMap::new()),
+            characteristics: RefCell::new(FxMap::default()),
+            abilities_cache: RefCell::new(FxMap::default()),
+            ability_index_summary_cache: RefCell::new(FxMap::default()),
+            static_abilities_cache: RefCell::new(FxMap::default()),
+            zone_candidates: RefCell::new(FxMap::default()),
             battlefield_creatures: RefCell::new(None),
             battlefield_noncreatures: RefCell::new(None),
-            battlefield_controlled: RefCell::new(HashMap::new()),
-            battlefield_controlled_creatures: RefCell::new(HashMap::new()),
-            battlefield_opponents: RefCell::new(HashMap::new()),
-            battlefield_opponent_creatures: RefCell::new(HashMap::new()),
-            potential_mana: RefCell::new(HashMap::new()),
+            battlefield_controlled: RefCell::new(FxMap::default()),
+            battlefield_controlled_creatures: RefCell::new(FxMap::default()),
+            battlefield_opponents: RefCell::new(FxMap::default()),
+            battlefield_opponent_creatures: RefCell::new(FxMap::default()),
+            potential_mana: RefCell::new(FxMap::default()),
             potential_mana_compute_ms: RefCell::new(0.0),
-            black_mana_life_permission: RefCell::new(HashMap::new()),
-            granted_alternative_casts: RefCell::new(HashMap::new()),
-            granted_play_from: RefCell::new(HashMap::new()),
-            granted_static_ability_presence: RefCell::new(HashMap::new()),
+            black_mana_life_permission: RefCell::new(FxMap::default()),
+            granted_alternative_casts: RefCell::new(FxMap::default()),
+            granted_play_from: RefCell::new(FxMap::default()),
+            granted_static_ability_presence: RefCell::new(FxMap::default()),
             active_grants: RefCell::new(None),
-            active_grant_zone_presence: RefCell::new(HashMap::new()),
+            active_grant_zone_presence: RefCell::new(FxMap::default()),
             battlefield_spell_cost_modifier_sources: RefCell::new(None),
             activated_ability_cost_modifier_sources: RefCell::new(None),
             has_battlefield_spell_cost_modifiers: RefCell::new(None),
             has_activated_ability_cost_modifiers: RefCell::new(None),
-            simple_battlefield_mana_analysis: RefCell::new(HashMap::new()),
-            spell_target_legality: RefCell::new(HashMap::new()),
+            simple_battlefield_mana_analysis: RefCell::new(FxMap::default()),
+            spell_target_legality: RefCell::new(FxMap::default()),
         }
     }
 
     pub(crate) fn effects(&self) -> &[ContinuousEffect] {
-        &self.all_effects
+        self.all_effects.as_slice()
+    }
+
+    pub(crate) fn effects_arc(&self) -> Arc<Vec<ContinuousEffect>> {
+        Arc::clone(&self.all_effects)
     }
 
     pub(crate) fn calculated_characteristics(
@@ -326,7 +342,7 @@ impl<'a> DerivedGameView<'a> {
             self.game.calculated_characteristics(object_id)
         } else {
             self.game
-                .calculated_characteristics_with_effects(object_id, &self.all_effects)
+                .calculated_characteristics_with_effects(object_id, self.all_effects.as_slice())
         };
         self.characteristics
             .borrow_mut()
@@ -358,7 +374,7 @@ impl<'a> DerivedGameView<'a> {
 
         let calculated = self
             .game
-            .calculated_characteristics_batch_with_effects(&missing, &self.all_effects);
+            .calculated_characteristics_batch_with_effects(&missing, self.all_effects.as_slice());
         let mut cache = self.characteristics.borrow_mut();
         for id in missing {
             cache.insert(id, calculated.get(&id).cloned());
@@ -399,7 +415,7 @@ impl<'a> DerivedGameView<'a> {
 
         let object = self.game.object(object_id)?;
         let abilities = if !self.requires_battlefield_characteristic_calculation(object_id) {
-            object.abilities.clone()
+            object.abilities_vec()
         } else {
             self.calculated_characteristics(object_id)?.abilities
         };
@@ -653,7 +669,7 @@ impl<'a> DerivedGameView<'a> {
 
             let abilities = self
                 .abilities_rc(perm_id)
-                .unwrap_or_else(|| Rc::new(perm.abilities.clone()));
+                .unwrap_or_else(|| Rc::new(perm.abilities_vec()));
             let Some(ability_summary) = self.ability_index_summary(perm_id) else {
                 continue;
             };

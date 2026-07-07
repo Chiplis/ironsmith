@@ -385,11 +385,11 @@ fn count_as_names_match(lhs: &str, rhs: &str) -> bool {
 
 fn source_spell_name_for_count_as(game: &GameState, ctx: &ExecutionContext<'_>) -> Option<String> {
     if let Some(object) = game.object(ctx.source) {
-        return (object.zone == Zone::Stack).then(|| object.name.clone());
+        return (object.zone == Zone::Stack).then(|| object.name.to_string());
     }
 
     let snapshot = ctx.source_snapshot.as_ref()?;
-    (snapshot.zone == Zone::Stack).then(|| snapshot.name.clone())
+    (snapshot.zone == Zone::Stack).then(|| snapshot.name.to_string())
 }
 
 fn count_as_card_named_for_spell_effect_bonus(
@@ -426,7 +426,7 @@ fn count_as_card_named_for_spell_effect_bonus(
         })
         .filter(|object| {
             let mut counted_object = (*object).clone();
-            counted_object.name = required_name.to_string();
+            counted_object.name = required_name.to_string().into();
             filter.matches_non_recursive(&counted_object, filter_ctx, game)
         })
         .count()
@@ -802,7 +802,7 @@ pub fn resolve_value(
             {
                 let subtypes = game
                     .current_subtypes(obj.id)
-                    .unwrap_or_else(|| obj.subtypes.clone());
+                    .unwrap_or_else(|| obj.subtypes.to_vec());
                 for subtype in subtypes {
                     if subtype.is_creature_type() {
                         seen.insert(subtype);
@@ -835,7 +835,7 @@ pub fn resolve_value(
             {
                 let card_types = game
                     .current_card_types(obj.id)
-                    .unwrap_or_else(|| obj.card_types.clone());
+                    .unwrap_or_else(|| obj.card_types.to_vec());
                 for card_type in card_types {
                     seen.insert(card_type);
                 }
@@ -3987,7 +3987,7 @@ mod tests {
             .expect("source should move to hand");
         game.object_mut(moved_source_id)
             .expect("moved source should exist")
-            .mana_cost = Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]));
+            .mana_cost = Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]).into());
 
         let ctx = ExecutionContext::new_default(moved_source_id, alice)
             .with_source_snapshot(source_snapshot);

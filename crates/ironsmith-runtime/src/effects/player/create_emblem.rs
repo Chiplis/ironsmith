@@ -45,7 +45,7 @@ impl EffectExecutor for CreateEmblemEffect {
 
         // Create emblem using the proper constructor
         let owner = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
-        let emblem_obj = Object::new_emblem(id, owner, self.emblem.name.clone(), abilities);
+        let emblem_obj = Object::new_emblem(id, owner, self.emblem.name.to_string(), abilities);
 
         // add_object handles adding to command_zone for Zone::Command
         game.add_object(emblem_obj);
@@ -60,7 +60,7 @@ impl EffectExecutor for CreateEmblemEffect {
             None,
             stable_ids,
             None,
-            Some(self.emblem.name.clone()),
+            Some(self.emblem.name.to_string()),
         );
 
         Ok(EffectOutcome::with_objects(vec![id]))

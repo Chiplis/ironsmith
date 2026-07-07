@@ -105,8 +105,7 @@ impl FightEffect {
 
             let zone = filter.zone.unwrap_or(crate::zone::Zone::Battlefield);
             let candidates = game
-                .objects_in_zone(zone)
-                .into_iter()
+                .zone_ids(zone)
                 .filter(|id| {
                     game.object(*id)
                         .is_some_and(|object| filter.matches(object, &filter_ctx, game))
@@ -324,7 +323,7 @@ mod tests {
 
     fn add_static_ability(game: &mut GameState, object: ObjectId, ability: StaticAbility) {
         let obj = game.object_mut(object).expect("object exists");
-        obj.abilities.push(Ability::static_ability(ability));
+        obj.abilities_mut().push(Ability::static_ability(ability));
     }
 
     fn add_doubling_season_like_effect(
@@ -598,7 +597,7 @@ mod tests {
         let source = game.new_object_id();
         game.object_mut(mimic)
             .expect("mimic should exist")
-            .card_types = vec![CardType::Artifact];
+            .card_types = vec![CardType::Artifact].into();
 
         let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
             ResolvedTarget::Object(bear),

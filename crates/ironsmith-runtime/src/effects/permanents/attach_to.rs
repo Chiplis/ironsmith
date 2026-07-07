@@ -115,7 +115,10 @@ mod tests {
         let id = game.new_object_id();
         let card = make_aura_card(id.0 as u32, name);
         let mut obj = Object::from_card(id, &card, controller, Zone::Battlefield);
-        obj.aura_attach_filter = Some(crate::target::ObjectFilter::creature().into());
+        obj.aura_attach_filter = Some(
+            crate::object::AuraAttachmentFilter::from(crate::target::ObjectFilter::creature())
+                .into(),
+        );
         game.add_object(obj);
         id
     }
@@ -167,7 +170,9 @@ mod tests {
         let source = create_aura(&mut game, "Curse", alice);
         game.object_mut(source)
             .expect("source Aura should exist")
-            .aura_attach_filter = Some(crate::target::PlayerFilter::Any.into());
+            .aura_attach_filter = Some(
+            crate::object::AuraAttachmentFilter::from(crate::target::PlayerFilter::Any).into(),
+        );
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_targets(vec![ResolvedTarget::Player(bob)]);
 

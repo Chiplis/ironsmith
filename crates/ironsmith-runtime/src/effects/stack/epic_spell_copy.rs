@@ -63,7 +63,9 @@ impl EffectExecutor for EpicSpellCopyEffect {
 }
 
 fn remove_epic_ability(object: &mut Object) {
-    object.abilities.retain(|ability| !is_epic_ability(ability));
+    object
+        .abilities_mut()
+        .retain(|ability| !is_epic_ability(ability));
     object.compiled_card_text = object
         .compiled_card_text
         .lines()
@@ -74,7 +76,8 @@ fn remove_epic_ability(object: &mut Object) {
                 .eq_ignore_ascii_case("epic")
         })
         .collect::<Vec<_>>()
-        .join("\n");
+        .join("\n")
+        .into();
 }
 
 fn is_epic_ability(ability: &Ability) -> bool {
@@ -111,14 +114,14 @@ mod tests {
         let source = game.create_object_from_card(&card, alice, Zone::Stack);
         {
             let object = game.object_mut(source).expect("source object");
-            object.abilities.push(
+            object.abilities_mut().push(
                 Ability::static_ability(StaticAbility::keyword_marker("Epic"))
                     .in_zones(vec![Zone::Stack]),
             );
-            object.compiled_card_text = "Draw a card.\nEpic.".to_string();
-            object.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
-                Effect::draw(1),
-            ]));
+            object.compiled_card_text = "Draw a card.\nEpic.".into();
+            object.spell_effect = Some(
+                crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]).into(),
+            );
         }
 
         let entry = StackEntry::new(source, alice);

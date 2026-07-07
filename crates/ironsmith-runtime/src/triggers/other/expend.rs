@@ -39,6 +39,10 @@ impl TriggerMatcher for ExpendTrigger {
         }
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::KeywordAction])
+    }
+
     fn display(&self) -> String {
         match &self.player {
             PlayerFilter::You => format!("Whenever you expend {}", self.amount),

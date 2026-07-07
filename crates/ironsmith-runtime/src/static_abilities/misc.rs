@@ -7065,7 +7065,7 @@ mod tests {
         let source = game.create_object_from_card(&card, alice, Zone::Stack);
         {
             let source_obj = game.object_mut(source).expect("source should exist");
-            source_obj.abilities.push(Ability::static_ability(StaticAbility::new(
+            source_obj.abilities_mut().push(Ability::static_ability(StaticAbility::new(
                 EntersWithCountersIfCondition::new(
                     CounterType::PlusOnePlusOne,
                     Value::Fixed(1),
@@ -7110,7 +7110,7 @@ mod tests {
         let source = game.create_object_from_card(&card, alice, Zone::Stack);
         {
             let source_obj = game.object_mut(source).expect("source should exist");
-            source_obj.abilities.push(Ability::static_ability(StaticAbility::new(
+            source_obj.abilities_mut().push(Ability::static_ability(StaticAbility::new(
                 EntersWithCountersIfCondition::new(
                     CounterType::PlusOnePlusOne,
                     Value::Fixed(1),
@@ -7186,7 +7186,7 @@ mod tests {
                 vec![discarded_snapshot],
             );
             source_obj
-                .abilities
+                .abilities_mut()
                 .push(Ability::static_ability(StaticAbility::new(enters)));
         }
 

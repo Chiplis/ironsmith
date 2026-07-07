@@ -10,6 +10,7 @@
 //! - Triggered ability conditions (for triggers that watch for specific events)
 
 use crate::color::{Color, ColorSet};
+use crate::continuous::CalculatedCharacteristics;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::object::{CounterType, Object, ObjectKind};
@@ -224,6 +225,114 @@ impl TailMatchSubject for Object {
     }
 }
 
+pub(crate) struct LayeredSubject<'a> {
+    pub object: &'a Object,
+    pub chars: &'a CalculatedCharacteristics,
+}
+
+impl TaggedConstraintSubject for LayeredSubject<'_> {
+    fn subject_object_id(&self) -> ObjectId {
+        self.object.id
+    }
+
+    fn subject_stable_id(&self) -> StableId {
+        self.object.stable_id
+    }
+
+    fn subject_name(&self) -> &str {
+        &self.chars.name
+    }
+
+    fn subject_controller(&self) -> PlayerId {
+        self.chars.controller
+    }
+
+    fn subject_card_types(&self) -> &[CardType] {
+        &self.chars.card_types
+    }
+
+    fn subject_subtypes(&self) -> &[Subtype] {
+        &self.chars.subtypes
+    }
+
+    fn subject_colors(&self) -> ColorSet {
+        self.chars.colors
+    }
+
+    fn subject_mana_value(&self) -> i32 {
+        self.object
+            .mana_cost
+            .as_ref()
+            .map_or(0, |mana_cost| mana_cost.mana_value() as i32)
+    }
+
+    fn subject_attached_to(&self) -> Option<ObjectId> {
+        self.object
+            .attached_to
+            .and_then(|target| target.object_id())
+    }
+
+    fn subject_attached_to_player(&self) -> Option<PlayerId> {
+        self.object
+            .attached_to
+            .and_then(|target| target.player_id())
+    }
+
+    fn subject_attachments(&self) -> &[ObjectId] {
+        &self.object.attachments
+    }
+
+    fn subject_was_enchanted(&self) -> bool {
+        false
+    }
+}
+
+impl TailMatchSubject for LayeredSubject<'_> {
+    fn tail_object_id(&self) -> ObjectId {
+        self.object.id
+    }
+
+    fn tail_name(&self) -> &str {
+        &self.chars.name
+    }
+
+    fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32> {
+        &self.object.counters
+    }
+
+    fn tail_abilities(&self) -> &[crate::ability::Ability] {
+        &self.chars.abilities
+    }
+
+    fn tail_has_alternative_cast_kind(
+        &self,
+        kind: AlternativeCastKind,
+        game: &crate::game_state::GameState,
+        ctx: &FilterContext,
+    ) -> bool {
+        object_has_alternative_cast_kind(self.object, kind, game, ctx)
+    }
+
+    fn tail_has_static_ability_id(&self, ability_id: StaticAbilityId) -> bool {
+        self.chars
+            .static_abilities
+            .iter()
+            .any(|ability| ability.id() == ability_id)
+    }
+
+    fn tail_has_ability_marker(&self, marker: &str) -> bool {
+        abilities_have_marker(&self.chars.abilities, marker)
+    }
+
+    fn tail_has_tap_activated_ability(&self) -> bool {
+        abilities_have_tap_activated_ability(&self.chars.abilities)
+    }
+
+    fn tail_is_commander(&self, game: &crate::game_state::GameState) -> bool {
+        game.is_commander(self.object.id)
+    }
+}
+
 impl TaggedConstraintSubject for ObjectSnapshot {
     fn subject_object_id(&self) -> ObjectId {
         self.object_id
@@ -373,7 +482,7 @@ fn subject_creature_subtypes(
 
 fn object_creature_subtypes(object: &Object, game: &GameState) -> Vec<Subtype> {
     game.current_subtypes(object.id)
-        .unwrap_or_else(|| object.subtypes.clone())
+        .unwrap_or_else(|| object.subtypes.to_vec())
         .into_iter()
         .filter(|subtype| subtype.is_creature_type())
         .collect()
@@ -538,7 +647,7 @@ fn tagged_constraint_matches_subject(
 
 fn most_common_permanent_colors(game: &GameState) -> ColorSet {
     let mut counts = [0u32; 5];
-    for object_id in game.objects_in_zone(Zone::Battlefield) {
+    for object_id in game.zone_ids(Zone::Battlefield) {
         let Some(object) = game.object(object_id) else {
             continue;
         };
@@ -992,7 +1101,7 @@ fn resolve_filter_comparison_rhs_value(
                 if filter.matches(object, ctx, game) {
                     let subtypes = game
                         .current_subtypes(object.id)
-                        .unwrap_or_else(|| object.subtypes.clone());
+                        .unwrap_or_else(|| object.subtypes.to_vec());
                     for subtype in subtypes {
                         if subtype.is_creature_type() {
                             seen.insert(subtype);
@@ -1008,7 +1117,7 @@ fn resolve_filter_comparison_rhs_value(
                 if filter.matches(object, ctx, game) {
                     let card_types = game
                         .current_card_types(object.id)
-                        .unwrap_or_else(|| object.card_types.clone());
+                        .unwrap_or_else(|| object.card_types.to_vec());
                     for card_type in card_types {
                         seen.insert(card_type);
                     }
@@ -1203,7 +1312,7 @@ fn effects_for_stack_entry(
     }
 
     game.object(entry.object_id)
-        .and_then(|object| object.spell_effect.clone())
+        .and_then(|object| object.spell_effect_owned())
         .map(|effects| effects.to_vec())
         .unwrap_or_default()
 }
@@ -1430,6 +1539,13 @@ pub(crate) trait ObjectFilterExt {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
         stack_entry: Option<&crate::game_state::StackEntry>,
+    ) -> bool;
+
+    fn matches_layered_tail(
+        &self,
+        subject: &LayeredSubject<'_>,
+        ctx: &FilterContext,
+        game: &crate::game_state::GameState,
     ) -> bool;
 
     fn matches_internal(
@@ -1781,6 +1897,15 @@ impl ObjectFilterExt for ObjectFilter {
         true
     }
 
+    fn matches_layered_tail(
+        &self,
+        subject: &LayeredSubject<'_>,
+        ctx: &FilterContext,
+        game: &crate::game_state::GameState,
+    ) -> bool {
+        self.matches_shared_tail(subject, ctx, game, None)
+    }
+
     fn matches_internal(
         &self,
         object: &Object,
@@ -2054,12 +2179,12 @@ impl ObjectFilterExt for ObjectFilter {
                 expand_semantic_subtypes(&mut chars);
             }
             let mut adjusted = object.clone();
-            adjusted.name = chars.name;
-            adjusted.card_types = chars.card_types;
-            adjusted.subtypes = chars.subtypes;
-            adjusted.supertypes = chars.supertypes;
+            adjusted.name = chars.name.into();
+            adjusted.card_types = chars.card_types.into();
+            adjusted.subtypes = chars.subtypes.into();
+            adjusted.supertypes = chars.supertypes.into();
             adjusted.color_override = Some(chars.colors);
-            adjusted.abilities = chars.abilities;
+            adjusted.abilities = std::sync::Arc::new(chars.abilities);
             adjusted_object_storage = Some(adjusted);
         }
         let object = adjusted_object_storage.as_ref().unwrap_or(object);
@@ -2081,7 +2206,7 @@ impl ObjectFilterExt for ObjectFilter {
                         view.map(|view| view.calculated_subtypes(*attachment_id))
                             .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
                     } else {
-                        attachment.subtypes.clone()
+                        attachment.subtypes.to_vec()
                     };
                     attachment_subtypes.contains(&Subtype::Equipment)
                 })
@@ -2097,7 +2222,7 @@ impl ObjectFilterExt for ObjectFilter {
                             view.map(|view| view.calculated_subtypes(*attachment_id))
                                 .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
                         } else {
-                            attachment.subtypes.clone()
+                            attachment.subtypes.to_vec()
                         };
                         game.current_controller(*attachment_id)
                             .is_some_and(|controller| controller == you)
@@ -2719,12 +2844,7 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
-        if self.has_x_in_cost
-            && !object
-                .mana_cost
-                .as_ref()
-                .is_some_and(crate::mana::ManaCost::has_x)
-        {
+        if self.has_x_in_cost && !object.mana_cost.as_ref().is_some_and(|cost| cost.has_x()) {
             return false;
         }
 
@@ -4870,42 +4990,7 @@ fn object_has_static_ability_id(object: &Object, ability_id: StaticAbilityId) ->
 }
 
 fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
-    use crate::ability::AbilityKind;
-
-    let normalized_marker = marker.trim().to_ascii_lowercase();
-    if matches!(
-        normalized_marker.as_str(),
-        "mana ability" | "mana abilities"
-    ) {
-        return object_has_mana_ability(object);
-    }
-    if normalized_marker == "cycling" && object.abilities.iter().any(ability_is_structural_cycling)
-    {
-        return true;
-    }
-    if normalized_marker == "craft" && object.abilities.iter().any(ability_is_structural_craft) {
-        return true;
-    }
-
-    let has_regular = object.abilities.iter().any(|ability| {
-        if let AbilityKind::Static(static_ability) = &ability.kind {
-            matches!(
-                static_ability.id(),
-                StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordText
-            ) && static_ability.display().eq_ignore_ascii_case(marker)
-        } else {
-            false
-        }
-    });
-    if has_regular {
-        return true;
-    }
-
-    if object
-        .abilities
-        .iter()
-        .any(|ability| ability_text_has_marker(ability, marker))
-    {
+    if abilities_have_marker(&object.abilities, marker) {
         return true;
     }
 
@@ -4917,16 +5002,49 @@ fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     })
 }
 
-fn object_has_mana_ability(object: &Object) -> bool {
-    object
-        .abilities
-        .iter()
-        .any(|ability| ability.is_mana_ability())
+fn object_has_tap_activated_ability(object: &Object) -> bool {
+    abilities_have_tap_activated_ability(&object.abilities)
 }
 
-fn object_has_tap_activated_ability(object: &Object) -> bool {
+fn abilities_have_marker(abilities: &[crate::ability::Ability], marker: &str) -> bool {
     use crate::ability::AbilityKind;
-    object.abilities.iter().any(|ability| match &ability.kind {
+
+    let normalized_marker = marker.trim().to_ascii_lowercase();
+    if matches!(
+        normalized_marker.as_str(),
+        "mana ability" | "mana abilities"
+    ) {
+        return abilities_have_mana_ability(abilities);
+    }
+    if normalized_marker == "cycling" && abilities.iter().any(ability_is_structural_cycling) {
+        return true;
+    }
+    if normalized_marker == "craft" && abilities.iter().any(ability_is_structural_craft) {
+        return true;
+    }
+
+    abilities.iter().any(|ability| {
+        if let AbilityKind::Static(static_ability) = &ability.kind {
+            matches!(
+                static_ability.id(),
+                StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordText
+            ) && static_ability.display().eq_ignore_ascii_case(marker)
+        } else {
+            false
+        }
+    }) || abilities
+        .iter()
+        .any(|ability| ability_text_has_marker(ability, marker))
+}
+
+fn abilities_have_mana_ability(abilities: &[crate::ability::Ability]) -> bool {
+    abilities.iter().any(|ability| ability.is_mana_ability())
+}
+
+fn abilities_have_tap_activated_ability(abilities: &[crate::ability::Ability]) -> bool {
+    use crate::ability::AbilityKind;
+
+    abilities.iter().any(|ability| match &ability.kind {
         AbilityKind::Activated(activated) => activated.has_tap_cost(),
         _ => false,
     })
@@ -6510,7 +6628,7 @@ mod tests {
             .build();
         let object_id = game.create_object_from_card(&card, you, Zone::Battlefield);
         if let Some(obj) = game.object_mut(object_id) {
-            obj.abilities
+            obj.abilities_mut()
                 .push(Ability::static_ability(StaticAbility::anthem(
                     ObjectFilter::source(),
                     2,

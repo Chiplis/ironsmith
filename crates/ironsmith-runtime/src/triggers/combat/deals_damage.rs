@@ -75,6 +75,10 @@ impl TriggerMatcher for DealsDamageTrigger {
         }
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::Damage])
+    }
+
     fn display(&self) -> String {
         let source_description = if self.filter == ObjectFilter::default() {
             "a source".to_string()

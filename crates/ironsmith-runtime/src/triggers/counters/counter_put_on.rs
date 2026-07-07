@@ -92,6 +92,10 @@ impl TriggerMatcher for CounterPutOnTrigger {
         }
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CounterPlaced, EventKind::MarkersChanged])
+    }
+
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {
         match self.count_mode {
             CountMode::OneOrMore => 1,

@@ -16,7 +16,7 @@ pub use ironsmith_core::MayMoveToZoneEffect;
 fn describe_move(zone: Zone, game: &GameState, object_id: crate::ids::ObjectId) -> String {
     let object_name = game
         .object(object_id)
-        .map(|obj| obj.name.clone())
+        .map(|obj| obj.name.to_string())
         .unwrap_or_else(|| "that card".to_string());
     match zone {
         Zone::Hand => format!("Put {object_name} into your hand?"),

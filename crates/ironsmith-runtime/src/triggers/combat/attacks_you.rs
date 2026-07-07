@@ -154,6 +154,10 @@ impl TriggerMatcher for AttacksYouTrigger {
         true
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
+    }
+
     fn display(&self) -> String {
         if self.one_or_more {
             let mut subject = self.filter.description();

@@ -80,7 +80,7 @@ fn cascade_exiled_land_options(
             };
             let object = game.object(object_id)?;
             (object.zone == Zone::Exile && object.is_land())
-                .then(|| (object.name.clone(), object_id))
+                .then(|| (object.name.to_string(), object_id))
         })
         .collect()
 }
@@ -154,10 +154,10 @@ impl EffectExecutor for CascadeEffect {
         let (source_mana_value, source_name) = if let Some(source_obj) = game.object(ctx.source) {
             (
                 mana_value_on_stack(
-                    source_obj.mana_cost.as_ref(),
+                    source_obj.mana_cost.as_deref(),
                     ctx.x_value.or(source_obj.x_value),
                 ),
-                source_obj.name.clone(),
+                source_obj.name.to_string(),
             )
         } else if let Some(snapshot) = ctx.source_snapshot.as_ref() {
             (
@@ -165,7 +165,7 @@ impl EffectExecutor for CascadeEffect {
                     snapshot.mana_cost.as_ref(),
                     ctx.x_value.or(snapshot.x_value),
                 ),
-                snapshot.name.clone(),
+                snapshot.name.to_string(),
             )
         } else {
             return Ok(EffectOutcome::target_invalid());
@@ -184,7 +184,7 @@ impl EffectExecutor for CascadeEffect {
                 if card.is_land() {
                     return false;
                 }
-                card.mana_cost.as_ref().map_or(0, ManaCost::mana_value) < source_mana_value
+                card.mana_cost.as_ref().map_or(0, |cost| cost.mana_value()) < source_mana_value
             },
         )?;
 
@@ -204,7 +204,7 @@ impl EffectExecutor for CascadeEffect {
             let Some(candidate_obj) = game.object(candidate_id) else {
                 return Ok(EffectOutcome::count(0));
             };
-            let candidate_name = candidate_obj.name.clone();
+            let candidate_name = candidate_obj.name.to_string();
 
             let choice_ctx = crate::decisions::context::BooleanContext::new(
                 ctx.controller,

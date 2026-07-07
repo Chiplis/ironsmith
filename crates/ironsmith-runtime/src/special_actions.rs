@@ -64,7 +64,7 @@ fn turn_face_up_specs(game: &GameState, object: &crate::object::Object) -> Vec<T
     if game.is_manifested(object.id)
         && let Some(restore) = object.face_down_cast_state.as_ref()
         && restore.card_types.contains(&CardType::Creature)
-        && let Some(cost) = restore.mana_cost.clone()
+        && let Some(cost) = restore.mana_cost.as_ref().map(|cost| cost.to_owned_value())
     {
         specs.push(TurnFaceUpSpec {
             method: TurnFaceUpMethod::PrintedManaCost,
@@ -229,7 +229,7 @@ fn disguise_turn_face_up_cost_reductions(
 
     let mut generic_reduction = 0u32;
     let mut mana_cost_reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
-    for ability in &restore.abilities {
+    for ability in restore.abilities.iter() {
         let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
             continue;
         };
@@ -3253,7 +3253,7 @@ mod tests {
         let source_id = game.create_object_from_card(&source, controller, Zone::Battlefield);
         game.object_mut(source_id)
             .expect("static-ability source should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(ability));
     }
 
@@ -3287,7 +3287,7 @@ mod tests {
         let morph_id = game.create_object_from_card(&morph_card, alice, Zone::Battlefield);
         game.object_mut(morph_id)
             .expect("morph permanent should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::morph(
                 crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Black])),
             )));
@@ -3337,10 +3337,10 @@ mod tests {
         graveyard_filter.stack_kind = None;
         graveyard_filter.owner = Some(crate::filter::PlayerFilter::You);
 
-        let abilities = &mut game
+        let abilities = game
             .object_mut(permanent_id)
             .expect("disguise permanent should exist")
-            .abilities;
+            .abilities_mut();
         abilities.push(Ability::static_ability(StaticAbility::disguise(
             crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![
                 ManaSymbol::Generic(5),
@@ -3524,7 +3524,7 @@ mod tests {
         let mana_cost_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
         game.object_mut(mana_cost_id)
             .expect("manifested permanent should exist")
-            .abilities
+            .abilities_mut()
             .push(crate::ability::Ability::static_ability(
                 crate::static_abilities::StaticAbility::megamorph(
                     ManaCost::from_symbols(vec![ManaSymbol::Generic(3), ManaSymbol::Green]).into(),
@@ -3539,7 +3539,7 @@ mod tests {
         let megamorph_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
         game.object_mut(megamorph_id)
             .expect("manifested permanent should exist")
-            .abilities
+            .abilities_mut()
             .push(crate::ability::Ability::static_ability(
                 crate::static_abilities::StaticAbility::megamorph(
                     ManaCost::from_symbols(vec![ManaSymbol::Generic(3), ManaSymbol::Green]).into(),
@@ -3622,7 +3622,7 @@ mod tests {
         let morph_id = game.create_object_from_card(&morph_card, alice, Zone::Battlefield);
         game.object_mut(morph_id)
             .expect("morph permanent should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::morph(
                 crate::cost::TotalCost::from_cost(crate::costs::Cost::life(5)),
             )));

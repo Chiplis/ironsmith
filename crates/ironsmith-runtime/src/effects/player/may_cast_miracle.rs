@@ -91,7 +91,7 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
             return Ok(EffectOutcome::impossible());
         };
 
-        let card_name = obj.name.clone();
+        let card_name = obj.name.to_string();
 
         // Ask the player if they want to cast for miracle cost
         let bool_ctx = crate::decisions::context::BooleanContext::new(

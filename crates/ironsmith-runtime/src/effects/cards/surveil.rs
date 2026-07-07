@@ -44,7 +44,7 @@ fn reorder_cards_top_to_bottom(
         .map(|&id| {
             let name = game
                 .object(id)
-                .map(|object| object.name.clone())
+                .map(|object| object.name.to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
             (id, name)
         })
@@ -244,7 +244,7 @@ mod tests {
             .expect("player should exist")
             .library
             .iter()
-            .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+            .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
             .collect()
     }
 
@@ -254,7 +254,7 @@ mod tests {
             .graveyard
             .iter()
             .rev()
-            .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+            .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
             .collect()
     }
 

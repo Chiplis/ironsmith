@@ -31,10 +31,10 @@ fn granted_conspire_count(game: &GameState, spell_id: ObjectId, caster: PlayerId
     };
     let mut object_for_filter = object.clone();
     if let Some(chars) = game.current_characteristics(spell_id) {
-        object_for_filter.name = chars.name;
-        object_for_filter.card_types = chars.card_types;
-        object_for_filter.subtypes = chars.subtypes;
-        object_for_filter.supertypes = chars.supertypes;
+        object_for_filter.name = chars.name.into();
+        object_for_filter.card_types = chars.card_types.into();
+        object_for_filter.subtypes = chars.subtypes.into();
+        object_for_filter.supertypes = chars.supertypes.into();
         object_for_filter.color_override = Some(chars.colors);
     }
 
@@ -176,10 +176,10 @@ pub(super) fn collect_available_casting_methods(
         let cost_desc = spell
             .mana_cost
             .as_ref()
-            .map(format_mana_cost_simple)
+            .map(|cost| format_mana_cost_simple(cost))
             .unwrap_or_else(|| "0".to_string());
         let name = if spell.linked_face_layout == crate::card::LinkedFaceLayout::Split {
-            spell.name.clone()
+            spell.name.to_string()
         } else {
             "Normal".to_string()
         };
@@ -213,11 +213,11 @@ pub(super) fn collect_available_casting_methods(
                     .card
                     .mana_cost
                     .as_ref()
-                    .map(format_mana_cost_simple)
+                    .map(|cost| format_mana_cost_simple(cost))
                     .unwrap_or_else(|| "0".to_string());
                 methods.push(CastingMethodOption {
                     method: CastingMethod::SplitOtherHalf,
-                    name: other_def.card.name.clone(),
+                    name: other_def.card.name.to_string(),
                     cost_description: cost_desc,
                 });
             }
@@ -234,7 +234,7 @@ pub(super) fn collect_available_casting_methods(
                     from_zone,
                 )
                 .as_ref()
-                .map(format_mana_cost_simple)
+                .map(|cost| format_mana_cost_simple(cost))
                 .unwrap_or_else(|| "0".to_string());
                 methods.push(CastingMethodOption {
                     method: CastingMethod::Fuse,
@@ -395,7 +395,7 @@ pub(super) fn non_mana_costs_for_casting_method(
             ..
         } => {
             crate::decision::resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
-                .or_else(|| spell.cast_alternative_method.clone())
+                .or_else(|| spell.cast_alternative_method_owned())
                 .map(|method| method.non_mana_costs())
                 .unwrap_or_default()
         }
@@ -435,7 +435,7 @@ fn max_x_from_static_abilities(
 ) -> Option<u32> {
     let spell = game.object(source)?;
     let mut max_x = None;
-    for ability in &spell.abilities {
+    for ability in spell.abilities.iter() {
         if !ability.functional_zones.contains(&Zone::Stack) {
             continue;
         }
@@ -462,7 +462,7 @@ fn min_x_from_static_abilities(
 ) -> Option<u32> {
     let spell = game.object(source)?;
     let mut min_x = None;
-    for ability in &spell.abilities {
+    for ability in spell.abilities.iter() {
         if !ability.functional_zones.contains(&Zone::Stack) {
             continue;
         }
@@ -574,7 +574,7 @@ pub(super) fn format_alternative_method(
         AlternativeCastingMethod::Blitz { total_cost } => {
             let cost_desc = total_cost
                 .mana_cost()
-                .map(format_mana_cost_simple)
+                .map(|cost| format_mana_cost_simple(cost))
                 .unwrap_or_else(|| "0".to_string());
             ("Blitz".to_string(), cost_desc)
         }
@@ -617,14 +617,14 @@ pub(super) fn format_alternative_method(
         AlternativeCastingMethod::Flashback { .. } => {
             let cost_desc = method
                 .mana_cost()
-                .map(format_mana_cost_simple)
+                .map(|cost| format_mana_cost_simple(cost))
                 .unwrap_or_else(|| "0".to_string());
             ("Flashback".to_string(), cost_desc)
         }
         AlternativeCastingMethod::Harmonize { .. } => {
             let cost_desc = method
                 .mana_cost()
-                .map(format_mana_cost_simple)
+                .map(|cost| format_mana_cost_simple(cost))
                 .unwrap_or_else(|| "0".to_string());
             (
                 "Harmonize".to_string(),
@@ -649,7 +649,7 @@ pub(super) fn format_alternative_method(
             let cost_desc = spell
                 .mana_cost
                 .as_ref()
-                .map(format_mana_cost_simple)
+                .map(|cost| format_mana_cost_simple(cost))
                 .unwrap_or_else(|| "0".to_string());
             (
                 "Jump-Start".to_string(),
@@ -659,8 +659,13 @@ pub(super) fn format_alternative_method(
         AlternativeCastingMethod::Escape { cost, exile_count } => {
             let cost_desc = cost
                 .as_ref()
-                .map(format_mana_cost_simple)
-                .or_else(|| spell.mana_cost.as_ref().map(format_mana_cost_simple))
+                .map(|cost| format_mana_cost_simple(cost))
+                .or_else(|| {
+                    spell
+                        .mana_cost
+                        .as_ref()
+                        .map(|cost| format_mana_cost_simple(cost))
+                })
                 .unwrap_or_else(|| "0".to_string());
             (
                 "Escape".to_string(),
@@ -828,7 +833,7 @@ pub(super) fn check_modes_or_continue(
 
         let spell_name = game
             .object(source)
-            .map(|o| o.name.clone())
+            .map(|o| o.name.to_string())
             .unwrap_or_else(|| "spell".to_string());
 
         if !spell_has_legal_targets(game, &spell_effects, player, Some(source)) {
@@ -1030,7 +1035,7 @@ pub(super) fn check_optional_costs_or_continue(
     let optional_costs = if let Some(obj) = game.object(pending.spell_id) {
         obj.optional_costs.clone()
     } else {
-        Vec::new()
+        Vec::new().into()
     };
 
     if optional_costs.is_empty() {
@@ -1105,7 +1110,7 @@ pub(super) fn check_optional_costs_or_continue(
             .collect();
         let spell_name = game
             .object(source)
-            .map(|o| o.name.clone())
+            .map(|o| o.name.to_string())
             .unwrap_or_else(|| "spell".to_string());
         let ctx = crate::decisions::context::SelectOptionsContext::new(
             player,
@@ -1226,7 +1231,7 @@ pub(super) fn prompt_for_next_hybrid_pip(
         let source = pending.spell_id;
         let spell_name = game
             .object(source)
-            .map(|o| o.name.clone())
+            .map(|o| o.name.to_string())
             .unwrap_or_else(|| "spell".to_string());
 
         // Build hybrid options for each alternative
@@ -1336,7 +1341,7 @@ pub(super) fn continue_to_targets_or_mana_payment(
         let source = pending.spell_id;
         let context = game
             .object(source)
-            .map(|o| o.name.clone())
+            .map(|o| o.name.to_string())
             .unwrap_or_else(|| "spell".to_string());
 
         state.pending_cast = Some(pending);
@@ -1472,7 +1477,7 @@ pub(super) fn continue_spell_next_cost_or_finalize(
         CastStage::ChoosingNextCost => {
             let source_name = game
                 .object(pending.spell_id)
-                .map(|o| o.name.clone())
+                .map(|o| o.name.to_string())
                 .unwrap_or_else(|| "spell".to_string());
             let ctx = build_next_cost_context(
                 pending.caster,
@@ -1636,7 +1641,7 @@ pub(super) fn continue_spell_cost_payment(
                 .map(|&id| {
                     let name = game
                         .object(id)
-                        .map(|o| o.name.clone())
+                        .map(|o| o.name.to_string())
                         .unwrap_or_else(|| format!("Object #{}", id.0));
                     crate::decisions::context::SelectableObject::new(id, name)
                 })
@@ -1678,7 +1683,7 @@ pub(super) fn continue_spell_cost_payment(
                 .map(|&id| {
                     let name = game
                         .object(id)
-                        .map(|o| o.name.clone())
+                        .map(|o| o.name.to_string())
                         .unwrap_or_else(|| format!("Object #{}", id.0));
                     crate::decisions::context::SelectableObject::new(id, name)
                 })
@@ -1816,7 +1821,7 @@ pub(super) fn continue_spell_cast_mana_payment(
     let source = pending.spell_id;
     let context = game
         .object(source)
-        .map(|o| o.name.clone())
+        .map(|o| o.name.to_string())
         .unwrap_or_else(|| "spell".to_string());
 
     let mana_spend_policy = game.mana_spend_policy(player_id, Some(source));
@@ -2150,7 +2155,7 @@ pub(super) fn describe_mana_ability(
 /// Describe a permanent for display.
 pub(super) fn describe_permanent(game: &GameState, id: ObjectId) -> String {
     game.object(id)
-        .map(|obj| obj.name.clone())
+        .map(|obj| obj.name.to_string())
         .unwrap_or_else(|| "Unknown".to_string())
 }
 
@@ -2565,7 +2570,7 @@ pub(super) fn collect_spell_cost_steps(
             } => crate::decision::resolve_play_from_alternative_method(
                 game, caster, obj, *zone, *idx,
             )
-            .or_else(|| obj.cast_alternative_method.clone())
+            .or_else(|| obj.cast_alternative_method_owned())
             .and_then(|method| method.total_cost().cloned())
             .unwrap_or_else(crate::cost::TotalCost::free),
         };
@@ -3152,7 +3157,7 @@ pub(super) fn continue_activation_cost_payment(
                 .map(|&id| {
                     let name = game
                         .object(id)
-                        .map(|o| o.name.clone())
+                        .map(|o| o.name.to_string())
                         .unwrap_or_else(|| format!("Permanent #{}", id.0));
                     crate::decisions::context::SelectableObject::new(id, name)
                 })
@@ -3212,7 +3217,7 @@ pub(super) fn continue_activation_cost_payment(
                 .map(|&id| {
                     let name = game
                         .object(id)
-                        .map(|o| o.name.clone())
+                        .map(|o| o.name.to_string())
                         .unwrap_or_else(|| format!("Card #{}", id.0));
                     crate::decisions::context::SelectableObject::new(id, name)
                 })

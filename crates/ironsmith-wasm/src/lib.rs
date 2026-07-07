@@ -5,14 +5,17 @@
 //! - mutate a bit of state
 //! - read a serializable snapshot
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::hash::{Hash, Hasher};
 use std::sync::OnceLock;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
+use rand::SeedableRng;
 use rand::seq::SliceRandom;
-use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use wasm_bindgen::prelude::*;
 
 use ironsmith::cards::{CardDefinition, CardRegistry};
@@ -43,7 +46,12 @@ use ironsmith::types::CardType;
 use ironsmith::zone::Zone;
 
 mod ui_snapshot;
-use ui_snapshot::{GameSnapshot, battlefield_transition_snapshots, build_object_details_snapshot};
+#[cfg(target_arch = "wasm32")]
+use ui_snapshot::SnapshotJsEncodingCache;
+use ui_snapshot::{
+    GameSnapshot, SnapshotObjectViewCache, battlefield_transition_snapshots,
+    build_object_details_snapshot,
+};
 
 #[cfg(test)]
 static TEST_ID_COUNTER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -202,8 +210,8 @@ fn build_stack_object_snapshot(
     };
     let stable_id = obj.or(source_obj).map(|o| o.stable_id.0.0);
     let name = obj
-        .map(|o| o.name.clone())
-        .or_else(|| source_obj.map(|o| o.name.clone()))
+        .map(|o| o.name.to_string())
+        .or_else(|| source_obj.map(|o| o.name.to_string()))
         .or_else(|| entry.source_name.clone())
         .unwrap_or_else(|| format!("Object#{}", entry.object_id.0));
     let targets = entry
@@ -309,6 +317,101 @@ struct SnapshotPerfMetrics {
     player_count: usize,
     battlefield_size: usize,
     stack_size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SnapshotCacheKey {
+    mutation_revision: u64,
+    state_shape_hash: u64,
+    zone_revision: u64,
+    perspective: PlayerId,
+    pending_decision_hash: u64,
+    mana_payment_hash: u64,
+    game_over_hash: u64,
+    pending_cast_stack_id: Option<ObjectId>,
+    active_resolving_stack_hash: u64,
+    active_viewed_cards_hash: u64,
+    crypto_requirements_hash: u64,
+    cancelable: bool,
+    undo_land_stable_id: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+struct CachedSnapshot {
+    key: SnapshotCacheKey,
+    value: JsValue,
+    perf: SnapshotPerfMetrics,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ManabrewOverlayKind {
+    HiddenCard,
+    ZoneCard,
+    Permanent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ManabrewOverlayCacheKey {
+    seat: u8,
+    kind: ManabrewOverlayKind,
+    hash: u64,
+}
+
+#[derive(Debug, Clone)]
+struct ManabrewOverlayCacheValue {
+    fingerprint: String,
+    value: JsonValue,
+}
+
+const MANABREW_OVERLAY_CACHE_LIMIT: usize = 16_384;
+
+#[derive(Debug, Default)]
+struct ManabrewOverlayCache {
+    values: HashMap<ManabrewOverlayCacheKey, ManabrewOverlayCacheValue>,
+}
+
+impl ManabrewOverlayCache {
+    fn get_or_insert_with(
+        &mut self,
+        seat: PlayerId,
+        kind: ManabrewOverlayKind,
+        discriminator: &str,
+        source: &JsonValue,
+        build: impl FnOnce() -> JsonValue,
+    ) -> JsonValue {
+        let fingerprint = format!("{discriminator}|{source}");
+        let hash = hash_debug_value(&fingerprint);
+        let key = ManabrewOverlayCacheKey {
+            seat: seat.0,
+            kind,
+            hash,
+        };
+        if let Some(cached) = self.values.get(&key)
+            && cached.fingerprint == fingerprint
+        {
+            return cached.value.clone();
+        }
+
+        let value = build();
+        if self.values.len() >= MANABREW_OVERLAY_CACHE_LIMIT {
+            self.values.clear();
+        }
+        self.values.insert(
+            key,
+            ManabrewOverlayCacheValue {
+                fingerprint,
+                value: value.clone(),
+            },
+        );
+        value
+    }
+}
+
+fn hash_debug_value(value: &impl std::fmt::Debug) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    format!("{value:?}").hash(&mut hasher);
+    hasher.finish()
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -620,7 +723,7 @@ fn mana_payment_view_from_pending_cast(
     let current_pip_index = pips.len().saturating_sub(pending.remaining_mana_pips.len());
     let source_name = game
         .object(pending.spell_id)
-        .map(|obj| obj.name.clone())
+        .map(|obj| obj.name.to_string())
         .unwrap_or_else(|| "spell".to_string());
 
     Some(ManaPaymentView {
@@ -1288,7 +1391,7 @@ impl WasmGame {
             operation_checkpoint: self.game.crypto_audit_checkpoint(),
             ..CryptoAuditState::default()
         };
-        for (&object_id, info) in &self.game.hidden_cards {
+        for (&object_id, info) in self.game.hidden_card_entries() {
             let Some(object) = self.game.object(object_id) else {
                 continue;
             };
@@ -1300,7 +1403,7 @@ impl WasmGame {
                 commitment: info.commitment.clone(),
                 public_slot: info.public_slot,
                 public_commitment: info.public_commitment.clone(),
-                card: object.card.as_ref().map(|_| object.name.clone()),
+                card: object.card.as_ref().map(|_| object.name.to_string()),
                 face_down: self.game.is_face_down(object_id),
                 foretold: self.game.is_foretold(object_id),
             };
@@ -1521,7 +1624,7 @@ impl WasmGame {
                 && object.card.is_some()
             {
                 let mut opened = before_card.clone();
-                opened.card = Some(object.name.clone());
+                opened.card = Some(object.name.to_string());
                 let is_public = !object.zone.is_hidden();
                 push_requirement_unique(
                     &mut requirements,
@@ -2243,7 +2346,7 @@ impl DecisionView {
                 .and_then(|id| game.object(id).map(|obj| (id, obj)))
                 .map(|(id, obj)| {
                     if decision_object_visible(id) {
-                        obj.name.clone()
+                        obj.name.to_string()
                     } else {
                         hidden_object_label()
                     }
@@ -3483,6 +3586,11 @@ pub struct WasmGame {
     last_advance_until_decision_perf: Option<AdvanceUntilDecisionPerfMetrics>,
     /// Timing breakdown for the most recent dispatch-like engine call.
     last_dispatch_perf: Option<DispatchPerfMetrics>,
+    snapshot_object_view_cache: SnapshotObjectViewCache,
+    #[cfg(target_arch = "wasm32")]
+    snapshot_js_encoding_cache: SnapshotJsEncodingCache,
+    manabrew_overlay_cache: ManabrewOverlayCache,
+    cached_snapshot: Option<CachedSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -4965,6 +5073,61 @@ mod native_tests {
                 && requirement.object_id == Some(bob_top.0)
                 && requirement.commitment.as_deref() == Some("bob-parley-top")
         }));
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod determinism_tests {
+    use super::*;
+    use ironsmith::ids::{IdCountersSnapshot, restore_id_counters};
+    use ironsmith::zone::Zone;
+    use ironsmith_registry::cards::definitions::{grizzly_bears, ornithopter};
+
+    fn scripted_checkpoint_bytes() -> (Vec<u8>, Vec<HiddenInfoOperation>) {
+        restore_id_counters(IdCountersSnapshot {
+            player: 0,
+            object: 1,
+            card: 1,
+        });
+        let mut wasm = WasmGame::new();
+        wasm.game =
+            GameState::new_with_runtime_id_reset(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        restore_id_counters(IdCountersSnapshot {
+            player: 0,
+            object: 1,
+            card: 1,
+        });
+        wasm.game.set_random_seed(0x5eed);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        wasm.game
+            .create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
+        wasm.game
+            .create_object_from_definition(&grizzly_bears(), bob, Zone::Hand);
+        wasm.game.refresh_continuous_state();
+
+        let checkpoint = wasm.build_sync_checkpoint();
+        let mut checkpoint_value =
+            serde_json::to_value(&checkpoint).expect("sync checkpoint should serialize");
+        if let Some(fields) = checkpoint_value.as_object_mut() {
+            fields.insert(
+                "idCounters".to_string(),
+                serde_json::json!("normalized-for-parallel-native-test"),
+            );
+        }
+        let bytes = serde_json::to_vec(&checkpoint_value)
+            .expect("normalized sync checkpoint should serialize");
+        let audit = wasm.game.crypto_audit_operations_since(0);
+        (bytes, audit)
+    }
+
+    #[test]
+    fn same_seed_double_run_sync_checkpoint_is_byte_identical() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let first = scripted_checkpoint_bytes();
+        let second = scripted_checkpoint_bytes();
+        assert_eq!(first.0, second.0);
+        assert_eq!(first.1, second.1);
     }
 }
 

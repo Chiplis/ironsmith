@@ -49,7 +49,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             base_toughness: memory.toughness,
             loyalty: None,
             defense: None,
-            abilities: Vec::new(),
+            abilities: std::sync::Arc::new(Vec::new()),
             aura_attach_filter: None,
             x_value: None,
             cast_order_this_turn: None,

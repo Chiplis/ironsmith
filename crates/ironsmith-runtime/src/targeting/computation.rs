@@ -548,7 +548,7 @@ fn mana_value_matches_scope(
     };
     let filter_ctx = game.filter_context_for(game.controller_of(protected), Some(protected_id));
     let zone = scope.zone.unwrap_or(Zone::Battlefield);
-    game.objects_in_zone(zone).into_iter().any(|object_id| {
+    game.zone_ids(zone).any(|object_id| {
         let Some(object) = game.object(object_id) else {
             return false;
         };
@@ -1142,7 +1142,7 @@ mod tests {
     }
 
     fn add_static_ability(obj: &mut Object, ability: StaticAbility) {
-        obj.abilities.push(Ability {
+        obj.abilities_mut().push(Ability {
             kind: AbilityKind::Static(ability),
             functional_zones: vec![Zone::Battlefield],
         });

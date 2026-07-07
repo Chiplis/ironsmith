@@ -7,7 +7,7 @@ use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
-use crate::object::{CounterType, Object};
+use crate::object::CounterType;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
@@ -36,7 +36,7 @@ impl EffectExecutor for IncubateEffect {
             game.register_linked_face_definition(&back);
 
             let id = game.new_object_id();
-            let mut token_obj = Object::from_token_definition(id, &front, controller_id);
+            let mut token_obj = game.object_from_token_definition(id, &front, controller_id);
             token_obj.zone = Zone::Command;
             let token_is_creature = token_obj.is_creature();
 

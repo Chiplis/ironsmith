@@ -543,7 +543,7 @@ impl WasmGame {
         ];
 
         let spells_needed = deck_size - land_count;
-        let mut rng = StdRng::seed_from_u64(self.next_deck_seed());
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(self.next_deck_seed());
 
         self.registry.ensure_cards_loaded(
             DEMO_BASIC_LANDS

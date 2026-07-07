@@ -1169,7 +1169,7 @@ pub(super) fn apply_spent_mana_bonuses(
                 });
                 if !already_uncounterable {
                     source_obj
-                        .abilities
+                        .abilities_mut()
                         .push(crate::ability::Ability::static_ability(
                             crate::static_abilities::StaticAbility::uncounterable(),
                         ));
@@ -1177,7 +1177,7 @@ pub(super) fn apply_spent_mana_bonuses(
             }
             for (counter_type, count) in enters_with_counters {
                 source_obj
-                    .abilities
+                    .abilities_mut()
                     .push(crate::ability::Ability::static_ability(
                         crate::static_abilities::StaticAbility::enters_with_counters(
                             *counter_type,
@@ -1820,6 +1820,7 @@ pub(super) fn apply_modes_response(
             let effects = game
                 .object(pending.spell_id)
                 .and_then(|obj| obj.spell_effect.as_deref())
+                .map(|program| &**program)
                 .unwrap_or(&[]);
             spell_has_legal_targets_with_modes(
                 game,
@@ -1854,6 +1855,7 @@ pub(super) fn apply_modes_response(
             let effects = game
                 .object(pending.spell_id)
                 .and_then(|obj| obj.spell_effect.as_deref())
+                .map(|program| &**program)
                 .unwrap_or(&[]);
             extract_target_requirements_with_modes(
                 game,
@@ -1912,6 +1914,7 @@ pub(super) fn apply_optional_costs_response(
             let effects = game
                 .object(pending.spell_id)
                 .and_then(|obj| obj.spell_effect.as_deref())
+                .map(|program| &**program)
                 .unwrap_or(&[]);
             spell_has_legal_targets_with_modes(
                 game,
@@ -1944,6 +1947,7 @@ pub(super) fn apply_optional_costs_response(
             let effects = game
                 .object(pending.spell_id)
                 .and_then(|obj| obj.spell_effect.as_deref())
+                .map(|program| &**program)
                 .unwrap_or(&[]);
             extract_target_requirements_with_modes(
                 game,
@@ -3443,7 +3447,7 @@ pub(super) fn apply_casting_method_choice_response(
             &casting_method,
             from_zone,
         );
-        (cost, obj.spell_effect.clone().unwrap_or_default())
+        (cost, obj.spell_effect_owned().unwrap_or_default())
     } else {
         (None, crate::resolution::ResolutionProgram::default())
     };
@@ -3623,7 +3627,7 @@ pub(crate) fn propose_spell_cast(
     game.set_current_controller(new_id, caster);
     if let Some(obj) = game.object_mut(new_id) {
         if let Some(method) = selected_method {
-            obj.cast_alternative_method = Some(method.clone());
+            obj.cast_alternative_method = Some(Box::new(method.clone()));
             if method.is_bestow() {
                 obj.apply_bestow_cast_overlay();
             }
@@ -3642,7 +3646,7 @@ pub(crate) fn propose_spell_cast(
                     .expect("disturb linked face should be resolved before mutating the spell");
                 let front_colors = obj.colors();
                 obj.apply_definition_face(&other_def);
-                obj.cast_alternative_method = Some(method.clone());
+                obj.cast_alternative_method = Some(Box::new(method.clone()));
                 if obj.mana_cost.is_none()
                     && obj.color_override.is_none()
                     && !front_colors.is_empty()
@@ -3655,17 +3659,17 @@ pub(crate) fn propose_spell_cast(
                 ref effects, ..
             } = method
             {
-                obj.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(
-                    effects.clone(),
-                ));
+                obj.spell_effect = Some(
+                    crate::resolution::ResolutionProgram::from_effects(effects.clone()).into(),
+                );
             }
             if let crate::alternative_cast::AlternativeCastingMethod::Awaken {
                 ref effects, ..
             } = method
             {
-                obj.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(
-                    effects.clone(),
-                ));
+                obj.spell_effect = Some(
+                    crate::resolution::ResolutionProgram::from_effects(effects.clone()).into(),
+                );
             }
         }
 
@@ -3682,7 +3686,7 @@ pub(crate) fn propose_spell_cast(
                 if let CastingMethod::SplitOtherHalfPlayFrom { .. } = casting_method
                     && let Some(method) = selected_method_for_overlay.clone()
                 {
-                    obj.cast_alternative_method = Some(method);
+                    obj.cast_alternative_method = Some(Box::new(method));
                 }
             }
             CastingMethod::Fuse => {
@@ -3740,12 +3744,12 @@ fn apply_play_from_cast_this_way_grants(
             zone,
             *idx,
         )
-        .or_else(|| spell_as_cast.cast_alternative_method.clone()),
+        .or_else(|| spell_as_cast.cast_alternative_method_owned()),
         _ => None,
     };
     let ctx = game.filter_context_for(caster, Some(source.id));
     let mut granted = Vec::new();
-    for ability in &source.abilities {
+    for ability in source.abilities.iter() {
         let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
             continue;
         };
@@ -3899,7 +3903,7 @@ fn alternative_cast_label(
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx)
-            .or_else(|| obj.cast_alternative_method.clone()),
+            .or_else(|| obj.cast_alternative_method_owned()),
         _ => None,
     }?;
     let name = method.name();
@@ -3960,7 +3964,7 @@ pub(super) fn finalize_spell_cast(
                     if let Some(method) = obj
                         .alternative_casts
                         .get(*idx)
-                        .or(obj.cast_alternative_method.as_ref())
+                        .or(obj.cast_alternative_method.as_deref())
                     {
                         if let Some(total_cost) = method.total_cost() {
                             (base_mana_cost, total_cost.clone(), None)
@@ -3995,7 +3999,7 @@ pub(super) fn finalize_spell_cast(
                 } => crate::decision::resolve_play_from_alternative_method(
                     game, caster, obj, *zone, *idx,
                 )
-                .or_else(|| obj.cast_alternative_method.clone())
+                .or_else(|| obj.cast_alternative_method_owned())
                 .map(|method| {
                     if let Some(total_cost) = method.total_cost() {
                         (base_mana_cost.clone(), total_cost.clone(), None)
@@ -4234,7 +4238,7 @@ pub(super) fn finalize_spell_cast(
         .with_effect_outcomes(stack_entry_effect_outcomes)
         .with_keyword_payment_contributions(keyword_payment_contributions);
     if let Some(spell_obj) = game.object(new_id).cloned() {
-        entry = entry.with_source_info(spell_obj.stable_id, spell_obj.name.clone());
+        entry = entry.with_source_info(spell_obj.stable_id, spell_obj.name.to_string());
     }
     if let Some(x) = x_value {
         entry = entry.with_x(x);
@@ -5060,7 +5064,7 @@ mod priority_mana_tests {
         };
         game.object_mut(cavern_id)
             .expect("cavern test land should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
                     mana_cost: TotalCost::free(),
@@ -5832,8 +5836,14 @@ mod priority_mana_tests {
             .build();
         let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
 
+        let next_object_id_before_actions = game.next_object_id_counter();
         let actions = crate::decision::compute_legal_actions(&game, alice);
 
+        assert_eq!(
+            game.next_object_id_counter(),
+            next_object_id_before_actions,
+            "hypothetical mana simulations must not burn committed object ids"
+        );
         assert!(
             !actions.iter().any(|action| matches!(
                 action,
@@ -5844,6 +5854,15 @@ mod priority_mana_tests {
                 } if *id == spell_id
             )),
             "Phyrexian Tower can activate either its {{C}} ability or its sacrifice-for-{{B}}{{B}} ability, not both"
+        );
+
+        let followup = CardDefinitionBuilder::new(CardId::new(), "Post-Hypothetical Probe")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        assert_eq!(
+            game.create_object_from_definition(&followup, alice, Zone::Hand),
+            ObjectId::from_raw(next_object_id_before_actions),
+            "the next real object should receive the first id after the pre-probe state"
         );
     }
 
@@ -5859,7 +5878,7 @@ mod priority_mana_tests {
         let helper_id = game.create_object_from_definition(&helper, alice, Zone::Battlefield);
         game.object_mut(helper_id)
             .expect("helper should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(
                 StaticAbility::krrik_black_mana_may_be_paid_with_life(),
             ));

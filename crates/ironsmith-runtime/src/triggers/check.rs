@@ -9,9 +9,11 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use crate::Effect;
+use crate::FxMap;
 use crate::ability::{AbilityKind, PresentationLabel, TriggeredAbility};
 use crate::continuous::ContinuousEffect;
 use crate::effect::Value;
+use crate::events::EventKind;
 use crate::filter::ObjectRef;
 use crate::filter::{Comparison, ObjectFilter};
 use crate::game_state::{GameState, Phase, Step};
@@ -28,6 +30,39 @@ use super::TriggerEvent;
 use super::matcher_trait::TriggerContext;
 
 const SPEED_RULE_SOURCE_NAME: &str = "Start your engines";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TriggerRegistryKey {
+    effects_revision: u64,
+    mutation_revision: u64,
+    zone_revision: u64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TriggerRegistry {
+    pub(crate) key: TriggerRegistryKey,
+    by_kind: FxMap<EventKind, Vec<TriggerSubscriber>>,
+    wildcard: Vec<TriggerSubscriber>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TriggerSubscriber {
+    ordinal: u32,
+    source: ObjectId,
+    ability_index: usize,
+}
+
+impl TriggerRegistry {
+    fn subscribers_for(&self, kind: EventKind) -> Vec<TriggerSubscriber> {
+        let mut subscribers = self.wildcard.clone();
+        if let Some(kind_subscribers) = self.by_kind.get(&kind) {
+            subscribers.extend(kind_subscribers.iter().copied());
+        }
+        subscribers.sort_by_key(|subscriber| subscriber.ordinal);
+        subscribers.dedup_by_key(|subscriber| subscriber.ordinal);
+        subscribers
+    }
+}
 
 pub(crate) fn speed_rule_source_id() -> ObjectId {
     ObjectId::from_raw(0)
@@ -1148,6 +1183,285 @@ fn tagged_objects_for_trigger_event(
     tagged
 }
 
+fn trigger_registry_key(game: &GameState) -> TriggerRegistryKey {
+    TriggerRegistryKey {
+        effects_revision: game.effect_store.continuous_effects.revision(),
+        mutation_revision: game.mutation_revision(),
+        zone_revision: game.zone_revisions().all,
+    }
+}
+
+fn build_trigger_registry(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    key: TriggerRegistryKey,
+) -> TriggerRegistry {
+    let mut by_kind: FxMap<EventKind, Vec<TriggerSubscriber>> = FxMap::default();
+    let mut wildcard = Vec::new();
+    let mut ordinal = 0u32;
+
+    for &obj_id in &game.battlefield {
+        let Some(obj) = game.object(obj_id) else {
+            continue;
+        };
+        let calculated_abilities = view
+            .abilities_rc(obj_id)
+            .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
+
+        for (ability_index, ability) in calculated_abilities.iter().enumerate() {
+            let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
+                continue;
+            };
+            if !ability.functions_in(&obj.zone) {
+                continue;
+            }
+            if !presentation_labeled_trigger_is_active(game, obj, trigger_ability) {
+                continue;
+            }
+
+            let subscriber = TriggerSubscriber {
+                ordinal,
+                source: obj_id,
+                ability_index,
+            };
+            ordinal = ordinal.saturating_add(1);
+
+            if let Some(kinds) = trigger_ability.trigger.subscribed_kinds() {
+                for kind in kinds {
+                    by_kind.entry(kind).or_default().push(subscriber);
+                }
+            } else {
+                wildcard.push(subscriber);
+            }
+        }
+    }
+
+    TriggerRegistry {
+        key,
+        by_kind,
+        wildcard,
+    }
+}
+
+fn battlefield_trigger_registry(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> TriggerRegistry {
+    let key = trigger_registry_key(game);
+    game.cached_trigger_registry(key, || build_trigger_registry(game, view, key))
+}
+
+fn check_battlefield_trigger_subscriber(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    subscriber: TriggerSubscriber,
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+) {
+    let obj_id = subscriber.source;
+    let Some(obj) = game.object(obj_id) else {
+        return;
+    };
+
+    let controller = view
+        .calculated_characteristics(obj_id)
+        .map(|chars| chars.controller)
+        .unwrap_or_else(|| game.controller_of(obj));
+    let ctx = TriggerContext::for_source(obj_id, controller, game);
+
+    let calculated_abilities = view
+        .abilities_rc(obj_id)
+        .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
+    let Some(ability) = calculated_abilities.get(subscriber.ability_index) else {
+        return;
+    };
+    let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
+        return;
+    };
+
+    if !ability.functions_in(&obj.zone) {
+        return;
+    }
+    if !presentation_labeled_trigger_is_active(game, obj, trigger_ability) {
+        return;
+    }
+    if skip_post_event_source_discovery(trigger_event, trigger_ability) {
+        return;
+    }
+    if !trigger_ability.trigger.matches(trigger_event, &ctx) {
+        return;
+    }
+
+    let trigger_count = trigger_ability
+        .trigger
+        .trigger_count_with_context(trigger_event, &ctx);
+    if trigger_count == 0 {
+        return;
+    }
+    if is_soulbond_pair_trigger(trigger_ability)
+        && !soulbond_trigger_had_eligible_pair(game, obj_id, controller)
+    {
+        return;
+    }
+    let event_value_amount = trigger_ability
+        .trigger
+        .event_value_amount(trigger_event, &ctx);
+    let trigger_identity = compute_trigger_identity(trigger_ability);
+    if let Some(ref condition) = trigger_ability.intervening_if
+        && !verify_intervening_if(
+            game,
+            condition,
+            controller,
+            trigger_event,
+            obj_id,
+            Some(trigger_identity),
+            None,
+        )
+    {
+        return;
+    }
+
+    let entry = TriggeredAbilityEntry {
+        source: obj_id,
+        controller,
+        x_value: trigger_entry_x_value(trigger_event, obj.x_value),
+        event_value_amount,
+        ability: TriggeredAbility {
+            trigger: trigger_ability.trigger.clone(),
+            effects: trigger_ability.effects.clone(),
+            choices: trigger_ability.choices.clone(),
+            intervening_if: trigger_ability.intervening_if.clone(),
+            presentation_label: None,
+        },
+        triggering_event: trigger_event.clone(),
+        source_stable_id: obj.stable_id,
+        source_name: obj.name.to_string(),
+        source_snapshot: None,
+        tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+        source_kind: TriggeredAbilitySourceKind::Object,
+        trigger_identity,
+    };
+    for _ in 0..trigger_count {
+        triggered.push(entry.clone());
+    }
+}
+
+#[cfg(feature = "shadow-continuous")]
+fn battlefield_trigger_subscriber_matches_event(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    subscriber: TriggerSubscriber,
+) -> bool {
+    let obj_id = subscriber.source;
+    let Some(obj) = game.object(obj_id) else {
+        return false;
+    };
+
+    let controller = view
+        .calculated_characteristics(obj_id)
+        .map(|chars| chars.controller)
+        .unwrap_or_else(|| game.controller_of(obj));
+    let ctx = TriggerContext::for_source(obj_id, controller, game);
+
+    let calculated_abilities = view
+        .abilities_rc(obj_id)
+        .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
+    let Some(ability) = calculated_abilities.get(subscriber.ability_index) else {
+        return false;
+    };
+    let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
+        return false;
+    };
+
+    if !ability.functions_in(&obj.zone) {
+        return false;
+    }
+    if !presentation_labeled_trigger_is_active(game, obj, trigger_ability) {
+        return false;
+    }
+    if skip_post_event_source_discovery(trigger_event, trigger_ability) {
+        return false;
+    }
+    if !trigger_ability.trigger.matches(trigger_event, &ctx) {
+        return false;
+    }
+
+    trigger_ability
+        .trigger
+        .trigger_count_with_context(trigger_event, &ctx)
+        != 0
+}
+
+#[cfg(feature = "shadow-continuous")]
+fn legacy_battlefield_matching_trigger_subscribers(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<TriggerSubscriber> {
+    let mut subscribers = Vec::new();
+    let mut ordinal = 0u32;
+
+    for &obj_id in &game.battlefield {
+        let Some(obj) = game.object(obj_id) else {
+            continue;
+        };
+        let calculated_abilities = view
+            .abilities_rc(obj_id)
+            .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
+
+        for (ability_index, ability) in calculated_abilities.iter().enumerate() {
+            let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
+                continue;
+            };
+            if !ability.functions_in(&obj.zone) {
+                continue;
+            }
+            if !presentation_labeled_trigger_is_active(game, obj, trigger_ability) {
+                continue;
+            }
+
+            let subscriber = TriggerSubscriber {
+                ordinal,
+                source: obj_id,
+                ability_index,
+            };
+            ordinal = ordinal.saturating_add(1);
+
+            if battlefield_trigger_subscriber_matches_event(game, trigger_event, view, subscriber) {
+                subscribers.push(subscriber);
+            }
+        }
+    }
+
+    subscribers
+}
+
+#[cfg(feature = "shadow-continuous")]
+fn assert_trigger_registry_matches_legacy_scan(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    registry: &TriggerRegistry,
+) {
+    let indexed: Vec<_> = registry
+        .subscribers_for(trigger_event.kind())
+        .into_iter()
+        .filter(|&subscriber| {
+            battlefield_trigger_subscriber_matches_event(game, trigger_event, view, subscriber)
+        })
+        .collect();
+    let legacy = legacy_battlefield_matching_trigger_subscribers(game, trigger_event, view);
+
+    assert_eq!(
+        indexed,
+        legacy,
+        "trigger registry diverged from legacy battlefield scan for {:?}; registry key {:?}",
+        trigger_event.kind(),
+        registry.key
+    );
+}
+
 fn presentation_labeled_snapshot_trigger_is_active(
     game: &GameState,
     source: &ObjectSnapshot,
@@ -1191,7 +1505,7 @@ fn collect_lookback_source_triggers(
     triggered: &mut Vec<TriggeredAbilityEntry>,
 ) {
     for source_snapshot in trigger_event.lookback_source_snapshots() {
-        for ability in &source_snapshot.abilities {
+        for ability in source_snapshot.abilities.iter() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
                 continue;
             };
@@ -1260,7 +1574,7 @@ fn collect_lookback_source_triggers(
                 ability: queued_triggered_ability(trigger_ability, dynamic_soulshift_x),
                 triggering_event: trigger_event.clone(),
                 source_stable_id: source_snapshot.stable_id,
-                source_name: source_snapshot.name.clone(),
+                source_name: source_snapshot.name.to_string(),
                 source_snapshot: Some(source_snapshot.clone()),
                 tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 source_kind: TriggeredAbilitySourceKind::Object,
@@ -1322,96 +1636,12 @@ pub(crate) fn check_triggers_with_view(
     let mut triggered = Vec::new();
     collect_lookback_source_triggers(game, trigger_event, &mut triggered);
 
-    // Check all permanents on the battlefield
-    for &obj_id in &game.battlefield {
-        let Some(obj) = game.object(obj_id) else {
-            continue;
-        };
+    let registry = battlefield_trigger_registry(game, view);
+    #[cfg(feature = "shadow-continuous")]
+    assert_trigger_registry_matches_legacy_scan(game, trigger_event, view, &registry);
 
-        let controller = view
-            .calculated_characteristics(obj_id)
-            .map(|chars| chars.controller)
-            .unwrap_or_else(|| game.controller_of(obj));
-        let ctx = TriggerContext::for_source(obj_id, controller, game);
-
-        // Get calculated abilities (after continuous effects like Humility, Blood Moon)
-        let calculated_abilities = view
-            .abilities_rc(obj_id)
-            .unwrap_or_else(|| Rc::new(obj.abilities.clone()));
-
-        // Check each ability on the permanent
-        for ability in calculated_abilities.iter() {
-            let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
-                continue;
-            };
-
-            if !ability.functions_in(&obj.zone) {
-                continue;
-            }
-
-            if !presentation_labeled_trigger_is_active(game, obj, trigger_ability) {
-                continue;
-            }
-
-            if skip_post_event_source_discovery(trigger_event, trigger_ability) {
-                continue;
-            }
-
-            if trigger_ability.trigger.matches(trigger_event, &ctx) {
-                let trigger_count = trigger_ability
-                    .trigger
-                    .trigger_count_with_context(trigger_event, &ctx);
-                if trigger_count == 0 {
-                    continue;
-                }
-                if is_soulbond_pair_trigger(trigger_ability)
-                    && !soulbond_trigger_had_eligible_pair(game, obj_id, controller)
-                {
-                    continue;
-                }
-                let event_value_amount = trigger_ability
-                    .trigger
-                    .event_value_amount(trigger_event, &ctx);
-                let trigger_identity = compute_trigger_identity(trigger_ability);
-                if let Some(ref condition) = trigger_ability.intervening_if
-                    && !verify_intervening_if(
-                        game,
-                        condition,
-                        controller,
-                        trigger_event,
-                        obj_id,
-                        Some(trigger_identity),
-                        None,
-                    )
-                {
-                    continue;
-                }
-
-                let entry = TriggeredAbilityEntry {
-                    source: obj_id,
-                    controller,
-                    x_value: trigger_entry_x_value(trigger_event, obj.x_value),
-                    event_value_amount,
-                    ability: TriggeredAbility {
-                        trigger: trigger_ability.trigger.clone(),
-                        effects: trigger_ability.effects.clone(),
-                        choices: trigger_ability.choices.clone(),
-                        intervening_if: trigger_ability.intervening_if.clone(),
-                        presentation_label: None,
-                    },
-                    triggering_event: trigger_event.clone(),
-                    source_stable_id: obj.stable_id,
-                    source_name: obj.name.clone(),
-                    source_snapshot: None,
-                    tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
-                    source_kind: TriggeredAbilitySourceKind::Object,
-                    trigger_identity,
-                };
-                for _ in 0..trigger_count {
-                    triggered.push(entry.clone());
-                }
-            }
-        }
+    for subscriber in registry.subscribers_for(trigger_event.kind()) {
+        check_battlefield_trigger_subscriber(game, trigger_event, view, subscriber, &mut triggered);
     }
 
     // A permanent can see itself being sacrificed. The sacrifice event carries
@@ -1423,7 +1653,7 @@ pub(crate) fn check_triggers_with_view(
         && let Some(snapshot) = sacrifice.snapshot.as_ref()
         && !game.battlefield.contains(&snapshot.object_id)
     {
-        for ability in &snapshot.abilities {
+        for ability in snapshot.abilities.iter() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
                 continue;
             };
@@ -1474,7 +1704,7 @@ pub(crate) fn check_triggers_with_view(
                     ability: queued_triggered_ability(trigger_ability, dynamic_soulshift_x),
                     triggering_event: trigger_event.clone(),
                     source_stable_id: snapshot.stable_id,
-                    source_name: snapshot.name.clone(),
+                    source_name: snapshot.name.to_string(),
                     source_snapshot: Some(snapshot.clone()),
                     tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                     source_kind: TriggeredAbilitySourceKind::Object,
@@ -1492,7 +1722,7 @@ pub(crate) fn check_triggers_with_view(
     if trigger_event.kind() == crate::events::traits::EventKind::CardDiscarded
         && let Some(snapshot) = trigger_event.snapshot()
     {
-        for ability in &snapshot.abilities {
+        for ability in snapshot.abilities.iter() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
                 continue;
             };
@@ -1540,7 +1770,7 @@ pub(crate) fn check_triggers_with_view(
                     },
                     triggering_event: trigger_event.clone(),
                     source_stable_id: snapshot.stable_id,
-                    source_name: snapshot.name.clone(),
+                    source_name: snapshot.name.to_string(),
                     source_snapshot: Some(snapshot.clone()),
                     tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                     source_kind: TriggeredAbilitySourceKind::Object,
@@ -1627,7 +1857,7 @@ pub(crate) fn check_triggers_with_view(
                     ability: ability.clone(),
                     triggering_event: trigger_event.clone(),
                     source_stable_id: obj.stable_id,
-                    source_name: obj.name.clone(),
+                    source_name: obj.name.to_string(),
                     source_snapshot: None,
                     tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                     source_kind: TriggeredAbilitySourceKind::Object,
@@ -1673,7 +1903,7 @@ pub(crate) fn check_triggers_with_view(
                 ability,
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,
-                source_name: obj.name.clone(),
+                source_name: obj.name.to_string(),
                 source_snapshot: None,
                 tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 source_kind: TriggeredAbilitySourceKind::Object,
@@ -1720,7 +1950,7 @@ pub(crate) fn check_triggers_with_view(
                 ability,
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,
-                source_name: obj.name.clone(),
+                source_name: obj.name.to_string(),
                 source_snapshot: None,
                 tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 source_kind: TriggeredAbilitySourceKind::Object,
@@ -1899,7 +2129,7 @@ fn collect_state_triggers_for_object(
             },
             triggering_event: trigger_event,
             source_stable_id: obj.stable_id,
-            source_name: obj.name.clone(),
+            source_name: obj.name.to_string(),
             source_snapshot: None,
             tagged_objects,
             source_kind: TriggeredAbilitySourceKind::Object,
@@ -1923,7 +2153,7 @@ pub fn check_state_triggers(
         };
         let calculated_abilities = view
             .abilities_rc(obj_id)
-            .unwrap_or_else(|| Rc::new(obj.abilities.clone()));
+            .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
         let controller = view
             .calculated_characteristics(obj_id)
             .map(|chars| chars.controller)
@@ -2041,17 +2271,17 @@ pub fn check_delayed_triggers(
             let source_name = delayed
                 .ability_source_name
                 .clone()
-                .or_else(|| game.object(ability_source).map(|o| o.name.clone()))
+                .or_else(|| game.object(ability_source).map(|o| o.name.to_string()))
                 .or_else(|| {
                     game.find_object_by_stable_id(source_stable_id)
                         .and_then(|id| game.object(id))
-                        .map(|o| o.name.clone())
+                        .map(|o| o.name.to_string())
                 })
                 .or_else(|| {
                     if trigger_event.object_id() == Some(ability_source) {
                         trigger_event
                             .snapshot()
-                            .map(|snapshot| snapshot.name.clone())
+                            .map(|snapshot| snapshot.name.to_string())
                     } else {
                         None
                     }
@@ -2131,7 +2361,7 @@ fn check_triggers_in_zone(
 
     let calculated_abilities = view
         .abilities_rc(obj_id)
-        .unwrap_or_else(|| Rc::new(obj.abilities.clone()));
+        .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
 
     for ability in calculated_abilities.iter() {
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
@@ -2185,7 +2415,7 @@ fn check_triggers_in_zone(
                 },
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,
-                source_name: obj.name.clone(),
+                source_name: obj.name.to_string(),
                 source_snapshot: None,
                 tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 source_kind: TriggeredAbilitySourceKind::Object,
@@ -2497,7 +2727,7 @@ mod tests {
     ) {
         game.object_mut(source)
             .expect("source should exist")
-            .abilities
+            .abilities_mut()
             .push(crate::ability::Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
                     trigger,
@@ -2830,7 +3060,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let source = make_battlefield_creature(&mut game, alice, "Self-Sacrifice Watcher");
         if let Some(object) = game.object_mut(source) {
-            object.abilities.push(crate::ability::Ability {
+            object.abilities_mut().push(crate::ability::Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
                     trigger: Trigger::player_sacrifices(
                         PlayerFilter::You,
@@ -2874,7 +3104,7 @@ mod tests {
         let source = game.create_object_from_card(&source_card, alice, Zone::Graveyard);
         game.object_mut(source)
             .expect("source should exist")
-            .abilities
+            .abilities_mut()
             .push(crate::ability::Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
                     trigger: Trigger::cards_leave_your_graveyard(

@@ -711,15 +711,15 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
             card.name.as_str(),
             "Treasure" | "Clue" | "Food" | "Blood" | "Powerstone"
         ) {
-            explicit_named_clause = Some(card.name.clone());
+            explicit_named_clause = Some(card.name.to_string());
         } else {
-            parts.push(card.name.clone());
+            parts.push(card.name.to_string());
         }
     }
 
     if !card.subtypes.is_empty() {
         if is_named_noncreature_subtype_token {
-            parts.push(card.name.clone());
+            parts.push(card.name.to_string());
         } else {
             let name_lower = card.name.to_ascii_lowercase();
             let has_changeling_keyword = token.abilities.iter().any(|ability| {
@@ -757,16 +757,16 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                     .supertypes
                     .contains(&crate::types::Supertype::Legendary);
             if name_is_distinct && !use_name_for_creature {
-                explicit_named_clause = Some(card.name.clone());
+                explicit_named_clause = Some(card.name.to_string());
             }
             let use_name_for_noncreature = false;
             if use_name_for_creature {
-                creature_name_prefix = Some(card.name.clone());
+                creature_name_prefix = Some(card.name.to_string());
                 if !subtype_text.is_empty() {
                     parts.push(subtype_text);
                 }
             } else if use_name_for_noncreature {
-                parts.push(card.name.clone());
+                parts.push(card.name.to_string());
                 if !subtype_text.is_empty() {
                     parts.push(subtype_text);
                 }

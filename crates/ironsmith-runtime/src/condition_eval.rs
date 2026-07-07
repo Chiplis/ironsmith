@@ -5,7 +5,6 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::{ObjectFilterExt as _, player_filter_matches_game};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
-use crate::object_query::candidate_ids_for_zone;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
@@ -781,9 +780,7 @@ fn condition_count_for_player(
     if *player_filter == PlayerFilter::IteratedPlayer {
         filter_ctx = filter_ctx.with_iterated_player(Some(candidate));
     }
-    condition_candidate_ids_for_zone(game, filter.zone)
-        .iter()
-        .filter_map(|&id| game.object(id))
+    condition_objects_for_zone(game, filter.zone)
         .filter(|obj| condition_object_matches_player_zone(game, obj, candidate, filter.zone))
         .filter(|obj| filter.matches(obj, &filter_ctx, game))
         .count()
@@ -2136,9 +2133,7 @@ pub fn evaluate_condition_external(
             };
             let filter_ctx =
                 condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
-            condition_candidate_ids_for_zone(game, filter.zone)
-                .iter()
-                .filter_map(|&id| game.object(id))
+            condition_objects_for_zone(game, filter.zone)
                 .filter(|obj| {
                     condition_object_matches_player_zone(game, obj, player_id, filter.zone)
                 })
@@ -2154,9 +2149,7 @@ pub fn evaluate_condition_external(
             };
             let filter_ctx =
                 condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
-            let matches = condition_candidate_ids_for_zone(game, filter.zone)
-                .iter()
-                .filter_map(|&id| game.object(id))
+            let matches = condition_objects_for_zone(game, filter.zone)
                 .filter(|obj| {
                     condition_object_matches_player_zone(game, obj, player_id, filter.zone)
                 })
@@ -2178,9 +2171,7 @@ pub fn evaluate_condition_external(
                     player,
                     ctx.triggering_event,
                 );
-                condition_candidate_ids_for_zone(game, filter.zone)
-                    .iter()
-                    .filter_map(|&id| game.object(id))
+                condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, player_id, filter.zone)
                     })
@@ -2206,9 +2197,7 @@ pub fn evaluate_condition_external(
             };
             let filter_ctx =
                 condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
-            let your_count = condition_candidate_ids_for_zone(game, filter.zone)
-                .iter()
-                .filter_map(|&id| game.object(id))
+            let your_count = condition_objects_for_zone(game, filter.zone)
                 .filter(|obj| {
                     condition_object_matches_player_zone(game, obj, player_id, filter.zone)
                 })
@@ -2223,9 +2212,7 @@ pub fn evaluate_condition_external(
                     player,
                     ctx.triggering_event,
                 );
-                let other_count = condition_candidate_ids_for_zone(game, filter.zone)
-                    .iter()
-                    .filter_map(|&id| game.object(id))
+                let other_count = condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, other_id, filter.zone)
                     })
@@ -2249,9 +2236,7 @@ pub fn evaluate_condition_external(
                     player,
                     ctx.triggering_event,
                 );
-                condition_candidate_ids_for_zone(game, filter.zone)
-                    .iter()
-                    .filter_map(|&id| game.object(id))
+                condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, candidate, filter.zone)
                     })
@@ -2305,9 +2290,7 @@ pub fn evaluate_condition_external(
             let mut filter = crate::target::ObjectFilter::default().named(name.clone());
             for zone in zones {
                 filter.zone = Some(*zone);
-                let has_matching = condition_candidate_ids_for_zone(game, Some(*zone))
-                    .iter()
-                    .filter_map(|&id| game.object(id))
+                let has_matching = condition_objects_for_zone(game, Some(*zone))
                     .filter(|obj| obj.owner == player_id)
                     .any(|obj| filter.matches(obj, &filter_ctx, game));
                 if !has_matching {
@@ -2636,8 +2619,12 @@ pub fn evaluate_condition_resolution(
     )
 }
 
-fn condition_candidate_ids_for_zone(game: &GameState, zone: Option<Zone>) -> Vec<ObjectId> {
-    candidate_ids_for_zone(game, zone)
+fn condition_objects_for_zone(
+    game: &GameState,
+    zone: Option<Zone>,
+) -> impl Iterator<Item = &crate::object::Object> + '_ {
+    let zone = zone.unwrap_or(Zone::Battlefield);
+    game.zone_ids(zone).filter_map(|id| game.object(id))
 }
 
 fn condition_object_matches_player_zone(
@@ -2677,9 +2664,7 @@ fn count_distinct_matching_powers(
     use std::collections::HashSet;
 
     let mut seen_powers = HashSet::new();
-    for obj in condition_candidate_ids_for_zone(game, filter.zone)
-        .iter()
-        .filter_map(|&id| game.object(id))
+    for obj in condition_objects_for_zone(game, filter.zone)
         .filter(|obj| condition_object_matches_player_zone(game, obj, player_id, filter.zone))
         .filter(|obj| filter.matches(obj, filter_ctx, game))
     {
@@ -2817,9 +2802,7 @@ fn evaluate_condition_simple(
             if *player == PlayerFilter::IteratedPlayer {
                 ctx = ctx.with_iterated_player(Some(player_id));
             }
-            condition_candidate_ids_for_zone(game, filter.zone)
-                .iter()
-                .filter_map(|&id| game.object(id))
+            condition_objects_for_zone(game, filter.zone)
                 .filter(|obj| {
                     condition_object_matches_player_zone(game, obj, player_id, filter.zone)
                 })
@@ -2853,9 +2836,7 @@ fn evaluate_condition_simple(
             let mut filter = crate::target::ObjectFilter::default().named(name.clone());
             for zone in zones {
                 filter.zone = Some(*zone);
-                let has_matching = condition_candidate_ids_for_zone(game, Some(*zone))
-                    .iter()
-                    .filter_map(|&id| game.object(id))
+                let has_matching = condition_objects_for_zone(game, Some(*zone))
                     .filter(|obj| obj.owner == player_id)
                     .any(|obj| filter.matches(obj, &ctx, game));
                 if !has_matching {
@@ -2884,9 +2865,7 @@ fn evaluate_condition_simple(
             if *player == PlayerFilter::IteratedPlayer {
                 ctx = ctx.with_iterated_player(Some(player_id));
             }
-            let matches = condition_candidate_ids_for_zone(game, filter.zone)
-                .iter()
-                .filter_map(|&id| game.object(id))
+            let matches = condition_objects_for_zone(game, filter.zone)
                 .filter(|obj| {
                     condition_object_matches_player_zone(game, obj, player_id, filter.zone)
                 })
@@ -2980,9 +2959,7 @@ fn evaluate_condition_simple(
                 if *player == PlayerFilter::IteratedPlayer {
                     ctx = ctx.with_iterated_player(Some(candidate));
                 }
-                condition_candidate_ids_for_zone(game, filter.zone)
-                    .iter()
-                    .filter_map(|&id| game.object(id))
+                condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, candidate, filter.zone)
                     })
@@ -3019,9 +2996,7 @@ fn evaluate_condition_simple(
                 if *player == PlayerFilter::IteratedPlayer {
                     ctx = ctx.with_iterated_player(Some(candidate));
                 }
-                condition_candidate_ids_for_zone(game, filter.zone)
-                    .iter()
-                    .filter_map(|&id| game.object(id))
+                condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, candidate, filter.zone)
                     })
@@ -3636,9 +3611,7 @@ fn evaluate_condition(
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             let mut filter_ctx = ctx.filter_context(game);
             filter_ctx.iterated_player = Some(player_id);
-            let has_matching = condition_candidate_ids_for_zone(game, filter.zone)
-                .iter()
-                .filter_map(|&id| game.object(id))
+            let has_matching = condition_objects_for_zone(game, filter.zone)
                 .filter(|obj| {
                     condition_object_matches_player_zone(game, obj, player_id, filter.zone)
                 })
@@ -3661,9 +3634,7 @@ fn evaluate_condition(
             let mut filter = crate::target::ObjectFilter::default().named(name.clone());
             for zone in zones {
                 filter.zone = Some(*zone);
-                let has_matching = condition_candidate_ids_for_zone(game, Some(*zone))
-                    .iter()
-                    .filter_map(|&id| game.object(id))
+                let has_matching = condition_objects_for_zone(game, Some(*zone))
                     .filter(|obj| obj.owner == player_id)
                     .any(|obj| filter.matches(obj, &filter_ctx, game));
                 if !has_matching {
@@ -3681,9 +3652,7 @@ fn evaluate_condition(
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             let mut filter_ctx = ctx.filter_context(game);
             filter_ctx.iterated_player = Some(player_id);
-            let matches = condition_candidate_ids_for_zone(game, filter.zone)
-                .iter()
-                .filter_map(|&id| game.object(id))
+            let matches = condition_objects_for_zone(game, filter.zone)
                 .filter(|obj| {
                     condition_object_matches_player_zone(game, obj, player_id, filter.zone)
                 })
@@ -3748,9 +3717,7 @@ fn evaluate_condition(
             let count_for = |candidate: PlayerId| {
                 let mut filter_ctx = ctx.filter_context(game);
                 filter_ctx.iterated_player = Some(candidate);
-                condition_candidate_ids_for_zone(game, filter.zone)
-                    .iter()
-                    .filter_map(|&id| game.object(id))
+                condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, candidate, filter.zone)
                     })
@@ -3776,9 +3743,7 @@ fn evaluate_condition(
             let count_for = |candidate: PlayerId| {
                 let mut filter_ctx = ctx.filter_context(game);
                 filter_ctx.iterated_player = Some(candidate);
-                condition_candidate_ids_for_zone(game, filter.zone)
-                    .iter()
-                    .filter_map(|&id| game.object(id))
+                condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, candidate, filter.zone)
                     })

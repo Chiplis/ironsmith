@@ -5,6 +5,8 @@ extern crate self as ironsmith;
 
 pub mod ability;
 pub mod alternative_cast;
+#[cfg(feature = "bench-support")]
+pub mod bench_support;
 pub mod card;
 pub mod cards;
 pub mod color;
@@ -59,6 +61,8 @@ pub mod turn_history;
 pub mod turn_runner;
 pub mod types;
 pub mod zone;
+
+pub(crate) type FxMap<K, V> = std::collections::HashMap<K, V, rustc_hash::FxBuildHasher>;
 
 #[cfg(test)]
 mod tests;

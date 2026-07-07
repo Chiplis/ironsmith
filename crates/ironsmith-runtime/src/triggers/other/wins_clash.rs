@@ -45,6 +45,10 @@ impl TriggerMatcher for WinsClashTrigger {
         }
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::KeywordAction])
+    }
+
     fn display(&self) -> String {
         match &self.player {
             PlayerFilter::You => "Whenever you win a clash".to_string(),

@@ -198,7 +198,7 @@ mod tests {
 
         // Verify both abilities require tapping
         let obj = game.object(land_id).unwrap();
-        for ability in &obj.abilities {
+        for ability in obj.abilities.iter() {
             if let AbilityKind::Activated(mana_ability) = &ability.kind
                 && mana_ability.is_mana_ability()
             {

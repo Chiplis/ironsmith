@@ -835,6 +835,10 @@ impl TriggerMatcher for ZoneChangeTrigger {
         true
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::ZoneChange])
+    }
+
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {
         match self.count_mode {
             CountMode::OneOrMore => 1,

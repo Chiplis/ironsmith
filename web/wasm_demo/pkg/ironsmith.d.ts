@@ -116,6 +116,7 @@ export class WasmGame {
     lastDispatchPerf(): any;
     lastReplayExecutionPerf(): any;
     lastSnapshotPerf(): any;
+    lastWorkCounters(): any;
     /**
      * Load explicit decks by card name. JS format: `string[][]` or
      * `{ decks: string[][], sideboards?: string[][] }`.
@@ -160,6 +161,7 @@ export class WasmGame {
     previewCustomCard(draft_js: any): any;
     registerExternalCardSources(sources: any): any;
     registerExternalCardSourcesJson(sources_json: string): string;
+    registerManabrewDeckSources(decks: any): any;
     /**
      * Number of cards currently available in the registry.
      */
@@ -207,6 +209,7 @@ export class WasmGame {
      * Return game snapshot as pretty JSON.
      */
     snapshotJson(): string;
+    startManabrewMatch(config: any): any;
     /**
      * Start a fully specified match from a synchronized lobby payload.
      */
@@ -219,6 +222,7 @@ export class WasmGame {
      * Return the current UI state from the selected player perspective.
      */
     uiState(): any;
+    validateManabrewMatchConfig(config: any): any;
     validateMatchConfig(config: any): any;
     ziffleBuildRevealToken(input: any): any;
     ziffleBuildRevealTokens(input: any): any;
@@ -255,6 +259,7 @@ export interface InitOutput {
     readonly wasmgame_uiState: (a: number) => [number, number, number];
     readonly wasmgame_lastSnapshotPerf: (a: number) => [number, number, number];
     readonly wasmgame_lastDispatchPerf: (a: number) => [number, number, number];
+    readonly wasmgame_lastWorkCounters: (a: number) => [number, number, number];
     readonly wasmgame_lastReplayExecutionPerf: (a: number) => [number, number, number];
     readonly wasmgame_lastAdvanceUntilDecisionPerf: (a: number) => [number, number, number];
     readonly wasmgame_registrySize: (a: number) => number;
@@ -307,6 +312,9 @@ export interface InitOutput {
     readonly wasmgame_ziffleBuildRevealTokens: (a: number, b: any) => [number, number, number];
     readonly wasmgame_ziffleRevealCard: (a: number, b: any) => [number, number, number];
     readonly wasmgame_ziffleRevealCards: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_registerManabrewDeckSources: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_validateManabrewMatchConfig: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_startManabrewMatch: (a: number, b: any) => [number, number, number];
     readonly wasmgame_manabrewView: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmgame_manabrewPublicState: (a: number) => [number, number, number];
     readonly wasmgame_manabrewPrompt: (a: number, b: number, c: number) => [number, number, number];

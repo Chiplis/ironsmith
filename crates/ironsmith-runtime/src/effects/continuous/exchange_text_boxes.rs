@@ -30,7 +30,7 @@ fn current_text_box_overlay(
         game.objects_map(),
         &effects,
         &game.battlefield,
-        &game.commanders,
+        game.commander_objects(),
         game,
     )
     .ok_or(ExecutionError::InvalidTarget)?;
@@ -200,11 +200,11 @@ mod tests {
             .expect("trigger creature should have characteristics");
 
         assert_eq!(
-            mana_chars.compiled_card_text,
+            mana_chars.compiled_card_text.as_ref(),
             crate::compiled_text::debug_compiled_lines(&trigger_def).join("\n")
         );
         assert_eq!(
-            raid_chars.compiled_card_text,
+            raid_chars.compiled_card_text.as_ref(),
             crate::compiled_text::debug_compiled_lines(&mana_def).join("\n")
         );
         assert!(

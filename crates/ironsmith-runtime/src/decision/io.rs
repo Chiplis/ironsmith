@@ -1926,7 +1926,7 @@ impl DecisionMaker for CliDecisionMaker {
         for (idx, card_id) in cards.iter().enumerate() {
             let name = game
                 .object(*card_id)
-                .map(|obj| obj.name.clone())
+                .map(|obj| obj.name.to_string())
                 .unwrap_or_else(|| format!("Unknown ({})", card_id.0));
             println!("{}. {}", idx + 1, name);
         }
@@ -2054,7 +2054,7 @@ impl DecisionMaker for CliDecisionMaker {
     ) -> Vec<Target> {
         let source_name = game
             .object(ctx.source)
-            .map(|o| o.name.clone())
+            .map(|o| o.name.to_string())
             .unwrap_or_else(|| "spell/ability".to_string());
         println!(
             "\n--- {} chooses targets for {} ---",
@@ -2123,7 +2123,7 @@ fn display_game_state(game: &GameState) {
             let gy: Vec<String> = player
                 .graveyard
                 .iter()
-                .filter_map(|&id| game.object(id).map(|o| o.name.clone()))
+                .filter_map(|&id| game.object(id).map(|o| o.name.to_string()))
                 .collect();
             println!(
                 "{}'s Graveyard ({}): {}",
@@ -2183,7 +2183,7 @@ fn display_game_state(game: &GameState) {
                         "[Triggered Ability]".to_string()
                     }
                 } else if let Some(obj) = game.object(entry.object_id) {
-                    obj.name.clone()
+                    obj.name.to_string()
                 } else {
                     "[Unknown]".to_string()
                 }
@@ -2413,7 +2413,7 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                 |object| {
                     crate::decision::linked_other_face_land_definition(game, object)
                         .map(|def| def.card.name)
-                        .unwrap_or_else(|| object.name.clone())
+                        .unwrap_or_else(|| object.name.to_string())
                 },
             );
             format!("Play {}", name)
@@ -2491,7 +2491,7 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                                 obj.other_face,
                             )
                             .map(|other_def| other_def.card.name)
-                            .unwrap_or_else(|| obj.name.clone());
+                            .unwrap_or_else(|| obj.name.to_string());
                         format!(
                             "{} [from {}, {}] ({})",
                             name,
@@ -2937,7 +2937,7 @@ fn prompt_select_objects(
                 .unwrap_or("?")
                 .to_string()
         } else {
-            candidate.name.clone()
+            candidate.name.to_string()
         };
         let legal_marker = if candidate.legal { "" } else { " [ILLEGAL]" };
         println!("  {}: {}{}", i, name, legal_marker);
@@ -3498,7 +3498,7 @@ fn prompt_choose_targets(
                 }
                 Target::Player(id) => game
                     .player(*id)
-                    .map(|p| p.name.clone())
+                    .map(|p| p.name.to_string())
                     .unwrap_or_else(|| format!("Player {}", id.0)),
             };
             println!("  {}: {}", i, display);

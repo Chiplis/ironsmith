@@ -252,6 +252,10 @@ impl TriggerMatcher for AttacksTrigger {
         true
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
+    }
+
     fn display(&self) -> String {
         let mut display_filter = self.filter.clone();
         // Attacking already implies a creature; oracle says "another Cat you
@@ -388,6 +392,10 @@ impl TriggerMatcher for PlayersAttackedTrigger {
             }
         };
         self.is_first_matching_attacker_this_combat(e.attacker, &attack_target, ctx)
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
     }
 
     fn display(&self) -> String {

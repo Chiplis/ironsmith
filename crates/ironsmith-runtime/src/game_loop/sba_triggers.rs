@@ -43,13 +43,11 @@ pub fn check_and_apply_sbas_with(
         if restore_unattached_bestow_creatures(game) {
             game.refresh_continuous_state();
         }
-        let view = crate::derived_view::DerivedGameView::from_effects(
-            game,
-            crate::static_ability_processor::get_all_continuous_effects(game),
-        );
-        let all_effects = view.effects().to_vec();
+        game.refresh_continuous_state();
+        let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
         let context = StateBasedActionContext::from_trigger_queue(trigger_queue);
         let actions = check_state_based_actions_with_context(game, &view, &context);
+        let all_effects = view.effects_arc();
         drop(view);
         if actions.is_empty() {
             game.clear_deathtouch_damage_since_sba();
@@ -72,26 +70,29 @@ pub fn check_and_apply_sbas_with(
         // Apply the SBAs (legend rule already handled above)
         // Use the decision maker version to allow interactive replacement effect choices
         let applied = if had_legend_decisions {
-            let post_legend_view = crate::derived_view::DerivedGameView::from_effects(
-                game,
-                crate::static_ability_processor::get_all_continuous_effects(game),
-            );
-            let post_legend_effects = post_legend_view.effects().to_vec();
+            game.refresh_continuous_state();
+            let post_legend_view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
             let post_legend_context = StateBasedActionContext::from_trigger_queue(trigger_queue);
             let post_legend_actions = check_state_based_actions_with_context(
                 game,
                 &post_legend_view,
                 &post_legend_context,
             );
+            let post_legend_effects = post_legend_view.effects_arc();
             drop(post_legend_view);
             apply_state_based_actions_from_actions_with(
                 game,
                 post_legend_actions,
-                &post_legend_effects,
+                post_legend_effects.as_slice(),
                 decision_maker,
             )
         } else {
-            apply_state_based_actions_from_actions_with(game, actions, &all_effects, decision_maker)
+            apply_state_based_actions_from_actions_with(
+                game,
+                actions,
+                all_effects.as_slice(),
+                decision_maker,
+            )
         };
         game.clear_deathtouch_damage_since_sba();
         // SBA moves queue primitive ZoneChangeEvent via move_object; consume them now.

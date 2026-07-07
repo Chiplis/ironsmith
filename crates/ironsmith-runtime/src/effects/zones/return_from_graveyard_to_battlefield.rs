@@ -366,7 +366,7 @@ mod tests {
         assert_eq!(ids.len(), 1);
         let returned_name = game
             .object(ids[0])
-            .map(|obj| obj.name.clone())
+            .map(|obj| obj.name.to_string())
             .expect("reanimated permanent should exist");
         assert_eq!(returned_name, "Second");
         assert!(game.players[0].graveyard.contains(&first));

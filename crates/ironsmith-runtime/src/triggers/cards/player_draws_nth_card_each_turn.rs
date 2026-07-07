@@ -59,6 +59,10 @@ impl TriggerMatcher for PlayerDrawsNthCardEachTurnTrigger {
         total_before < self.card_number && self.card_number <= total_after
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CardsDrawn])
+    }
+
     fn display(&self) -> String {
         let ordinal =
             ironsmith_core::ordinal_word(self.card_number).unwrap_or_else(|| "nth".to_string());

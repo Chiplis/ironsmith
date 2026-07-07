@@ -16,7 +16,6 @@ use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::{GameState, StackEntry};
-use crate::mana::ManaCost;
 use crate::tag::TagKey;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
@@ -48,7 +47,7 @@ impl EffectExecutor for DiscoverEffect {
                 if card.is_land() {
                     return false;
                 }
-                card.mana_cost.as_ref().map_or(0, ManaCost::mana_value) <= count
+                card.mana_cost.as_ref().map_or(0, |cost| cost.mana_value()) <= count
             },
         )?;
 
@@ -87,7 +86,7 @@ impl EffectExecutor for DiscoverEffect {
                 );
             };
 
-            let candidate_name = candidate_obj.name.clone();
+            let candidate_name = candidate_obj.name.to_string();
             let choice_ctx = crate::decisions::context::BooleanContext::new(
                 player_id,
                 Some(candidate_id),
@@ -100,7 +99,7 @@ impl EffectExecutor for DiscoverEffect {
 
             if should_cast {
                 let from_zone = candidate_obj.zone;
-                let mana_cost = candidate_obj.mana_cost.clone();
+                let mana_cost = candidate_obj.mana_cost_owned();
                 let stable_id = candidate_obj.stable_id;
                 let x_value = mana_cost
                     .as_ref()

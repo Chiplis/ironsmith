@@ -884,7 +884,7 @@ mod tests {
         let source = create_creature(&mut game, "Licid Stand-In", alice);
         game.object_mut(source)
             .expect("source exists")
-            .abilities
+            .abilities_mut()
             .push(Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
                     mana_cost: TotalCost::default(),

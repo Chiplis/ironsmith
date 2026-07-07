@@ -147,7 +147,7 @@ fn counter_removal_candidate_ids(filter: &ObjectFilter, game: &GameState) -> Vec
 
     let mut ids = Vec::new();
     for zone in zones {
-        for id in game.objects_in_zone(zone) {
+        for id in game.zone_ids(zone) {
             if !ids.contains(&id) {
                 ids.push(id);
             }

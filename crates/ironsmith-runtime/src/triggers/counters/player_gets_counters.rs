@@ -70,6 +70,10 @@ impl TriggerMatcher for PlayerGetsCountersTrigger {
         }
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::MarkersChanged])
+    }
+
     fn display(&self) -> String {
         let player = self.player.description();
         let verb = if player.eq_ignore_ascii_case("you") {

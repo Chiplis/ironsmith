@@ -301,7 +301,7 @@ mod tests {
         game.set_summoning_sick(creature_id);
         game.object_mut(creature_id)
             .expect("creature should exist")
-            .abilities
+            .abilities_mut()
             .push(Ability::static_ability(StaticAbility::haste()));
 
         assert!(

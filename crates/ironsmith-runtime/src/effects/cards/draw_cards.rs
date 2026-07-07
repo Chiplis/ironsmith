@@ -160,7 +160,7 @@ pub(crate) fn collect_automatic_draw_reveal_candidates(
                 .map(|obj| ObjectSnapshot::from_object(obj, game));
             candidates.push(AutomaticDrawRevealCandidate {
                 source_id,
-                source_name: source_obj.name.clone(),
+                source_name: source_obj.name.to_string(),
                 player_id,
                 card_id,
                 zone: Zone::Hand,
@@ -438,7 +438,7 @@ mod tests {
         let source = game.create_object_from_card(&source_card, owner, Zone::Battlefield);
         game.object_mut(source)
             .unwrap()
-            .abilities
+            .abilities_mut()
             .push(crate::ability::Ability::static_ability(ability));
         source
     }

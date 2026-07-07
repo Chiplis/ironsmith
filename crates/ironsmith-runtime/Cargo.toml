@@ -15,7 +15,10 @@ ironsmith-core = { path = "../ironsmith-core" }
 ironsmith-compiler = { path = "../ironsmith-compiler", optional = true }
 stacker = "0.1.23"
 rand = "0.10.1"
+rand_chacha = "0.10.0"
 rayon = "1.12"
+rustc-hash = "2.1.2"
+im = "15.1.0"
 logos = "0.16.1"
 winnow = { version = "1.0.1", default-features = false, features = ["std", "ascii"] }
 serde = { version = "1.0.228", features = ["derive"], optional = true }
@@ -30,6 +33,14 @@ js-sys = { version = "0.3.97", optional = true }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 
+[dev-dependencies]
+criterion = "0.7"
+
+[[bench]]
+name = "scale"
+harness = false
+required-features = ["bench-support"]
+
 [features]
 default = ["serialization", "engine-integration-tests", "runtime-parser-tests"]
 serialization = ["dep:serde", "dep:serde_json"]
@@ -37,6 +48,10 @@ generated-registry = []
 engine-integration-tests = []
 runtime-parser-tests = ["dep:ironsmith-compiler"]
 handwritten-parse-support = []
+bench-support = ["runtime-parser-tests"]
+shadow-continuous = ["serialization"]
+paranoid-invariants = []
+dhat-heap = []
 wasm = [
     "serialization",
     "generated-registry",

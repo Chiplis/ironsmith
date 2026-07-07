@@ -138,6 +138,10 @@ impl TriggerMatcher for CardsLeaveYourGraveyardTrigger {
             .unwrap_or(1)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::ZoneChange])
+    }
+
     fn display(&self) -> String {
         let subject = self.describe_subject(self.one_or_more);
         let mut text = if self.one_or_more {

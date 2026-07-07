@@ -167,35 +167,13 @@ fn resolve_retarget_objects(
     match spec.base() {
         ChooseSpec::Object(filter) => {
             let count = spec.count();
-            let candidate_ids: Vec<crate::ids::ObjectId> = match filter.zone {
-                Some(Zone::Stack) | None => game.stack.iter().map(|e| e.object_id).collect(),
-                Some(Zone::Battlefield) => game.battlefield.clone(),
-                Some(Zone::Graveyard) => game
-                    .players
-                    .iter()
-                    .flat_map(|p| p.graveyard.iter().copied())
-                    .collect(),
-                Some(Zone::Exile) => game.exile.clone(),
-                Some(Zone::Command) => game.command_zone.clone(),
-                Some(Zone::Library) => game
-                    .players
-                    .iter()
-                    .flat_map(|p| p.library.iter().copied())
-                    .collect(),
-                Some(Zone::Hand) => game
-                    .players
-                    .iter()
-                    .flat_map(|p| p.hand.iter().copied())
-                    .collect(),
-                Some(Zone::OutsideGame) => game.objects_in_zone(Zone::OutsideGame),
-            };
-
             let filter_ctx = ctx.filter_context(game);
-            let mut candidates: Vec<SelectableObject> = candidate_ids
-                .iter()
-                .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+            let zone = filter.zone.unwrap_or(Zone::Stack);
+            let mut candidates: Vec<SelectableObject> = game
+                .zone_ids(zone)
+                .filter_map(|id| game.object(id).map(|obj| (id, obj)))
                 .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
-                .map(|(id, obj)| SelectableObject::new(id, obj.name.clone()))
+                .map(|(id, obj)| SelectableObject::new(id, obj.name.to_string()))
                 .collect();
 
             if candidates.is_empty() {
@@ -318,7 +296,7 @@ impl EffectExecutor for RetargetStackObjectEffect {
 
                     let source_name = game
                         .object(object_id)
-                        .map(|o| o.name.clone())
+                        .map(|o| o.name.to_string())
                         .unwrap_or_else(|| "spell".to_string());
 
                     let targets_ctx =
@@ -497,10 +475,13 @@ mod tests {
         let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
         game.object_mut(spell_id)
             .expect("spell object exists")
-            .spell_effect = Some(ResolutionProgram::from_effects(vec![Effect::deal_damage(
-            1,
-            ChooseSpec::target_player(),
-        )]));
+            .spell_effect = Some(
+            ResolutionProgram::from_effects(vec![Effect::deal_damage(
+                1,
+                ChooseSpec::target_player(),
+            )])
+            .into(),
+        );
         game.push_to_stack(
             StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(alice)]),
         );

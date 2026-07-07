@@ -25,7 +25,7 @@ fn counter_one_stack_object(
     if let Some(obj) = game.object(target_id) {
         let abilities = game
             .current_abilities(target_id)
-            .unwrap_or_else(|| obj.abilities.clone());
+            .unwrap_or_else(|| obj.abilities_vec());
         let cant_be_countered = abilities.iter().any(|ability| {
             if let AbilityKind::Static(s) = &ability.kind {
                 let display = s.display().to_ascii_lowercase();
@@ -277,7 +277,7 @@ mod tests {
             .stable_id;
         game.object_mut(target_spell)
             .expect("target spell should exist")
-            .abilities
+            .abilities_mut()
             .push(
                 crate::ability::Ability::static_ability(
                     StaticAbility::exile_to_exile_instead_of_graveyard(

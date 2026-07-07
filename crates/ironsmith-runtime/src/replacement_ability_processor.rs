@@ -122,7 +122,7 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
             let zone = object.zone;
 
             // Process each static ability on the object.
-            for ability in &object.abilities {
+            for ability in object.abilities.iter() {
                 if let AbilityKind::Static(static_ability) = &ability.kind {
                     if !ability.functions_in(&zone) {
                         continue;

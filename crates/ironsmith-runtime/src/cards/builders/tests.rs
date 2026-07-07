@@ -28361,7 +28361,7 @@ fn create_deep_water_test_land_with_mana(
     let land_id = game.create_object_from_card(&land, controller, Zone::Battlefield);
     game.object_mut(land_id)
         .expect("land should exist")
-        .abilities
+        .abilities_mut()
         .push(crate::ability::Ability::mana(
             crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
             mana,
@@ -28382,7 +28382,7 @@ fn create_deep_water_test_land_with_mana_effect(
     let land_id = game.create_object_from_card(&land, controller, Zone::Battlefield);
     game.object_mut(land_id)
         .expect("land should exist")
-        .abilities
+        .abilities_mut()
         .push(crate::ability::Ability::mana_with_effects(
             crate::cost::TotalCost::free(),
             vec![crate::effect::Effect::add_mana(mana)],
@@ -28403,7 +28403,7 @@ fn create_deep_water_test_land_with_free_mana_effect(
     let land_id = game.create_object_from_card(&land, controller, Zone::Battlefield);
     game.object_mut(land_id)
         .expect("land should exist")
-        .abilities
+        .abilities_mut()
         .push(crate::ability::Ability::activated(
             crate::cost::TotalCost::free(),
             vec![crate::effect::Effect::add_mana(mana)],
@@ -28422,7 +28422,7 @@ fn create_deep_water_test_mana_artifact(
     let artifact_id = game.create_object_from_card(&artifact, controller, Zone::Battlefield);
     game.object_mut(artifact_id)
         .expect("artifact should exist")
-        .abilities
+        .abilities_mut()
         .push(crate::ability::Ability::mana(
             crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
             vec![ManaSymbol::Black],
@@ -28441,7 +28441,7 @@ fn create_deep_water_test_mana_artifact_with_effect(
     let artifact_id = game.create_object_from_card(&artifact, controller, Zone::Battlefield);
     game.object_mut(artifact_id)
         .expect("artifact should exist")
-        .abilities
+        .abilities_mut()
         .push(crate::ability::Ability::mana_with_effects(
             crate::cost::TotalCost::free(),
             vec![crate::effect::Effect::add_mana(vec![ManaSymbol::Black])],
@@ -30418,12 +30418,12 @@ fn gloomshrieker_enters_returns_target_permanent_card_from_your_graveyard_to_han
     let hand_names: Vec<String> = game
         .objects_in_zone(Zone::Hand)
         .into_iter()
-        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(id).map(|object| object.name.to_string()))
         .collect();
     let graveyard_names: Vec<String> = game
         .objects_in_zone(Zone::Graveyard)
         .into_iter()
-        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(id).map(|object| object.name.to_string()))
         .collect();
 
     assert!(
@@ -30488,12 +30488,12 @@ fn gloomshrieker_death_replacement_exiles_only_gloomshrieker() {
     let exile_names: Vec<String> = game
         .objects_in_zone(Zone::Exile)
         .into_iter()
-        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(id).map(|object| object.name.to_string()))
         .collect();
     let graveyard_names: Vec<String> = game
         .objects_in_zone(Zone::Graveyard)
         .into_iter()
-        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(id).map(|object| object.name.to_string()))
         .collect();
 
     assert!(
@@ -36904,7 +36904,7 @@ fn execute_predict_with_top_card(chosen_name: &str, top_card_name: &str) -> (usi
         .expect("Bob")
         .graveyard
         .iter()
-        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
         .collect::<Vec<_>>();
     (alice_hand, bob_graveyard)
 }
@@ -50087,7 +50087,7 @@ fn defensive_formation_defending_player_orders_damage_assignment_for_creatures_a
 
     let alice_trampler = create_winds_test_creature(&mut game, "Bob Trampler", bob, 5, 5);
     if let Some(object) = game.object_mut(alice_trampler) {
-        object.abilities.push(Ability::static_ability(
+        object.abilities_mut().push(Ability::static_ability(
             crate::static_abilities::StaticAbility::trample(),
         ));
     }
@@ -50130,7 +50130,7 @@ fn defensive_formation_defending_player_orders_damage_assignment_for_creatures_a
 
     let charlie_trampler = create_winds_test_creature(&mut game, "Bob Other Trampler", bob, 5, 5);
     if let Some(object) = game.object_mut(charlie_trampler) {
-        object.abilities.push(Ability::static_ability(
+        object.abilities_mut().push(Ability::static_ability(
             crate::static_abilities::StaticAbility::trample(),
         ));
     }
@@ -54366,7 +54366,7 @@ fn over_the_top_moves_nonpermanents_to_their_owners_graveyards_at_runtime() {
         .expect("alice")
         .graveyard
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         alice_graveyard_names
@@ -54380,7 +54380,7 @@ fn over_the_top_moves_nonpermanents_to_their_owners_graveyards_at_runtime() {
         .expect("bob")
         .graveyard
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         bob_graveyard_names.iter().any(|name| name == "Bob Spell"),
@@ -54390,7 +54390,7 @@ fn over_the_top_moves_nonpermanents_to_their_owners_graveyards_at_runtime() {
     let battlefield_names: Vec<_> = game
         .battlefield
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         battlefield_names
@@ -55284,7 +55284,7 @@ fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_bottom() {
     let battlefield_names: Vec<_> = game
         .battlefield
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         battlefield_names
@@ -55307,14 +55307,14 @@ fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_bottom() {
         .expect("alice")
         .library
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     let bob_library_names: Vec<_> = game
         .player(bob)
         .expect("bob")
         .library
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         alice_library_names
@@ -55331,14 +55331,14 @@ fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_bottom() {
         .expect("alice")
         .graveyard
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     let bob_graveyard_names: Vec<_> = game
         .player(bob)
         .expect("bob")
         .graveyard
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         !alice_graveyard_names
@@ -64126,7 +64126,7 @@ fn creeping_peeper_restricted_mana_runtime_branches() {
         game.create_object_from_definition(&face_up_probe, alice, Zone::Battlefield);
     game.object_mut(face_up_probe_id)
         .expect("face-up probe should exist")
-        .abilities
+        .abilities_mut()
         .push(Ability::static_ability(
             crate::static_abilities::StaticAbility::morph(crate::cost::TotalCost::mana(
                 blue_cost.clone(),
@@ -64879,7 +64879,12 @@ fn cabaretti_player_zone_names(
         _ => panic!("unsupported Cabaretti test zone {zone:?}"),
     };
     ids.iter()
-        .map(|id| game.object(*id).expect("zone object exists").name.clone())
+        .map(|id| {
+            game.object(*id)
+                .expect("zone object exists")
+                .name
+                .to_string()
+        })
         .collect()
 }
 
@@ -67213,7 +67218,7 @@ fn travel_shuffle_event_count(events: &[crate::triggers::TriggerEvent]) -> usize
 fn travel_zone_names(game: &crate::game_state::GameState, zone: Zone) -> Vec<String> {
     game.objects_in_zone(zone)
         .into_iter()
-        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(id).map(|object| object.name.to_string()))
         .collect()
 }
 
@@ -67710,7 +67715,7 @@ fn sail_owner_zone_names(
         .into_iter()
         .filter_map(|id| {
             game.object(id)
-                .and_then(|object| (object.owner == owner).then(|| object.name.clone()))
+                .and_then(|object| (object.owner == owner).then(|| object.name.to_string()))
         })
         .collect::<Vec<_>>();
     names.sort();
@@ -72465,7 +72470,7 @@ fn parse_sacred_guide_reveals_until_white_card_and_exiles_others() {
         .expect("alice exists")
         .hand
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         hand_names.iter().any(|name| name == "White Hit"),
@@ -72479,7 +72484,7 @@ fn parse_sacred_guide_reveals_until_white_card_and_exiles_others() {
     let exile_names: Vec<_> = game
         .exile
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         exile_names.iter().any(|name| name == "Blue Miss"),
@@ -72495,7 +72500,7 @@ fn parse_sacred_guide_reveals_until_white_card_and_exiles_others() {
         .expect("alice exists")
         .library
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert_eq!(
         library_names,
@@ -75125,7 +75130,7 @@ fn villainous_wealth_runtime_casts_only_exiled_nonland_spells_with_mana_value_at
     let stack_names: Vec<_> = game
         .stack
         .iter()
-        .filter_map(|entry| game.object(entry.object_id).map(|obj| obj.name.clone()))
+        .filter_map(|entry| game.object(entry.object_id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         stack_names.iter().any(|name| name == "Cheap Sorcery"),
@@ -75140,7 +75145,7 @@ fn villainous_wealth_runtime_casts_only_exiled_nonland_spells_with_mana_value_at
     let exile_names: Vec<_> = game
         .exile
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         exile_names.iter().any(|name| name == "Expensive Sorcery")
@@ -75153,7 +75158,7 @@ fn villainous_wealth_runtime_casts_only_exiled_nonland_spells_with_mana_value_at
         .expect("bob exists")
         .library
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert_eq!(
         library_names,
@@ -75211,7 +75216,7 @@ fn villainous_wealth_runtime_may_decline_casting_exiled_spells() {
     let stack_names: Vec<_> = game
         .stack
         .iter()
-        .filter_map(|entry| game.object(entry.object_id).map(|obj| obj.name.clone()))
+        .filter_map(|entry| game.object(entry.object_id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         !stack_names.iter().any(|name| name == "Declined Sorcery"),
@@ -75336,7 +75341,7 @@ fn abundant_harvest_land_choice_puts_first_land_into_hand() {
         .expect("alice exists")
         .hand
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         hand_names.iter().any(|name| name == "Forest"),
@@ -75352,7 +75357,7 @@ fn abundant_harvest_land_choice_puts_first_land_into_hand() {
         .expect("alice exists")
         .library
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert_eq!(
         library_names.len(),
@@ -75441,7 +75446,7 @@ fn abundant_harvest_nonland_choice_skips_lands_until_nonland() {
         .expect("alice exists")
         .hand
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         hand_names.iter().any(|name| name == "Merfolk"),
@@ -75457,7 +75462,7 @@ fn abundant_harvest_nonland_choice_skips_lands_until_nonland() {
         .expect("alice exists")
         .library
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert_eq!(
         library_names.len(),
@@ -75943,7 +75948,7 @@ fn disciple_of_perdition_runtime_modes_apply_draw_life_loss_and_graveyard_exile(
     let exile_names: Vec<_> = game
         .objects_in_zone(Zone::Exile)
         .into_iter()
-        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(id).map(|object| object.name.to_string()))
         .collect();
     assert!(
         exile_names.contains(&"Disciple Bob Graveyard Card One".to_string())
@@ -76005,7 +76010,7 @@ fn auditore_ambush_runtime_returns_target_creature() {
         .expect("bob exists")
         .hand
         .iter()
-        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
         .collect();
     assert!(
         bob_hand_names
@@ -76071,7 +76076,7 @@ fn auditore_ambush_runtime_target_player_searches_for_ezio() {
         .expect("bob exists")
         .hand
         .iter()
-        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
         .collect();
     assert!(
         bob_hand_names
@@ -76133,7 +76138,7 @@ fn auditore_ambush_runtime_search_mode_allows_no_matching_card() {
         .expect("bob exists")
         .hand
         .iter()
-        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
         .collect();
     assert!(
         bob_hand_names.is_empty(),
@@ -76275,7 +76280,7 @@ fn parse_hermit_druid_reveals_until_basic_land_and_graveyards_others() {
         .expect("alice exists")
         .hand
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         hand_names.iter().any(|name| name == "Basic Forest"),
@@ -76292,7 +76297,7 @@ fn parse_hermit_druid_reveals_until_basic_land_and_graveyards_others() {
         .expect("alice exists")
         .graveyard
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         graveyard_names.iter().any(|name| name == "Nonland Filler"),
@@ -76309,7 +76314,7 @@ fn parse_hermit_druid_reveals_until_basic_land_and_graveyards_others() {
         .expect("alice exists")
         .library
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert_eq!(
         library_names,
@@ -76405,7 +76410,7 @@ fn parse_hermit_druid_basic_land_on_top_goes_straight_to_hand() {
         .expect("alice exists")
         .hand
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         hand_names.iter().any(|name| name == "Island"),
@@ -76417,7 +76422,7 @@ fn parse_hermit_druid_basic_land_on_top_goes_straight_to_hand() {
         .expect("alice exists")
         .graveyard
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         graveyard_names.is_empty(),
@@ -76429,7 +76434,7 @@ fn parse_hermit_druid_basic_land_on_top_goes_straight_to_hand() {
         .expect("alice exists")
         .library
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert_eq!(
         library_names,
@@ -76553,7 +76558,7 @@ fn parse_hermit_druid_no_basic_land_mills_entire_library() {
         .expect("alice exists")
         .hand
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert!(
         hand_names.is_empty(),
@@ -76565,7 +76570,7 @@ fn parse_hermit_druid_no_basic_land_mills_entire_library() {
         .expect("alice exists")
         .graveyard
         .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
         .collect();
     assert_eq!(
         graveyard_names.len(),

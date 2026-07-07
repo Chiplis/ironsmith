@@ -26,6 +26,10 @@ impl TriggerMatcher for EventKindTrigger {
         event.kind() == self.kind
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![self.kind])
+    }
+
     fn display(&self) -> String {
         self.display_text.clone()
     }
@@ -62,6 +66,10 @@ impl ThisEventObjectTrigger {
 impl TriggerMatcher for ThisEventObjectTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         event.kind() == self.kind && event.object_id() == Some(ctx.source_id)
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![self.kind])
     }
 
     fn display(&self) -> String {

@@ -106,7 +106,7 @@ fn choose_and_pay_optional_costs_for_cast_tagged_spell(
 ) -> Result<Option<crate::cost::OptionalCostsPaid>, ExecutionError> {
     let Some((card_name, optional_costs)) = game
         .object(source_id)
-        .map(|obj| (obj.name.clone(), obj.optional_costs.clone()))
+        .map(|obj| (obj.name.to_string(), obj.optional_costs.clone()))
     else {
         return Ok(Some(crate::cost::OptionalCostsPaid::default()));
     };
@@ -352,9 +352,9 @@ impl EffectExecutor for CastTaggedEffect {
             };
             (
                 obj.is_land(),
-                obj.mana_cost.clone(),
+                obj.mana_cost_owned(),
                 obj.zone,
-                obj.name.clone(),
+                obj.name.to_string(),
                 obj.stable_id,
             )
         };

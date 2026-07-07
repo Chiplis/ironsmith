@@ -1442,7 +1442,7 @@ fn dispatch_disables_cancel_when_mana_tap_trigger_adds_stack_object() {
         .game
         .create_object_from_card(&swamp_card, alice, Zone::Battlefield);
     if let Some(swamp) = wasm.game.object_mut(swamp_id) {
-        swamp.abilities.push(Ability::mana(
+        swamp.abilities_mut().push(Ability::mana(
             ironsmith::cost::TotalCost::free(),
             vec![ManaSymbol::Black],
         ));
@@ -1455,7 +1455,7 @@ fn dispatch_disables_cancel_when_mana_tap_trigger_adds_stack_object() {
         wasm.game
             .create_object_from_card(&trigger_source, alice, Zone::Battlefield);
     if let Some(source) = wasm.game.object_mut(trigger_source_id) {
-        source.abilities.push(Ability::triggered(
+        source.abilities_mut().push(Ability::triggered(
             Trigger::player_taps_for_mana(
                 ironsmith::target::PlayerFilter::Any,
                 ironsmith::filter::ObjectFilter::land(),
@@ -1525,7 +1525,7 @@ fn snapshot_surfaces_undo_land_stable_id_for_reversible_land_tap() {
         .game
         .create_object_from_card(&swamp_card, alice, Zone::Battlefield);
     if let Some(swamp) = wasm.game.object_mut(swamp_id) {
-        swamp.abilities.push(Ability::mana(
+        swamp.abilities_mut().push(Ability::mana(
             ironsmith::cost::TotalCost::free(),
             vec![ManaSymbol::Black],
         ));

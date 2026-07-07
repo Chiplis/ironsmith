@@ -36,6 +36,10 @@ impl TriggerMatcher for AttacksWhileSaddledTrigger {
         self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
+    }
+
     fn display(&self) -> String {
         format!(
             "Whenever {} attacks while saddled",

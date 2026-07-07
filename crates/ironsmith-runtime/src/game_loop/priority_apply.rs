@@ -563,7 +563,7 @@ pub fn apply_priority_response_with_dm(
                             .collect();
                     let spell_name = game
                         .object(*spell_id)
-                        .map(|o| o.name.clone())
+                        .map(|o| o.name.to_string())
                         .unwrap_or_else(|| "spell".to_string());
                     let ctx = crate::decisions::context::SelectOptionsContext::new(
                         player,
@@ -599,7 +599,7 @@ pub fn apply_priority_response_with_dm(
                     casting_method,
                     *from_zone,
                 );
-                (cost, obj.spell_effect.clone().unwrap_or_default())
+                (cost, obj.spell_effect_owned().unwrap_or_default())
             } else {
                 (None, crate::resolution::ResolutionProgram::default())
             };
@@ -739,7 +739,7 @@ pub fn apply_priority_response_with_dm(
                 mana_source_chosen_creature_type,
             ) = if let Some(obj) = game.object(*source) {
                 let stable_id = obj.stable_id;
-                let name = obj.name.clone();
+                let name = obj.name.to_string();
                 let snapshot =
                     ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
                 let chosen_creature_type = game.chosen_creature_type(*source);
@@ -1119,7 +1119,7 @@ pub fn apply_priority_response_with_dm(
                     // Create a pending mana ability and show PayMana decision
                     let source_name = game
                         .object(*source)
-                        .map(|o| o.name.clone())
+                        .map(|o| o.name.to_string())
                         .unwrap_or_else(|| "Unknown".to_string());
                     let context = format!("{}'s ability", source_name);
 

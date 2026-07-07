@@ -231,7 +231,7 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                 |object| {
                     ironsmith::decision::linked_other_face_land_definition(game, object)
                         .map(|def| def.card.name)
-                        .unwrap_or_else(|| object.name.clone())
+                        .unwrap_or_else(|| object.name.to_string())
                 },
             );
             format!("Play {}", name)
@@ -467,7 +467,7 @@ pub(super) fn zone_display_name(zone: Zone) -> &'static str {
 
 pub(super) fn object_name(game: &GameState, id: ObjectId) -> String {
     game.object(id)
-        .map(|o| o.name.clone())
+        .map(|o| o.name.to_string())
         .unwrap_or_else(|| format!("Object#{}", id.0))
 }
 
