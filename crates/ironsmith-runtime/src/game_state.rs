@@ -549,11 +549,15 @@ struct RuntimeCacheState {
     continuous_state_active_player: Cell<PlayerId>,
     continuous_state_phase: Cell<Phase>,
     continuous_state_step: Cell<Option<Step>>,
+    /// Memoized "any effect is turn-context-sensitive" keyed by effects
+    /// revision — the classification walks every effect's filter recursively
+    /// and would otherwise run on every cache-validity check.
+    turn_sensitivity: Cell<Option<(u64, bool)>>,
     effects_snapshot: RefCell<Option<(u64, Arc<Vec<ContinuousEffect>>)>>,
     controller_cache: RefCell<Option<ControllerCache>>,
     static_effects_cache: RefCell<crate::static_ability_processor::StaticEffectsCache>,
     trigger_registry: RefCell<Option<crate::triggers::check::TriggerRegistry>>,
-    object_snapshot_cache: RefCell<FxMap<ObjectSnapshotCacheKey, Arc<ObjectSnapshot>>>,
+    object_snapshot_cache: RefCell<ObjectSnapshotCache>,
     characteristics_cache: CharacteristicsCache,
     work_counters: WorkCounters,
 }
@@ -572,19 +576,20 @@ impl Clone for RuntimeCacheState {
             continuous_state_dirty: Cell::new(self.continuous_state_dirty.get()),
             continuous_state_revision: Cell::new(self.continuous_state_revision.get()),
             continuous_state_turn_number: Cell::new(self.continuous_state_turn_number.get()),
+            turn_sensitivity: Cell::new(self.turn_sensitivity.get()),
             continuous_state_active_player: Cell::new(self.continuous_state_active_player.get()),
             continuous_state_phase: Cell::new(self.continuous_state_phase.get()),
             continuous_state_step: Cell::new(self.continuous_state_step.get()),
-            effects_snapshot: RefCell::new(None),
-            controller_cache: RefCell::new(None),
-            static_effects_cache: RefCell::new(
-                crate::static_ability_processor::StaticEffectsCache::default(),
-            ),
-            trigger_registry: RefCell::new(None),
-            object_snapshot_cache: RefCell::new(FxMap::default()),
-            characteristics_cache: CharacteristicsCache::cloned_empty_from(
-                &self.characteristics_cache,
-            ),
+            // Preserve the revision/epoch-keyed caches: checkpoint restores
+            // and hypothetical clones start warm instead of re-deriving the
+            // whole board. All keys (revisions, epochs) clone with the state,
+            // and payloads are Arcs, so this is spine copies + refcount bumps.
+            effects_snapshot: RefCell::new(self.effects_snapshot.borrow().clone()),
+            controller_cache: RefCell::new(self.controller_cache.borrow().clone()),
+            static_effects_cache: RefCell::new(self.static_effects_cache.borrow().clone()),
+            trigger_registry: RefCell::new(self.trigger_registry.borrow().clone()),
+            object_snapshot_cache: RefCell::new(self.object_snapshot_cache.borrow().clone()),
+            characteristics_cache: CharacteristicsCache::cloned_from(&self.characteristics_cache),
             work_counters: WorkCounters::default(),
         }
     }
@@ -602,6 +607,7 @@ impl RuntimeCacheState {
             continuous_state_dirty: Cell::new(true),
             continuous_state_revision: Cell::new(0),
             continuous_state_turn_number: Cell::new(1),
+            turn_sensitivity: Cell::new(None),
             continuous_state_active_player: Cell::new(active_player),
             continuous_state_phase: Cell::new(Phase::Beginning),
             continuous_state_step: Cell::new(Some(Step::Untap)),
@@ -611,18 +617,22 @@ impl RuntimeCacheState {
                 crate::static_ability_processor::StaticEffectsCache::default(),
             ),
             trigger_registry: RefCell::new(None),
-            object_snapshot_cache: RefCell::new(FxMap::default()),
+            object_snapshot_cache: RefCell::new(ObjectSnapshotCache::default()),
             characteristics_cache: CharacteristicsCache::default(),
             work_counters: WorkCounters::default(),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct ObjectSnapshotCacheKey {
-    object_id: ObjectId,
+/// LKI snapshot memo scoped to the current (mutation, effect) revision pair.
+/// Lookups only ever use the current revisions, so entries from older
+/// revisions are unreachable; scoping keeps the map bounded by object count
+/// instead of growing for the whole session.
+#[derive(Debug, Default, Clone)]
+struct ObjectSnapshotCache {
     mutation_revision: u64,
     effect_revision: u64,
+    entries: FxMap<ObjectId, Arc<ObjectSnapshot>>,
 }
 
 #[derive(Debug, Default)]
@@ -638,22 +648,29 @@ struct CharacteristicsCacheEntry {
     epoch: u64,
     effect_revision: u64,
     self_rev: u64,
-    chars: Option<CalculatedCharacteristics>,
+    chars: Option<Arc<CalculatedCharacteristics>>,
 }
 
 impl CharacteristicsCache {
-    fn cloned_empty_from(other: &Self) -> Self {
+    /// Full preserving clone: entries are revision/epoch-keyed pure memos and
+    /// the keys are cloned alongside, so a cloned state's cache stays valid.
+    /// Entry payloads are `Arc`s, so this is a map-spine copy.
+    fn cloned_from(other: &Self) -> Self {
         Self {
             epoch: Cell::new(other.epoch.get()),
             effect_revision: Cell::new(other.effect_revision.get()),
             object_revisions: RefCell::new(other.object_revisions.borrow().clone()),
-            entries: RefCell::new(FxMap::default()),
+            entries: RefCell::new(other.entries.borrow().clone()),
         }
     }
 
     fn bump_epoch(&self) {
         self.epoch.set(self.epoch.get().saturating_add(1));
         self.entries.borrow_mut().clear();
+        // Entries are cleared, so per-object revisions restart consistently;
+        // this prunes ids of objects that no longer exist (zone changes mint
+        // new ids), keeping the map bounded by live objects.
+        self.object_revisions.borrow_mut().clear();
     }
 
     fn bump_object_revision(&self, id: ObjectId, revision: u64) {
@@ -677,7 +694,11 @@ impl CharacteristicsCache {
             .unwrap_or(0)
     }
 
-    fn get(&self, id: ObjectId, effect_revision: u64) -> Option<Option<CalculatedCharacteristics>> {
+    fn get(
+        &self,
+        id: ObjectId,
+        effect_revision: u64,
+    ) -> Option<Option<Arc<CalculatedCharacteristics>>> {
         self.prepare_for_effect_revision(effect_revision);
         let entry = self.entries.borrow().get(&id).cloned()?;
         if entry.epoch == self.epoch.get()
@@ -694,7 +715,22 @@ impl CharacteristicsCache {
         self.get(id, effect_revision).is_some()
     }
 
-    fn insert(&self, id: ObjectId, effect_revision: u64, chars: Option<CalculatedCharacteristics>) {
+    fn insert(
+        &self,
+        id: ObjectId,
+        effect_revision: u64,
+        chars: Option<CalculatedCharacteristics>,
+    ) -> Option<Arc<CalculatedCharacteristics>> {
+        let chars = chars.map(Arc::new);
+        self.insert_arc(id, effect_revision, chars)
+    }
+
+    fn insert_arc(
+        &self,
+        id: ObjectId,
+        effect_revision: u64,
+        chars: Option<Arc<CalculatedCharacteristics>>,
+    ) -> Option<Arc<CalculatedCharacteristics>> {
         self.prepare_for_effect_revision(effect_revision);
         self.entries.borrow_mut().insert(
             id,
@@ -705,10 +741,14 @@ impl CharacteristicsCache {
                 chars,
             },
         );
+        self.entries
+            .borrow()
+            .get(&id)
+            .and_then(|entry| entry.chars.clone())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ControllerCache {
     revision: u64,
     turn_number: u32,
@@ -737,6 +777,8 @@ struct WorkCounters {
     effects_considered: Cell<u64>,
     objects_scanned_in_sba: Cell<u64>,
     derived_view_rebuilds: Cell<u64>,
+    dependency_sorts: Cell<u64>,
+    dependency_pairs_probed: Cell<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -751,6 +793,8 @@ pub struct WorkCounterSnapshot {
     pub effects_considered: u64,
     pub objects_scanned_in_sba: u64,
     pub derived_view_rebuilds: u64,
+    pub dependency_sorts: u64,
+    pub dependency_pairs_probed: u64,
 }
 
 impl WorkCounters {
@@ -762,7 +806,19 @@ impl WorkCounters {
             effects_considered: self.effects_considered.get(),
             objects_scanned_in_sba: self.objects_scanned_in_sba.get(),
             derived_view_rebuilds: self.derived_view_rebuilds.get(),
+            dependency_sorts: self.dependency_sorts.get(),
+            dependency_pairs_probed: self.dependency_pairs_probed.get(),
         }
+    }
+
+    pub(crate) fn bump_dependency_sorts(&self) {
+        self.dependency_sorts
+            .set(self.dependency_sorts.get().saturating_add(1));
+    }
+
+    pub(crate) fn bump_dependency_pairs_probed(&self) {
+        self.dependency_pairs_probed
+            .set(self.dependency_pairs_probed.get().saturating_add(1));
     }
 
     fn bump_characteristics_full_recomputes(&self) {
@@ -2811,6 +2867,14 @@ impl GameState {
         self.runtime_cache.work_counters.snapshot()
     }
 
+    pub(crate) fn note_dependency_sort(&self) {
+        self.runtime_cache.work_counters.bump_dependency_sorts();
+    }
+
+    pub(crate) fn note_dependency_pair_probed(&self) {
+        self.runtime_cache.work_counters.bump_dependency_pairs_probed();
+    }
+
     pub(crate) fn count_static_ability_regen(&self) {
         self.runtime_cache
             .work_counters
@@ -2865,10 +2929,15 @@ impl GameState {
     }
 
     fn cached_continuous_turn_state_matches_current(&self) -> bool {
-        self.runtime_cache.continuous_state_turn_number.get() == self.turn.turn_number
+        if self.runtime_cache.continuous_state_turn_number.get() == self.turn.turn_number
             && self.runtime_cache.continuous_state_active_player.get() == self.turn.active_player
             && self.runtime_cache.continuous_state_phase.get() == self.turn.phase
             && self.runtime_cache.continuous_state_step.get() == self.turn.step
+        {
+            return true;
+        }
+
+        !self.cached_continuous_effects_are_turn_context_sensitive()
     }
 
     pub(crate) fn continuous_state_is_clean(&self) -> bool {
@@ -2876,6 +2945,217 @@ impl GameState {
             && self.runtime_cache.continuous_state_revision.get()
                 == self.effect_store.continuous_effects.revision()
             && self.cached_continuous_turn_state_matches_current()
+    }
+
+    fn cached_continuous_effects_are_turn_context_sensitive(&self) -> bool {
+        let revision = self.effect_store.continuous_effects.revision();
+        if let Some((cached_revision, sensitive)) = self.runtime_cache.turn_sensitivity.get()
+            && cached_revision == revision
+        {
+            return sensitive;
+        }
+        let sensitive = self
+            .cached_continuous_effects_snapshot_arc()
+            .iter()
+            .any(Self::continuous_effect_is_turn_context_sensitive);
+        self.runtime_cache
+            .turn_sensitivity
+            .set(Some((revision, sensitive)));
+        sensitive
+    }
+
+    fn continuous_effect_is_turn_context_sensitive(effect: &ContinuousEffect) -> bool {
+        !matches!(effect.duration, Until::Forever)
+            || effect.condition.is_some()
+            || Self::effect_target_is_turn_context_sensitive(&effect.applies_to)
+            || Self::modification_is_turn_context_sensitive(&effect.modification)
+    }
+
+    fn effect_target_is_turn_context_sensitive(target: &EffectTarget) -> bool {
+        match target {
+            EffectTarget::Filter(filter) => Self::object_filter_is_turn_context_sensitive(filter),
+            _ => false,
+        }
+    }
+
+    fn modification_is_turn_context_sensitive(modification: &Modification) -> bool {
+        match modification {
+            Modification::SetPower { value, .. } | Modification::SetToughness { value, .. } => {
+                Self::value_is_turn_context_sensitive(value)
+            }
+            Modification::SetPowerToughness {
+                power, toughness, ..
+            } => {
+                Self::value_is_turn_context_sensitive(power)
+                    || Self::value_is_turn_context_sensitive(toughness)
+            }
+            _ => false,
+        }
+    }
+
+    fn value_is_turn_context_sensitive(value: &crate::effect::Value) -> bool {
+        match value {
+            crate::effect::Value::SurfaceHinted { value, .. }
+            | crate::effect::Value::Scaled(value, _)
+            | crate::effect::Value::DividedRoundedDown(value, _)
+            | crate::effect::Value::HalfRoundedDown(value) => {
+                Self::value_is_turn_context_sensitive(value)
+            }
+            crate::effect::Value::Add(left, right) | crate::effect::Value::Min(left, right) => {
+                Self::value_is_turn_context_sensitive(left)
+                    || Self::value_is_turn_context_sensitive(right)
+            }
+            crate::effect::Value::Count(filter)
+            | crate::effect::Value::CountScaled(filter, _)
+            | crate::effect::Value::GreatestCount(filter)
+            | crate::effect::Value::TotalPower(filter)
+            | crate::effect::Value::TotalToughness(filter)
+            | crate::effect::Value::TotalManaValue(filter)
+            | crate::effect::Value::GreatestPower(filter)
+            | crate::effect::Value::GreatestToughness(filter)
+            | crate::effect::Value::GreatestManaValue(filter)
+            | crate::effect::Value::BasicLandTypesAmong(filter)
+            | crate::effect::Value::CreatureTypesAmong(filter)
+            | crate::effect::Value::CardTypesAmong(filter)
+            | crate::effect::Value::ColorsAmong(filter)
+            | crate::effect::Value::DistinctNames(filter)
+            | crate::effect::Value::DistinctPowers(filter)
+            | crate::effect::Value::PlayersWhoControlMoreThanYou(filter)
+            | crate::effect::Value::StaticAbilitiesAmong { filter, .. } => {
+                Self::object_filter_is_turn_context_sensitive(filter)
+            }
+            crate::effect::Value::CreaturesDiedThisTurn
+            | crate::effect::Value::CreaturesDiedThisTurnControlledBy(_)
+            | crate::effect::Value::PlayersBeingAttacked
+            | crate::effect::Value::LifeTotalAsTurnBegan(_)
+            | crate::effect::Value::LifeGainedThisTurn(_)
+            | crate::effect::Value::LifeLostThisTurn(_)
+            | crate::effect::Value::CardsDiscardedThisTurn(_)
+            | crate::effect::Value::DamageDealtToPlayersThisTurn(_)
+            | crate::effect::Value::NoncombatDamageDealtToPlayersThisTurn(_)
+            | crate::effect::Value::NoncombatDamageDealtBySourcesControlledThisTurn { .. }
+            | crate::effect::Value::MaxCardsDrawnThisTurn(_)
+            | crate::effect::Value::MaxDiceRolledThisTurn(_)
+            | crate::effect::Value::LandsEnteredBattlefieldThisTurn(_)
+            | crate::effect::Value::SpellsCastThisTurn(_)
+            | crate::effect::Value::SpellsCastBeforeThisTurn(_)
+            | crate::effect::Value::SpellsCastThisTurnMatching { .. }
+            | crate::effect::Value::CommanderCastCount(_)
+            | crate::effect::Value::ThisAbilityResolvedThisTurnCount
+            | crate::effect::Value::SourceRegeneratedThisTurnCount
+            | crate::effect::Value::DamageDealtThisTurnByTaggedSpellCast(_) => true,
+            crate::effect::Value::CountPlayers(player)
+            | crate::effect::Value::PartySize(player)
+            | crate::effect::Value::LifeTotal(player)
+            | crate::effect::Value::LifeTotalDifference(player)
+            | crate::effect::Value::UnspentMana(player)
+            | crate::effect::Value::Speed(player)
+            | crate::effect::Value::StartingLifeTotal(player)
+            | crate::effect::Value::HalfLifeTotalRoundedUp(player)
+            | crate::effect::Value::HalfLifeTotalRoundedDown(player)
+            | crate::effect::Value::HalfStartingLifeTotalRoundedUp(player)
+            | crate::effect::Value::HalfStartingLifeTotalRoundedDown(player)
+            | crate::effect::Value::CardsInHand(player)
+            | crate::effect::Value::CardsInLibrary(player)
+            | crate::effect::Value::DevotionToChosenColor(player)
+            | crate::effect::Value::MaxCardsInHand(player)
+            | crate::effect::Value::CardsInGraveyard(player)
+            | crate::effect::Value::CardTypesInGraveyard(player)
+            | crate::effect::Value::Devotion { player, .. } => {
+                Self::player_filter_is_turn_context_sensitive(player)
+            }
+            _ => false,
+        }
+    }
+
+    fn object_filter_is_turn_context_sensitive(filter: &crate::target::ObjectFilter) -> bool {
+        filter.cast_this_turn
+            || filter.first_spell_cast_each_turn
+            || filter.attacking
+            || filter.attacked_this_turn
+            || filter.nonattacking
+            || filter.enlist_eligible
+            || filter.blocking
+            || filter.nonblocking
+            || filter.blocked
+            || filter.blocked_by.is_some()
+            || filter.blocked_by_source
+            || filter.unblocked
+            || filter.in_combat_with_source
+            || filter.entered_since_your_last_turn_ended
+            || filter.entered_battlefield_this_turn
+            || filter.entered_graveyard_this_turn
+            || filter.entered_graveyard_from_battlefield_this_turn
+            || filter.surveilled_this_turn
+            || filter.was_dealt_damage_this_turn
+            || filter.dealt_damage_by_source_this_turn.is_some()
+            || filter.drawn_this_turn
+            || Self::player_filter_option_is_turn_context_sensitive(filter.controller.as_ref())
+            || Self::player_filter_option_is_turn_context_sensitive(filter.cast_by.as_ref())
+            || Self::player_filter_option_is_turn_context_sensitive(filter.owner.as_ref())
+            || Self::player_filter_option_is_turn_context_sensitive(filter.targets_player.as_ref())
+            || Self::player_filter_option_is_turn_context_sensitive(
+                filter.targets_only_player.as_ref(),
+            )
+            || Self::player_filter_option_is_turn_context_sensitive(
+                filter
+                    .attacking_player_or_planeswalker_controlled_by
+                    .as_ref(),
+            )
+            || Self::player_filter_option_is_turn_context_sensitive(
+                filter.attached_to_player.as_ref(),
+            )
+            || Self::player_filter_option_is_turn_context_sensitive(
+                filter.entered_battlefield_controller.as_ref(),
+            )
+            || Self::player_filter_option_is_turn_context_sensitive(
+                filter.discarded_or_cycled_this_turn_by.as_ref(),
+            )
+            || Self::player_filter_option_is_turn_context_sensitive(
+                filter.dealt_damage_to_player_this_turn.as_ref(),
+            )
+            || filter
+                .targets_object
+                .as_deref()
+                .is_some_and(Self::object_filter_is_turn_context_sensitive)
+            || filter
+                .targets_only_object
+                .as_deref()
+                .is_some_and(Self::object_filter_is_turn_context_sensitive)
+            || filter
+                .no_shared_creature_types_with
+                .iter()
+                .any(Self::object_filter_is_turn_context_sensitive)
+            || filter
+                .any_of
+                .iter()
+                .any(Self::object_filter_is_turn_context_sensitive)
+    }
+
+    fn player_filter_option_is_turn_context_sensitive(
+        filter: Option<&crate::target::PlayerFilter>,
+    ) -> bool {
+        filter.is_some_and(Self::player_filter_is_turn_context_sensitive)
+    }
+
+    fn player_filter_is_turn_context_sensitive(filter: &crate::target::PlayerFilter) -> bool {
+        match filter {
+            crate::target::PlayerFilter::Active
+            | crate::target::PlayerFilter::Attacking
+            | crate::target::PlayerFilter::Defending
+            | crate::target::PlayerFilter::CastCardTypeThisTurn(_) => true,
+            crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
+            | crate::target::PlayerFilter::HasMoreLifeThanYou { base }
+            | crate::target::PlayerFilter::MaxSpeed { base, .. }
+            | crate::target::PlayerFilter::Target(base) => {
+                Self::player_filter_is_turn_context_sensitive(base)
+            }
+            crate::target::PlayerFilter::Excluding { base, excluded } => {
+                Self::player_filter_is_turn_context_sensitive(base)
+                    || Self::player_filter_is_turn_context_sensitive(excluded)
+            }
+            _ => false,
+        }
     }
 
     /// Set the deterministic RNG seed for this match.
@@ -4617,7 +4897,13 @@ impl GameState {
                 .get(&old_id)
                 .map(|obj| self.cached_object_snapshot_with_calculated_characteristics(obj))
         });
-        let pre_event_lookback_source_snapshots = self.trigger_source_lookback_snapshots();
+        let pre_event_lookback_source_snapshots = if self
+            .may_have_triggered_abilities_for_event_kind(crate::events::EventKind::ZoneChange)
+        {
+            self.trigger_source_lookback_snapshots()
+        } else {
+            Vec::new()
+        };
         if let Some(snapshot) = pre_move_snapshot.as_ref() {
             for entry in &mut self.stack {
                 if entry.is_ability
@@ -6430,12 +6716,12 @@ impl GameState {
         }
     }
 
-    pub fn calculated_characteristics(
+    pub fn calculated_characteristics_arc(
         &self,
         id: ObjectId,
-    ) -> Option<crate::continuous::CalculatedCharacteristics> {
+    ) -> Option<Arc<crate::continuous::CalculatedCharacteristics>> {
         if let Some(chars) = crate::continuous::in_progress_characteristics(id) {
-            return Some(chars);
+            return Some(Arc::new(chars));
         }
         let effects_revision = self.effect_store.continuous_effects.revision();
         if self.continuous_state_is_clean() {
@@ -6448,8 +6734,8 @@ impl GameState {
                     .work_counters
                     .bump_characteristics_cache_hits();
                 #[cfg(feature = "paranoid-invariants")]
-                self.assert_cached_characteristics_fresh(id, cached.as_ref());
-                return cached.clone();
+                self.assert_cached_characteristics_fresh(id, cached.as_deref());
+                return cached;
             }
         }
 
@@ -6477,13 +6763,16 @@ impl GameState {
             if !missing.is_empty() {
                 let calculated_batch =
                     self.calculated_characteristics_batch_with_effects(&missing, &all_effects);
-                let calculated = calculated_batch.get(&id).cloned();
+                let mut calculated = None;
                 for candidate in missing {
-                    self.runtime_cache.characteristics_cache.insert(
+                    let cached = self.runtime_cache.characteristics_cache.insert(
                         candidate,
                         effects_revision,
                         calculated_batch.get(&candidate).cloned(),
                     );
+                    if candidate == id {
+                        calculated = cached;
+                    }
                 }
                 return calculated;
             }
@@ -6491,13 +6780,21 @@ impl GameState {
 
         let calculated = self.calculated_characteristics_with_effects(id, &all_effects);
         if self.continuous_state_is_clean() {
-            self.runtime_cache.characteristics_cache.insert(
+            return self.runtime_cache.characteristics_cache.insert(
                 id,
                 effects_revision,
-                calculated.clone(),
+                calculated,
             );
         }
-        calculated
+        calculated.map(Arc::new)
+    }
+
+    pub fn calculated_characteristics(
+        &self,
+        id: ObjectId,
+    ) -> Option<crate::continuous::CalculatedCharacteristics> {
+        self.calculated_characteristics_arc(id)
+            .map(|chars| chars.as_ref().clone())
     }
 
     #[cfg(feature = "paranoid-invariants")]
@@ -6528,15 +6825,15 @@ impl GameState {
         let mut chars =
             self.calculated_characteristics(id)
                 .unwrap_or_else(|| CalculatedCharacteristics {
-                    name: object.name.to_string(),
+                    name: object.name.clone(),
                     compiled_card_text: object.compiled_card_text.clone(),
                     power: object.power(),
                     toughness: object.toughness(),
-                    card_types: object.card_types.to_vec(),
-                    subtypes: object.subtypes.to_vec(),
-                    supertypes: object.supertypes.to_vec(),
+                    card_types: object.card_types.clone(),
+                    subtypes: object.subtypes.clone(),
+                    supertypes: object.supertypes.clone(),
                     colors: object.colors(),
-                    abilities: object.abilities_vec(),
+                    abilities: object.abilities.clone().into(),
                     static_abilities: object
                         .abilities
                         .iter()
@@ -6552,7 +6849,8 @@ impl GameState {
                                 .filter(|grant| !grant.is_expired(self.turn.turn_number))
                                 .filter_map(|grant| grant.materialize()),
                         )
-                        .collect(),
+                        .collect::<Vec<_>>()
+                        .into(),
                     aura_attach_filter: object.aura_attach_filter_owned(),
                     controller: self.controller_of(object),
                 });
@@ -6583,7 +6881,7 @@ impl GameState {
 
     /// Return the object's current name in its zone.
     pub fn current_name(&self, id: ObjectId) -> Option<String> {
-        Some(self.current_characteristics(id)?.name)
+        Some(self.current_characteristics(id)?.name.to_owned_string())
     }
 
     /// Return the object's current controller in its zone.
@@ -6782,17 +7080,17 @@ impl GameState {
 
     /// Return the object's current card types in its zone.
     pub fn current_card_types(&self, id: ObjectId) -> Option<Vec<crate::types::CardType>> {
-        Some(self.current_characteristics(id)?.card_types)
+        Some(self.current_characteristics(id)?.card_types.to_vec())
     }
 
     /// Return the object's current subtypes in its zone.
     pub fn current_subtypes(&self, id: ObjectId) -> Option<Vec<crate::types::Subtype>> {
-        Some(self.current_characteristics(id)?.subtypes)
+        Some(self.current_characteristics(id)?.subtypes.to_vec())
     }
 
     /// Return the object's current supertypes in its zone.
     pub fn current_supertypes(&self, id: ObjectId) -> Option<Vec<crate::types::Supertype>> {
-        Some(self.current_characteristics(id)?.supertypes)
+        Some(self.current_characteristics(id)?.supertypes.to_vec())
     }
 
     /// Return the object's current colors in its zone.
@@ -6812,7 +7110,7 @@ impl GameState {
 
     /// Return the abilities an object currently has in its zone.
     pub fn current_abilities(&self, id: ObjectId) -> Option<Vec<Ability>> {
-        Some(self.current_characteristics(id)?.abilities)
+        Some(self.current_characteristics(id)?.abilities.to_vec())
     }
 
     /// Return a specific current ability by index.
@@ -6864,7 +7162,7 @@ impl GameState {
         effects: &[ContinuousEffect],
     ) -> Vec<crate::types::Subtype> {
         self.calculated_characteristics_with_effects(id, effects)
-            .map(|c| c.subtypes)
+            .map(|c| c.subtypes.to_vec())
             .unwrap_or_default()
     }
 
@@ -6941,14 +7239,14 @@ impl GameState {
     /// Get the calculated subtypes of an object (with continuous effects applied).
     pub fn calculated_subtypes(&self, id: ObjectId) -> Vec<crate::types::Subtype> {
         self.calculated_characteristics(id)
-            .map(|c| c.subtypes)
+            .map(|c| c.subtypes.to_vec())
             .unwrap_or_default()
     }
 
     /// Get the calculated card types of an object (with continuous effects applied).
     pub fn calculated_card_types(&self, id: ObjectId) -> Vec<crate::types::CardType> {
         self.calculated_characteristics(id)
-            .map(|c| c.card_types)
+            .map(|c| c.card_types.to_vec())
             .unwrap_or_default()
     }
 
@@ -7010,12 +7308,20 @@ impl GameState {
             player.land_plays_per_turn = 1;
         }
 
+        let all_effects = if self.continuous_state_is_clean() {
+            self.cached_continuous_effects_snapshot_arc()
+        } else {
+            Arc::new(self.all_continuous_effects())
+        };
+        if self.cant_effects_static_scan_can_stay_empty(all_effects.as_slice()) {
+            return;
+        }
+
         // First, collect static abilities from objects in zones where they function.
         // Battlefield abilities must come from calculated characteristics so
         // temporary grants/removals like "loses defender until end of turn" are
         // reflected in restriction tracking.
         // We collect first to avoid borrow conflicts while applying restrictions.
-        let all_effects = self.all_continuous_effects();
         let battlefield_ids: Vec<_> = self
             .objects
             .iter()
@@ -7023,8 +7329,9 @@ impl GameState {
                 (object.zone == Zone::Battlefield).then_some(object_id)
             })
             .collect();
-        let battlefield_characteristics =
-            self.calculated_characteristics_batch_with_effects(&battlefield_ids, &all_effects);
+        if self.continuous_state_is_clean() {
+            self.prewarm_calculated_characteristics(&battlefield_ids);
+        }
         let abilities_to_apply: Vec<(StaticAbility, ObjectId, PlayerId)> = self
             .objects
             .iter()
@@ -7033,20 +7340,25 @@ impl GameState {
                 let controller = self.controller_of(object);
                 match zone {
                     Zone::Battlefield => Some(
-                        battlefield_characteristics
-                            .get(&object_id)
-                            .map(|chars| {
-                                chars
-                                    .static_abilities
-                                    .iter()
-                                    .filter(|static_ability| {
-                                        static_ability.is_active(self, object_id)
-                                    })
-                                    .cloned()
-                                    .map(|static_ability| (static_ability, object_id, controller))
-                                    .collect::<Vec<_>>()
-                            })
-                            .unwrap_or_default(),
+                        if self.continuous_state_is_clean() {
+                            self.calculated_characteristics_arc(object_id)
+                        } else {
+                            self.calculated_characteristics_with_effects(
+                                object_id,
+                                all_effects.as_slice(),
+                            )
+                            .map(Arc::new)
+                        }
+                        .map(|chars| {
+                            chars
+                                .static_abilities
+                                .iter()
+                                .filter(|static_ability| static_ability.is_active(self, object_id))
+                                .cloned()
+                                .map(|static_ability| (static_ability, object_id, controller))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default(),
                     ),
                     Zone::Stack => Some(
                         object
@@ -7133,6 +7445,189 @@ impl GameState {
         }
     }
 
+    fn cant_effects_static_scan_can_stay_empty(&self, all_effects: &[ContinuousEffect]) -> bool {
+        use crate::ability::AbilityKind;
+
+        if !self.effect_store.restriction_effects.is_empty()
+            || !self.effect_store.goad_effects.is_empty()
+        {
+            return false;
+        }
+
+        if all_effects
+            .iter()
+            .any(Self::continuous_effect_requires_cant_update)
+        {
+            return false;
+        }
+
+        self.objects.values().all(|object| {
+            if !matches!(object.zone, Zone::Battlefield | Zone::Stack) {
+                return true;
+            }
+            object.abilities.iter().all(|ability| {
+                if !ability.functions_in(&object.zone) {
+                    return true;
+                }
+                match &ability.kind {
+                    AbilityKind::Static(static_ability) => {
+                        !Self::static_ability_requires_cant_update(static_ability)
+                    }
+                    _ => true,
+                }
+            })
+        })
+    }
+
+    fn continuous_effect_requires_cant_update(effect: &ContinuousEffect) -> bool {
+        Self::modification_requires_cant_update(&effect.modification)
+    }
+
+    fn modification_requires_cant_update(modification: &Modification) -> bool {
+        // Exhaustive on purpose: answering `false` for a variant that can add
+        // or remove cant-relevant static abilities silently skips restriction
+        // tracking (e.g. an aura's "doesn't untap" never taking effect).
+        match modification {
+            Modification::CopyOf { .. }
+            | Modification::ChangeText { .. }
+            | Modification::SetTextBox(_)
+            // Restriction modifications materialize as cant-relevant static
+            // abilities in calculated characteristics.
+            | Modification::CantBeBlocked
+            | Modification::CantAttack
+            | Modification::CantBlock
+            | Modification::DoesntUntap
+            // Removals can strip cant-relevant statics granted by other
+            // effects; rerun the scan rather than reason about ordering.
+            | Modification::RemoveAbility(_)
+            | Modification::RemoveAbilityGeneric(_)
+            | Modification::RemoveAllAbilities
+            | Modification::RemoveAllAbilitiesExceptMana => true,
+            Modification::AddAbility(static_ability) => {
+                Self::static_ability_requires_cant_update(static_ability)
+            }
+            Modification::AddAbilityGeneric(ability) => Self::ability_requires_cant_update(ability),
+            Modification::SetAbilities(abilities) => {
+                abilities.iter().any(Self::ability_requires_cant_update)
+            }
+            // Activated/triggered ability additions and pure characteristic
+            // changes cannot introduce cant-relevant statics.
+            Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyTriggeredAbilities { .. }
+            | Modification::AddCombatDamageDrawAbility
+            | Modification::ChangeController(_)
+            | Modification::SetName(_)
+            | Modification::AddCardTypes(_)
+            | Modification::RemoveCardTypes(_)
+            | Modification::SetCardTypes(_)
+            | Modification::AddSubtypes(_)
+            | Modification::AddAllSubtypesOfFamily(_)
+            | Modification::RemoveSubtypes(_)
+            | Modification::RemoveAllSubtypesOfFamily(_)
+            | Modification::SetSubtypes(_)
+            | Modification::SetAuraAttachmentFilter(_)
+            | Modification::AddSupertypes(_)
+            | Modification::RemoveSupertypes(_)
+            | Modification::RemoveAllCreatureTypes
+            | Modification::AddColors(_)
+            | Modification::RemoveColors(_)
+            | Modification::SetColors(_)
+            | Modification::MakeColorless
+            | Modification::SetPower { .. }
+            | Modification::SetToughness { .. }
+            | Modification::SetPowerToughness { .. }
+            | Modification::ModifyPower(_)
+            | Modification::ModifyToughness(_)
+            | Modification::ModifyPowerToughness { .. }
+            | Modification::ModifyPowerToughnessByColorCount { .. }
+            | Modification::SwitchPowerToughness => false,
+        }
+    }
+
+    fn ability_requires_cant_update(ability: &crate::ability::Ability) -> bool {
+        match &ability.kind {
+            crate::ability::AbilityKind::Static(static_ability) => {
+                Self::static_ability_requires_cant_update(static_ability)
+            }
+            _ => false,
+        }
+    }
+
+    fn static_ability_requires_cant_update(
+        static_ability: &crate::static_abilities::StaticAbility,
+    ) -> bool {
+        use crate::static_abilities::StaticAbilityId;
+
+        !matches!(
+            static_ability.id(),
+            StaticAbilityId::Flying
+                | StaticAbilityId::FirstStrike
+                | StaticAbilityId::DoubleStrike
+                | StaticAbilityId::Deathtouch
+                | StaticAbilityId::Flash
+                | StaticAbilityId::Haste
+                | StaticAbilityId::Intimidate
+                | StaticAbilityId::Lifelink
+                | StaticAbilityId::Menace
+                | StaticAbilityId::Reach
+                | StaticAbilityId::Trample
+                | StaticAbilityId::Vigilance
+                | StaticAbilityId::Fear
+                | StaticAbilityId::Skulk
+                | StaticAbilityId::Prowess
+                | StaticAbilityId::Flanking
+                | StaticAbilityId::UmbraArmor
+                | StaticAbilityId::Landwalk
+                | StaticAbilityId::Shadow
+                | StaticAbilityId::Horsemanship
+                | StaticAbilityId::Wither
+                | StaticAbilityId::Infect
+                | StaticAbilityId::Changeling
+                | StaticAbilityId::Partner
+                | StaticAbilityId::PartnerWith
+                | StaticAbilityId::DoctorsCompanion
+                | StaticAbilityId::Assist
+                | StaticAbilityId::ReadAhead
+                | StaticAbilityId::Anthem
+                | StaticAbilityId::GrantAbility
+                | StaticAbilityId::GrantObjectAbilityForFilter
+                | StaticAbilityId::EquipmentGrant
+                | StaticAbilityId::AttachedAbilityGrant
+                | StaticAbilityId::CharacteristicDefiningPT
+                | StaticAbilityId::SetBasePowerToughnessForFilter
+                | StaticAbilityId::AddCardTypes
+                | StaticAbilityId::RemoveCardTypes
+                | StaticAbilityId::SetCardTypes
+                | StaticAbilityId::AddSubtypes
+                | StaticAbilityId::AddAllSubtypesOfFamily
+                | StaticAbilityId::SetLandSubtypes
+                | StaticAbilityId::SetCreatureSubtypes
+                | StaticAbilityId::AddColors
+                | StaticAbilityId::SetColors
+                | StaticAbilityId::SetName
+                | StaticAbilityId::MakeColorless
+                | StaticAbilityId::AddSupertypes
+                | StaticAbilityId::RemoveSupertypes
+                | StaticAbilityId::CostReduction
+                | StaticAbilityId::ActivatedAbilityCostReduction
+                | StaticAbilityId::ActivatedAbilityCostIncrease
+                | StaticAbilityId::ThisSpellCostReduction
+                | StaticAbilityId::ThisSpellCostReductionManaCost
+                | StaticAbilityId::CostIncrease
+                | StaticAbilityId::CostReductionManaCost
+                | StaticAbilityId::CostIncreaseManaCost
+                | StaticAbilityId::CostIncreasePerAdditionalTarget
+                | StaticAbilityId::CostIncreaseManaCostPerAdditionalTarget
+                | StaticAbilityId::Affinity
+                | StaticAbilityId::AffinityForArtifacts
+                | StaticAbilityId::Delve
+                | StaticAbilityId::Convoke
+                | StaticAbilityId::Improvise
+                | StaticAbilityId::BlackManaMayBePaidWithLife
+                | StaticAbilityId::MinimumSpellTotalMana
+        )
+    }
+
     pub fn keep_damage_marked(&mut self, object: ObjectId) {
         self.battlefield_flags_mut().damage_persists.insert(object);
     }
@@ -7184,6 +7679,17 @@ impl GameState {
         self.effect_store
             .replacement_effects
             .clear_static_ability_effects();
+
+        if self.continuous_state_is_clean() {
+            let battlefield_ids: Vec<_> = self
+                .objects
+                .iter()
+                .filter_map(|(&object_id, object)| {
+                    (object.zone == Zone::Battlefield).then_some(object_id)
+                })
+                .collect();
+            self.prewarm_calculated_characteristics(&battlefield_ids);
+        }
 
         // Generate and register new ones from current battlefield state
         let effects = generate_replacement_effects_from_abilities(self);
@@ -7410,6 +7916,9 @@ impl GameState {
     }
 
     pub fn player_skips_upkeep_step(&self, player: PlayerId) -> bool {
+        if !self.may_have_player_skips_upkeep_static_ability() {
+            return false;
+        }
         self.with_active_battlefield_static_abilities(|source, controller, ability| {
             ability
                 .skips_upkeep_for_player(self, source, controller, player)
@@ -7417,6 +7926,69 @@ impl GameState {
         })
         .unwrap_or(false)
             && self.player(player).is_some()
+    }
+
+    fn may_have_player_skips_upkeep_static_ability(&self) -> bool {
+        use crate::ability::AbilityKind;
+        use crate::static_abilities::StaticAbilityId;
+
+        if self
+            .cached_continuous_effects_snapshot()
+            .iter()
+            .any(|effect| {
+                Self::modification_may_grant_static_ability_id(
+                    &effect.modification,
+                    StaticAbilityId::PlayersSkipUpkeep,
+                )
+            })
+        {
+            return true;
+        }
+
+        self.objects.values().any(|object| {
+            if !matches!(object.zone, Zone::Battlefield | Zone::Stack) {
+                return false;
+            }
+            object.abilities.iter().any(|ability| {
+                ability.functions_in(&object.zone)
+                    && matches!(&ability.kind, AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::PlayersSkipUpkeep)
+            })
+        })
+    }
+
+    fn modification_may_grant_static_ability_id(
+        modification: &Modification,
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        use crate::static_abilities::StaticAbilityId;
+        match modification {
+            Modification::CopyOf { .. }
+            | Modification::ChangeText { .. }
+            | Modification::SetTextBox(_) => true,
+            Modification::AddAbility(static_ability) => static_ability.id() == ability_id,
+            Modification::AddAbilityGeneric(ability) => {
+                Self::ability_may_grant_static_ability_id(ability, ability_id)
+            }
+            Modification::SetAbilities(abilities) => abilities
+                .iter()
+                .any(|ability| Self::ability_may_grant_static_ability_id(ability, ability_id)),
+            // Restriction modifications materialize as static abilities in
+            // calculated characteristics (see apply path in continuous.rs).
+            Modification::CantBeBlocked => ability_id == StaticAbilityId::Unblockable,
+            Modification::CantAttack => ability_id == StaticAbilityId::Defender,
+            Modification::CantBlock => ability_id == StaticAbilityId::CantBlock,
+            Modification::DoesntUntap => ability_id == StaticAbilityId::DoesntUntap,
+            _ => false,
+        }
+    }
+
+    fn ability_may_grant_static_ability_id(
+        ability: &crate::ability::Ability,
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+            if static_ability.id() == ability_id)
     }
 
     fn object_is_land_for_cost_restrictions(&self, object_id: ObjectId) -> bool {
@@ -8471,13 +9043,20 @@ impl GameState {
         object: &Object,
         effects: &[ContinuousEffect],
     ) -> ObjectSnapshot {
-        let key = ObjectSnapshotCacheKey {
-            object_id: object.id,
-            mutation_revision: self.mutation_revision,
-            effect_revision: self.effect_store.continuous_effects.revision(),
-        };
-        if let Some(snapshot) = self.runtime_cache.object_snapshot_cache.borrow().get(&key) {
-            return snapshot.as_ref().clone();
+        let mutation_revision = self.mutation_revision;
+        let effect_revision = self.effect_store.continuous_effects.revision();
+        {
+            let mut cache = self.runtime_cache.object_snapshot_cache.borrow_mut();
+            if cache.mutation_revision != mutation_revision
+                || cache.effect_revision != effect_revision
+            {
+                cache.entries.clear();
+                cache.mutation_revision = mutation_revision;
+                cache.effect_revision = effect_revision;
+            }
+            if let Some(snapshot) = cache.entries.get(&object.id) {
+                return snapshot.as_ref().clone();
+            }
         }
 
         let snapshot = Arc::new(
@@ -8485,10 +9064,12 @@ impl GameState {
                 object, self, effects,
             ),
         );
-        self.runtime_cache
-            .object_snapshot_cache
-            .borrow_mut()
-            .insert(key, Arc::clone(&snapshot));
+        let mut cache = self.runtime_cache.object_snapshot_cache.borrow_mut();
+        if cache.mutation_revision == mutation_revision
+            && cache.effect_revision == effect_revision
+        {
+            cache.entries.insert(object.id, Arc::clone(&snapshot));
+        }
         snapshot.as_ref().clone()
     }
 
@@ -8505,19 +9086,9 @@ impl GameState {
 
     pub(crate) fn trigger_source_lookback_snapshots(&self) -> Vec<ObjectSnapshot> {
         let all_effects = self.all_continuous_effects();
-        let ability_effects_can_add_triggers = all_effects.iter().any(|effect| {
-            matches!(
-                effect.modification,
-                Modification::AddAbility(_)
-                    | Modification::AddAbilityGeneric(_)
-                    | Modification::SetAbilities(_)
-                    | Modification::CopyTriggeredAbilities { .. }
-                    | Modification::RemoveAbility(_)
-                    | Modification::RemoveAbilityGeneric(_)
-                    | Modification::RemoveAllAbilities
-                    | Modification::RemoveAllAbilitiesExceptMana
-            )
-        });
+        let ability_effects_can_add_triggers = all_effects
+            .iter()
+            .any(|effect| Self::modification_can_change_triggered_abilities(&effect.modification));
         self.objects_in_deterministic_order()
             .into_iter()
             .filter(|object| {
@@ -8540,6 +9111,94 @@ impl GameState {
                 })
             })
             .collect()
+    }
+
+    fn modification_can_change_triggered_abilities(modification: &Modification) -> bool {
+        // Exhaustive on purpose: a new Modification variant must decide this
+        // explicitly. Answering `false` for a variant that can alter the
+        // triggered-ability list silently drops LKI trigger snapshots.
+        match modification {
+            // Rewrites the whole ability list or text box, so triggered
+            // abilities can appear or disappear. SetAbilities replaces the
+            // existing list even when it only sets static abilities.
+            Modification::CopyOf { .. }
+            | Modification::ChangeText { .. }
+            | Modification::SetTextBox(_)
+            | Modification::SetAbilities(_)
+            | Modification::CopyTriggeredAbilities { .. }
+            | Modification::AddCombatDamageDrawAbility
+            | Modification::RemoveAllAbilities
+            | Modification::RemoveAllAbilitiesExceptMana => true,
+            Modification::AddAbilityGeneric(ability)
+            | Modification::RemoveAbilityGeneric(ability) => {
+                matches!(ability.kind, AbilityKind::Triggered(_))
+            }
+            // Static-only ability edits and pure characteristic changes
+            // cannot change the triggered-ability list.
+            Modification::AddAbility(_)
+            | Modification::RemoveAbility(_)
+            | Modification::CopyActivatedAbilities { .. }
+            | Modification::ChangeController(_)
+            | Modification::SetName(_)
+            | Modification::AddCardTypes(_)
+            | Modification::RemoveCardTypes(_)
+            | Modification::SetCardTypes(_)
+            | Modification::AddSubtypes(_)
+            | Modification::AddAllSubtypesOfFamily(_)
+            | Modification::RemoveSubtypes(_)
+            | Modification::RemoveAllSubtypesOfFamily(_)
+            | Modification::SetSubtypes(_)
+            | Modification::SetAuraAttachmentFilter(_)
+            | Modification::AddSupertypes(_)
+            | Modification::RemoveSupertypes(_)
+            | Modification::RemoveAllCreatureTypes
+            | Modification::AddColors(_)
+            | Modification::RemoveColors(_)
+            | Modification::SetColors(_)
+            | Modification::MakeColorless
+            | Modification::CantBeBlocked
+            | Modification::CantAttack
+            | Modification::CantBlock
+            | Modification::DoesntUntap
+            | Modification::SetPower { .. }
+            | Modification::SetToughness { .. }
+            | Modification::SetPowerToughness { .. }
+            | Modification::ModifyPower(_)
+            | Modification::ModifyToughness(_)
+            | Modification::ModifyPowerToughness { .. }
+            | Modification::ModifyPowerToughnessByColorCount { .. }
+            | Modification::SwitchPowerToughness => false,
+        }
+    }
+
+    pub(crate) fn may_have_triggered_abilities_for_event_kind(
+        &self,
+        event_kind: EventKind,
+    ) -> bool {
+        let all_effects = self.all_continuous_effects();
+        if all_effects
+            .iter()
+            .any(|effect| Self::modification_can_change_triggered_abilities(&effect.modification))
+        {
+            return true;
+        }
+
+        self.objects.values().any(|object| {
+            object.abilities.iter().any(|ability| {
+                if !matches!(ability.kind, AbilityKind::Triggered(_))
+                    || !ability.functions_in(&object.zone)
+                {
+                    return false;
+                }
+                let AbilityKind::Triggered(triggered) = &ability.kind else {
+                    return false;
+                };
+                triggered
+                    .trigger
+                    .subscribed_kinds()
+                    .is_none_or(|kinds| kinds.contains(&event_kind))
+            })
+        })
     }
 
     /// Returns all permanents controlled by a player.
@@ -9816,19 +10475,29 @@ impl GameState {
     /// Untap a permanent.
     pub fn untap(&mut self, id: ObjectId) {
         let changed = self.battlefield_flags_mut().tapped_permanents.remove(&id);
-        if changed {
-            self.mark_continuous_state_dirty();
+        if !changed {
+            return;
         }
-        self.effect_store
+
+        self.mark_continuous_state_dirty();
+        let removed_continuous = self
+            .effect_store
             .continuous_effects
             .remove_effects_from_source_with_duration(id, crate::effect::Until::SourceUntaps);
+        let restriction_count = self.effect_store.restriction_effects.len();
         self.effect_store.restriction_effects.retain(|effect| {
             !(effect.source == id && effect.duration == crate::effect::Until::SourceUntaps)
         });
+        let removed_restrictions = self.effect_store.restriction_effects.len() != restriction_count;
+        let goad_count = self.effect_store.goad_effects.len();
         self.effect_store.goad_effects.retain(|effect| {
             !(effect.source == id && effect.duration == crate::effect::Until::SourceUntaps)
         });
-        self.update_cant_effects();
+        let removed_goad = self.effect_store.goad_effects.len() != goad_count;
+
+        if changed || removed_continuous || removed_restrictions || removed_goad {
+            self.update_cant_effects();
+        }
     }
 
     fn mark_tapped_state_changed(&mut self, id: ObjectId) {
@@ -10069,10 +10738,21 @@ impl GameState {
     }
 
     fn summoning_sickness_change_can_stay_local(&self, id: ObjectId) -> bool {
-        self.characteristic_extension_change_can_stay_local(
-            id,
-            Self::continuous_effect_reads_summoning_sickness_state,
-        )
+        if !self.continuous_state_is_clean() {
+            return false;
+        }
+
+        let Some(object) = self.object(id) else {
+            return false;
+        };
+        if object.zone != Zone::Battlefield {
+            return false;
+        }
+
+        !self
+            .cached_continuous_effects_snapshot_arc()
+            .iter()
+            .any(|effect| Self::continuous_effect_reads_summoning_sickness_state(effect, id))
     }
 
     fn continuous_effect_reads_summoning_sickness_state(
@@ -12051,6 +12731,151 @@ mod tests {
         assert!(hypothetical.is_summoning_sick(summoning_sick));
         assert!(hypothetical.is_monstrous(monstrous));
         assert!(hypothetical.is_suspected(suspected));
+    }
+
+    #[test]
+    fn summoning_sickness_change_stays_local_for_granted_static_abilities() {
+        use crate::ability::Ability;
+        use crate::card::PowerToughness;
+        use crate::static_abilities::{StaticAbility, StaticAbilityId};
+        use crate::target::ObjectFilter;
+        use crate::zone::Zone;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let banner = CardDefinitionBuilder::new(CardId::from_raw(10_026), "Haste Banner")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::static_ability(StaticAbility::grant_ability(
+                ObjectFilter::creature().you_control(),
+                StaticAbility::haste(),
+            )))
+            .build();
+        let bear = CardDefinitionBuilder::new(CardId::from_raw(10_027), "Cache Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+
+        game.create_object_from_definition(&banner, alice, Zone::Battlefield);
+        let bear_id = game.create_object_from_definition(&bear, alice, Zone::Battlefield);
+        game.set_summoning_sick(bear_id);
+        game.refresh_continuous_state();
+
+        assert!(game.continuous_state_is_clean());
+        assert!(game.current_has_static_ability_id(bear_id, StaticAbilityId::Haste));
+
+        game.remove_summoning_sickness(bear_id);
+
+        assert!(
+            game.continuous_state_is_clean(),
+            "granted static abilities alone should not force global continuous-state invalidation"
+        );
+    }
+
+    #[test]
+    fn turn_context_neutral_effects_reuse_characteristic_cache_across_phase_changes() {
+        use crate::card::PowerToughness;
+        use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+        use crate::zone::Zone;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = CardDefinitionBuilder::new(CardId::from_raw(10_028), "Plain Anthem")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let bear = CardDefinitionBuilder::new(CardId::from_raw(10_029), "Cache Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+
+        let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+        let bear_id = game.create_object_from_definition(&bear, alice, Zone::Battlefield);
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                source_id,
+                alice,
+                EffectTarget::AllCreatures,
+                Modification::ModifyPowerToughness {
+                    power: 1,
+                    toughness: 1,
+                },
+            ));
+        game.refresh_continuous_state();
+
+        assert_eq!(
+            game.calculated_characteristics(bear_id)
+                .expect("bear should have characteristics")
+                .power,
+            Some(3)
+        );
+        let after_first_lookup = game.work_counters();
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+
+        assert_eq!(
+            game.calculated_characteristics(bear_id)
+                .expect("bear should have characteristics")
+                .power,
+            Some(3)
+        );
+        let after_phase_change_lookup = game.work_counters();
+        assert_eq!(
+            after_phase_change_lookup.characteristics_full_recomputes,
+            after_first_lookup.characteristics_full_recomputes,
+            "turn-context-neutral effects should not force a new characteristic pass"
+        );
+    }
+
+    #[test]
+    fn active_player_filters_still_invalidate_characteristic_cache() {
+        use crate::card::PowerToughness;
+        use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+        use crate::target::{ObjectFilter, PlayerFilter};
+        use crate::zone::Zone;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = CardDefinitionBuilder::new(CardId::from_raw(10_030), "Active Anthem")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let bear = CardDefinitionBuilder::new(CardId::from_raw(10_031), "Cache Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+
+        let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+        let bear_id = game.create_object_from_definition(&bear, alice, Zone::Battlefield);
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                source_id,
+                alice,
+                EffectTarget::Filter(ObjectFilter::creature().controlled_by(PlayerFilter::Active)),
+                Modification::ModifyPowerToughness {
+                    power: 1,
+                    toughness: 1,
+                },
+            ));
+        game.refresh_continuous_state();
+
+        assert_eq!(
+            game.calculated_characteristics(bear_id)
+                .expect("bear should have characteristics")
+                .power,
+            Some(3)
+        );
+
+        game.turn.active_player = bob;
+
+        assert_eq!(
+            game.calculated_characteristics(bear_id)
+                .expect("bear should have characteristics")
+                .power,
+            Some(2),
+            "active-player-sensitive filters must recompute after active player changes"
+        );
     }
 
     #[test]

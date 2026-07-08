@@ -18,7 +18,7 @@ use crate::filter::{ComparisonRuntimeExt, LayeredSubject, PlayerFilterExt};
 use crate::game_state::ObjectMap;
 use crate::ids::{ObjectId, PlayerId};
 use crate::marker::CounterTypeExt;
-use crate::object::{CounterType, Object};
+use crate::object::{CounterType, Object, SharedStr, SharedVec};
 use crate::object_query::candidate_ids_for_filter;
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbility;
@@ -31,6 +31,19 @@ use crate::zone::Zone;
 enum DependencySortMode {
     Baseline,
     Heuristic,
+}
+
+#[derive(Clone, PartialEq)]
+enum EffectApplicabilityCacheTarget {
+    AllPermanents,
+    AllCreatures,
+    Filter(ObjectFilter),
+}
+
+struct EffectApplicabilityCacheEntry {
+    target: EffectApplicabilityCacheTarget,
+    controller: PlayerId,
+    affected: Vec<(usize, ObjectId)>,
 }
 
 /// The seven layers in which continuous effects are applied.
@@ -603,10 +616,13 @@ pub struct TextBoxOverlay {
 }
 
 impl TextBoxOverlay {
-    pub fn new(compiled_card_text: impl Into<Arc<str>>, abilities: Vec<Ability>) -> Self {
+    pub fn new(
+        compiled_card_text: impl Into<Arc<str>>,
+        abilities: impl Into<Vec<Ability>>,
+    ) -> Self {
         Self {
             compiled_card_text: compiled_card_text.into(),
-            abilities,
+            abilities: abilities.into(),
         }
     }
 }
@@ -698,13 +714,19 @@ impl ContinuousEffectManager {
     }
 
     /// Remove effects from a specific source with the given duration.
-    pub fn remove_effects_from_source_with_duration(&mut self, source: ObjectId, duration: Until) {
+    pub fn remove_effects_from_source_with_duration(
+        &mut self,
+        source: ObjectId,
+        duration: Until,
+    ) -> bool {
         let effects = Arc::make_mut(&mut self.effects);
         let before = effects.len();
         effects.retain(|e| !(e.source == source && e.duration == duration));
-        if effects.len() != before {
+        let removed = effects.len() != before;
+        if removed {
             self.revision += 1;
         }
+        removed
     }
 
     /// Remove all effects with duration UntilEndOfTurn.
@@ -1055,17 +1077,17 @@ impl ContinuousEffect {
 /// Calculated characteristics for an object after applying continuous effects.
 #[derive(Debug, Clone)]
 pub struct CalculatedCharacteristics {
-    pub name: String,
+    pub name: SharedStr,
     pub compiled_card_text: Arc<str>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
-    pub card_types: Vec<CardType>,
-    pub subtypes: Vec<Subtype>,
-    pub supertypes: Vec<Supertype>,
+    pub card_types: SharedVec<CardType>,
+    pub subtypes: SharedVec<Subtype>,
+    pub supertypes: SharedVec<Supertype>,
     pub colors: ColorSet,
-    pub abilities: Vec<Ability>,
+    pub abilities: SharedVec<Ability>,
     /// Static abilities that this object currently has (including from effects)
-    pub static_abilities: Vec<StaticAbility>,
+    pub static_abilities: SharedVec<StaticAbility>,
     pub aura_attach_filter: Option<crate::object::AuraAttachmentFilter>,
     pub controller: PlayerId,
 }
@@ -1152,16 +1174,16 @@ fn initial_characteristics(object: &Object) -> CalculatedCharacteristics {
 
 fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristics {
     CalculatedCharacteristics {
-        name: object.name.to_string(),
+        name: object.name.clone(),
         compiled_card_text: object.compiled_card_text.clone(),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
-        card_types: object.card_types.to_vec(),
-        subtypes: object.subtypes.to_vec(),
-        supertypes: object.supertypes.to_vec(),
+        card_types: object.card_types.clone(),
+        subtypes: object.subtypes.clone(),
+        supertypes: object.supertypes.clone(),
         colors: object.colors(),
-        abilities: object.abilities_vec(),
-        static_abilities: extract_static_abilities(&object.abilities),
+        abilities: object.abilities.clone().into(),
+        static_abilities: extract_static_abilities(&object.abilities).into(),
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.owner,
     }
@@ -1176,7 +1198,7 @@ fn retain_active_static_abilities(
         AbilityKind::Static(static_ability) => static_ability.is_active(game, source),
         _ => true,
     });
-    chars.static_abilities = extract_static_abilities(&chars.abilities);
+    chars.static_abilities = extract_static_abilities(&chars.abilities).into();
 }
 
 fn apply_copy_effect_exceptions(
@@ -1190,7 +1212,7 @@ fn apply_copy_effect_exceptions(
         .map(SourceReferenceSurface::display_text)
         .or_else(|| name_override.clone())
     {
-        chars.name = name.clone();
+        chars.name = name.clone().into();
     }
     for supertype in add_supertypes {
         if !chars.supertypes.contains(supertype) {
@@ -1504,39 +1526,25 @@ fn calculate_characteristics_layer_batch_with_effects(
             sort_layer_effects(layer_effects)
         };
 
+        let mut applicability_cache = Vec::new();
         for effect in sorted_effects {
-            let mut affected = Vec::new();
-            for (idx, &id) in order.iter().enumerate() {
-                let group_started = continuous_effect_group_started_for_object(
-                    effect,
-                    id,
-                    &started_groups_by_object,
-                );
-                if needs_source_tracking
-                    && !group_started
-                    && !effect_source_is_active(effect, &chars_by_id)
-                {
-                    continue;
-                }
-                let Some(object) = objects.get(&id) else {
-                    continue;
-                };
-                let Some(chars) = chars_by_id.get(&id) else {
-                    continue;
-                };
-                if effect_applies_to_direct_or_group_started(
-                    effect,
-                    group_started,
-                    object,
-                    chars,
-                    objects,
-                    battlefield,
-                    commanders,
-                    game,
-                ) {
-                    affected.push((idx, id));
-                }
+            if !continuous_effect_duration_and_condition_are_active(effect, game) {
+                continue;
             }
+            let source_active =
+                !needs_source_tracking || effect_source_is_active(effect, &chars_by_id);
+            let affected = affected_objects_for_effect(
+                effect,
+                layer,
+                &order,
+                objects,
+                &chars_by_id,
+                &started_groups_by_object,
+                needs_source_tracking,
+                source_active,
+                game,
+                &mut applicability_cache,
+            );
 
             for (_, id) in &affected {
                 let Some(object) = objects.get(id) else {
@@ -1593,10 +1601,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         }
         let level_abilities = get_level_granted_abilities(object);
         for ability in level_abilities {
-            chars
-                .abilities
-                .push(Ability::static_ability(ability.clone()));
-            chars.static_abilities.push(ability);
+            push_static_ability_once(chars, ability);
         }
         guards[idx].update(chars);
     }
@@ -1617,39 +1622,25 @@ fn calculate_characteristics_layer_batch_with_effects(
             sort_layer_effects(pt_effects)
         };
 
+        let mut applicability_cache = Vec::new();
         for effect in sorted_pt {
-            let mut affected = Vec::new();
-            for (idx, &id) in order.iter().enumerate() {
-                let group_started = continuous_effect_group_started_for_object(
-                    effect,
-                    id,
-                    &started_groups_by_object,
-                );
-                if needs_source_tracking
-                    && !group_started
-                    && !effect_source_is_active(effect, &chars_by_id)
-                {
-                    continue;
-                }
-                let Some(object) = objects.get(&id) else {
-                    continue;
-                };
-                let Some(chars) = chars_by_id.get(&id) else {
-                    continue;
-                };
-                if effect_applies_to_direct_or_group_started(
-                    effect,
-                    group_started,
-                    object,
-                    chars,
-                    objects,
-                    battlefield,
-                    commanders,
-                    game,
-                ) {
-                    affected.push((idx, id));
-                }
+            if !continuous_effect_duration_and_condition_are_active(effect, game) {
+                continue;
             }
+            let source_active =
+                !needs_source_tracking || effect_source_is_active(effect, &chars_by_id);
+            let affected = affected_objects_for_effect(
+                effect,
+                Layer::PowerToughness,
+                &order,
+                objects,
+                &chars_by_id,
+                &started_groups_by_object,
+                needs_source_tracking,
+                source_active,
+                game,
+                &mut applicability_cache,
+            );
 
             for (_, id) in &affected {
                 let Some(object) = objects.get(id) else {
@@ -1873,15 +1864,15 @@ fn apply_text_box_modification_to_chars(
     ) {
         let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
 
-        chars.name = target.name.to_string();
+        chars.name = target.name.clone();
         chars.compiled_card_text = target.compiled_card_text.clone();
         chars.power = target.base_power.as_ref().map(|p| p.base_value());
         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-        chars.card_types = target.card_types.to_vec();
-        chars.subtypes = target.subtypes.to_vec();
-        chars.supertypes = target.supertypes.to_vec();
+        chars.card_types = target.card_types.clone();
+        chars.subtypes = target.subtypes.clone();
+        chars.supertypes = target.supertypes.clone();
         chars.colors = target.colors();
-        chars.abilities = target.abilities_vec();
+        chars.abilities = target.abilities.clone().into();
 
         if let Some(preserved_abilities) = preserved_abilities {
             for ability in preserved_abilities {
@@ -1892,7 +1883,7 @@ fn apply_text_box_modification_to_chars(
         }
 
         apply_copy_effect_exceptions(chars, name_override, name_override_surface, add_supertypes);
-        chars.static_abilities = extract_static_abilities(&chars.abilities);
+        chars.static_abilities = extract_static_abilities(&chars.abilities).into();
     }
 
     match modification {
@@ -1920,11 +1911,11 @@ fn apply_text_box_modification_to_chars(
         Modification::ChangeText { .. } => {}
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
-            chars.abilities = overlay.abilities.clone();
-            chars.static_abilities = extract_static_abilities(&overlay.abilities);
+            chars.abilities = overlay.abilities.clone().into();
+            chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
         }
         Modification::SetName(name) => {
-            chars.name = name.clone();
+            chars.name = name.clone().into();
         }
         _ => {}
     }
@@ -2097,11 +2088,7 @@ fn calculate_with_layers_direct_internal(
         // Add level-granted abilities to the characteristics
         let level_abilities = get_level_granted_abilities(object);
         for ability in level_abilities {
-            // Add to abilities and static abilities - both use new type now
-            chars
-                .abilities
-                .push(Ability::static_ability(ability.clone()));
-            chars.static_abilities.push(ability);
+            push_static_ability_once(&mut chars, ability);
         }
         calc_guard.update(&chars);
     }
@@ -2243,35 +2230,6 @@ fn effect_applies_to_direct(
     effect_target_applies_to_direct(effect, object, chars, objects, game)
 }
 
-fn effect_applies_to_direct_or_group_started(
-    effect: &ContinuousEffect,
-    group_started: bool,
-    object: &Object,
-    chars: &CalculatedCharacteristics,
-    objects: &ObjectMap,
-    battlefield: &[ObjectId],
-    commanders: &HashSet<ObjectId>,
-    game: &crate::game_state::GameState,
-) -> bool {
-    if !continuous_effect_duration_and_condition_are_active(effect, game) {
-        return false;
-    }
-
-    if group_started {
-        return true;
-    }
-
-    effect_applies_to_direct(
-        effect,
-        object,
-        chars,
-        objects,
-        battlefield,
-        commanders,
-        game,
-    )
-}
-
 fn effect_applies_to_direct_or_started(
     effect: &ContinuousEffect,
     started_groups: &HashSet<ContinuousEffectGroupId>,
@@ -2410,6 +2368,156 @@ fn effect_target_applies_to_direct(
     }
 }
 
+fn affected_objects_for_effect(
+    effect: &ContinuousEffect,
+    layer: Layer,
+    order: &[ObjectId],
+    objects: &ObjectMap,
+    chars_by_id: &HashMap<ObjectId, CalculatedCharacteristics>,
+    started_groups_by_object: &HashSet<(ContinuousEffectGroupId, ObjectId)>,
+    needs_source_tracking: bool,
+    source_active: bool,
+    game: &crate::game_state::GameState,
+    cache: &mut Vec<EffectApplicabilityCacheEntry>,
+) -> Vec<(usize, ObjectId)> {
+    if needs_source_tracking && !source_active && effect.group.is_none() {
+        return Vec::new();
+    }
+
+    let cache_target = effect_applicability_cache_target(effect, layer, needs_source_tracking);
+    if let Some(target) = cache_target.as_ref()
+        && let Some(entry) = cache
+            .iter()
+            .find(|entry| entry.controller == effect.controller && entry.target == *target)
+    {
+        return entry.affected.clone();
+    }
+
+    let mut affected = Vec::new();
+    for (idx, &id) in order.iter().enumerate() {
+        let group_started =
+            continuous_effect_group_started_for_object(effect, id, started_groups_by_object);
+        if needs_source_tracking && !group_started && !source_active {
+            continue;
+        }
+        let Some(object) = objects.get(&id) else {
+            continue;
+        };
+        let Some(chars) = chars_by_id.get(&id) else {
+            continue;
+        };
+        if group_started || effect_target_applies_to_direct(effect, object, chars, objects, game) {
+            affected.push((idx, id));
+        }
+    }
+
+    if let Some(target) = cache_target {
+        cache.push(EffectApplicabilityCacheEntry {
+            target,
+            controller: effect.controller,
+            affected: affected.clone(),
+        });
+    }
+
+    affected
+}
+
+fn effect_applicability_cache_target(
+    effect: &ContinuousEffect,
+    layer: Layer,
+    _needs_source_tracking: bool,
+) -> Option<EffectApplicabilityCacheTarget> {
+    if effect.group.is_some()
+        || effect.condition.is_some()
+        || effect.duration != Until::Forever
+        || !matches!(effect.source_type, EffectSourceType::StaticAbility)
+        || !matches!(layer, Layer::Ability | Layer::PowerToughness)
+    {
+        return None;
+    }
+
+    match &effect.applies_to {
+        EffectTarget::AllPermanents => Some(EffectApplicabilityCacheTarget::AllPermanents),
+        EffectTarget::AllCreatures => Some(EffectApplicabilityCacheTarget::AllCreatures),
+        EffectTarget::Filter(filter) if filter_applicability_cacheable(filter, layer) => {
+            Some(EffectApplicabilityCacheTarget::Filter(filter.clone()))
+        }
+        _ => None,
+    }
+}
+
+fn filter_applicability_cacheable(filter: &ObjectFilter, layer: Layer) -> bool {
+    if filter_requires_layered_clone_fallback(filter)
+        || filter.source
+        || filter.other
+        || filter.power_relative_to_source.is_some()
+        || filter.shares_creature_type_with_source
+        || filter.uses_power_or_toughness_characteristics()
+        || !player_filter_option_source_independent(filter.controller.as_ref())
+        || !player_filter_option_source_independent(filter.owner.as_ref())
+        // Tagged constraints (e.g. "enchanted") resolve relative to the
+        // effect's own source; two effects with byte-identical filters can
+        // have disjoint subjects, so they must not share a cache entry.
+        || !filter.tagged_constraints.is_empty()
+    {
+        return false;
+    }
+
+    if layer == Layer::Ability && filter_reads_ability_characteristics(filter) {
+        return false;
+    }
+
+    true
+}
+
+fn filter_reads_ability_characteristics(filter: &ObjectFilter) -> bool {
+    filter.has_tap_activated_ability
+        || filter.no_abilities
+        || !filter.static_abilities.is_empty()
+        || !filter.excluded_static_abilities.is_empty()
+        || !filter.ability_markers.is_empty()
+        || !filter.excluded_ability_markers.is_empty()
+}
+
+fn player_filter_option_source_independent(filter: Option<&PlayerFilter>) -> bool {
+    filter.is_none_or(player_filter_source_independent)
+}
+
+fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
+    match filter {
+        PlayerFilter::Any
+        | PlayerFilter::You
+        | PlayerFilter::NotYou
+        | PlayerFilter::Opponent
+        | PlayerFilter::Teammate
+        | PlayerFilter::Active
+        | PlayerFilter::Defending
+        | PlayerFilter::Attacking
+        | PlayerFilter::EffectController
+        | PlayerFilter::Specific(_)
+        | PlayerFilter::MostLifeTied
+        | PlayerFilter::LowestLifeTied
+        | PlayerFilter::MostCardsInHand
+        | PlayerFilter::CastCardTypeThisTurn(_) => true,
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
+        | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::MaxSpeed { base, .. } => player_filter_source_independent(base),
+        PlayerFilter::Excluding { base, excluded } => {
+            player_filter_source_independent(base) && player_filter_source_independent(excluded)
+        }
+        PlayerFilter::DamagedPlayer
+        | PlayerFilter::ChosenPlayer
+        | PlayerFilter::TaggedPlayer(_)
+        | PlayerFilter::IteratedPlayer
+        | PlayerFilter::TargetPlayerOrControllerOfTarget
+        | PlayerFilter::Target(_)
+        | PlayerFilter::ControllerOf(_)
+        | PlayerFilter::OwnerOf(_)
+        | PlayerFilter::AliasedOwnerOf(_)
+        | PlayerFilter::AliasedControllerOf(_) => false,
+    }
+}
+
 fn continuous_effect_duration_is_active(
     effect: &ContinuousEffect,
     game: &crate::game_state::GameState,
@@ -2471,6 +2579,9 @@ fn filter_matches_with_characteristics(
             adjusted_object.subtypes = chars.subtypes.clone().into();
             adjusted_object.supertypes = chars.supertypes.clone().into();
             adjusted_object.color_override = Some(chars.colors);
+            // Ability-dependent filter fields must see layered abilities here
+            // too, or this fallback diverges from the layered fast path.
+            adjusted_object.abilities = chars.abilities.shared();
 
             let mut structural_filter = filter.clone();
             structural_filter.power = None;
@@ -2781,6 +2892,10 @@ fn filter_matches_layered_fast(
     Some(filter.matches_layered_tail(&layered, filter_ctx, game))
 }
 
+pub(crate) fn filter_requires_layered_clone_fallback_for_dependency(filter: &ObjectFilter) -> bool {
+    filter_requires_layered_clone_fallback(filter)
+}
+
 fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
     filter.cast_by.is_some()
         || filter.cast_this_turn
@@ -2909,6 +3024,16 @@ fn bind_effect_controller_in_ability(ability: &Ability, effect_controller: Playe
     bound
 }
 
+fn push_static_ability_once(chars: &mut CalculatedCharacteristics, ability: StaticAbility) {
+    let runtime_ability = Ability::static_ability(ability.clone());
+    if !chars.abilities.contains(&runtime_ability) {
+        chars.abilities.push(runtime_ability);
+    }
+    if !chars.static_abilities.contains(&ability) {
+        chars.static_abilities.push(ability);
+    }
+}
+
 /// Apply a modification to calculated characteristics.
 fn apply_modification_to_chars(
     modification: &Modification,
@@ -2933,15 +3058,15 @@ fn apply_modification_to_chars(
     ) {
         let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
 
-        chars.name = target.name.to_string();
+        chars.name = target.name.clone();
         chars.compiled_card_text = target.compiled_card_text.clone();
         chars.power = target.base_power.as_ref().map(|p| p.base_value());
         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-        chars.card_types = target.card_types.to_vec();
-        chars.subtypes = target.subtypes.to_vec();
-        chars.supertypes = target.supertypes.to_vec();
+        chars.card_types = target.card_types.clone();
+        chars.subtypes = target.subtypes.clone();
+        chars.supertypes = target.supertypes.clone();
         chars.colors = target.colors();
-        chars.abilities = target.abilities_vec();
+        chars.abilities = target.abilities.clone().into();
 
         if let Some(preserved_abilities) = preserved_abilities {
             for ability in preserved_abilities {
@@ -2952,7 +3077,7 @@ fn apply_modification_to_chars(
         }
 
         apply_copy_effect_exceptions(chars, name_override, name_override_surface, add_supertypes);
-        chars.static_abilities = extract_static_abilities(&chars.abilities);
+        chars.static_abilities = extract_static_abilities(&chars.abilities).into();
     }
 
     match modification {
@@ -2986,12 +3111,12 @@ fn apply_modification_to_chars(
         }
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
-            chars.abilities = overlay.abilities.clone();
-            chars.static_abilities = extract_static_abilities(&overlay.abilities);
+            chars.abilities = overlay.abilities.clone().into();
+            chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
             add_abilities_from_counters(object, chars);
         }
         Modification::SetName(name) => {
-            chars.name = name.clone();
+            chars.name = name.clone().into();
         }
 
         // Layer 4: Type changes
@@ -3006,7 +3131,7 @@ fn apply_modification_to_chars(
             chars.card_types.retain(|t| !types.contains(t));
         }
         Modification::SetCardTypes(types) => {
-            chars.card_types = types.clone();
+            chars.card_types = types.clone().into();
         }
         Modification::AddSubtypes(subtypes) => {
             for st in subtypes {
@@ -3026,7 +3151,7 @@ fn apply_modification_to_chars(
                 .filter(|st| !st.is_land_subtype())
                 .cloned()
                 .collect();
-            chars.subtypes = non_land_subtypes;
+            chars.subtypes = non_land_subtypes.into();
             chars.subtypes.extend(subtypes.iter().cloned());
         }
         Modification::SetAuraAttachmentFilter(filter) => {
@@ -3060,20 +3185,18 @@ fn apply_modification_to_chars(
 
         // Layer 6: Ability changes
         Modification::AddAbility(ability) => {
-            // Create ability with the new type
-            let new_ability = Ability::static_ability(ability.clone());
-            chars.abilities.push(new_ability);
-            chars.static_abilities.push(ability.clone());
+            push_static_ability_once(chars, ability.clone());
         }
         Modification::AddAbilityGeneric(ability) => {
             let bound_ability = bind_effect_controller_in_ability(ability, effect_controller);
             if let AbilityKind::Static(ref sa) = bound_ability.kind {
-                chars.static_abilities.push(sa.clone());
+                push_static_ability_once(chars, sa.clone());
+            } else {
+                chars.abilities.push(bound_ability);
             }
-            chars.abilities.push(bound_ability);
         }
         Modification::SetAbilities(abilities) => {
-            chars.abilities = abilities.clone();
+            chars.abilities = abilities.clone().into();
             chars.static_abilities.clear();
             for ability in abilities {
                 if let AbilityKind::Static(ref sa) = ability.kind {
@@ -3786,16 +3909,16 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     if let Some(target) = ctx.objects.get(target_id) {
                         let preserved_abilities =
                             preserve_source_abilities.then(|| chars.abilities.clone());
-                        chars.name = target.name.to_string();
+                        chars.name = target.name.clone();
                         chars.compiled_card_text = target.compiled_card_text.clone();
                         // Copy base characteristics from the target
                         chars.power = target.base_power.as_ref().map(|p| p.base_value());
                         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-                        chars.card_types = target.card_types.to_vec();
-                        chars.subtypes = target.subtypes.to_vec();
-                        chars.supertypes = target.supertypes.to_vec();
+                        chars.card_types = target.card_types.clone();
+                        chars.subtypes = target.subtypes.clone();
+                        chars.supertypes = target.supertypes.clone();
                         chars.colors = target.colors();
-                        chars.abilities = target.abilities_vec();
+                        chars.abilities = target.abilities.clone().into();
                         if let Some(preserved_abilities) = preserved_abilities {
                             for ability in preserved_abilities {
                                 if !chars.abilities.contains(&ability) {
@@ -3809,7 +3932,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                             name_override_surface,
                             add_supertypes,
                         );
-                        chars.static_abilities = extract_static_abilities(&chars.abilities);
+                        chars.static_abilities = extract_static_abilities(&chars.abilities).into();
                         add_abilities_from_counters(object, &mut chars);
                         // Note: controller is NOT copied - that's determined by who cast the Clone
                     }
@@ -3824,12 +3947,12 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 }
                 Modification::SetTextBox(overlay) => {
                     chars.compiled_card_text = overlay.compiled_card_text.clone();
-                    chars.abilities = overlay.abilities.clone();
-                    chars.static_abilities = extract_static_abilities(&overlay.abilities);
+                    chars.abilities = overlay.abilities.clone().into();
+                    chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
                     add_abilities_from_counters(object, &mut chars);
                 }
                 Modification::SetName(name) => {
-                    chars.name = name.clone();
+                    chars.name = name.clone().into();
                 }
 
                 // Layer 4: Type changes
@@ -3844,7 +3967,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     chars.card_types.retain(|t| !types.contains(t));
                 }
                 Modification::SetCardTypes(types) => {
-                    chars.card_types = types.clone();
+                    chars.card_types = types.clone().into();
                 }
                 Modification::AddSubtypes(types) => {
                     for t in types {
@@ -3887,7 +4010,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                         }
                     }
 
-                    chars.subtypes = new_subtypes;
+                    chars.subtypes = new_subtypes.into();
                 }
                 Modification::SetAuraAttachmentFilter(filter) => {
                     chars.aura_attach_filter = Some(filter.clone());
@@ -3934,27 +4057,20 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
 
                 // Layer 6: Ability changes
                 Modification::AddAbility(ability) => {
-                    let new_ability = Ability::static_ability(ability.clone());
-                    if !chars.abilities.contains(&new_ability) {
-                        chars.abilities.push(new_ability);
-                    }
-                    if !chars.static_abilities.contains(ability) {
-                        chars.static_abilities.push(ability.clone());
-                    }
+                    push_static_ability_once(&mut chars, ability.clone());
                 }
                 Modification::AddAbilityGeneric(ability) => {
                     let bound_ability =
                         bind_effect_controller_in_ability(ability, effect.controller);
-                    chars.abilities.push(bound_ability.clone());
-                    if let AbilityKind::Static(static_ability) = &bound_ability.kind
-                        && !chars.static_abilities.contains(static_ability)
-                    {
-                        chars.static_abilities.push(static_ability.clone());
+                    if let AbilityKind::Static(static_ability) = &bound_ability.kind {
+                        push_static_ability_once(&mut chars, static_ability.clone());
+                    } else {
+                        chars.abilities.push(bound_ability);
                     }
                 }
                 Modification::SetAbilities(abilities) => {
-                    chars.abilities = abilities.clone();
-                    chars.static_abilities = extract_static_abilities(abilities);
+                    chars.abilities = abilities.clone().into();
+                    chars.static_abilities = extract_static_abilities(abilities).into();
                 }
                 Modification::CopyActivatedAbilities {
                     filter,
@@ -4177,9 +4293,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
     if !abilities_removed {
         let level_abilities = get_level_granted_abilities(object);
         for ability in level_abilities {
-            if !chars.static_abilities.contains(&ability) {
-                chars.static_abilities.push(ability);
-            }
+            push_static_ability_once(&mut chars, ability);
         }
         calc_guard.update(&chars);
     }
@@ -5379,11 +5493,7 @@ fn add_abilities_from_counters(object: &Object, chars: &mut CalculatedCharacteri
                 .iter()
                 .any(|a| a.id() == StaticAbilityId::CantBlock)
             {
-                let ability = StaticAbility::cant_block();
-                chars
-                    .abilities
-                    .push(crate::ability::Ability::static_ability(ability.clone()));
-                chars.static_abilities.push(ability);
+                push_static_ability_once(chars, StaticAbility::cant_block());
             }
             chars.abilities.push(crate::ability::Ability::triggered(
                 crate::triggers::Trigger::this_attacks(),
@@ -5426,10 +5536,7 @@ fn add_abilities_from_counters(object: &Object, chars: &mut CalculatedCharacteri
             };
 
             if let Some(sa) = ability {
-                chars
-                    .abilities
-                    .push(crate::ability::Ability::static_ability(sa.clone()));
-                chars.static_abilities.push(sa);
+                push_static_ability_once(chars, sa);
             }
         }
     }
@@ -5447,10 +5554,7 @@ fn add_temporary_static_ability_grants(object: &Object, chars: &mut CalculatedCh
         {
             continue;
         }
-        chars
-            .abilities
-            .push(Ability::static_ability(ability.clone()));
-        chars.static_abilities.push(ability);
+        push_static_ability_once(chars, ability);
     }
 }
 
@@ -5695,16 +5799,16 @@ mod tests {
 
         // Calculate characteristics
         let mut chars = CalculatedCharacteristics {
-            name: creature.name.to_string(),
+            name: creature.name.clone(),
             compiled_card_text: creature.compiled_card_text.clone(),
             power: creature.base_power.as_ref().map(|p| p.base_value()),
             toughness: creature.base_toughness.as_ref().map(|t| t.base_value()),
-            card_types: creature.card_types.to_vec(),
-            subtypes: creature.subtypes.to_vec(),
-            supertypes: creature.supertypes.to_vec(),
+            card_types: creature.card_types.clone(),
+            subtypes: creature.subtypes.clone(),
+            supertypes: creature.supertypes.clone(),
             colors: creature.colors(),
-            abilities: creature.abilities_vec(),
-            static_abilities: extract_static_abilities(&creature.abilities),
+            abilities: creature.abilities.clone().into(),
+            static_abilities: extract_static_abilities(&creature.abilities).into(),
             aura_attach_filter: creature.aura_attach_filter_owned(),
             controller: creature.owner,
         };
@@ -5748,16 +5852,16 @@ mod tests {
         creature.add_counters(CounterType::Vigilance, 1);
 
         let mut chars = CalculatedCharacteristics {
-            name: creature.name.to_string(),
+            name: creature.name.clone(),
             compiled_card_text: creature.compiled_card_text.clone(),
             power: None,
             toughness: None,
-            card_types: creature.card_types.to_vec(),
-            subtypes: Vec::new(),
-            supertypes: Vec::new(),
+            card_types: creature.card_types.clone(),
+            subtypes: Vec::new().into(),
+            supertypes: Vec::new().into(),
             colors: ColorSet::COLORLESS,
-            abilities: Vec::new(),
-            static_abilities: Vec::new(),
+            abilities: Vec::new().into(),
+            static_abilities: Vec::new().into(),
             aura_attach_filter: creature.aura_attach_filter_owned(),
             controller: creature.owner,
         };
@@ -5814,16 +5918,16 @@ mod tests {
 
         // Start with flying ability already present
         let mut chars = CalculatedCharacteristics {
-            name: creature.name.to_string(),
+            name: creature.name.clone(),
             compiled_card_text: creature.compiled_card_text.clone(),
             power: None,
             toughness: None,
-            card_types: creature.card_types.to_vec(),
-            subtypes: Vec::new(),
-            supertypes: Vec::new(),
+            card_types: creature.card_types.clone(),
+            subtypes: Vec::new().into(),
+            supertypes: Vec::new().into(),
             colors: ColorSet::COLORLESS,
-            abilities: Vec::new(),
-            static_abilities: vec![StaticAbility::flying()], // Already has flying
+            abilities: Vec::new().into(),
+            static_abilities: vec![StaticAbility::flying()].into(), // Already has flying
             aura_attach_filter: creature.aura_attach_filter_owned(),
             controller: creature.owner,
         };

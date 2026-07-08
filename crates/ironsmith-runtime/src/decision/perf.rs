@@ -2,7 +2,13 @@ use super::*;
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct ComputeLegalActionsPerfMetrics {
+    pub derived_view_ms: f64,
     pub prewarm_ms: f64,
+    pub cast_context_ms: f64,
+    pub battlefield_ability_context_ms: f64,
+    pub active_grant_zone_checks_ms: f64,
+    pub hand_summary_ms: f64,
+    pub controlled_battlefield_ms: f64,
     pub lands_ms: f64,
     pub hand_casts_ms: f64,
     pub can_cast_spell_with_view_ms: f64,

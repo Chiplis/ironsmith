@@ -121,6 +121,24 @@ impl<T> From<Vec<T>> for SharedVec<T> {
     }
 }
 
+impl<T> From<Arc<Vec<T>>> for SharedVec<T> {
+    fn from(value: Arc<Vec<T>>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: Clone> From<SharedVec<T>> for Vec<T> {
+    fn from(value: SharedVec<T>) -> Self {
+        value.to_vec()
+    }
+}
+
+impl<T> std::iter::FromIterator<T> for SharedVec<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        iter.into_iter().collect::<Vec<_>>().into()
+    }
+}
+
 impl<T> std::ops::Deref for SharedVec<T> {
     type Target = Vec<T>;
 
@@ -153,9 +171,23 @@ impl<'a, T: Clone> IntoIterator for &'a mut SharedVec<T> {
     }
 }
 
+impl<T: Clone> IntoIterator for SharedVec<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.to_vec().into_iter()
+    }
+}
+
 impl<T> SharedVec<T> {
     pub fn as_slice(&self) -> &[T] {
         self.0.as_slice()
+    }
+
+    /// Clone of the backing `Arc` without copying the elements.
+    pub fn shared(&self) -> Arc<Vec<T>> {
+        Arc::clone(&self.0)
     }
 }
 

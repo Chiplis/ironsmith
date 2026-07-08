@@ -999,19 +999,37 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
             + game.exile.len() * 2
             + game.battlefield.len() * 4,
     );
+    let view_started_at = PerfTimer::start();
     let view = DerivedGameView::new(game);
+    perf.derived_view_ms = view_started_at.elapsed_ms();
+
+    let prewarm_started_at = PerfTimer::start();
+    view.prewarm_characteristics(&game.battlefield);
+    perf.prewarm_ms = prewarm_started_at.elapsed_ms();
+
+    let cast_context_started_at = PerfTimer::start();
     let cast_ctx = CastLegalityContext::new(game, player, &view);
+    perf.cast_context_ms = cast_context_started_at.elapsed_ms();
+
+    let battlefield_context_started_at = PerfTimer::start();
     let battlefield_ability_ctx = BattlefieldAbilityContext::new(&view);
+    perf.battlefield_ability_context_ms = battlefield_context_started_at.elapsed_ms();
+
+    let active_grant_zone_started_at = PerfTimer::start();
     let hand_has_active_grants = view.player_has_active_grants_for_zone(player, Zone::Hand);
     let graveyard_has_active_grants =
         view.player_has_active_grants_for_zone(player, Zone::Graveyard);
     let exile_has_active_grants = view.player_has_active_grants_for_zone(player, Zone::Exile);
     let library_has_active_grants = view.player_has_active_grants_for_zone(player, Zone::Library);
+    perf.active_grant_zone_checks_ms = active_grant_zone_started_at.elapsed_ms();
+
+    let hand_summary_started_at = PerfTimer::start();
     let hand_summaries = build_hand_summaries(game, hand);
+    perf.hand_summary_ms = hand_summary_started_at.elapsed_ms();
+
+    let controlled_battlefield_started_at = PerfTimer::start();
     let controlled_battlefield = collect_controlled_battlefield(game, player);
-    let prewarm_started_at = PerfTimer::start();
-    view.prewarm_characteristics(&controlled_battlefield);
-    perf.prewarm_ms = prewarm_started_at.elapsed_ms();
+    perf.controlled_battlefield_ms = controlled_battlefield_started_at.elapsed_ms();
 
     actions.push(LegalAction::PassPriority);
 

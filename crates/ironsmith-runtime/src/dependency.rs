@@ -27,6 +27,19 @@ use crate::game_state::{GameState, ObjectMap};
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::ObjectFilter;
 
+fn push_static_ability_once(
+    chars: &mut CalculatedCharacteristics,
+    ability: crate::static_abilities::StaticAbility,
+) {
+    let runtime_ability = Ability::static_ability(ability.clone());
+    if !chars.abilities.contains(&runtime_ability) {
+        chars.abilities.push(runtime_ability);
+    }
+    if !chars.static_abilities.contains(&ability) {
+        chars.static_abilities.push(ability);
+    }
+}
+
 fn ability_is_mana_for_object(
     ability: &Ability,
     game: &GameState,
@@ -80,28 +93,44 @@ fn effect_depends_on_with_baseline_and_started_groups(
     objects: &ObjectMap,
     game: &GameState,
     started_groups: &HashSet<ContinuousEffectGroupId>,
+    representatives: Option<&[ObjectId]>,
 ) -> bool {
+    let structural_dependency =
+        check_dependency_relationship(&a.modification, &b.modification, a.source, b.source);
+
     // Static ability effects depend on any effect that would remove the
     // originating static ability from their source, unless this effect already
     // began applying in an earlier layer (CR 613.6).
     if !effect_group_has_started(a, started_groups)
-        && source_ability_presence_changed(a, b, baseline, objects, game)
+        && a.originating_static_ability.is_some()
+        && modification_can_remove_static_ability_presence(&b.modification)
+        && {
+            game.note_dependency_pair_probed();
+            source_ability_presence_changed(a, b, baseline, objects, game)
+        }
     {
         return true;
     }
 
     // First, check if applying B would change what A applies to.
-    if effect_applicability_changed(a, b, baseline, objects, game) {
+    if modification_can_affect_effect_target(&b.modification, &a.applies_to)
+        && effect_applicability_changed_counted(a, b, baseline, objects, game, representatives)
+    {
         return true;
     }
 
     // Then check if applying B would change what A does to any objects it applies to.
-    if effect_output_changed(a, b, baseline, objects, game) {
+    if modification_can_affect_dependency_output(&a.modification, &b.modification)
+        && {
+            game.note_dependency_pair_probed();
+            effect_output_changed(a, b, baseline, objects, game)
+        }
+    {
         return true;
     }
 
     // Fall back to existing relationship checks for cases not covered by simulation.
-    check_dependency_relationship(&a.modification, &b.modification, a.source, b.source)
+    structural_dependency
 }
 
 fn effect_group_has_started(
@@ -302,29 +331,147 @@ fn check_dependency_relationship(
     }
 }
 
+fn effect_applicability_changed_counted(
+    a: &ContinuousEffect,
+    b: &ContinuousEffect,
+    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+    objects: &ObjectMap,
+    game: &GameState,
+    representatives: Option<&[ObjectId]>,
+) -> bool {
+    game.note_dependency_pair_probed();
+    effect_applicability_changed(a, b, baseline, objects, game, representatives)
+}
+
+/// True when this target's applicability probe depends only on
+/// characteristic-class dimensions (types, subtypes, supertypes, colors,
+/// name, controller, static-ability ids) plus the per-class object flags
+/// covered by [`chars_class_key`]. Object-identity-sensitive features
+/// (specific ids, tagged constraints, counters, attachments, P/T reads,
+/// combat/turn history, …) disqualify the probe from class dedup.
+fn effect_target_supports_chars_class_dedup(target: &EffectTarget) -> bool {
+    match target {
+        EffectTarget::AllPermanents | EffectTarget::AllCreatures => true,
+        EffectTarget::Specific(_) | EffectTarget::Source | EffectTarget::AttachedTo(_) => false,
+        EffectTarget::Filter(filter) => filter_supports_chars_class_dedup(filter),
+    }
+}
+
+fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
+    !crate::continuous::filter_requires_layered_clone_fallback_for_dependency(filter)
+        && filter.specific.is_none()
+        && !filter.source
+        && !filter.other
+        && filter.tagged_constraints.is_empty()
+        && filter.with_counter.is_none()
+        && filter.without_counter.is_none()
+        && filter.power_relative_to_source.is_none()
+        && !filter.shares_creature_type_with_source
+        && filter.no_shared_creature_types_with.is_empty()
+        && !filter.is_commander
+        && !filter.noncommander
+        && !filter.has_tap_activated_ability
+        && !filter.no_abilities
+        && filter.ability_markers.is_empty()
+        && filter.excluded_ability_markers.is_empty()
+        && !filter.uses_power_or_toughness_characteristics()
+        && filter.attached_to_player.is_none()
+        && filter.alternative_cast.is_none()
+}
+
+/// Bucket key covering every dimension a dedup-eligible probe can read.
+fn chars_class_key(
+    obj: &crate::object::Object,
+    chars: &CalculatedCharacteristics,
+    game: &GameState,
+) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = rustc_hash::FxHasher::default();
+    obj.zone.hash(&mut hasher);
+    obj.owner.hash(&mut hasher);
+    chars.controller.hash(&mut hasher);
+    chars.name.as_str().hash(&mut hasher);
+    obj.name.as_str().hash(&mut hasher);
+    chars.card_types.as_slice().hash(&mut hasher);
+    chars.subtypes.as_slice().hash(&mut hasher);
+    chars.supertypes.as_slice().hash(&mut hasher);
+    chars.colors.hash(&mut hasher);
+    matches!(obj.kind, crate::object::ObjectKind::Token).hash(&mut hasher);
+    game.is_tapped(obj.id).hash(&mut hasher);
+    game.is_face_down(obj.id).hash(&mut hasher);
+    for ability in chars.static_abilities.iter() {
+        ability.id().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// One representative object per characteristic class, in deterministic
+/// battlefield order. Probe outcomes are identical within a class for
+/// dedup-eligible filters, so probing representatives is exact.
+pub(crate) fn chars_class_representatives(
+    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+    objects: &ObjectMap,
+    game: &GameState,
+) -> Vec<ObjectId> {
+    let mut seen: HashSet<u64> = HashSet::default();
+    let mut representatives = Vec::new();
+    let mut ids: Vec<ObjectId> = baseline.keys().copied().collect();
+    ids.sort_unstable();
+    for id in ids {
+        let Some(obj) = objects.get(&id) else {
+            continue;
+        };
+        let Some(chars) = baseline.get(&id) else {
+            continue;
+        };
+        if seen.insert(chars_class_key(obj, chars, game)) {
+            representatives.push(id);
+        }
+    }
+    representatives
+}
+
 fn effect_applicability_changed(
     a: &ContinuousEffect,
     b: &ContinuousEffect,
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
     objects: &ObjectMap,
     game: &GameState,
+    representatives: Option<&[ObjectId]>,
 ) -> bool {
-    for (&id, obj) in objects {
+    let dedup = representatives.filter(|_| {
+        effect_target_supports_chars_class_dedup(&a.applies_to)
+            && effect_target_supports_chars_class_dedup(&b.applies_to)
+    });
+
+    let probe = |id: ObjectId, obj: &crate::object::Object| -> bool {
         let Some(chars) = baseline.get(&id) else {
-            continue;
+            return false;
         };
+        // If B does not apply, chars are unchanged and A's match cannot flip.
+        if !effect_applies_with_chars(b, obj, chars, game) {
+            return false;
+        }
         let applies_before = effect_applies_with_chars(a, obj, chars, game);
         let mut chars_after = chars.clone();
-        if effect_applies_with_chars(b, obj, chars, game) {
-            apply_modification_to_chars_for_dependency(
-                &b.modification,
-                &mut chars_after,
-                obj,
-                game,
-            );
-        }
+        apply_modification_to_chars_for_dependency(&b.modification, &mut chars_after, obj, game);
         let applies_after = effect_applies_with_chars(a, obj, &chars_after, game);
-        if applies_before != applies_after {
+        applies_before != applies_after
+    };
+
+    if let Some(representatives) = dedup {
+        for &id in representatives {
+            if let Some(obj) = objects.get(&id)
+                && probe(id, obj)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    for (&id, obj) in objects {
+        if probe(id, obj) {
             return true;
         }
     }
@@ -1089,7 +1236,7 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
             chars.card_types.retain(|t| !types.contains(t));
         }
         Modification::SetCardTypes(types) => {
-            chars.card_types = types.clone();
+            chars.card_types = types.clone().into();
         }
         Modification::AddSubtypes(types) => {
             for t in types {
@@ -1108,7 +1255,7 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
                 .filter(|subtype| !subtype.is_land_subtype())
                 .cloned()
                 .collect();
-            chars.subtypes = non_land_subtypes;
+            chars.subtypes = non_land_subtypes.into();
             chars.subtypes.extend(types.iter().copied());
 
             // Setting a land's subtype to basic land types also replaces its
@@ -1198,22 +1345,17 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
             }
         }
         Modification::AddAbility(ability) => {
-            let static_ability = crate::ability::Ability::static_ability(ability.clone());
-            chars.abilities.push(static_ability);
-            if !chars.static_abilities.contains(ability) {
-                chars.static_abilities.push(ability.clone());
-            }
+            push_static_ability_once(chars, ability.clone());
         }
         Modification::AddAbilityGeneric(ability) => {
-            chars.abilities.push(ability.clone());
-            if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind
-                && !chars.static_abilities.contains(static_ability)
-            {
-                chars.static_abilities.push(static_ability.clone());
+            if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind {
+                push_static_ability_once(chars, static_ability.clone());
+            } else {
+                chars.abilities.push(ability.clone());
             }
         }
         Modification::SetAbilities(abilities) => {
-            chars.abilities = abilities.clone();
+            chars.abilities = abilities.clone().into();
             chars.static_abilities = abilities
                 .iter()
                 .filter_map(|ability| {
@@ -1668,6 +1810,7 @@ fn modification_can_remove_static_ability_presence(modification: &Modification) 
             | Modification::SetSubtypes(_)
             | Modification::SetAbilities(_)
             | Modification::RemoveAbility(_)
+            | Modification::RemoveAbilityGeneric(_)
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )
@@ -1711,6 +1854,7 @@ fn modification_can_change_abilities_or_matching_characteristics(
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
+            | Modification::RemoveAbilityGeneric(_)
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )
@@ -1773,6 +1917,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
+            | Modification::RemoveAbilityGeneric(_)
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana => {
                 filter_uses_ability_characteristics(filter)
@@ -1834,15 +1979,17 @@ fn modification_can_change_type_characteristics(modification: &Modification) -> 
 }
 
 fn sublayer_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
-    // Fixed +/- modifiers in 7c are commutative and never dependency-sensitive.
-    if effects.iter().all(|effect| {
-        matches!(
-            effect.modification,
-            Modification::ModifyPower(_)
-                | Modification::ModifyToughness(_)
-                | Modification::ModifyPowerToughness { .. }
-        )
-    }) {
+    // P/T adders in 7c are commutative. Color-count modifiers also only read
+    // layer-5 color characteristics, so other 7c modifiers cannot change their
+    // output.
+    if effects
+        .iter()
+        .all(|effect| is_commutative_pt_modifier(&effect.modification))
+    {
+        return true;
+    }
+
+    if sublayer_group_has_same_fixed_pt_setting(effects) {
         return true;
     }
 
@@ -1851,6 +1998,46 @@ fn sublayer_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
     effects
         .iter()
         .all(|effect| is_independent_characteristic_defining_count_effect(effect))
+}
+
+fn is_commutative_pt_modifier(modification: &Modification) -> bool {
+    matches!(
+        modification,
+        Modification::ModifyPower(_)
+            | Modification::ModifyToughness(_)
+            | Modification::ModifyPowerToughness { .. }
+            | Modification::ModifyPowerToughnessByColorCount { .. }
+    )
+}
+
+fn sublayer_group_has_same_fixed_pt_setting(effects: &[&ContinuousEffect]) -> bool {
+    let mut fixed_setting: Option<(i32, i32)> = None;
+    for effect in effects {
+        let Modification::SetPowerToughness {
+            power,
+            toughness,
+            sublayer,
+        } = &effect.modification
+        else {
+            return false;
+        };
+        if *sublayer != PtSublayer::Setting {
+            return false;
+        }
+        let (Value::Fixed(power), Value::Fixed(toughness)) = (power, toughness) else {
+            return false;
+        };
+        let setting = (*power, *toughness);
+        if let Some(existing) = fixed_setting {
+            if existing != setting {
+                return false;
+            }
+        } else {
+            fixed_setting = Some(setting);
+        }
+    }
+
+    fixed_setting.is_some()
 }
 
 fn is_independent_characteristic_defining_count_effect(effect: &ContinuousEffect) -> bool {
@@ -1989,8 +2176,13 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
     if effects.len() <= 1 {
         return effects.to_vec();
     }
+    game.note_dependency_sort();
 
     let mut depends_on: Vec<Vec<usize>> = vec![Vec::new(); effects.len()];
+
+    // One representative object per characteristic class; probes between
+    // dedup-eligible effects only need to test one object per class.
+    let representatives = chars_class_representatives(baseline, objects, game);
 
     let mut has_any_dependency = false;
     for i in 0..effects.len() {
@@ -2003,6 +2195,7 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
                     objects,
                     game,
                     started_groups,
+                    Some(&representatives),
                 )
             {
                 depends_on[i].push(j);
@@ -2297,16 +2490,16 @@ mod tests {
         let baseline = HashMap::from([(
             object.id,
             CalculatedCharacteristics {
-                name: object.name.to_string(),
+                name: object.name.clone(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 power: object.base_power.as_ref().map(|p| p.base_value()),
                 toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
-                card_types: object.card_types.to_vec(),
-                subtypes: object.subtypes.to_vec(),
-                supertypes: object.supertypes.to_vec(),
+                card_types: object.card_types.clone(),
+                subtypes: object.subtypes.clone(),
+                supertypes: object.supertypes.clone(),
                 colors: object.colors(),
-                abilities: object.abilities_vec(),
-                static_abilities: Vec::new(),
+                abilities: object.abilities.clone().into(),
+                static_abilities: Vec::new().into(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
             },
@@ -2319,7 +2512,8 @@ mod tests {
             &baseline,
             &objects,
             &game,
-            &HashSet::new()
+            &HashSet::new(),
+            None,
         ));
     }
 
@@ -2348,16 +2542,16 @@ mod tests {
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
-                name: land.name.to_string(),
+                name: land.name.clone(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
-                card_types: land.card_types.to_vec(),
-                subtypes: land.subtypes.to_vec(),
-                supertypes: land.supertypes.to_vec(),
+                card_types: land.card_types.clone(),
+                subtypes: land.subtypes.clone(),
+                supertypes: land.supertypes.clone(),
                 colors: land.colors(),
-                abilities: land.abilities_vec(),
-                static_abilities: Vec::new(),
+                abilities: land.abilities.clone().into(),
+                static_abilities: Vec::new().into(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
             },
@@ -2414,7 +2608,8 @@ mod tests {
             &baseline,
             &objects,
             &game,
-            &HashSet::new()
+            &HashSet::new(),
+            None,
         ));
     }
 
@@ -2460,16 +2655,16 @@ mod tests {
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
-                name: land.name.to_string(),
+                name: land.name.clone(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
-                card_types: land.card_types.to_vec(),
-                subtypes: land.subtypes.to_vec(),
-                supertypes: land.supertypes.to_vec(),
+                card_types: land.card_types.clone(),
+                subtypes: land.subtypes.clone(),
+                supertypes: land.supertypes.clone(),
                 colors: land.colors(),
-                abilities: land.abilities_vec(),
-                static_abilities: Vec::new(),
+                abilities: land.abilities.clone().into(),
+                static_abilities: Vec::new().into(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
             },
@@ -2520,7 +2715,8 @@ mod tests {
             &baseline,
             &objects,
             &game,
-            &HashSet::new()
+            &HashSet::new(),
+            None,
         ));
     }
 

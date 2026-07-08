@@ -134,7 +134,7 @@ struct SourceStaticEffects {
     effects: Arc<Vec<ContinuousEffect>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct StaticEffectsCache {
     per_source: FxMap<ObjectId, SourceStaticEffects>,
 }

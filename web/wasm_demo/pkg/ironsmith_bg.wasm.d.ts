@@ -43,6 +43,7 @@ export const wasmgame_moveHandCardToBattlefieldFaceDown: (a: number, b: number, 
 export const wasmgame_forceTurnFaceUp: (a: number, b: number, c: bigint) => [number, number];
 export const wasmgame_addCardToHand: (a: number, b: number, c: number, d: number) => [bigint, number, number];
 export const wasmgame_addCardToZone: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [bigint, number, number];
+export const wasmgame_addCardsToZones: (a: number, b: any) => [number, number, number];
 export const wasmgame_setCombatDamageAssignment: (a: number, b: bigint, c: bigint, d: number) => void;
 export const wasmgame_setAttackingBand: (a: number, b: any) => [number, number];
 export const wasmgame_drawOpeningHands: (a: number, b: number) => [number, number];

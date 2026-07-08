@@ -254,11 +254,11 @@ impl ObjectSnapshot {
             snapshot.compiled_card_text = calculated.compiled_card_text.to_string();
             snapshot.power = calculated.power;
             snapshot.toughness = calculated.toughness;
-            snapshot.card_types = calculated.card_types;
-            snapshot.subtypes = calculated.subtypes;
-            snapshot.supertypes = calculated.supertypes;
+            snapshot.card_types = calculated.card_types.to_vec();
+            snapshot.subtypes = calculated.subtypes.to_vec();
+            snapshot.supertypes = calculated.supertypes.to_vec();
             snapshot.colors = calculated.colors;
-            snapshot.abilities = Arc::new(calculated.abilities);
+            snapshot.abilities = Arc::new(calculated.abilities.to_vec());
         }
 
         snapshot

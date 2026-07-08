@@ -141,6 +141,7 @@ pub(crate) fn check_state_based_actions_with_context(
     context: &StateBasedActionContext,
 ) -> Vec<StateBasedAction> {
     game.count_sba_scan_objects(game.battlefield.len());
+    view.prewarm_characteristics(&game.battlefield);
     let mut actions = Vec::new();
 
     // Check player state-based actions
@@ -304,24 +305,26 @@ fn check_permanent_sbas_with_view(
 
             // Creature with lethal damage dies (unless indestructible)
             let damage_marked = game.damage_on(obj_id);
-            let lethal_damage_threshold = lethal_damage_threshold_for_creature(game, view, obj_id);
-            if lethal_damage_threshold
-                .is_some_and(|threshold| threshold > 0 && damage_marked >= threshold as u32)
-                && !is_indestructible
-            {
-                actions.push(StateBasedAction::ObjectDies(obj_id));
-                continue;
+            if damage_marked > 0 {
+                let lethal_damage_threshold =
+                    lethal_damage_threshold_for_creature(game, view, obj_id);
+                if lethal_damage_threshold
+                    .is_some_and(|threshold| threshold > 0 && damage_marked >= threshold as u32)
+                    && !is_indestructible
+                {
+                    actions.push(StateBasedAction::ObjectDies(obj_id));
+                    continue;
+                }
             }
 
-            let toughness_for_deathtouch = view
-                .calculated_toughness(obj_id)
-                .or_else(|| obj.toughness());
-            if toughness_for_deathtouch.is_some_and(|toughness| toughness > 0)
-                && game.has_deathtouch_damage_since_sba(obj_id)
-                && !is_indestructible
-            {
-                actions.push(StateBasedAction::ObjectDies(obj_id));
-                continue;
+            if game.has_deathtouch_damage_since_sba(obj_id) && !is_indestructible {
+                let toughness_for_deathtouch = view
+                    .calculated_toughness(obj_id)
+                    .or_else(|| obj.toughness());
+                if toughness_for_deathtouch.is_some_and(|toughness| toughness > 0) {
+                    actions.push(StateBasedAction::ObjectDies(obj_id));
+                    continue;
+                }
             }
         }
 
@@ -607,7 +610,7 @@ fn check_legend_rule_with_view(
         };
 
         if chars.supertypes.contains(&Supertype::Legendary) {
-            let key = (chars.controller, chars.name);
+            let key = (chars.controller, chars.name.to_owned_string());
             if let Some((_, group)) = legends.iter_mut().find(|(existing, _)| *existing == key) {
                 group.push(obj_id);
             } else {

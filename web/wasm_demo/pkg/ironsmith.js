@@ -52,6 +52,18 @@ export class WasmGame {
         return BigInt.asUintN(64, ret[0]);
     }
     /**
+     * Add many cards to player zones and recompute UI state once.
+     * @param {any} cards_js
+     * @returns {any}
+     */
+    addCardsToZones(cards_js) {
+        const ret = wasm.wasmgame_addCardsToZones(this.__wbg_ptr, cards_js);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Add a signed life delta (negative = damage, positive = gain).
      * @param {number} player_index
      * @param {number} delta

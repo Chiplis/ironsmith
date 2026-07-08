@@ -299,6 +299,41 @@ function addValuesToSet(current, values) {
   return next;
 }
 
+function rectContainsPoint(rect, x, y) {
+  return (
+    x >= rect.left
+    && x <= rect.right
+    && y >= rect.top
+    && y <= rect.bottom
+  );
+}
+
+function stableHandSlotObjectIdAtPoint(handList, hoverableHandObjectIds, selectedObjectIdKey, clientX, clientY) {
+  const candidates = [];
+  const items = handList.querySelectorAll(".hand-layout-item[data-hand-object-id]");
+
+  for (const item of items) {
+    const rect = item.getBoundingClientRect();
+    if (!rectContainsPoint(rect, clientX, clientY)) continue;
+
+    const objectId = item.getAttribute("data-hand-object-id");
+    if (!objectId || !hoverableHandObjectIds.has(objectId)) continue;
+
+    const centerX = rect.left + (rect.width / 2);
+    const centerY = rect.top + (rect.height / 2);
+    candidates.push({
+      objectId,
+      distance: Math.abs(clientX - centerX) + (Math.abs(clientY - centerY) * 0.35),
+      isSelected: selectedObjectIdKey != null && objectId === selectedObjectIdKey,
+    });
+  }
+
+  candidates.sort((a, b) => a.distance - b.distance);
+  return candidates.find((candidate) => !candidate.isSelected)?.objectId
+    || candidates[0]?.objectId
+    || null;
+}
+
 export default function HandZone({
   player,
   selectedObjectId,
@@ -837,14 +872,29 @@ export default function HandZone({
       return objectId;
     }
 
+    if (isMobileFan) {
+      return stableHandSlotObjectIdAtPoint(
+        handList,
+        hoverableHandObjectIds,
+        selectedObjectIdKey,
+        clientX,
+        clientY
+      ) || selectedCandidate;
+    }
+
     return selectedCandidate;
-  }, [hoverableHandObjectIds, selectedObjectIdKey]);
+  }, [hoverableHandObjectIds, isMobileFan, selectedObjectIdKey]);
 
   const handleHandPointerMove = useCallback((event) => {
     if (event.pointerType === "touch" || activePointerIdRef.current != null) return;
 
     const objectId = resolveHandHoverObjectId(event.clientX, event.clientY);
-    if (objectId == null) return;
+    if (objectId == null) {
+      if (hoveredObjectId != null && hoverableHandObjectIds.has(String(hoveredObjectId))) {
+        handleHoverLeave();
+      }
+      return;
+    }
 
     if (hoverClearTimerRef.current) {
       clearTimeout(hoverClearTimerRef.current);
@@ -853,7 +903,7 @@ export default function HandZone({
     if (hoveredObjectId == null || String(hoveredObjectId) !== objectId) {
       hoverCard(objectId);
     }
-  }, [hoverCard, hoveredObjectId, resolveHandHoverObjectId]);
+  }, [handleHoverLeave, hoverCard, hoverableHandObjectIds, hoveredObjectId, resolveHandHoverObjectId]);
 
   const handleHandPointerLeave = useCallback((event) => {
     if (event.pointerType === "touch") return;
@@ -1093,7 +1143,7 @@ export default function HandZone({
             onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
             onPointerDown={isPlayable ? (event) => handlePointerDown(event, card, plays, glowKind) : undefined}
             onMouseEnter={() => handleHoverEnter(card.id)}
-            onMouseLeave={handleHoverLeave}
+            onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
             className={`mobile-hand-rail-card${isPlayable ? " mobile-hand-rail-card--draggable" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
             style={{
               width: "100%",
@@ -1145,7 +1195,7 @@ export default function HandZone({
             : plays.length <= 1 ? undefined : (event) => handleCardClick(event, card)}
           onPointerDown={plays.length > 0 ? (event) => handlePointerDown(event, card, plays, baseGlowKind || "extra") : undefined}
           onMouseEnter={() => handleHoverEnter(extra.id)}
-          onMouseLeave={handleHoverLeave}
+          onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
           className={`mobile-hand-rail-card mobile-hand-rail-card--extra${plays.length > 0 ? " mobile-hand-rail-card--draggable" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
           style={{
             width: "100%",
@@ -1212,6 +1262,7 @@ export default function HandZone({
           <div
             key={`${cycleIndex}-${entry.key}`}
             className={`hand-layout-item shrink-0 overflow-visible${isInspected ? " hand-layout-item--selected" : ""}${isHovered && !isInspected ? " hand-layout-item--hovered" : ""}`}
+            data-hand-object-id={cardObjectId}
             style={wrapperStyle}
           >
             <GameCard
@@ -1229,7 +1280,7 @@ export default function HandZone({
               onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
               onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
               onMouseEnter={() => handleHoverEnter(card.id)}
-              onMouseLeave={handleHoverLeave}
+              onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
               className={isMobileFan && isPlayable ? "hand-card--mobile-draggable" : undefined}
               style={cardStyle}
             />
@@ -1272,6 +1323,7 @@ export default function HandZone({
         <div
           key={`${cycleIndex}-${entry.key}`}
           className={`hand-layout-item shrink-0 overflow-visible${isInspected ? " hand-layout-item--selected" : ""}${isHovered && !isInspected ? " hand-layout-item--hovered" : ""}`}
+          data-hand-object-id={extraObjectId}
           style={wrapperStyle}
         >
           <GameCard
@@ -1289,7 +1341,7 @@ export default function HandZone({
               : plays.length <= 1 ? undefined : (e) => handleCardClick(e, card)}
             onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, baseGlowKind || "extra") : undefined}
             onMouseEnter={() => handleHoverEnter(extra.id)}
-            onMouseLeave={handleHoverLeave}
+            onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
             className={isMobileFan && isPlayable ? "hand-card--mobile-draggable" : undefined}
             style={cardStyle}
           />

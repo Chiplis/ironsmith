@@ -80,24 +80,6 @@ fn first_matching_spell_cast_each_turn_matches(
     cast_order == Some(1)
 }
 
-fn expand_semantic_subtypes(chars: &mut crate::continuous::CalculatedCharacteristics) {
-    let has_changeling = chars
-        .static_abilities
-        .iter()
-        .any(|ability| ability.id() == StaticAbilityId::Changeling);
-    let can_have_creature_subtypes = chars
-        .card_types
-        .iter()
-        .any(|card_type| matches!(card_type, CardType::Creature | CardType::Kindred));
-    if has_changeling && can_have_creature_subtypes {
-        for subtype in Subtype::all_creature_types() {
-            if !chars.subtypes.contains(subtype) {
-                chars.subtypes.push(*subtype);
-            }
-        }
-    }
-}
-
 pub(crate) trait TaggedConstraintSubject {
     fn subject_object_id(&self) -> ObjectId;
     fn subject_stable_id(&self) -> StableId;
@@ -240,7 +222,7 @@ impl TaggedConstraintSubject for LayeredSubject<'_> {
     }
 
     fn subject_name(&self) -> &str {
-        &self.chars.name
+        self.chars.name.as_str()
     }
 
     fn subject_controller(&self) -> PlayerId {
@@ -248,11 +230,11 @@ impl TaggedConstraintSubject for LayeredSubject<'_> {
     }
 
     fn subject_card_types(&self) -> &[CardType] {
-        &self.chars.card_types
+        self.chars.card_types.as_slice()
     }
 
     fn subject_subtypes(&self) -> &[Subtype] {
-        &self.chars.subtypes
+        self.chars.subtypes.as_slice()
     }
 
     fn subject_colors(&self) -> ColorSet {
@@ -293,7 +275,7 @@ impl TailMatchSubject for LayeredSubject<'_> {
     }
 
     fn tail_name(&self) -> &str {
-        &self.chars.name
+        self.chars.name.as_str()
     }
 
     fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32> {
@@ -301,7 +283,7 @@ impl TailMatchSubject for LayeredSubject<'_> {
     }
 
     fn tail_abilities(&self) -> &[crate::ability::Ability] {
-        &self.chars.abilities
+        self.chars.abilities.as_slice()
     }
 
     fn tail_has_alternative_cast_kind(
@@ -457,6 +439,84 @@ fn object_matches_subtype(object: &Object, subtype: Subtype, game: &GameState) -
                 object.other_face_name.as_deref(),
                 object.other_face,
             ))
+}
+
+fn layered_subject_matches_subtype(
+    subject: &LayeredSubject<'_>,
+    subtype: Subtype,
+    game: &GameState,
+) -> bool {
+    subject.chars.subtypes.contains(&subtype)
+        || (subtype == Subtype::Adventure
+            && linked_face_has_adventure(
+                game,
+                subject.object.other_face_name.as_deref(),
+                subject.object.other_face,
+            ))
+}
+
+fn filter_card_types<'a>(
+    object: &'a Object,
+    chars: Option<&'a CalculatedCharacteristics>,
+) -> &'a [CardType] {
+    chars.map_or(&object.card_types, |chars| chars.card_types.as_slice())
+}
+
+fn filter_subtypes<'a>(
+    object: &'a Object,
+    chars: Option<&'a CalculatedCharacteristics>,
+) -> &'a [Subtype] {
+    chars.map_or(&object.subtypes, |chars| chars.subtypes.as_slice())
+}
+
+fn filter_supertypes<'a>(
+    object: &'a Object,
+    chars: Option<&'a CalculatedCharacteristics>,
+) -> &'a [Supertype] {
+    chars.map_or(&object.supertypes, |chars| chars.supertypes.as_slice())
+}
+
+fn filter_colors(object: &Object, chars: Option<&CalculatedCharacteristics>) -> ColorSet {
+    chars.map_or_else(|| object.colors(), |chars| chars.colors)
+}
+
+fn filter_subject_matches_subtype(
+    object: &Object,
+    subject: Option<&LayeredSubject<'_>>,
+    subtype: Subtype,
+    game: &GameState,
+) -> bool {
+    subject.map_or_else(
+        || object_matches_subtype(object, subtype, game),
+        |subject| layered_subject_matches_subtype(subject, subtype, game),
+    )
+}
+
+fn filter_object_has_subtype_with_view(
+    object: &Object,
+    subtype: Subtype,
+    allow_calculated_pt: bool,
+    view: Option<&crate::derived_view::DerivedGameView<'_>>,
+    game: &GameState,
+) -> bool {
+    if allow_calculated_pt
+        && object.zone == Zone::Battlefield
+        && view.is_none_or(|view| view.requires_battlefield_characteristic_calculation(object.id))
+    {
+        let chars = view
+            .and_then(|view| view.calculated_characteristics_arc(object.id))
+            .or_else(|| game.calculated_characteristics_arc(object.id));
+        if let Some(chars) = chars {
+            return chars.subtypes.contains(&subtype)
+                || (subtype == Subtype::Adventure
+                    && linked_face_has_adventure(
+                        game,
+                        object.other_face_name.as_deref(),
+                        object.other_face,
+                    ));
+        }
+    }
+    object_matches_subtype(object, subtype, game)
 }
 
 fn snapshot_matches_subtype(snapshot: &ObjectSnapshot, subtype: Subtype, game: &GameState) -> bool {
@@ -2149,7 +2209,6 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
 
-        let mut adjusted_object_storage = None;
         let needs_pt = self.uses_power_or_toughness_characteristics();
         let needs_non_pt = self.uses_non_pt_battlefield_characteristics();
         let should_consider_adjusted_object = allow_calculated_pt && (needs_pt || needs_non_pt);
@@ -2161,36 +2220,37 @@ impl ObjectFilterExt for ObjectFilter {
                 Some(_) => true,
                 None => true,
             };
-        if should_calculate_chars
-            && let Some(mut chars) = view
-                .and_then(|view| {
-                    if object.zone != Zone::Battlefield
-                        || needs_pt
-                        || view.requires_battlefield_characteristic_calculation(object.id)
-                    {
-                        view.calculated_characteristics(object.id)
-                    } else {
-                        None
-                    }
-                })
-                .or_else(|| game.current_characteristics(object.id))
-        {
-            if object.zone != Zone::Battlefield {
-                expand_semantic_subtypes(&mut chars);
-            }
-            let mut adjusted = object.clone();
-            adjusted.name = chars.name.into();
-            adjusted.card_types = chars.card_types.into();
-            adjusted.subtypes = chars.subtypes.into();
-            adjusted.supertypes = chars.supertypes.into();
-            adjusted.color_override = Some(chars.colors);
-            adjusted.abilities = std::sync::Arc::new(chars.abilities);
-            adjusted_object_storage = Some(adjusted);
-        }
-        let object = adjusted_object_storage.as_ref().unwrap_or(object);
+        let calculated_chars: Option<std::sync::Arc<CalculatedCharacteristics>> =
+            if should_calculate_chars {
+                if object.zone == Zone::Battlefield {
+                    view.and_then(|view| {
+                        if needs_pt
+                            || view.requires_battlefield_characteristic_calculation(object.id)
+                        {
+                            view.calculated_characteristics_arc(object.id)
+                        } else {
+                            None
+                        }
+                    })
+                    .or_else(|| game.calculated_characteristics_arc(object.id))
+                } else {
+                    game.current_characteristics(object.id)
+                        .map(std::sync::Arc::new)
+                }
+            } else {
+                None
+            };
+        let calculated_chars_ref = calculated_chars.as_deref();
+        let layered_subject_storage =
+            calculated_chars_ref.map(|chars| LayeredSubject { object, chars });
+        let layered_subject = layered_subject_storage.as_ref();
+        let object_card_types = filter_card_types(object, calculated_chars_ref);
+        let object_subtypes = filter_subtypes(object, calculated_chars_ref);
+        let object_supertypes = filter_supertypes(object, calculated_chars_ref);
+        let object_colors = filter_colors(object, calculated_chars_ref);
 
         if self.modified {
-            if object.zone != Zone::Battlefield || !object.card_types.contains(&CardType::Creature)
+            if object.zone != Zone::Battlefield || !object_card_types.contains(&CardType::Creature)
             {
                 return false;
             }
@@ -2198,35 +2258,27 @@ impl ObjectFilterExt for ObjectFilter {
             let has_counters = object.counters.values().any(|count| *count > 0);
             let has_equipment = object.attachments.iter().any(|attachment_id| {
                 game.object(*attachment_id).is_some_and(|attachment| {
-                    let attachment_subtypes = if allow_calculated_pt
-                        && attachment.zone == Zone::Battlefield
-                        && view.is_none_or(|view| {
-                            view.requires_battlefield_characteristic_calculation(*attachment_id)
-                        }) {
-                        view.map(|view| view.calculated_subtypes(*attachment_id))
-                            .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
-                    } else {
-                        attachment.subtypes.to_vec()
-                    };
-                    attachment_subtypes.contains(&Subtype::Equipment)
+                    filter_object_has_subtype_with_view(
+                        attachment,
+                        Subtype::Equipment,
+                        allow_calculated_pt,
+                        view,
+                        game,
+                    )
                 })
             });
             let has_controlled_aura = ctx.you.is_some_and(|you| {
                 object.attachments.iter().any(|attachment_id| {
                     game.object(*attachment_id).is_some_and(|attachment| {
-                        let attachment_subtypes = if allow_calculated_pt
-                            && attachment.zone == Zone::Battlefield
-                            && view.is_none_or(|view| {
-                                view.requires_battlefield_characteristic_calculation(*attachment_id)
-                            }) {
-                            view.map(|view| view.calculated_subtypes(*attachment_id))
-                                .unwrap_or_else(|| game.calculated_subtypes(*attachment_id))
-                        } else {
-                            attachment.subtypes.to_vec()
-                        };
                         game.current_controller(*attachment_id)
                             .is_some_and(|controller| controller == you)
-                            && attachment_subtypes.contains(&Subtype::Aura)
+                            && filter_object_has_subtype_with_view(
+                                attachment,
+                                Subtype::Aura,
+                                allow_calculated_pt,
+                                view,
+                                game,
+                            )
                     })
                 })
             });
@@ -2298,12 +2350,12 @@ impl ObjectFilterExt for ObjectFilter {
                 && self
                     .card_types
                     .iter()
-                    .any(|t| object.card_types.contains(t));
+                    .any(|t| object_card_types.contains(t));
             let subtype_match = !self.subtypes.is_empty()
                 && self
                     .subtypes
                     .iter()
-                    .any(|t| object_matches_subtype(object, *t, game));
+                    .any(|t| filter_subject_matches_subtype(object, layered_subject, *t, game));
             if (!self.card_types.is_empty() || !self.subtypes.is_empty())
                 && !(type_match || subtype_match)
             {
@@ -2313,7 +2365,7 @@ impl ObjectFilterExt for ObjectFilter {
             && !self
                 .card_types
                 .iter()
-                .any(|t| object.card_types.contains(t))
+                .any(|t| object_card_types.contains(t))
         {
             return false;
         }
@@ -2323,7 +2375,7 @@ impl ObjectFilterExt for ObjectFilter {
             && !self
                 .all_card_types
                 .iter()
-                .all(|t| object.card_types.contains(t))
+                .all(|t| object_card_types.contains(t))
         {
             return false;
         }
@@ -2332,7 +2384,7 @@ impl ObjectFilterExt for ObjectFilter {
         if self
             .excluded_card_types
             .iter()
-            .any(|t| object.card_types.contains(t))
+            .any(|t| object_card_types.contains(t))
         {
             return false;
         }
@@ -2343,7 +2395,7 @@ impl ObjectFilterExt for ObjectFilter {
             && !self
                 .subtypes
                 .iter()
-                .any(|t| object_matches_subtype(object, *t, game))
+                .any(|t| filter_subject_matches_subtype(object, layered_subject, *t, game))
         {
             return false;
         }
@@ -2352,7 +2404,7 @@ impl ObjectFilterExt for ObjectFilter {
         if self
             .excluded_subtypes
             .iter()
-            .any(|t| object_matches_subtype(object, *t, game))
+            .any(|t| filter_subject_matches_subtype(object, layered_subject, *t, game))
         {
             return false;
         }
@@ -2361,11 +2413,11 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             };
             if let Some(chosen_type) = game.chosen_creature_type(source) {
-                if !object.subtypes.contains(&chosen_type) {
+                if !object_subtypes.contains(&chosen_type) {
                     return false;
                 }
             } else if let Some(chosen_type) = game.chosen_card_type(source) {
-                if !object.card_types.contains(&chosen_type) {
+                if !object_card_types.contains(&chosen_type) {
                     return false;
                 }
             } else {
@@ -2377,7 +2429,7 @@ impl ObjectFilterExt for ObjectFilter {
             else {
                 return false;
             };
-            if !object_matches_subtype(object, chosen_type, game) {
+            if !filter_subject_matches_subtype(object, layered_subject, chosen_type, game) {
                 return false;
             }
         }
@@ -2386,7 +2438,7 @@ impl ObjectFilterExt for ObjectFilter {
             else {
                 return false;
             };
-            if !object.card_types.contains(&chosen_type) {
+            if !object_card_types.contains(&chosen_type) {
                 return false;
             }
         }
@@ -2395,11 +2447,11 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             };
             if let Some(chosen_type) = game.chosen_creature_type(source) {
-                if object.subtypes.contains(&chosen_type) {
+                if object_subtypes.contains(&chosen_type) {
                     return false;
                 }
             } else if let Some(chosen_type) = game.chosen_card_type(source) {
-                if object.card_types.contains(&chosen_type) {
+                if object_card_types.contains(&chosen_type) {
                     return false;
                 }
             } else {
@@ -2412,7 +2464,7 @@ impl ObjectFilterExt for ObjectFilter {
             && !self
                 .supertypes
                 .iter()
-                .any(|t| object.supertypes.contains(t))
+                .any(|t| object_supertypes.contains(t))
         {
             return false;
         }
@@ -2421,15 +2473,14 @@ impl ObjectFilterExt for ObjectFilter {
         if self
             .excluded_supertypes
             .iter()
-            .any(|t| object.supertypes.contains(t))
+            .any(|t| object_supertypes.contains(t))
         {
             return false;
         }
 
         // Color check
         if let Some(required_colors) = &self.colors {
-            let obj_colors = object.colors();
-            if required_colors.intersection(obj_colors).is_empty() {
+            if required_colors.intersection(object_colors).is_empty() {
                 return false;
             }
         }
@@ -2437,59 +2488,56 @@ impl ObjectFilterExt for ObjectFilter {
             let Some(chosen_color) = ctx.source.and_then(|source| game.chosen_color(source)) else {
                 return false;
             };
-            if !object.colors().contains(chosen_color) {
+            if !object_colors.contains(chosen_color) {
                 return false;
             }
         }
 
         // Excluded colors check
         if !self.excluded_colors.is_empty()
-            && !self
-                .excluded_colors
-                .intersection(object.colors())
-                .is_empty()
+            && !self.excluded_colors.intersection(object_colors).is_empty()
         {
             return false;
         }
 
         // Colorless check
-        if self.colorless && !object.colors().is_empty() {
+        if self.colorless && !object_colors.is_empty() {
             return false;
         }
 
         // Multicolored check
-        if self.multicolored && object.colors().count() < 2 {
+        if self.multicolored && object_colors.count() < 2 {
             return false;
         }
 
         // Monocolored check
-        if self.monocolored && object.colors().count() != 1 {
+        if self.monocolored && object_colors.count() != 1 {
             return false;
         }
 
         if let Some(require_all_colors) = self.all_colors {
-            let is_all_colors = object.colors().count() == 5;
+            let is_all_colors = object_colors.count() == 5;
             if require_all_colors != is_all_colors {
                 return false;
             }
         }
 
         if let Some(require_exactly_two_colors) = self.exactly_two_colors {
-            let is_exactly_two_colors = object.colors().count() == 2;
+            let is_exactly_two_colors = object_colors.count() == 2;
             if require_exactly_two_colors != is_exactly_two_colors {
                 return false;
             }
         }
         if let Some(color_count_cmp) = &self.color_count {
-            let color_count = object.colors().count() as i32;
+            let color_count = object_colors.count() as i32;
             if !color_count_cmp.satisfies_with_context(color_count, game, ctx, stack_entry) {
                 return false;
             }
         }
 
-        let is_historic = object.card_types.contains(&CardType::Artifact)
-            || object.supertypes.contains(&Supertype::Legendary)
-            || object.subtypes.contains(&Subtype::Saga);
+        let is_historic = object_card_types.contains(&CardType::Artifact)
+            || object_supertypes.contains(&Supertype::Legendary)
+            || object_subtypes.contains(&Subtype::Saga);
         if self.historic && !is_historic {
             return false;
         }
@@ -2635,8 +2683,9 @@ impl ObjectFilterExt for ObjectFilter {
 
         // Power check
         if let Some(power_cmp) = &self.power {
-            if let Some(power) = resolve_object_power_for_filter(
+            if let Some(power) = resolve_layered_object_power_for_filter(
                 object,
+                calculated_chars_ref,
                 game,
                 self.power_reference,
                 allow_calculated_pt,
@@ -2649,8 +2698,9 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         if let Some(power_parity) = self.power_parity {
-            if let Some(power) = resolve_object_power_for_filter(
+            if let Some(power) = resolve_layered_object_power_for_filter(
                 object,
+                calculated_chars_ref,
                 game,
                 self.power_reference,
                 allow_calculated_pt,
@@ -2663,16 +2713,18 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         if self.power_greater_than_base_power {
-            let Some(effective_power) = resolve_object_power_for_filter(
+            let Some(effective_power) = resolve_layered_object_power_for_filter(
                 object,
+                calculated_chars_ref,
                 game,
                 PtReference::Effective,
                 allow_calculated_pt,
             ) else {
                 return false;
             };
-            let Some(base_power) = resolve_object_power_for_filter(
+            let Some(base_power) = resolve_layered_object_power_for_filter(
                 object,
+                calculated_chars_ref,
                 game,
                 PtReference::Base,
                 allow_calculated_pt,
@@ -2684,16 +2736,18 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         if let Some(relation) = self.power_toughness_relation {
-            let Some(power) = resolve_object_power_for_filter(
+            let Some(power) = resolve_layered_object_power_for_filter(
                 object,
+                calculated_chars_ref,
                 game,
                 PtReference::Effective,
                 allow_calculated_pt,
             ) else {
                 return false;
             };
-            let Some(toughness) = resolve_object_toughness_for_filter(
+            let Some(toughness) = resolve_layered_object_toughness_for_filter(
                 object,
+                calculated_chars_ref,
                 game,
                 PtReference::Effective,
                 allow_calculated_pt,
@@ -2712,8 +2766,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if let Some(relation) = self.power_relative_to_source {
-            let Some(candidate_power) = resolve_object_power_for_filter(
+            let Some(candidate_power) = resolve_layered_object_power_for_filter(
                 object,
+                calculated_chars_ref,
                 game,
                 PtReference::Effective,
                 allow_calculated_pt,
@@ -2745,8 +2800,9 @@ impl ObjectFilterExt for ObjectFilter {
 
         // Toughness check
         if let Some(toughness_cmp) = &self.toughness {
-            if let Some(toughness) = resolve_object_toughness_for_filter(
+            if let Some(toughness) = resolve_layered_object_toughness_for_filter(
                 object,
+                calculated_chars_ref,
                 game,
                 self.toughness_reference,
                 allow_calculated_pt,
@@ -2759,16 +2815,18 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         if let Some(total_cmp) = &self.total_power_toughness {
-            let Some(power) = resolve_object_power_for_filter(
+            let Some(power) = resolve_layered_object_power_for_filter(
                 object,
+                calculated_chars_ref,
                 game,
                 PtReference::Effective,
                 allow_calculated_pt,
             ) else {
                 return false;
             };
-            let Some(toughness) = resolve_object_toughness_for_filter(
+            let Some(toughness) = resolve_layered_object_toughness_for_filter(
                 object,
+                calculated_chars_ref,
                 game,
                 PtReference::Effective,
                 allow_calculated_pt,
@@ -2848,7 +2906,11 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
-        self.matches_shared_tail(object, ctx, game, stack_entry)
+        if let Some(subject) = layered_subject {
+            self.matches_shared_tail(subject, ctx, game, stack_entry)
+        } else {
+            self.matches_shared_tail(object, ctx, game, stack_entry)
+        }
     }
 
     fn stack_entry_matches_kind(
@@ -4687,8 +4749,31 @@ fn resolve_object_power_for_filter(
     }
 }
 
-fn resolve_object_toughness_for_filter(
+fn resolve_layered_object_power_for_filter(
     object: &Object,
+    chars: Option<&CalculatedCharacteristics>,
+    game: &crate::game_state::GameState,
+    reference: PtReference,
+    allow_calculated_pt: bool,
+) -> Option<i32> {
+    match reference {
+        PtReference::Base => object_base_power_for_filter(object),
+        PtReference::Effective => {
+            if allow_calculated_pt {
+                chars
+                    .and_then(|chars| chars.power)
+                    .or_else(|| game.calculated_power(object.id))
+                    .or_else(|| object.power())
+            } else {
+                object.power()
+            }
+        }
+    }
+}
+
+fn resolve_layered_object_toughness_for_filter(
+    object: &Object,
+    chars: Option<&CalculatedCharacteristics>,
     game: &crate::game_state::GameState,
     reference: PtReference,
     allow_calculated_pt: bool,
@@ -4697,7 +4782,9 @@ fn resolve_object_toughness_for_filter(
         PtReference::Base => object_base_toughness_for_filter(object),
         PtReference::Effective => {
             if allow_calculated_pt {
-                game.calculated_toughness(object.id)
+                chars
+                    .and_then(|chars| chars.toughness)
+                    .or_else(|| game.calculated_toughness(object.id))
                     .or_else(|| object.toughness())
             } else {
                 object.toughness()

@@ -141,7 +141,7 @@ impl SnapshotObjectViewCache {
             .unwrap_or(&obj.card_types);
         let name = current
             .as_ref()
-            .map(|chars| chars.name.clone())
+            .map(|chars| chars.name.to_owned_string())
             .unwrap_or_else(|| obj.name.to_string());
         let power_toughness = {
             let p = current
@@ -551,61 +551,71 @@ fn object_characteristic_signature(
     include_attachments: bool,
 ) -> String {
     let current = game.current_characteristics(obj.id);
-    let (
-        name,
-        compiled_card_text,
-        power,
-        toughness,
-        card_types,
-        subtypes,
-        supertypes,
-        colors,
-        abilities,
-        static_abilities,
-        controller,
-    ) = if let Some(chars) = current {
-        (
-            chars.name,
-            chars.compiled_card_text.to_string(),
-            chars.power,
-            chars.toughness,
-            chars.card_types,
-            chars.subtypes,
-            chars.supertypes,
-            chars.colors,
-            chars.abilities,
-            chars.static_abilities,
-            chars.controller,
-        )
+    let name = current
+        .as_ref()
+        .map(|chars| chars.name.to_owned_string())
+        .unwrap_or_else(|| obj.name.to_string());
+    let compiled_card_text = current
+        .as_ref()
+        .map(|chars| chars.compiled_card_text.to_string())
+        .unwrap_or_else(|| obj.compiled_card_text.to_string());
+    let power = current
+        .as_ref()
+        .and_then(|chars| chars.power)
+        .or_else(|| obj.power());
+    let toughness = current
+        .as_ref()
+        .and_then(|chars| chars.toughness)
+        .or_else(|| obj.toughness());
+    let card_types: &[CardType] = current
+        .as_ref()
+        .map(|chars| chars.card_types.as_slice())
+        .unwrap_or(&obj.card_types);
+    let subtypes: &[Subtype] = current
+        .as_ref()
+        .map(|chars| chars.subtypes.as_slice())
+        .unwrap_or(&obj.subtypes);
+    let supertypes: &[ironsmith::types::Supertype] = current
+        .as_ref()
+        .map(|chars| chars.supertypes.as_slice())
+        .unwrap_or(&obj.supertypes);
+    let colors = current
+        .as_ref()
+        .map(|chars| chars.colors)
+        .unwrap_or_else(|| obj.colors());
+    let owned_abilities: Vec<ironsmith::ability::Ability>;
+    let abilities = if let Some(chars) = current.as_ref() {
+        chars.abilities.as_slice()
     } else {
-        (
-            obj.name.to_string(),
-            obj.compiled_card_text.to_string(),
-            obj.power(),
-            obj.toughness(),
-            obj.card_types.to_vec(),
-            obj.subtypes.to_vec(),
-            obj.supertypes.to_vec(),
-            obj.colors(),
-            obj.abilities_vec(),
-            obj.abilities
-                .iter()
-                .filter_map(|ability| match &ability.kind {
-                    ironsmith::ability::AbilityKind::Static(static_ability) => {
-                        Some(static_ability.clone())
-                    }
-                    _ => None,
-                })
-                .collect(),
-            obj.owner,
-        )
+        owned_abilities = obj.abilities_vec();
+        owned_abilities.as_slice()
     };
+    let owned_static_abilities: Vec<ironsmith::static_abilities::StaticAbility>;
+    let static_abilities = if let Some(chars) = current.as_ref() {
+        chars.static_abilities.as_slice()
+    } else {
+        owned_static_abilities = obj
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                ironsmith::ability::AbilityKind::Static(static_ability) => {
+                    Some(static_ability.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        owned_static_abilities.as_slice()
+    };
+    let controller = current
+        .as_ref()
+        .map(|chars| chars.controller)
+        .unwrap_or(obj.owner);
 
     let card_type_signature =
-        sorted_name_signature(&card_types, |card_type| card_type.name().to_string());
-    let subtype_signature = sorted_name_signature(&subtypes, |subtype| subtype.display_name());
+        sorted_name_signature(card_types, |card_type| card_type.name().to_string());
+    let subtype_signature = sorted_name_signature(subtypes, |subtype| subtype.display_name());
     let supertype_signature =
-        sorted_name_signature(&supertypes, |supertype| supertype.name().to_string());
+        sorted_name_signature(supertypes, |supertype| supertype.name().to_string());
     let attachment_part = include_attachments
         .then(|| attachment_signature(game, obj))
         .unwrap_or_else(|| "-".to_string());

@@ -35,6 +35,7 @@ const TOP_LEFT_INSPECTOR_INSET = 6;
 const TOP_LEFT_INSPECTOR_ZONE_GAP = 6;
 const TOP_LEFT_INSPECTOR_MIN_HEIGHT = 96;
 const HAND_LANE_HOVER_FUZZ = 6;
+const HAND_LANE_BOTTOM_EXIT_FUZZ = 96;
 const TRANSITION_TRACKED_ZONE_IDS = ["battlefield", "hand", "graveyard", "exile", "command"];
 const SINGLE_ACTION_AUTO_DROP_MIN_DISTANCE_SQ = 18 * 18;
 const INSPECTOR_SHADER_REVEAL_CONSUME_MS = 2500;
@@ -93,6 +94,16 @@ function rectContainsPoint(rect, x, y, fuzz = 0) {
     && x <= (rect.right + fuzz)
     && y >= (rect.top - fuzz)
     && y <= (rect.bottom + fuzz)
+  );
+}
+
+function handLaneHoverRectContainsPoint(rect, x, y) {
+  if (!rect) return false;
+  return (
+    x >= (rect.left - HAND_LANE_HOVER_FUZZ)
+    && x <= (rect.right + HAND_LANE_HOVER_FUZZ)
+    && y >= (rect.top - HAND_LANE_HOVER_FUZZ)
+    && y <= (rect.bottom + HAND_LANE_BOTTOM_EXIT_FUZZ)
   );
 }
 
@@ -1348,7 +1359,22 @@ export default function Workspace({
     setHandLaneHovered((currentHovered) => (currentHovered ? currentHovered : true));
   }, []);
 
-  const handleHandLaneLeave = useCallback(() => {
+  const handleHandLaneLeave = useCallback((event) => {
+    const shellEl = handRevealShellRef.current;
+    if (
+      handLaneOpen
+      && shellEl
+      && Number.isFinite(event?.clientX)
+      && Number.isFinite(event?.clientY)
+      && handLaneHoverRectContainsPoint(shellEl.getBoundingClientRect(), event.clientX, event.clientY)
+    ) {
+      if (handHoverCloseTimerRef.current) {
+        clearTimeout(handHoverCloseTimerRef.current);
+        handHoverCloseTimerRef.current = null;
+      }
+      return;
+    }
+
     if (handHoverCloseTimerRef.current) {
       clearTimeout(handHoverCloseTimerRef.current);
     }
@@ -1356,7 +1382,7 @@ export default function Workspace({
       setHandLaneHovered(false);
       handHoverCloseTimerRef.current = null;
     }, 90);
-  }, []);
+  }, [handLaneOpen]);
 
   const collapseHandLane = useCallback(() => {
     if (handHoverCloseTimerRef.current) {
@@ -1374,11 +1400,10 @@ export default function Workspace({
       const target = event.target;
       const insideHandLaneTarget = target instanceof Element
         && target.closest(".hand-reveal-shell");
-      const insideExpandedShell = handLaneOpen && rectContainsPoint(
+      const insideExpandedShell = handLaneOpen && handLaneHoverRectContainsPoint(
         shellEl.getBoundingClientRect(),
         event.clientX,
-        event.clientY,
-        HAND_LANE_HOVER_FUZZ
+        event.clientY
       );
 
       if (insideHandLaneTarget || insideExpandedShell) {

@@ -7,7 +7,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::ability::{Ability, AbilityKind, ActivatedAbilityRuntimeExt as _};
-use crate::continuous::{CalculatedCharacteristics, ContinuousEffect, EffectTarget, Layer};
+use crate::continuous::{
+    CalculatedCharacteristics, ContinuousEffect, EffectTarget, Layer, Modification,
+};
 use crate::game_state::GameState;
 use crate::grant::{DerivedAlternativeCast, Grantable};
 use crate::grant_registry::{Grant, GrantedAlternativeCast, GrantedPlayFrom};
@@ -31,7 +33,7 @@ pub(crate) struct DerivedGameView<'a> {
     all_effects: Arc<Vec<ContinuousEffect>>,
     battlefield_characteristic_scope: BattlefieldCharacteristicScope,
     use_game_characteristics_cache: bool,
-    characteristics: RefCell<FxMap<ObjectId, Option<CalculatedCharacteristics>>>,
+    characteristics: RefCell<FxMap<ObjectId, Option<Arc<CalculatedCharacteristics>>>>,
     abilities_cache: RefCell<FxMap<ObjectId, Rc<Vec<Ability>>>>,
     ability_index_summary_cache: RefCell<FxMap<ObjectId, Rc<AbilityIndexSummary>>>,
     static_abilities_cache:
@@ -231,6 +233,144 @@ fn battlefield_characteristic_scope(
     }
 }
 
+fn continuous_effect_can_change_spell_cost_modifier_presence(effect: &ContinuousEffect) -> bool {
+    modification_can_change_spell_cost_modifier_presence(&effect.modification)
+}
+
+fn continuous_effect_can_change_activated_ability_cost_modifier_presence(
+    effect: &ContinuousEffect,
+) -> bool {
+    modification_can_change_activated_ability_cost_modifier_presence(&effect.modification)
+}
+
+fn continuous_effect_can_change_minimum_total_spell_mana_presence(
+    effect: &ContinuousEffect,
+) -> bool {
+    modification_can_change_minimum_total_spell_mana_presence(&effect.modification)
+}
+
+fn continuous_effect_can_change_pay_life_restriction_presence(effect: &ContinuousEffect) -> bool {
+    modification_can_change_pay_life_restriction_presence(&effect.modification)
+}
+
+fn modification_can_change_spell_cost_modifier_presence(modification: &Modification) -> bool {
+    match modification {
+        Modification::CopyOf { .. }
+        | Modification::ChangeText { .. }
+        | Modification::SetTextBox(_) => true,
+        Modification::AddAbility(static_ability) => {
+            static_ability_has_spell_cost_modifier(static_ability)
+        }
+        Modification::AddAbilityGeneric(ability) => ability_has_spell_cost_modifier(ability),
+        Modification::SetAbilities(abilities) => {
+            abilities.iter().any(ability_has_spell_cost_modifier)
+        }
+        _ => false,
+    }
+}
+
+fn modification_can_change_activated_ability_cost_modifier_presence(
+    modification: &Modification,
+) -> bool {
+    match modification {
+        Modification::CopyOf { .. }
+        | Modification::ChangeText { .. }
+        | Modification::SetTextBox(_) => true,
+        Modification::AddAbility(static_ability) => {
+            static_ability_has_activated_ability_cost_modifier(static_ability)
+        }
+        Modification::AddAbilityGeneric(ability) => {
+            ability_has_activated_ability_cost_modifier(ability)
+        }
+        Modification::SetAbilities(abilities) => abilities
+            .iter()
+            .any(ability_has_activated_ability_cost_modifier),
+        _ => false,
+    }
+}
+
+fn modification_can_change_minimum_total_spell_mana_presence(modification: &Modification) -> bool {
+    match modification {
+        Modification::CopyOf { .. }
+        | Modification::ChangeText { .. }
+        | Modification::SetTextBox(_) => true,
+        Modification::AddAbility(static_ability) => {
+            static_ability_has_minimum_total_spell_mana(static_ability)
+        }
+        Modification::AddAbilityGeneric(ability) => ability_has_minimum_total_spell_mana(ability),
+        Modification::SetAbilities(abilities) => {
+            abilities.iter().any(ability_has_minimum_total_spell_mana)
+        }
+        _ => false,
+    }
+}
+
+fn modification_can_change_pay_life_restriction_presence(modification: &Modification) -> bool {
+    match modification {
+        Modification::CopyOf { .. }
+        | Modification::ChangeText { .. }
+        | Modification::SetTextBox(_) => true,
+        Modification::AddAbility(static_ability) => {
+            static_ability_forbids_paying_life_for_cast_or_activate(static_ability)
+        }
+        Modification::AddAbilityGeneric(ability) => {
+            ability_forbids_paying_life_for_cast_or_activate(ability)
+        }
+        Modification::SetAbilities(abilities) => abilities
+            .iter()
+            .any(ability_forbids_paying_life_for_cast_or_activate),
+        _ => false,
+    }
+}
+
+fn ability_has_spell_cost_modifier(ability: &Ability) -> bool {
+    matches!(&ability.kind, AbilityKind::Static(static_ability)
+        if static_ability_has_spell_cost_modifier(static_ability))
+}
+
+fn ability_has_activated_ability_cost_modifier(ability: &Ability) -> bool {
+    matches!(&ability.kind, AbilityKind::Static(static_ability)
+        if static_ability_has_activated_ability_cost_modifier(static_ability))
+}
+
+fn ability_has_minimum_total_spell_mana(ability: &Ability) -> bool {
+    matches!(&ability.kind, AbilityKind::Static(static_ability)
+        if static_ability_has_minimum_total_spell_mana(static_ability))
+}
+
+fn ability_forbids_paying_life_for_cast_or_activate(ability: &Ability) -> bool {
+    matches!(&ability.kind, AbilityKind::Static(static_ability)
+        if static_ability_forbids_paying_life_for_cast_or_activate(static_ability))
+}
+
+fn static_ability_has_spell_cost_modifier(
+    static_ability: &crate::static_abilities::StaticAbility,
+) -> bool {
+    static_ability.cost_reduction().is_some()
+        || static_ability.cost_increase().is_some()
+        || static_ability.cost_reduction_mana_cost().is_some()
+        || static_ability.cost_increase_mana_cost().is_some()
+}
+
+fn static_ability_has_activated_ability_cost_modifier(
+    static_ability: &crate::static_abilities::StaticAbility,
+) -> bool {
+    static_ability.activated_ability_cost_reduction().is_some()
+        || static_ability.activated_ability_cost_increase().is_some()
+}
+
+fn static_ability_has_minimum_total_spell_mana(
+    static_ability: &crate::static_abilities::StaticAbility,
+) -> bool {
+    static_ability.minimum_total_spell_mana().is_some()
+}
+
+fn static_ability_forbids_paying_life_for_cast_or_activate(
+    static_ability: &crate::static_abilities::StaticAbility,
+) -> bool {
+    static_ability.forbids_paying_life_for_cast_or_activate()
+}
+
 impl<'a> DerivedGameView<'a> {
     pub(crate) fn new(game: &'a GameState) -> Self {
         if game.continuous_state_is_clean() {
@@ -330,24 +470,33 @@ impl<'a> DerivedGameView<'a> {
         Arc::clone(&self.all_effects)
     }
 
-    pub(crate) fn calculated_characteristics(
+    pub(crate) fn calculated_characteristics_arc(
         &self,
         object_id: ObjectId,
-    ) -> Option<CalculatedCharacteristics> {
+    ) -> Option<Arc<CalculatedCharacteristics>> {
         if let Some(cached) = self.characteristics.borrow().get(&object_id) {
             return cached.clone();
         }
 
         let calculated = if self.use_game_characteristics_cache {
-            self.game.calculated_characteristics(object_id)
+            self.game.calculated_characteristics_arc(object_id)
         } else {
             self.game
                 .calculated_characteristics_with_effects(object_id, self.all_effects.as_slice())
+                .map(Arc::new)
         };
         self.characteristics
             .borrow_mut()
             .insert(object_id, calculated.clone());
         calculated
+    }
+
+    pub(crate) fn calculated_characteristics(
+        &self,
+        object_id: ObjectId,
+    ) -> Option<CalculatedCharacteristics> {
+        self.calculated_characteristics_arc(object_id)
+            .map(|chars| chars.as_ref().clone())
     }
 
     pub(crate) fn prewarm_characteristics(&self, ids: &[ObjectId]) {
@@ -367,7 +516,7 @@ impl<'a> DerivedGameView<'a> {
             self.game.prewarm_calculated_characteristics(&missing);
             let mut cache = self.characteristics.borrow_mut();
             for id in missing {
-                cache.insert(id, self.game.calculated_characteristics(id));
+                cache.insert(id, self.game.calculated_characteristics_arc(id));
             }
             return;
         }
@@ -377,18 +526,18 @@ impl<'a> DerivedGameView<'a> {
             .calculated_characteristics_batch_with_effects(&missing, self.all_effects.as_slice());
         let mut cache = self.characteristics.borrow_mut();
         for id in missing {
-            cache.insert(id, calculated.get(&id).cloned());
+            cache.insert(id, calculated.get(&id).cloned().map(Arc::new));
         }
     }
 
     pub(crate) fn calculated_toughness(&self, object_id: ObjectId) -> Option<i32> {
-        self.calculated_characteristics(object_id)
+        self.calculated_characteristics_arc(object_id)
             .and_then(|chars| chars.toughness)
     }
 
     pub(crate) fn calculated_subtypes(&self, object_id: ObjectId) -> Vec<Subtype> {
-        self.calculated_characteristics(object_id)
-            .map(|chars| chars.subtypes)
+        self.calculated_characteristics_arc(object_id)
+            .map(|chars| chars.subtypes.to_vec())
             .unwrap_or_default()
     }
 
@@ -400,7 +549,7 @@ impl<'a> DerivedGameView<'a> {
             return object.colors();
         }
 
-        self.calculated_characteristics(object_id)
+        self.calculated_characteristics_arc(object_id)
             .map(|chars| chars.colors)
             .unwrap_or_else(|| object.colors())
     }
@@ -417,7 +566,9 @@ impl<'a> DerivedGameView<'a> {
         let abilities = if !self.requires_battlefield_characteristic_calculation(object_id) {
             object.abilities_vec()
         } else {
-            self.calculated_characteristics(object_id)?.abilities
+            self.calculated_characteristics_arc(object_id)?
+                .abilities
+                .to_vec()
         };
         let abilities = Rc::new(abilities);
         self.abilities_cache
@@ -482,7 +633,9 @@ impl<'a> DerivedGameView<'a> {
                 })
                 .collect()
         } else {
-            self.calculated_characteristics(object_id)?.static_abilities
+            self.calculated_characteristics_arc(object_id)?
+                .static_abilities
+                .to_vec()
         };
         let static_abilities = Rc::new(static_abilities);
         self.static_abilities_cache
@@ -499,7 +652,7 @@ impl<'a> DerivedGameView<'a> {
             return object.card_types.contains(&card_type);
         }
 
-        self.calculated_characteristics(object_id)
+        self.calculated_characteristics_arc(object_id)
             .is_some_and(|chars| chars.card_types.contains(&card_type))
     }
 
@@ -520,7 +673,7 @@ impl<'a> DerivedGameView<'a> {
             });
         }
 
-        self.calculated_characteristics(object_id)
+        self.calculated_characteristics_arc(object_id)
             .is_some_and(|chars| {
                 chars.static_abilities.iter().any(|ability| {
                     ability.id() == ability_id && ability.is_active(self.game, object_id)
@@ -624,7 +777,7 @@ impl<'a> DerivedGameView<'a> {
     ) -> bool {
         self.player_can_pay_black_with_life(payer)
             && (!reason.is_cast_or_ability_payment()
-                || !self.game.player_cant_pay_life_to_cast_or_activate(payer))
+                || !self.player_cant_pay_life_to_cast_or_activate(payer))
     }
 
     fn player_can_pay_black_with_life(&self, payer: PlayerId) -> bool {
@@ -954,13 +1107,21 @@ impl<'a> DerivedGameView<'a> {
             return cached.clone();
         }
 
-        let sources: Vec<_> = self
-            .game
-            .battlefield
-            .iter()
-            .copied()
-            .filter(|&perm_id| self.permanent_has_spell_cost_modifiers(perm_id))
-            .collect();
+        let sources: Vec<_> = if self.can_scan_printed_spell_cost_modifiers() {
+            self.game
+                .battlefield
+                .iter()
+                .copied()
+                .filter(|&perm_id| self.permanent_printed_has_spell_cost_modifiers(perm_id))
+                .collect()
+        } else {
+            self.game
+                .battlefield
+                .iter()
+                .copied()
+                .filter(|&perm_id| self.permanent_has_spell_cost_modifiers(perm_id))
+                .collect()
+        };
         *self.has_battlefield_spell_cost_modifiers.borrow_mut() = Some(!sources.is_empty());
         *self.battlefield_spell_cost_modifier_sources.borrow_mut() = Some(sources.clone());
         sources
@@ -971,12 +1132,19 @@ impl<'a> DerivedGameView<'a> {
             return cached;
         }
 
-        let has_modifiers = self
-            .game
-            .battlefield
-            .iter()
-            .copied()
-            .any(|perm_id| self.permanent_has_spell_cost_modifiers(perm_id));
+        let has_modifiers = if self.can_scan_printed_spell_cost_modifiers() {
+            self.game
+                .battlefield
+                .iter()
+                .copied()
+                .any(|perm_id| self.permanent_printed_has_spell_cost_modifiers(perm_id))
+        } else {
+            self.game
+                .battlefield
+                .iter()
+                .copied()
+                .any(|perm_id| self.permanent_has_spell_cost_modifiers(perm_id))
+        };
         *self.has_battlefield_spell_cost_modifiers.borrow_mut() = Some(has_modifiers);
         has_modifiers
     }
@@ -990,13 +1158,23 @@ impl<'a> DerivedGameView<'a> {
             return cached.clone();
         }
 
-        let sources: Vec<_> = self
-            .game
-            .battlefield
-            .iter()
-            .copied()
-            .filter(|&perm_id| self.permanent_has_activated_ability_cost_modifiers(perm_id))
-            .collect();
+        let sources: Vec<_> = if self.can_scan_printed_activated_ability_cost_modifiers() {
+            self.game
+                .battlefield
+                .iter()
+                .copied()
+                .filter(|&perm_id| {
+                    self.permanent_printed_has_activated_ability_cost_modifiers(perm_id)
+                })
+                .collect()
+        } else {
+            self.game
+                .battlefield
+                .iter()
+                .copied()
+                .filter(|&perm_id| self.permanent_has_activated_ability_cost_modifiers(perm_id))
+                .collect()
+        };
         *self.has_activated_ability_cost_modifiers.borrow_mut() = Some(!sources.is_empty());
         *self.activated_ability_cost_modifier_sources.borrow_mut() = Some(sources.clone());
         sources
@@ -1007,14 +1185,104 @@ impl<'a> DerivedGameView<'a> {
             return cached;
         }
 
-        let has_modifiers = self
-            .game
-            .battlefield
-            .iter()
-            .copied()
-            .any(|perm_id| self.permanent_has_activated_ability_cost_modifiers(perm_id));
+        let has_modifiers =
+            if self.can_scan_printed_activated_ability_cost_modifiers() {
+                self.game.battlefield.iter().copied().any(|perm_id| {
+                    self.permanent_printed_has_activated_ability_cost_modifiers(perm_id)
+                })
+            } else {
+                self.game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .any(|perm_id| self.permanent_has_activated_ability_cost_modifiers(perm_id))
+            };
         *self.has_activated_ability_cost_modifiers.borrow_mut() = Some(has_modifiers);
         has_modifiers
+    }
+
+    pub(crate) fn minimum_total_spell_mana_payment(&self) -> Option<u32> {
+        let mut minimum = None;
+        if self.can_scan_printed_minimum_total_spell_mana() {
+            for &perm_id in &self.game.battlefield {
+                let Some(permanent) = self.game.object(perm_id) else {
+                    continue;
+                };
+                for ability in permanent.abilities.iter() {
+                    let AbilityKind::Static(static_ability) = &ability.kind else {
+                        continue;
+                    };
+                    if !ability.functions_in(&permanent.zone)
+                        || !static_ability.is_active(self.game, perm_id)
+                    {
+                        continue;
+                    }
+                    if let Some(candidate) = static_ability.minimum_total_spell_mana() {
+                        minimum =
+                            Some(minimum.map_or(candidate, |current: u32| current.max(candidate)));
+                    }
+                }
+            }
+            return minimum;
+        }
+
+        for &perm_id in &self.game.battlefield {
+            let Some(static_abilities) = self.static_abilities_rc(perm_id) else {
+                continue;
+            };
+            for static_ability in static_abilities.iter() {
+                if !static_ability.is_active(self.game, perm_id) {
+                    continue;
+                }
+                if let Some(candidate) = static_ability.minimum_total_spell_mana() {
+                    minimum =
+                        Some(minimum.map_or(candidate, |current: u32| current.max(candidate)));
+                }
+            }
+        }
+        minimum
+    }
+
+    pub(crate) fn player_cant_pay_life_to_cast_or_activate(&self, player: PlayerId) -> bool {
+        if self.game.player(player).is_none() {
+            return false;
+        }
+
+        if self.can_scan_printed_pay_life_restrictions() {
+            for &perm_id in &self.game.battlefield {
+                let Some(permanent) = self.game.object(perm_id) else {
+                    continue;
+                };
+                for ability in permanent.abilities.iter() {
+                    let AbilityKind::Static(static_ability) = &ability.kind else {
+                        continue;
+                    };
+                    if !ability.functions_in(&permanent.zone)
+                        || !static_ability.is_active(self.game, perm_id)
+                    {
+                        continue;
+                    }
+                    if static_ability.forbids_paying_life_for_cast_or_activate() {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        for &perm_id in &self.game.battlefield {
+            let Some(static_abilities) = self.static_abilities_rc(perm_id) else {
+                continue;
+            };
+            for static_ability in static_abilities.iter() {
+                if static_ability.is_active(self.game, perm_id)
+                    && static_ability.forbids_paying_life_for_cast_or_activate()
+                {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub(crate) fn spell_has_legal_targets(
@@ -1062,26 +1330,71 @@ impl<'a> DerivedGameView<'a> {
         grants
     }
 
+    fn can_scan_printed_spell_cost_modifiers(&self) -> bool {
+        !self
+            .all_effects
+            .iter()
+            .any(continuous_effect_can_change_spell_cost_modifier_presence)
+    }
+
+    fn can_scan_printed_activated_ability_cost_modifiers(&self) -> bool {
+        !self
+            .all_effects
+            .iter()
+            .any(continuous_effect_can_change_activated_ability_cost_modifier_presence)
+    }
+
+    fn can_scan_printed_minimum_total_spell_mana(&self) -> bool {
+        !self
+            .all_effects
+            .iter()
+            .any(continuous_effect_can_change_minimum_total_spell_mana_presence)
+    }
+
+    fn can_scan_printed_pay_life_restrictions(&self) -> bool {
+        !self
+            .all_effects
+            .iter()
+            .any(continuous_effect_can_change_pay_life_restriction_presence)
+    }
+
+    fn permanent_printed_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
+        let Some(permanent) = self.game.object(permanent_id) else {
+            return false;
+        };
+        permanent.abilities.iter().any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability)
+                if ability.functions_in(&permanent.zone)
+                    && static_ability_has_spell_cost_modifier(static_ability))
+        })
+    }
+
     fn permanent_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
         self.static_abilities_rc(permanent_id)
             .unwrap_or_default()
             .iter()
-            .any(|static_ability| {
-                static_ability.cost_reduction().is_some()
-                    || static_ability.cost_increase().is_some()
-                    || static_ability.cost_reduction_mana_cost().is_some()
-                    || static_ability.cost_increase_mana_cost().is_some()
-            })
+            .any(static_ability_has_spell_cost_modifier)
+    }
+
+    fn permanent_printed_has_activated_ability_cost_modifiers(
+        &self,
+        permanent_id: ObjectId,
+    ) -> bool {
+        let Some(permanent) = self.game.object(permanent_id) else {
+            return false;
+        };
+        permanent.abilities.iter().any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability)
+                if ability.functions_in(&permanent.zone)
+                    && static_ability_has_activated_ability_cost_modifier(static_ability))
+        })
     }
 
     fn permanent_has_activated_ability_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
         self.static_abilities_rc(permanent_id)
             .unwrap_or_default()
             .iter()
-            .any(|static_ability| {
-                static_ability.activated_ability_cost_reduction().is_some()
-                    || static_ability.activated_ability_cost_increase().is_some()
-            })
+            .any(static_ability_has_activated_ability_cost_modifier)
     }
 
     fn narrow_battlefield_candidates(
@@ -1263,7 +1576,7 @@ impl<'a> DerivedGameView<'a> {
             return Some(object.owner);
         }
 
-        self.calculated_characteristics(object_id)
+        self.calculated_characteristics_arc(object_id)
             .map(|chars| chars.controller)
             .or(Some(object.owner))
     }

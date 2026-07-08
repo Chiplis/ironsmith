@@ -413,8 +413,8 @@ impl<'a> CastLegalityContext<'a> {
                     effect.player == player
                         && !effect.is_expired(game.turn.turn_number, game.turn.active_player)
                 }),
-            minimum_total_spell_mana_payment: game.minimum_total_spell_mana_payment(),
-            strips_life_pips_for_casts: game.player_cant_pay_life_to_cast_or_activate(player),
+            minimum_total_spell_mana_payment: view.minimum_total_spell_mana_payment(),
+            strips_life_pips_for_casts: view.player_cant_pay_life_to_cast_or_activate(player),
             perf: RefCell::new(CastLegalityPerfBreakdown::default()),
         }
     }

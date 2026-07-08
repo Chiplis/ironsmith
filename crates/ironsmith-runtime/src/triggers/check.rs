@@ -477,6 +477,7 @@ fn battlefield_has_static_ability_with_view(
                         Some(static_ability.clone())
                     })
                     .collect::<Vec<_>>()
+                    .into()
             });
         static_abilities
             .iter()
@@ -1088,8 +1089,34 @@ pub fn check_triggers(
     game: &GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
+    // The subscriber early-out only inspects objects currently in their
+    // functional zones. Events carrying LKI payloads (dies/sacrifice/leaves)
+    // can trigger from sources that already left, so they always take the
+    // full check.
+    if !game.may_have_triggered_abilities_for_event_kind(trigger_event.kind())
+        && !trigger_event_can_have_synthetic_triggers(trigger_event)
+        && trigger_event.snapshot().is_none()
+        && trigger_event.source_snapshot().is_none()
+        && trigger_event.lookback_source_snapshots().is_empty()
+    {
+        return Vec::new();
+    }
+
     let view = crate::derived_view::DerivedGameView::new(game);
     check_triggers_with_view(game, trigger_event, &view)
+}
+
+fn trigger_event_can_have_synthetic_triggers(trigger_event: &TriggerEvent) -> bool {
+    matches!(
+        trigger_event.kind(),
+        crate::events::traits::EventKind::SpellCast
+            | crate::events::traits::EventKind::LifeLoss
+            | crate::events::traits::EventKind::Damage
+            | crate::events::traits::EventKind::BeginningOfEndStep
+            | crate::events::traits::EventKind::BeginningOfUpkeep
+            | crate::events::traits::EventKind::CreatureAttacked
+            | crate::events::traits::EventKind::CreatureBlocked
+    )
 }
 
 fn for_each_public_nonbattlefield_trigger_object_id(

@@ -92,6 +92,36 @@ fn hidden_position_reveal_position_matches(
     info.slot == position || info.public_slot == Some(position)
 }
 
+fn replay_can_apply_legend_rule_choice_live(root: &ReplayRoot, ctx: &DecisionContext) -> bool {
+    let ReplayRoot::Advance = root else {
+        return false;
+    };
+    let DecisionContext::SelectObjects(objects) = ctx else {
+        return false;
+    };
+    objects.source.is_none()
+        && objects.min == 1
+        && objects.max == Some(1)
+        && !objects.allow_partial_completion
+        && objects
+            .description
+            .to_ascii_lowercase()
+            .contains("legend rule")
+}
+
+fn zone_from_ui_name(zone_name: &str) -> Result<Zone, String> {
+    match zone_name.trim().to_lowercase().as_str() {
+        "hand" => Ok(Zone::Hand),
+        "battlefield" => Ok(Zone::Battlefield),
+        "graveyard" => Ok(Zone::Graveyard),
+        "exile" => Ok(Zone::Exile),
+        "library" => Ok(Zone::Library),
+        "command" => Ok(Zone::Command),
+        "sideboard" | "outside_game" | "outside the game" => Ok(Zone::OutsideGame),
+        other => Err(format!("unknown zone: {other}")),
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ValidatedHiddenPositionReveal {
     input: RevealHiddenPositionInput,
@@ -196,6 +226,64 @@ mod dispatch_tests {
         assert_eq!(
             target,
             Some((position_object, ironsmith::zone::Zone::Library))
+        );
+    }
+
+    #[test]
+    fn replay_advance_legend_rule_prompt_is_live_applicable() {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+        let alice = ironsmith::ids::PlayerId::from_index(0);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        let legend = ironsmith::card::CardBuilder::new(
+            ironsmith::ids::CardId::from_raw(90_300),
+            "Scale Probe Relic",
+        )
+        .supertypes(vec![ironsmith::types::Supertype::Legendary])
+        .card_types(vec![ironsmith::types::CardType::Artifact])
+        .build();
+        let keep_id = wasm
+            .game
+            .create_object_from_card(&legend, alice, ironsmith::zone::Zone::Battlefield);
+        wasm.game
+            .create_object_from_card(&legend, alice, ironsmith::zone::Zone::Battlefield);
+
+        let checkpoint = wasm.capture_replay_checkpoint();
+        let outcome = wasm
+            .execute_with_replay(&checkpoint, &ReplayRoot::Advance, &[])
+            .expect("auto-advance should reach the legend-rule prompt");
+        let legend_ctx = match outcome {
+            ReplayOutcome::NeedsDecision(DecisionContext::SelectObjects(ctx)) => ctx,
+            other => panic!("expected legend-rule select_objects prompt, got {other:?}"),
+        };
+        assert!(
+            legend_ctx.description.contains("legend rule"),
+            "prompt should be the legend-rule decision"
+        );
+        assert!(
+            legend_ctx.candidates.iter().any(|candidate| candidate.id == keep_id),
+            "the selected legend should be a legal candidate"
+        );
+        assert!(
+            replay_can_apply_legend_rule_choice_live(
+                &ReplayRoot::Advance,
+                &DecisionContext::SelectObjects(legend_ctx.clone()),
+            ),
+            "advance-sourced legend-rule object prompts can be applied to the live paused state"
+        );
+        assert!(
+            !replay_can_apply_legend_rule_choice_live(
+                &ReplayRoot::Response(PriorityResponse::PriorityAction(
+                    LegalAction::PassPriority,
+                )),
+                &DecisionContext::SelectObjects(legend_ctx),
+            ),
+            "non-advance replay roots still use root reexecution"
         );
     }
 
@@ -1874,18 +1962,7 @@ impl WasmGame {
             return Err(JsValue::from_str("card name cannot be empty"));
         }
 
-        let zone = match zone_name.trim().to_lowercase().as_str() {
-            "hand" => ironsmith::zone::Zone::Hand,
-            "battlefield" => ironsmith::zone::Zone::Battlefield,
-            "graveyard" => ironsmith::zone::Zone::Graveyard,
-            "exile" => ironsmith::zone::Zone::Exile,
-            "library" => ironsmith::zone::Zone::Library,
-            "command" => ironsmith::zone::Zone::Command,
-            "sideboard" | "outside_game" | "outside the game" => ironsmith::zone::Zone::OutsideGame,
-            other => {
-                return Err(JsValue::from_str(&format!("unknown zone: {other}")));
-            }
-        };
+        let zone = zone_from_ui_name(&zone_name).map_err(|err| JsValue::from_str(&err))?;
 
         self.registry.ensure_cards_loaded([query]);
         let definition = self.load_compilable_card_definition(query)?;
@@ -1934,6 +2011,122 @@ impl WasmGame {
             self.recompute_ui_decision()?;
             Ok(object_id)
         }
+    }
+
+    /// Add many cards to player zones and recompute UI state once.
+    #[wasm_bindgen(js_name = addCardsToZones)]
+    pub fn add_cards_to_zones(&mut self, cards_js: JsValue) -> Result<JsValue, JsValue> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct AddCardToZoneInput {
+            player_index: u8,
+            card_name: String,
+            zone_name: String,
+            #[serde(default = "default_skip_triggers")]
+            skip_triggers: bool,
+        }
+
+        struct ValidatedAddCardToZone {
+            player_id: PlayerId,
+            definition_index: usize,
+            zone: Zone,
+            skip_triggers: bool,
+        }
+
+        fn default_skip_triggers() -> bool {
+            true
+        }
+
+        let cards: Vec<AddCardToZoneInput> = serde_wasm_bindgen::from_value(cards_js)
+            .map_err(|e| JsValue::from_str(&format!("invalid addCardsToZones payload: {e}")))?;
+        if cards.is_empty() {
+            return serde_wasm_bindgen::to_value(&Vec::<u64>::new()).map_err(|e| {
+                JsValue::from_str(&format!("failed to serialize addCardsToZones result: {e}"))
+            });
+        }
+
+        let mut definition_queries: Vec<String> = Vec::new();
+        for card in &cards {
+            let query = card.card_name.trim();
+            if query.is_empty() {
+                return Err(JsValue::from_str("card name cannot be empty"));
+            }
+            if !definition_queries
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(query))
+            {
+                definition_queries.push(query.to_string());
+            }
+        }
+
+        self.registry
+            .ensure_cards_loaded(definition_queries.iter().map(String::as_str));
+        let mut definitions: Vec<(String, CardDefinition)> = Vec::new();
+        for query in &definition_queries {
+            let definition = self.load_compilable_card_definition(query)?;
+            definitions.push((query.clone(), definition));
+        }
+
+        let mut validated = Vec::with_capacity(cards.len());
+        for card in &cards {
+            let player_id = PlayerId::from_index(card.player_index);
+            if self.game.player(player_id).is_none() {
+                return Err(JsValue::from_str("invalid player index"));
+            }
+            let zone = zone_from_ui_name(&card.zone_name).map_err(|err| JsValue::from_str(&err))?;
+            if zone == Zone::Battlefield && !card.skip_triggers {
+                return Err(JsValue::from_str(
+                    "addCardsToZones requires skipTriggers for battlefield cards",
+                ));
+            }
+            let query = card.card_name.trim();
+            let definition_index = definitions
+                .iter()
+                .position(|(candidate, _)| candidate.eq_ignore_ascii_case(query))
+                .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {query}")))?;
+            validated.push(ValidatedAddCardToZone {
+                player_id,
+                definition_index,
+                zone,
+                skip_triggers: card.skip_triggers,
+            });
+        }
+
+        let mut object_ids = Vec::with_capacity(validated.len());
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        for entry in validated {
+            let definition = &definitions[entry.definition_index].1;
+            if entry.skip_triggers {
+                let object_id = self.game.create_object_from_catalog_definition(
+                    definition,
+                    &self.registry,
+                    entry.player_id,
+                    entry.zone,
+                );
+                if let Some(object) = self.game.object_mut(object_id) {
+                    object.stable_id = StableId::from(object_id);
+                }
+                if entry.zone == Zone::Command {
+                    self.game.set_as_commander(object_id, entry.player_id);
+                }
+                object_ids.push(object_id.0);
+            } else {
+                let object_id = self
+                    .add_card_to_zone_with_dm(
+                        entry.player_id,
+                        definition,
+                        entry.zone,
+                        entry.skip_triggers,
+                        &mut dm,
+                    )
+                    .map_err(|err| JsValue::from_str(&err))?;
+                object_ids.push(object_id);
+            }
+        }
+        self.recompute_ui_decision()?;
+        serde_wasm_bindgen::to_value(&object_ids).map_err(|e| {
+            JsValue::from_str(&format!("failed to serialize addCardsToZones result: {e}"))
+        })
     }
 
     /// Set an explicit combat damage assignment for the next combat damage step.
@@ -2404,6 +2597,82 @@ impl WasmGame {
         }
 
         if let Some(mut replay) = self.pending_replay_action.take() {
+            if replay_can_apply_legend_rule_choice_live(&replay.root, &pending_ctx) {
+                let DecisionContext::SelectObjects(ref objects) = pending_ctx else {
+                    unreachable!("legend-rule replay prompt should be select_objects");
+                };
+                let UiCommand::SelectObjects {
+                    object_ids,
+                    object_stable_ids,
+                    object_hidden_refs,
+                } = command
+                else {
+                    self.pending_decision = Some(pending_ctx);
+                    self.pending_replay_action = Some(replay);
+                    return Err(JsValue::from_str("unexpected command for legend rule decision"));
+                };
+                let object_ids = match normalize_select_object_choice_ids(
+                    &self.game,
+                    objects,
+                    &object_ids,
+                    &object_stable_ids,
+                    &object_hidden_refs,
+                ) {
+                    Ok(ids) => ids,
+                    Err(err) => {
+                        self.pending_decision = Some(pending_ctx);
+                        self.pending_replay_action = Some(replay);
+                        return Err(err);
+                    }
+                };
+                let legal_ids: Vec<u64> = objects
+                    .candidates
+                    .iter()
+                    .filter(|obj| obj.legal)
+                    .map(|obj| obj.id.0)
+                    .collect();
+                if let Err(err) = validate_object_selection(
+                    objects.min,
+                    objects.max,
+                    objects.allow_partial_completion,
+                    &object_ids,
+                    &legal_ids,
+                ) {
+                    self.pending_decision = Some(pending_ctx);
+                    self.pending_replay_action = Some(replay);
+                    return Err(err);
+                }
+                let Some(keep_id) = object_ids.first().copied().map(ObjectId::from_raw) else {
+                    self.pending_decision = Some(pending_ctx);
+                    self.pending_replay_action = Some(replay);
+                    return Err(JsValue::from_str("legend rule requires one chosen object"));
+                };
+                for candidate in objects
+                    .candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal && candidate.id != keep_id)
+                {
+                    if self.game.battlefield.contains(&candidate.id) {
+                        self.game.move_object(
+                            candidate.id,
+                            Zone::Graveyard,
+                            ironsmith::events::cause::EventCause::from_legend_rule(objects.player),
+                        );
+                    }
+                }
+                drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+                self.pending_action_checkpoint = None;
+                self.pending_replay_action = None;
+                self.pending_decision = None;
+                self.clear_active_resolving_stack_object();
+                if let Err(err) = self.advance_until_decision() {
+                    self.restore_replay_checkpoint(&replay.checkpoint);
+                    self.pending_decision = Some(pending_ctx);
+                    self.pending_replay_action = Some(replay);
+                    return Err(err);
+                }
+                return self.snapshot();
+            }
             let answer = match self.command_to_replay_answer(&pending_ctx, command.clone()) {
                 Ok(answer) => answer,
                 Err(err) => {

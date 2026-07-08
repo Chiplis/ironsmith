@@ -324,7 +324,14 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
 
     let active_player = game.turn.active_player;
     let had_restriction_effects = !game.effect_store.restriction_effects.is_empty();
+    // The untap gate below reads the cached continuous-effect snapshot; on a
+    // dirty state that snapshot can predate freshly generated static effects
+    // (e.g. an aura attached since the last refresh), which would skip the
+    // characteristics check entirely.
+    game.refresh_continuous_state();
     game.update_cant_effects();
+    let may_have_untap_static_abilities = game_may_have_untap_static_abilities(game);
+    let has_cant_untap_restrictions = !game.effect_store.cant_effects.cant_untap.is_empty();
 
     let phased_in: Vec<_> = game
         .phased_out_ids()
@@ -345,28 +352,31 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         .permanents_controlled_by(active_player)
         .into_iter()
         .collect();
-    for source_id in game.battlefield.clone() {
-        let Some(source) = game.object(source_id) else {
-            continue;
-        };
-        if game.controller_of(source) == active_player {
-            continue;
-        }
-        let source_controller = game.controller_of(source);
-        let filter_ctx = game.filter_context_for(source_controller, Some(source_id));
-        let Some(source_chars) = game.current_characteristics(source_id) else {
-            continue;
-        };
-        for static_ability in &source_chars.static_abilities {
-            let Some(filter) = static_ability.untap_during_each_other_players_untap_step_filter()
-            else {
+    if may_have_untap_static_abilities {
+        for source_id in game.battlefield.clone() {
+            let Some(source) = game.object(source_id) else {
                 continue;
             };
-            for &candidate_id in &game.battlefield {
-                if let Some(candidate) = game.object(candidate_id)
-                    && filter.matches(candidate, &filter_ctx, game)
-                {
-                    permanents.insert(candidate_id);
+            if game.controller_of(source) == active_player {
+                continue;
+            }
+            let source_controller = game.controller_of(source);
+            let filter_ctx = game.filter_context_for(source_controller, Some(source_id));
+            let Some(source_chars) = game.current_characteristics(source_id) else {
+                continue;
+            };
+            for static_ability in &source_chars.static_abilities {
+                let Some(filter) =
+                    static_ability.untap_during_each_other_players_untap_step_filter()
+                else {
+                    continue;
+                };
+                for &candidate_id in &game.battlefield {
+                    if let Some(candidate) = game.object(candidate_id)
+                        && filter.matches(candidate, &filter_ctx, game)
+                    {
+                        permanents.insert(candidate_id);
+                    }
                 }
             }
         }
@@ -374,38 +384,44 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     let permanents: Vec<_> = permanents.into_iter().collect();
 
     // First pass: collect which permanents should untap
-    let should_untap: std::collections::HashSet<_> = permanents
-        .iter()
-        .filter_map(|&id| {
-            let obj = game.object(id)?;
-            let chars = game.current_characteristics(id)?;
-            // Check if the permanent has "doesn't untap during your untap step"
-            let has_doesnt_untap = game.controller_of(obj) == active_player
-                && chars
-                    .static_abilities
-                    .iter()
-                    .any(|static_ability| static_ability.affects_untap());
-            let has_optional_choice = game.controller_of(obj) == active_player
-                && chars.static_abilities.iter().any(|static_ability| {
-                    static_ability.id() == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
-                });
-            let blocked_by_restriction = !game.can_untap_during_step(id, active_player);
-            if has_doesnt_untap || blocked_by_restriction {
-                None
-            } else if has_optional_choice && game.is_tapped(id) {
-                let choice_ctx = BooleanContext::new(
-                    active_player,
-                    Some(id),
-                    format!("untap {} during your untap step", obj.name),
-                );
-                decision_maker
-                    .decide_boolean(game, &choice_ctx)
-                    .then_some(id)
-            } else {
-                Some(id)
-            }
-        })
-        .collect();
+    let should_untap: std::collections::HashSet<_> = if !may_have_untap_static_abilities
+        && !has_cant_untap_restrictions
+    {
+        permanents.iter().copied().collect()
+    } else {
+        permanents
+            .iter()
+            .filter_map(|&id| {
+                let obj = game.object(id)?;
+                let chars = game.current_characteristics(id)?;
+                // Check if the permanent has "doesn't untap during your untap step"
+                let has_doesnt_untap = game.controller_of(obj) == active_player
+                    && chars
+                        .static_abilities
+                        .iter()
+                        .any(|static_ability| static_ability.affects_untap());
+                let has_optional_choice = game.controller_of(obj) == active_player
+                    && chars.static_abilities.iter().any(|static_ability| {
+                        static_ability.id() == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
+                    });
+                let blocked_by_restriction = !game.can_untap_during_step(id, active_player);
+                if has_doesnt_untap || blocked_by_restriction {
+                    None
+                } else if has_optional_choice && game.is_tapped(id) {
+                    let choice_ctx = BooleanContext::new(
+                        active_player,
+                        Some(id),
+                        format!("untap {} during your untap step", obj.name),
+                    );
+                    decision_maker
+                        .decide_boolean(game, &choice_ctx)
+                        .then_some(id)
+                } else {
+                    Some(id)
+                }
+            })
+            .collect()
+    };
 
     // Second pass: untap eligible permanents and remove summoning sickness from all
     for id in permanents {
@@ -434,6 +450,69 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
 
     // No priority during untap step
     game.turn.priority_player = None;
+}
+
+fn game_may_have_untap_static_abilities(game: &GameState) -> bool {
+    game.cached_continuous_effects_snapshot()
+        .iter()
+        .any(|effect| modification_may_affect_untap(&effect.modification))
+        || game
+            .battlefield
+            .iter()
+            .copied()
+            .any(|id| object_may_have_untap_static_abilities(game, id))
+        || game
+            .stack
+            .iter()
+            .any(|entry| object_may_have_untap_static_abilities(game, entry.object_id))
+}
+
+fn object_may_have_untap_static_abilities(
+    game: &GameState,
+    object_id: crate::ids::ObjectId,
+) -> bool {
+    let Some(object) = game.object(object_id) else {
+        return false;
+    };
+    object
+        .abilities
+        .iter()
+        .any(|ability| ability.functions_in(&object.zone) && ability_may_affect_untap(ability))
+}
+
+fn modification_may_affect_untap(modification: &crate::continuous::Modification) -> bool {
+    use crate::continuous::Modification;
+
+    match modification {
+        // Text rewrites can introduce arbitrary static abilities.
+        Modification::CopyOf { .. }
+        | Modification::ChangeText { .. }
+        | Modification::SetTextBox(_) => true,
+        // Materializes StaticAbility::doesnt_untap() in calculated
+        // characteristics (see apply path in continuous.rs).
+        Modification::DoesntUntap => true,
+        Modification::AddAbility(static_ability) => static_ability_may_affect_untap(static_ability),
+        Modification::AddAbilityGeneric(ability) => ability_may_affect_untap(ability),
+        Modification::SetAbilities(abilities) => abilities.iter().any(ability_may_affect_untap),
+        _ => false,
+    }
+}
+
+fn ability_may_affect_untap(ability: &crate::ability::Ability) -> bool {
+    matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+        if static_ability_may_affect_untap(static_ability))
+}
+
+fn static_ability_may_affect_untap(
+    static_ability: &crate::static_abilities::StaticAbility,
+) -> bool {
+    use crate::static_abilities::StaticAbilityId;
+
+    static_ability.affects_untap()
+        || static_ability.id() == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
+        || static_ability
+            .untap_during_each_other_players_untap_step_filter()
+            .is_some()
 }
 
 /// Executes the draw step for the active player.

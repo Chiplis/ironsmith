@@ -10,6 +10,7 @@ export const PUZZLE_ZONE_ORDER = [
 ];
 
 const CARD_LINE = /^(\d+)x?\s+(.+)$/;
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 function normalizeCardName(raw) {
   return String(raw || "")
@@ -28,6 +29,7 @@ function normalizePlayerLife(raw) {
 }
 
 function normalizeZoneCards(rawCards) {
+  if (typeof rawCards === "string") return parsePuzzleCardList(rawCards);
   if (!Array.isArray(rawCards)) return [];
   return rawCards
     .map((card) => normalizeCardName(card))
@@ -167,19 +169,14 @@ export function buildPuzzleUrlFromGameState(state) {
 export function encodeBase64UrlUtf8(raw) {
   const value = String(raw || "");
   if (!value) return "";
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return window.btoa(binary)
+  return encodeBase64Bytes(encodeUtf8Bytes(value))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
 }
 
 export function decodeBase64UrlUtf8(raw) {
-  if (!raw || typeof window === "undefined") return "";
+  if (!raw) return "";
 
   try {
     const normalized = String(raw)
@@ -188,12 +185,98 @@ export function decodeBase64UrlUtf8(raw) {
       .replace(/_/g, "/");
     const padding = normalized.length % 4;
     const padded = padding === 0 ? normalized : `${normalized}${"=".repeat(4 - padding)}`;
-    const binary = window.atob(padded);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
+    return decodeUtf8Bytes(decodeBase64Bytes(padded));
   } catch {
     return "";
   }
+}
+
+function encodeUtf8Bytes(value) {
+  if (typeof TextEncoder !== "undefined") {
+    return Array.from(new TextEncoder().encode(value));
+  }
+
+  const encoded = encodeURIComponent(value);
+  const bytes = [];
+  for (let i = 0; i < encoded.length; i += 1) {
+    if (encoded[i] === "%") {
+      bytes.push(parseInt(encoded.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else {
+      bytes.push(encoded.charCodeAt(i));
+    }
+  }
+  return bytes;
+}
+
+function decodeUtf8Bytes(bytes) {
+  if (typeof TextDecoder !== "undefined" && typeof Uint8Array !== "undefined") {
+    return new TextDecoder().decode(Uint8Array.from(bytes));
+  }
+
+  return decodeURIComponent(
+    bytes.map((byte) => `%${byte.toString(16).padStart(2, "0")}`).join("")
+  );
+}
+
+function getBase64BrowserFunction(name) {
+  if (typeof window !== "undefined" && typeof window[name] === "function") {
+    return window[name].bind(window);
+  }
+  if (typeof globalThis !== "undefined" && typeof globalThis[name] === "function") {
+    return globalThis[name].bind(globalThis);
+  }
+  return null;
+}
+
+function encodeBase64Bytes(bytes) {
+  const btoaFn = getBase64BrowserFunction("btoa");
+  if (btoaFn) {
+    let binary = "";
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoaFn(binary);
+  }
+
+  let output = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const first = bytes[i];
+    const hasSecond = i + 1 < bytes.length;
+    const hasThird = i + 2 < bytes.length;
+    const second = hasSecond ? bytes[i + 1] : 0;
+    const third = hasThird ? bytes[i + 2] : 0;
+    const triplet = (first << 16) | (second << 8) | third;
+    output += BASE64_ALPHABET[(triplet >> 18) & 63];
+    output += BASE64_ALPHABET[(triplet >> 12) & 63];
+    output += hasSecond ? BASE64_ALPHABET[(triplet >> 6) & 63] : "=";
+    output += hasThird ? BASE64_ALPHABET[triplet & 63] : "=";
+  }
+  return output;
+}
+
+function decodeBase64Bytes(value) {
+  const atobFn = getBase64BrowserFunction("atob");
+  if (atobFn) {
+    const binary = atobFn(value);
+    return Array.from(binary, (char) => char.charCodeAt(0));
+  }
+
+  const bytes = [];
+  let buffer = 0;
+  let bits = 0;
+  for (const char of String(value)) {
+    if (char === "=") break;
+    const next = BASE64_ALPHABET.indexOf(char);
+    if (next < 0) continue;
+    buffer = (buffer << 6) | next;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((buffer >> bits) & 255);
+    }
+  }
+  return bytes;
 }
 
 export function normalizePuzzlePayload(raw) {

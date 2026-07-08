@@ -41,6 +41,10 @@ name = "scale"
 harness = false
 required-features = ["bench-support"]
 
+[[example]]
+name = "complex_layer_cake_report"
+required-features = ["bench-support"]
+
 [features]
 default = ["serialization", "engine-integration-tests", "runtime-parser-tests"]
 serialization = ["dep:serde", "dep:serde_json"]

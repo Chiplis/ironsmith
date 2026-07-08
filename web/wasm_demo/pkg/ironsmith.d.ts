@@ -19,6 +19,10 @@ export class WasmGame {
      */
     addCardToZone(player_index: number, card_name: string, zone_name: string, skip_triggers: boolean): bigint;
     /**
+     * Add many cards to player zones and recompute UI state once.
+     */
+    addCardsToZones(cards_js: any): any;
+    /**
      * Add a signed life delta (negative = damage, positive = gain).
      */
     addLifeDelta(player_index: number, delta: number): void;
@@ -281,6 +285,7 @@ export interface InitOutput {
     readonly wasmgame_forceTurnFaceUp: (a: number, b: number, c: bigint) => [number, number];
     readonly wasmgame_addCardToHand: (a: number, b: number, c: number, d: number) => [bigint, number, number];
     readonly wasmgame_addCardToZone: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [bigint, number, number];
+    readonly wasmgame_addCardsToZones: (a: number, b: any) => [number, number, number];
     readonly wasmgame_setCombatDamageAssignment: (a: number, b: bigint, c: bigint, d: number) => void;
     readonly wasmgame_setAttackingBand: (a: number, b: any) => [number, number];
     readonly wasmgame_drawOpeningHands: (a: number, b: number) => [number, number];

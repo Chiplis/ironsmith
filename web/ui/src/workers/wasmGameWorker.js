@@ -285,6 +285,13 @@ function collectNamesForMethod(method, args) {
     case "addCardToZone":
       names.push(args?.[1]);
       break;
+    case "addCardsToZones": {
+      const cards = Array.isArray(args?.[0]) ? args[0] : [];
+      for (const card of cards) {
+        names.push(card?.cardName || card?.card_name);
+      }
+      break;
+    }
     case "revealHiddenObject":
     case "revealHiddenSlot":
     case "revealHiddenPosition":

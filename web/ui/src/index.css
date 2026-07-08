@@ -5013,14 +5013,20 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   --hand-reveal-y: -12px;
 }
 
+.hand-reveal-shell:has(.game-card.hand-card.hovered),
 .hand-reveal-shell:has(.game-card.hand-card.inspected) {
   z-index: 1000;
 }
 
+[data-bottom-dock]:has(.game-card.hand-card.hovered),
 [data-bottom-dock]:has(.game-card.hand-card.inspected),
+.mobile-mtga-hand-fan:has(.game-card.hand-card.hovered),
 .mobile-mtga-hand-fan:has(.game-card.hand-card.inspected),
+.mobile-mtga-hand-fullscreen:has(.game-card.hand-card.hovered),
 .mobile-mtga-hand-fullscreen:has(.game-card.hand-card.inspected),
+.mobile-battle-self-hand:has(.game-card.hand-card.hovered),
 .mobile-battle-self-hand:has(.game-card.hand-card.inspected),
+.my-zone-hand-rail:has(.game-card.hand-card.hovered),
 .my-zone-hand-rail:has(.game-card.hand-card.inspected) {
   z-index: 1000;
 }

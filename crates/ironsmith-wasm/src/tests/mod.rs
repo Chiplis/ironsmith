@@ -34,7 +34,7 @@ use ironsmith::provenance::ProvNodeId;
 use ironsmith::snapshot::ObjectSnapshot;
 use ironsmith::static_abilities::StaticAbility;
 use ironsmith::triggers::{Trigger, TriggerEvent, check_triggers};
-use ironsmith::types::{CardType, Subtype};
+use ironsmith::types::{CardType, Subtype, Supertype};
 use ironsmith::zone::Zone;
 use ironsmith_registry::cards::definitions::{
     basic_island, basic_mountain, blood_artist, culling_the_weak, emrakul_the_promised_end,
@@ -5081,6 +5081,72 @@ fn auto_advance_target_prompt_dispatch_reexecutes_replay_root() {
         wasm.game.stack.len(),
         2,
         "choosing the trigger target should put Emrakul's cast trigger onto the stack"
+    );
+}
+
+#[test]
+fn auto_advance_legend_rule_prompt_dispatch_applies_live_state_without_root_replay() {
+    let mut wasm = WasmGame::new();
+    wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+    let alice = PlayerId::from_index(0);
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::FirstMain;
+    wasm.game.turn.step = None;
+
+    let legend = CardBuilder::new(CardId::from_raw(90_300), "Scale Probe Relic")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let keep_id = wasm
+        .game
+        .create_object_from_card(&legend, alice, Zone::Battlefield);
+    let put_away_id = wasm
+        .game
+        .create_object_from_card(&legend, alice, Zone::Battlefield);
+
+    let checkpoint = wasm.capture_replay_checkpoint();
+    let outcome = wasm
+        .execute_with_replay(&checkpoint, &ReplayRoot::Advance, &[])
+        .expect("auto-advance should reach the legend-rule prompt");
+    let legend_ctx = match outcome {
+        ReplayOutcome::NeedsDecision(DecisionContext::SelectObjects(ctx)) => ctx,
+        other => panic!("expected legend-rule select_objects prompt, got {other:?}"),
+    };
+    assert!(
+        legend_ctx.description.contains("legend rule"),
+        "prompt should be the legend-rule decision"
+    );
+
+    wasm.pending_decision = Some(DecisionContext::SelectObjects(legend_ctx));
+    wasm.pending_replay_action = Some(PendingReplayAction {
+        checkpoint,
+        root: ReplayRoot::Advance,
+        nested_answers: Vec::new(),
+    });
+
+    dispatch_select_objects(&mut wasm, &[keep_id.0]);
+
+    assert!(
+        wasm.pending_replay_action.is_none(),
+        "legend-rule choice should not leave the replay chain open"
+    );
+    assert!(
+        wasm.game.battlefield.contains(&keep_id),
+        "chosen legend should remain on the battlefield"
+    );
+    assert!(
+        !wasm.game.battlefield.contains(&put_away_id),
+        "unchosen duplicate should leave the battlefield"
+    );
+    assert!(
+        wasm.game.object(put_away_id).is_none(),
+        "the original duplicate object should leave the battlefield as a zone-change object"
+    );
+    assert!(
+        matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))),
+        "after resolving the legend rule, auto-advance should resume to priority"
     );
 }
 

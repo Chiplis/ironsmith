@@ -31,8 +31,8 @@ use ironsmith::decisions::context::{
 use ironsmith::game_loop::{
     ActivationStage, CastStage, PendingPriorityContinuation, PriorityActionPerfMetrics,
     PriorityAdvancePerfMetrics, PriorityLoopState, PriorityResponse, advance_priority_with_dm,
-    apply_decision_context_with_dm, apply_priority_response_with_dm, last_priority_action_perf,
-    last_priority_advance_perf,
+    apply_decision_context_with_dm, apply_priority_response_with_dm, drain_pending_trigger_events,
+    last_priority_action_perf, last_priority_advance_perf,
 };
 use ironsmith::game_state::{GameState, HiddenInfoOperation, StackEntry, Target};
 use ironsmith::ids::{

@@ -19,8 +19,8 @@ fn static_abilities_for_attack_preview(
     view: &DerivedGameView<'_>,
     attacker: &crate::object::Object,
 ) -> Vec<crate::static_abilities::StaticAbility> {
-    view.calculated_characteristics(attacker.id)
-        .map(|chars| chars.static_abilities)
+    view.calculated_characteristics_arc(attacker.id)
+        .map(|chars| chars.static_abilities.to_vec())
         .unwrap_or_else(|| {
             attacker
                 .abilities
@@ -73,8 +73,8 @@ fn generic_attack_tax_preview(
         }
 
         let abilities = view
-            .calculated_characteristics(object_id)
-            .map(|chars| chars.static_abilities)
+            .calculated_characteristics_arc(object_id)
+            .map(|chars| chars.static_abilities.to_vec())
             .unwrap_or_else(|| {
                 object
                     .abilities

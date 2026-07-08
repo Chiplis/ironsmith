@@ -38,8 +38,13 @@ export default function Shell() {
     joinLobby,
   } = useGame();
   useTabAttention();
-  const [playerNames, setPlayerNames] = useState("Alice,Bob,Charlie,Diana");
-  const [startingLife, setStartingLife] = useState(20);
+  const initialPuzzleQueryRef = useRef(readPuzzleQueryParams());
+  const [playerNames, setPlayerNames] = useState(
+    () => initialPuzzlePlayerNames(initialPuzzleQueryRef.current) || "Alice,Bob,Charlie,Diana"
+  );
+  const [startingLife, setStartingLife] = useState(
+    () => initialPuzzleStartingLife(initialPuzzleQueryRef.current) ?? 20
+  );
   const [logOpen, setLogOpen] = useState(false);
   const [lobbyOpen, setLobbyOpen] = useState(false);
   const [zoneViews, setZoneViews] = useState(["battlefield"]);
@@ -53,8 +58,9 @@ export default function Shell() {
   const nextNoticeIdRef = useRef(1);
   const autoJoinAttemptedLobbyRef = useRef("");
   const autoLoadAttemptedPuzzleRef = useRef(false);
-  const initialLobbyQueryRef = useRef(readLobbyQueryParams());
-  const initialPuzzleQueryRef = useRef(readPuzzleQueryParams());
+  const initialLobbyQueryRef = useRef(
+    initialPuzzleQueryRef.current ? emptyLobbyQueryParams() : readLobbyQueryParams()
+  );
   const [lobbyOverlayInitial, setLobbyOverlayInitial] = useState(() => (
     buildLobbyOverlayInitialState(initialLobbyQueryRef.current)
   ));
@@ -174,12 +180,22 @@ export default function Shell() {
         if (typeof game.setSemanticThreshold === "function") {
           await game.setSemanticThreshold(semanticThreshold);
         }
-        const names = parseNames(playerNames);
-        await game.reset(names, startingLife);
-        if (!initialPuzzleQueryRef.current) {
+        const initialPuzzle = initialPuzzleQueryRef.current;
+        if (initialPuzzle) {
+          const loaded = await applyPuzzleToGame(game, initialPuzzle);
+          setPlayerNames(loaded.playerNamesList.join(","));
+          setStartingLife(loaded.defaultStartingLife);
+          setDeckLoadingMode(false);
+          setPuzzleSetupMode(false);
+          setLobbyOpen(false);
+          autoLoadAttemptedPuzzleRef.current = true;
+          await refresh("Puzzle loaded from link");
+        } else {
+          const names = parseNames(playerNames);
+          await game.reset(names, startingLife);
           await addStartingBoardPreset(game, names.length);
+          await refresh("WASM loaded");
         }
-        await refresh("WASM loaded");
       } catch (err) {
         setStatus(`Init failed: ${err}`, true);
       }
@@ -203,25 +219,10 @@ export default function Shell() {
         return false;
       }
 
-      const playerNamesList = normalized.players.map((player, index) => (
-        String(player?.name || "").trim() || `Player ${index + 1}`
-      ));
-      const defaultStartingLife = Number(normalized.players[0]?.life) || 20;
-
       try {
-        await game.reset(playerNamesList, defaultStartingLife);
-        for (const [playerIndex, player] of normalized.players.entries()) {
-          if (typeof game.setLife === "function") {
-            await game.setLife(playerIndex, Number(player?.life) || 20);
-          }
-          for (const zone of PUZZLE_ZONE_ORDER) {
-            for (const cardName of player.zones?.[zone] || []) {
-              await game.addCardToZone(playerIndex, cardName, zone, true);
-            }
-          }
-        }
-        setPlayerNames(playerNamesList.join(","));
-        setStartingLife(defaultStartingLife);
+        const loaded = await applyPuzzleToGame(game, normalized);
+        setPlayerNames(loaded.playerNamesList.join(","));
+        setStartingLife(loaded.defaultStartingLife);
         setDeckLoadingMode(false);
         setPuzzleSetupMode(false);
         setLobbyOpen(false);
@@ -595,14 +596,78 @@ async function addStartingBoardPreset(game, playerCount = 2) {
   }
 }
 
+function emptyLobbyQueryParams() {
+  return {
+    lobbyId: "",
+    name: "",
+    deckText: "",
+    commanderText: "",
+  };
+}
+
+function puzzlePlayerNames(payload) {
+  const normalized = normalizePuzzlePayload(payload);
+  if (!normalized) return [];
+  return normalized.players.map((player, index) => (
+    String(player?.name || "").trim() || `Player ${index + 1}`
+  ));
+}
+
+function initialPuzzlePlayerNames(payload) {
+  const names = puzzlePlayerNames(payload);
+  return names.length > 0 ? names.join(",") : "";
+}
+
+function initialPuzzleStartingLife(payload) {
+  const normalized = normalizePuzzlePayload(payload);
+  if (!normalized) return null;
+  return Number(normalized.players[0]?.life) || 20;
+}
+
+async function applyPuzzleToGame(game, payload) {
+  const normalized = normalizePuzzlePayload(payload);
+  if (!normalized) throw new Error("Puzzle payload is invalid");
+
+  const playerNamesList = puzzlePlayerNames(normalized);
+  const defaultStartingLife = Number(normalized.players[0]?.life) || 20;
+  await game.reset(playerNamesList, defaultStartingLife);
+  const cardsToAdd = [];
+  for (const [playerIndex, player] of normalized.players.entries()) {
+    if (typeof game.setLife === "function") {
+      await game.setLife(playerIndex, Number(player?.life) || 20);
+    }
+    for (const zone of PUZZLE_ZONE_ORDER) {
+      for (const cardName of player.zones?.[zone] || []) {
+        cardsToAdd.push({
+          playerIndex,
+          cardName,
+          zoneName: zone,
+          skipTriggers: true,
+        });
+      }
+    }
+  }
+  if (cardsToAdd.length > 0) {
+    if (typeof game.addCardsToZones === "function") {
+      await game.addCardsToZones(cardsToAdd);
+    } else {
+      for (const entry of cardsToAdd) {
+        await game.addCardToZone(
+          entry.playerIndex,
+          entry.cardName,
+          entry.zoneName,
+          entry.skipTriggers
+        );
+      }
+    }
+  }
+
+  return { playerNamesList, defaultStartingLife };
+}
+
 function readLobbyQueryParams() {
   if (typeof window === "undefined") {
-    return {
-      lobbyId: "",
-      name: "",
-      deckText: "",
-      commanderText: "",
-    };
+    return emptyLobbyQueryParams();
   }
 
   const params = new URLSearchParams(window.location.search);

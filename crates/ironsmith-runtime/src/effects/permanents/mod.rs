@@ -144,12 +144,13 @@ pub(crate) fn choose_color_as_becomes_attached(
     target: AttachmentTarget,
 ) {
     let has_choice_ability = game
-        .current_characteristics(attachment_id)
-        .map(|chars| chars.static_abilities)
+        .calculated_characteristics_arc(attachment_id)
+        .map(|chars| chars.static_abilities.clone())
         .unwrap_or_else(|| {
             game.object(attachment_id)
                 .map(|object| crate::ability::extract_static_abilities(&object.abilities))
                 .unwrap_or_default()
+                .into()
         })
         .into_iter()
         .any(|ability| ability.color_choice_as_becomes_attached().is_some());

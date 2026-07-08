@@ -42,8 +42,8 @@ pub fn get_ward_cost(
 
     // Check for ward ability
     let abilities: Vec<StaticAbility> = game
-        .calculated_characteristics(target_id)
-        .map(|c| c.static_abilities)
+        .calculated_characteristics_arc(target_id)
+        .map(|c| c.static_abilities.to_vec())
         .unwrap_or_else(|| {
             target
                 .abilities
@@ -93,7 +93,8 @@ fn ward_abilities_are_suppressed(game: &GameState, target_id: ObjectId, caster: 
                                 AbilityKind::Static(static_ability) => Some(static_ability.clone()),
                                 _ => None,
                             })
-                            .collect()
+                            .collect::<Vec<_>>()
+                            .into()
                     })
                     .unwrap_or_default()
             })

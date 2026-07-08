@@ -6,6 +6,7 @@ const WORKER_METHODS = [
   "addCardToHand",
   "autocompleteCardNames",
   "addCardToZone",
+  "addCardsToZones",
   "addLifeDelta",
   "advancePhase",
   "applyVerifiedHiddenLibraryShuffle",

@@ -291,7 +291,7 @@ fn static_abilities_for_object(
     effects: &[crate::continuous::ContinuousEffect],
 ) -> Vec<StaticAbility> {
     if let Some(calc) = game.calculated_characteristics_with_effects(object_id, effects) {
-        return calc.static_abilities;
+        return calc.static_abilities.to_vec();
     }
     game.object(object_id)
         .map(|object| {

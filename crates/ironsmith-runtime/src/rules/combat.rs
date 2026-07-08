@@ -80,11 +80,11 @@ pub(crate) fn can_block_with_view(
     let attacker_abilities = attacker_chars
         .as_ref()
         .map(|c| c.static_abilities.clone())
-        .unwrap_or_else(|| get_static_abilities(attacker));
+        .unwrap_or_else(|| get_static_abilities(attacker).into());
     let blocker_abilities = blocker_chars
         .as_ref()
         .map(|c| c.static_abilities.clone())
-        .unwrap_or_else(|| get_static_abilities(blocker));
+        .unwrap_or_else(|| get_static_abilities(blocker).into());
     let attacker_colors = attacker_chars
         .as_ref()
         .map(|c| c.colors.clone())
@@ -96,7 +96,7 @@ pub(crate) fn can_block_with_view(
     let attacker_subtypes = attacker_chars
         .as_ref()
         .map(|c| c.subtypes.clone())
-        .unwrap_or_else(|| attacker.subtypes.to_vec());
+        .unwrap_or_else(|| attacker.subtypes.clone());
     let blocker_is_artifact = blocker_chars
         .as_ref()
         .map(|c| c.card_types.contains(&CardType::Artifact))
@@ -303,7 +303,7 @@ pub(crate) fn can_block_with_view(
                 let supertypes = || {
                     view.calculated_characteristics(obj.id)
                         .map(|chars| chars.supertypes)
-                        .unwrap_or_else(|| obj.supertypes.to_vec())
+                        .unwrap_or_else(|| obj.supertypes.clone())
                 };
 
                 match landwalk_kind {
@@ -391,7 +391,7 @@ fn protection_prevents_blocking_with_view(
     let blocker_card_types = blocker_chars
         .as_ref()
         .map(|c| c.card_types.clone())
-        .unwrap_or_else(|| blocker.card_types.to_vec());
+        .unwrap_or_else(|| blocker.card_types.clone());
 
     match protection {
         ProtectionFrom::Color(colors) => !colors.intersection(blocker_colors).is_empty(),
@@ -467,7 +467,7 @@ pub(crate) fn minimum_blockers_with_view(attacker: &Object, view: &DerivedGameVi
     let abilities = view
         .calculated_characteristics(attacker.id)
         .map(|c| c.static_abilities)
-        .unwrap_or_else(|| get_static_abilities(attacker));
+        .unwrap_or_else(|| get_static_abilities(attacker).into());
 
     abilities
         .iter()
@@ -493,7 +493,7 @@ pub(crate) fn maximum_blockers_with_view(
     let abilities = view
         .calculated_characteristics(attacker.id)
         .map(|c| c.static_abilities)
-        .unwrap_or_else(|| get_static_abilities(attacker));
+        .unwrap_or_else(|| get_static_abilities(attacker).into());
 
     abilities.iter().filter_map(|a| a.maximum_blockers()).min()
 }
@@ -580,7 +580,7 @@ pub(crate) fn can_attack_defending_player_with_view(
     let abilities = view
         .calculated_characteristics(creature.id)
         .map(|c| c.static_abilities)
-        .unwrap_or_else(|| get_static_abilities(creature));
+        .unwrap_or_else(|| get_static_abilities(creature).into());
 
     for ability in &abilities {
         if let Some(can_attack) = ability.can_attack_specific_defender(
@@ -676,7 +676,7 @@ pub fn deals_first_strike_damage_with_game(
     let abilities = game
         .calculated_characteristics(creature.id)
         .map(|c| c.static_abilities)
-        .unwrap_or_else(|| get_static_abilities(creature));
+        .unwrap_or_else(|| get_static_abilities(creature).into());
 
     abilities
         .iter()
@@ -693,7 +693,7 @@ pub fn deals_regular_combat_damage_with_game(
     let abilities = game
         .calculated_characteristics(creature.id)
         .map(|c| c.static_abilities)
-        .unwrap_or_else(|| get_static_abilities(creature));
+        .unwrap_or_else(|| get_static_abilities(creature).into());
 
     let has_first_strike = abilities
         .iter()

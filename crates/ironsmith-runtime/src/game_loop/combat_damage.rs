@@ -210,7 +210,7 @@ pub(super) fn static_abilities_for_object(
     object: &crate::object::Object,
 ) -> Vec<crate::static_abilities::StaticAbility> {
     game.calculated_characteristics(object.id)
-        .map(|characteristics| characteristics.static_abilities.clone())
+        .map(|characteristics| characteristics.static_abilities.to_vec())
         .unwrap_or_else(|| {
             object
                 .abilities
