@@ -695,6 +695,17 @@ fn state_from_snapshot(
     json!({ "gameView": game_view_from_snapshot(snapshot, seat, overlay_cache) })
 }
 
+// A `serde_json::Value::Object` serializes to a JS `Map` under the default
+// serde-wasm-bindgen serializer, so the Manabrew side (which reads these by
+// property, e.g. `view.state.gameView`) sees `undefined`. `json_compatible`
+// emits plain objects/arrays, matching what the typed-struct returns already do.
+fn manabrew_value_to_js(value: &Value, label: &str) -> Result<JsValue, JsValue> {
+    use serde::Serialize;
+    value
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|error| JsValue::from_str(&format!("failed to encode {label}: {error}")))
+}
+
 fn redact_private_state(state: &Value) -> Value {
     let mut state = state.clone();
     let Some(players) = state
@@ -1764,8 +1775,7 @@ impl WasmGame {
             "state": state,
             "promptResult": manabrew_prompt_from_snapshot(&snapshot, &prompt_id),
         });
-        serde_wasm_bindgen::to_value(&view)
-            .map_err(|error| JsValue::from_str(&format!("failed to encode Manabrew view: {error}")))
+        manabrew_value_to_js(&view, "Manabrew view")
     }
 
     #[wasm_bindgen(js_name = manabrewPublicState)]
@@ -1778,8 +1788,7 @@ impl WasmGame {
             self.perspective,
             &mut self.manabrew_overlay_cache,
         );
-        serde_wasm_bindgen::to_value(&redact_private_state(&state))
-            .map_err(|error| JsValue::from_str(&format!("failed to encode Manabrew public state: {error}")))
+        manabrew_value_to_js(&redact_private_state(&state), "Manabrew public state")
     }
 
     #[wasm_bindgen(js_name = manabrewPrompt)]
@@ -1787,8 +1796,10 @@ impl WasmGame {
         let snapshot_js = self.ui_state()?;
         let snapshot: Value = serde_wasm_bindgen::from_value(snapshot_js)
             .map_err(|error| JsValue::from_str(&format!("failed to decode Ironsmith UI state: {error}")))?;
-        serde_wasm_bindgen::to_value(&manabrew_prompt_from_snapshot(&snapshot, &prompt_id))
-            .map_err(|error| JsValue::from_str(&format!("failed to encode Manabrew prompt: {error}")))
+        manabrew_value_to_js(
+            &manabrew_prompt_from_snapshot(&snapshot, &prompt_id),
+            "Manabrew prompt",
+        )
     }
 
     #[wasm_bindgen(js_name = manabrewCommandFromPromptOutput)]
