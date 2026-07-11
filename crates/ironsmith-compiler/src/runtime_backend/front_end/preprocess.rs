@@ -1,20 +1,8 @@
-use super::activation_and_restrictions::keyword_action_costs::parse_single_word_keyword_action;
-use super::grammar::effects::{
-    preserve_labeled_ability_prefix_for_parse_text, should_strip_labeled_ability_prefix_text,
-};
-use super::grammar::structure::{MetadataLineKind, split_metadata_line_lexed};
-use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
-use super::lexer::{
-    LexedClause, TokenKind, TokenWordView, lex_line, parser_token_word_refs, render_token_slice,
-    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
-    word_slice_eq, word_slice_find_phrase_start, word_slice_starts_with,
-};
+use super::grammar::structure::MetadataLineKind;
+use super::grammar::{line_semantic_facts, preprocess as preprocess_grammar};
+use super::lexer::{TokenWordView, lex_line, parser_token_word_refs, render_token_slice};
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
-};
-use super::token_primitives::{
-    str_contains_char, str_ends_with_char, str_find, str_find_char, str_split_once,
-    str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix, str_strip_suffix,
 };
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
@@ -22,60 +10,8 @@ use crate::cards::builders::{
 };
 use crate::types::CardType;
 
-const MULTI_WORD_KEYWORD_ABILITY_NAMES: &[&str] = &["first strike", "double strike", "ward"];
 const LOWEST_LIFE_CONTROL_UPKEEP_SENTENCE: &str = "at the beginning of your upkeep, the player with the lowest life total gains control of this creature";
 const LOWEST_LIFE_CONTROL_TIE_SENTENCE: &str = "if two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature";
-const ADDITIONAL_COST_TO_CAST_THIS_SPELL_PREFIX: &[&str] = &[
-    "as",
-    "an",
-    "additional",
-    "cost",
-    "to",
-    "cast",
-    "this",
-    "spell",
-];
-const RETURN_THAT_CARD_UNDER_OWNER_CONTROL_WHEN_THIS_PREFIX: &[&str] = &[
-    "return",
-    "that",
-    "card",
-    "to",
-    "the",
-    "battlefield",
-    "under",
-    "its",
-    "owners",
-    "control",
-    "when",
-    "this",
-];
-const LEAVES_THE_BATTLEFIELD_SUFFIX: &[&str] = &["leaves", "the", "battlefield"];
-const UNTIL_THIS_PHRASE: &[&str] = &["until", "this"];
-const TRUTH_VOTE_DRAW_SENTENCE: &[&str] = &[
-    "you", "draw", "cards", "equal", "to", "the", "number", "of", "truth", "votes",
-];
-const CONSEQUENCES_VOTE_DAMAGE_SENTENCE: &[&str] = &[
-    "truth",
-    "or",
-    "consequences",
-    "deals",
-    "3",
-    "damage",
-    "to",
-    "that",
-    "player",
-    "for",
-    "each",
-    "consequences",
-    "vote",
-];
-const FOR_EACH_DEATH_VOTE_AND_PHRASE: &[&str] = &["for", "each", "death", "vote", "and"];
-const FOR_EACH_TAXES_VOTE_PHRASE: &[&str] = &["for", "each", "taxes", "vote"];
-const FOR_EACH_PHRASE: &[&str] = &["for", "each"];
-const VOTE_CHOICE_CLAUSE_PHRASES: &[&[&str]] = &[&["vote", "for"], &["votes", "for"]];
-const ITS_AN_ENCHANTMENT_PHRASE: &[&str] = &["its", "an", "enchantment"];
-const ITS_NOT_A_CREATURE_PHRASE: &[&str] = &["its", "not", "a", "creature"];
-const AS_LONG_AS_PREFIX: &[&str] = &["as", "long", "as"];
 
 #[derive(Debug, Clone)]
 pub(crate) struct PreprocessedDocument {
@@ -102,7 +38,7 @@ pub(crate) struct PreprocessedLine {
     pub(crate) tokens: Vec<OwnedLexToken>,
 }
 
-fn byte_slice_starts_with(slice: &[u8], prefix: &[u8]) -> bool {
+fn bytes_start_with(slice: &[u8], prefix: &[u8]) -> bool {
     if prefix.len() > slice.len() {
         return false;
     }
@@ -132,44 +68,22 @@ fn collapse_whitespace_runs(text: &str) -> String {
 }
 
 fn strip_parenthetical_segments(line: &str) -> String {
-    fn keeps_enchantment_not_creature_parenthetical(line: &str) -> bool {
-        let Ok(tokens) = lex_line(line, 0) else {
-            return false;
-        };
-        let word_positions = super::lexer::parser_token_word_positions(&tokens);
-        let words = word_positions
-            .iter()
-            .map(|(_, word)| *word)
-            .collect::<Vec<_>>();
-        if !word_slice_contains_phrase(&words, ITS_AN_ENCHANTMENT_PHRASE) {
-            return false;
+    match preprocess_grammar::parse_parenthetical_line_surface(line) {
+        Some(preprocess_grammar::ParentheticalLineSurface::FullyWrapped) => {
+            return line.to_string();
         }
-        let Some(not_creature_idx) =
-            word_slice_find_phrase_start(&words, ITS_NOT_A_CREATURE_PHRASE)
-        else {
-            return false;
-        };
-        word_positions
-            .get(not_creature_idx)
-            .and_then(|(token_idx, _)| token_idx.checked_sub(1))
-            .and_then(|prev_token_idx| tokens.get(prev_token_idx))
-            .is_some_and(|token| token.kind == TokenKind::LParen)
-    }
-
-    let trimmed = line.trim();
-    if str_starts_with_char(trimmed, '(') && str_ends_with_char(trimmed, ')') {
-        return line.to_string();
-    }
-    if keeps_enchantment_not_creature_parenthetical(line) {
-        return line
-            .replace("(It's not a creature.)", "It's not a creature.")
-            .replace("(It's not a creature)", "It's not a creature")
-            .replace("(it's not a creature.)", "it's not a creature.")
-            .replace("(it's not a creature)", "it's not a creature")
-            .replace("(Its not a creature.)", "Its not a creature.")
-            .replace("(Its not a creature)", "Its not a creature")
-            .replace("(its not a creature.)", "its not a creature.")
-            .replace("(its not a creature)", "its not a creature");
+        Some(preprocess_grammar::ParentheticalLineSurface::PreserveEnchantmentNotCreature) => {
+            return line
+                .replace("(It's not a creature.)", "It's not a creature.")
+                .replace("(It's not a creature)", "It's not a creature")
+                .replace("(it's not a creature.)", "it's not a creature.")
+                .replace("(it's not a creature)", "it's not a creature")
+                .replace("(Its not a creature.)", "Its not a creature.")
+                .replace("(Its not a creature)", "Its not a creature")
+                .replace("(its not a creature.)", "its not a creature.")
+                .replace("(its not a creature)", "its not a creature");
+        }
+        None => {}
     }
 
     let mut out = String::with_capacity(line.len());
@@ -188,86 +102,28 @@ fn strip_parenthetical_segments(line: &str) -> String {
 }
 
 fn split_parse_line_variants(line: &str) -> Vec<String> {
-    let lower = line.to_ascii_lowercase();
-    if line_words_start_with(line, ADDITIONAL_COST_TO_CAST_THIS_SPELL_PREFIX)
-        && let Some(period_idx) = str_find_char(line, '.')
-    {
-        let first = line[..=period_idx].trim();
-        let second = line[period_idx + 1..].trim();
+    if let Some(split) = preprocess_grammar::parse_line_variant_split(line) {
+        let first = line.get(..split.first_end).unwrap_or_default().trim();
+        let second = line.get(split.second_start..).unwrap_or_default().trim();
         if !first.is_empty() && !second.is_empty() {
             return vec![first.to_string(), second.to_string()];
-        }
-    }
-
-    let marker = ". when you spend this mana to cast ";
-    let marker_compact = ".when you spend this mana to cast ";
-    let split_at =
-        str_find(lower.as_str(), marker).or_else(|| str_find(lower.as_str(), marker_compact));
-    if let Some(idx) = split_at {
-        let first = line[..=idx].trim();
-        let second = line[idx + 1..].trim();
-        if str_contains_char(first, ':') && !second.is_empty() {
-            return vec![first.to_string(), second.to_string()];
-        }
-    }
-
-    for marker in [
-        ". this cost is reduced by ",
-        ".this cost is reduced by ",
-        ". this ability costs ",
-        ".this ability costs ",
-        ". this spell costs ",
-        ".this spell costs ",
-    ] {
-        if let Some(idx) = str_find(lower.as_str(), marker) {
-            let first = line[..=idx].trim();
-            let second = line[idx + 1..].trim();
-            if !first.is_empty() && !second.is_empty() {
-                return vec![first.to_string(), second.to_string()];
-            }
         }
     }
 
     vec![line.to_string()]
 }
 
-fn line_words_start_with(line: &str, prefix: &[&str]) -> bool {
-    lex_line(line.trim_start(), 0)
-        .ok()
-        .is_some_and(|tokens| word_slice_starts_with(&parser_token_word_refs(&tokens), prefix))
-}
-
 fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-
-    let Some((label, value)) = str_split_once_char(trimmed, ':') else {
-        return Ok(None);
-    };
-    let value = value.trim();
-    if value.is_empty() {
-        return Ok(None);
-    }
-
-    // Parse only the structural label token-first so metadata values such as `*/*`
-    // can remain opaque here without falling back to post-lex string probing.
-    let label_tokens = match lex_line(format!("{}:", label.trim()).as_str(), 0) {
-        Ok(tokens) => tokens,
-        Err(_) => return Ok(None),
-    };
-    let Some(spec) = split_metadata_line_lexed(&label_tokens) else {
+    let Some(surface) = preprocess_grammar::parse_metadata_surface(line) else {
         return Ok(None);
     };
 
-    let value = value.to_string();
-    let metadata = match spec.kind {
-        MetadataLineKind::ManaCost => MetadataLine::ManaCost(value),
-        MetadataLineKind::TypeLine => MetadataLine::TypeLine(value),
-        MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(value),
-        MetadataLineKind::Loyalty => MetadataLine::Loyalty(value),
-        MetadataLineKind::Defense => MetadataLine::Defense(value),
+    let metadata = match surface.kind {
+        MetadataLineKind::ManaCost => MetadataLine::ManaCost(surface.value),
+        MetadataLineKind::TypeLine => MetadataLine::TypeLine(surface.value),
+        MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(surface.value),
+        MetadataLineKind::Loyalty => MetadataLine::Loyalty(surface.value),
+        MetadataLineKind::Defense => MetadataLine::Defense(surface.value),
     };
 
     Ok(Some(metadata))
@@ -296,57 +152,12 @@ fn replace_names_with_map(
         start_ok && end_ok
     }
 
-    fn parser_word_count(name: &str) -> usize {
-        lex_line(name, 0)
-            .ok()
-            .map(|tokens| parser_token_word_refs(&tokens).len())
-            .unwrap_or(0)
-    }
-
     fn is_single_word_keyword_verb(name: &str) -> bool {
-        parser_word_count(name) == 1
-            && matches!(
-                name,
-                "add"
-                    | "move"
-                    | "deal"
-                    | "draw"
-                    | "counter"
-                    | "destroy"
-                    | "exile"
-                    | "untap"
-                    | "scry"
-                    | "discard"
-                    | "transform"
-                    | "regenerate"
-                    | "mill"
-                    | "get"
-                    | "reveal"
-                    | "lose"
-                    | "gain"
-                    | "put"
-                    | "sacrifice"
-                    | "create"
-                    | "investigate"
-                    | "remove"
-                    | "return"
-                    | "exchange"
-                    | "become"
-                    | "switch"
-                    | "skip"
-                    | "surveil"
-                    | "pay"
-            )
+        preprocess_grammar::parse_single_keyword_verb(name).is_some()
     }
 
     fn is_keyword_ability_name(name: &str) -> bool {
-        if MULTI_WORD_KEYWORD_ABILITY_NAMES.contains(&name) {
-            return true;
-        }
-        if parser_word_count(name) != 1 {
-            return false;
-        }
-        parse_single_word_keyword_action(name).is_some()
+        preprocess_grammar::parse_keyword_ability_name(name).is_some()
     }
 
     fn preceded_by_named_keyword(bytes: &[u8], mut idx: usize) -> bool {
@@ -392,12 +203,12 @@ fn replace_names_with_map(
             if bytes[idx] == b'.' || bytes[idx] == b';' {
                 break;
             }
-            if byte_slice_starts_with(&bytes[idx..], b"token")
+            if bytes_start_with(&bytes[idx..], b"token")
                 && has_word_boundaries_at(bytes, idx, "token".len())
             {
                 return true;
             }
-            if byte_slice_starts_with(&bytes[idx..], b"tokens")
+            if bytes_start_with(&bytes[idx..], b"tokens")
                 && has_word_boundaries_at(bytes, idx, "tokens".len())
             {
                 return true;
@@ -444,10 +255,7 @@ fn replace_names_with_map(
         let Some(prefix) = std::str::from_utf8(&bytes[sentence_start..idx]).ok() else {
             return false;
         };
-        let Ok(tokens) = lex_line(prefix, 0) else {
-            return false;
-        };
-        word_slice_contains_any_phrase(&parser_token_word_refs(&tokens), VOTE_CHOICE_CLAUSE_PHRASES)
+        preprocess_grammar::parse_vote_choice_surface(prefix).is_some()
     }
 
     fn is_short_name_self_reference_context(bytes: &[u8], idx: usize, len: usize) -> bool {
@@ -584,6 +392,10 @@ fn replace_names_with_map(
                         | b"deals"
                         | b"enter"
                         | b"enters"
+                        | b"gain"
+                        | b"gains"
+                        | b"has"
+                        | b"have"
                         | b"leave"
                         | b"leaves"
                         | b"remain"
@@ -605,7 +417,7 @@ fn replace_names_with_map(
 
     while idx < bytes.len() {
         if !full_bytes.is_empty()
-            && byte_slice_starts_with(&bytes[idx..], full_bytes)
+            && bytes_start_with(&bytes[idx..], full_bytes)
             && has_word_boundaries_at(bytes, idx, full_bytes.len())
             && !(idx == 0 && is_single_word_keyword_verb(full_name))
             && !(is_keyword_ability_name(full_name) && preceded_by_ability_grant_word(bytes, idx))
@@ -631,11 +443,11 @@ fn replace_names_with_map(
             continue;
         }
         if !short_bytes.is_empty()
-            && byte_slice_starts_with(&bytes[idx..], short_bytes)
+            && bytes_start_with(&bytes[idx..], short_bytes)
             && has_word_boundaries_at(bytes, idx, short_bytes.len())
             && !(preserve_source_surfaces
                 && !full_bytes.is_empty()
-                && byte_slice_starts_with(&bytes[idx..], full_bytes)
+                && bytes_start_with(&bytes[idx..], full_bytes)
                 && has_word_boundaries_at(bytes, idx, full_bytes.len()))
             && !(idx == 0 && is_single_word_keyword_verb(short_name))
             && !(is_keyword_ability_name(short_name) && preceded_by_ability_grant_word(bytes, idx))
@@ -700,43 +512,11 @@ fn strip_parenthetical_with_map(text: &str, map: &[usize]) -> (String, Vec<usize
 }
 
 fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
-    let separator = text
-        .match_indices('—')
-        .next()
-        .map(|(idx, _)| idx)
-        .map(|idx| (idx, '—'.len_utf8()))
-        .or_else(|| str_find(text, " - ").map(|idx| (idx, " - ".len())));
-    let Some((sep_idx, sep_len)) = separator else {
+    let Some(surface) = preprocess_grammar::parse_labeled_ability_prefix(text) else {
         return (text.to_string(), map.to_vec());
     };
-
-    let prefix = text[..sep_idx].trim();
-    if preserve_labeled_ability_prefix_for_parse_text(prefix) {
-        return (text.to_string(), map.to_vec());
-    }
-
-    let mut remainder_start = sep_idx + sep_len;
-    while remainder_start < text.len() {
-        let ch = text[remainder_start..]
-            .chars()
-            .next()
-            .expect("character must exist");
-        if ch.is_whitespace() {
-            remainder_start += ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-    if remainder_start >= text.len() {
-        return (text.to_string(), map.to_vec());
-    }
-
-    let remainder = text[remainder_start..].to_string();
-    if !should_strip_labeled_ability_prefix_text(prefix, &remainder) {
-        return (text.to_string(), map.to_vec());
-    }
-
-    let remainder_char_start = text[..remainder_start].chars().count();
+    let remainder = text[surface.remainder_start..].to_string();
+    let remainder_char_start = text[..surface.remainder_start].chars().count();
     let remainder_map = if remainder_char_start < map.len() {
         map[remainder_char_start..].to_vec()
     } else {
@@ -746,16 +526,18 @@ fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (Str
 }
 
 fn strip_resolution_timing_tail_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
-    let lower = text.to_ascii_lowercase();
-    let Some(idx) = str_find(lower.as_str(), " as it resolves") else {
+    let Some(surface) = preprocess_grammar::parse_resolution_timing_tail(text) else {
         return (text.to_string(), map.to_vec());
     };
 
-    let mut out = text[..idx].trim_end().to_string();
+    let mut out = text[..surface.tail_start].trim_end().to_string();
     let mut out_map = map[..out.chars().count().min(map.len())].to_vec();
-    if str_ends_with_char(text.trim_end(), '.') && !str_ends_with_char(out.as_str(), '.') {
+    if surface.terminal_period && !preprocess_grammar::parse_terminal_period(out.as_str()) {
         out.push('.');
-        out_map.push(*map.get(idx).unwrap_or_else(|| map.last().unwrap_or(&0)));
+        out_map.push(
+            *map.get(surface.tail_start)
+                .unwrap_or_else(|| map.last().unwrap_or(&0)),
+        );
     }
     (out, out_map)
 }
@@ -778,25 +560,13 @@ fn normalize_line_for_parse(
     let (stripped, stripped_map) = strip_resolution_timing_tail_with_map(&stripped, &stripped_map);
 
     if stripped.trim().is_empty() {
-        let is_wrapped = str_starts_with_char(trimmed, '(') && str_ends_with_char(trimmed, ')');
-        if !is_wrapped {
-            return None;
-        }
-        let inner = trimmed.trim_start_matches('(').trim_end_matches(')').trim();
-        if inner.is_empty() {
-            return None;
-        }
-        let should_parse = str_contains_char(inner, ':');
-        if !should_parse {
-            return None;
-        }
-        let base_offset = str_find(trimmed, inner).unwrap_or(0);
+        let wrapped = preprocess_grammar::parse_wrapped_activation_surface(trimmed)?;
         let (inner_replaced, inner_map) = replace_names_with_map(
-            inner,
+            wrapped.inner.as_str(),
             full_name,
             short_name,
             preserve_source_surfaces,
-            base_offset,
+            wrapped.inner_start,
         );
         return Some(NormalizedLine {
             original: trimmed.to_string(),
@@ -810,30 +580,6 @@ fn normalize_line_for_parse(
         normalized: stripped,
         char_map: stripped_map,
     })
-}
-
-fn borrow_ability_keyword_phrases() -> &'static [&'static str] {
-    &[
-        "protection from any color",
-        "double strike",
-        "first strike",
-        "indestructible",
-        "deathtouch",
-        "hexproof",
-        "lifelink",
-        "vigilance",
-        "landwalk",
-        "protection",
-        "trample",
-        "shroud",
-        "shadow",
-        "skulk",
-        "flying",
-        "menace",
-        "reach",
-        "haste",
-        "fear",
-    ]
 }
 
 fn split_period_sentences(text: &str) -> Vec<String> {
@@ -857,50 +603,13 @@ fn parse_same_is_true_targets(tail: &str) -> Vec<String> {
         .collect()
 }
 
-fn split_same_is_true_subject_predicate(sentence: &str) -> Option<(&str, &str)> {
-    for needle in [
-        " are ",
-        " is ",
-        " have ",
-        " has ",
-        " get ",
-        " gets ",
-        " gain ",
-        " gains ",
-        " lose ",
-        " loses ",
-        " become ",
-        " becomes ",
-    ] {
-        if let Some(idx) = str_find(sentence, needle) {
-            let subject = sentence[..idx].trim();
-            let predicate = sentence[idx..].trim_start();
-            if !subject.is_empty() && !predicate.is_empty() {
-                return Some((subject, predicate));
-            }
-        }
-    }
-    None
+fn split_same_is_true_subject_predicate(sentence: &str) -> Option<(String, String)> {
+    preprocess_grammar::parse_subject_predicate_surface(sentence)
+        .map(|surface| (surface.subject, surface.predicate))
 }
 
 fn find_borrow_ability_source_phrase(sentence: &str) -> Option<&'static str> {
-    let mut best: Option<(usize, &'static str)> = None;
-    for candidate in borrow_ability_keyword_phrases() {
-        for prefix in [
-            "gain ", "gains ", "has ", "have ", "with a ", "with an ", "put a ", "put an ",
-        ] {
-            let needle = format!("{prefix}{candidate}");
-            if let Some(idx) = str_find(sentence, needle.as_str()) {
-                match best {
-                    Some((best_idx, best_phrase))
-                        if idx > best_idx
-                            || (idx == best_idx && best_phrase.len() >= candidate.len()) => {}
-                    _ => best = Some((idx, *candidate)),
-                }
-            }
-        }
-    }
-    best.map(|(_, phrase)| phrase)
+    preprocess_grammar::parse_borrow_ability_surface(sentence).map(|surface| surface.phrase)
 }
 
 fn replace_whole_phrase_case_insensitive(text: &str, from: &str, to: &str) -> String {
@@ -938,187 +647,54 @@ fn replace_whole_phrase_case_insensitive(text: &str, from: &str, to: &str) -> St
     out
 }
 
-fn normalize_exiled_with_source_ability_tail(tail: &str) -> String {
-    let lower = tail.to_ascii_lowercase();
-    for source_noun in [
-        "creature",
-        "permanent",
-        "artifact",
-        "enchantment",
-        "equipment",
-        "vehicle",
-        "card",
-        "spell",
-        "object",
-    ] {
-        for preposition in ["with", "by"] {
-            let possessive = format!("exiled {preposition} this {source_noun}'s ");
-            let normalized_possessive = format!("exiled {preposition} this {source_noun}s ");
-            if (lower.starts_with(&possessive) || lower.starts_with(&normalized_possessive))
-                && lower.ends_with(" ability")
-            {
-                return format!("exiled with this {source_noun}");
-            }
-        }
-    }
-    tail.to_string()
-}
-
-fn rewrite_exiled_with_borrowed_ability_condition(
-    tokens: &[OwnedLexToken],
-    ability: &str,
-) -> Option<String> {
-    let words = TokenWordView::new(tokens);
-    let ability_tokens = lex_line(ability, 0).ok()?;
-    let ability_words = parser_token_word_refs(&ability_tokens);
-
-    let with_idx = (1..words.len()).find(|idx| {
-        words.at_is(*idx, "with") && words.slice_eq(idx + 1, ability_words.as_slice())
-    })?;
-    let verb_idx = with_idx + 1 + ability_words.len();
-    if !words.at_is_any(verb_idx, &["was", "were"])
-        || !words.at_is(verb_idx + 1, "exiled")
-        || !words.at_is_any(verb_idx + 2, &["with", "by"])
-    {
-        return None;
-    }
-
-    let subject_range = words.token_range_for_word_range(0, with_idx)?;
-    let tail_range = words.token_range_for_word_range(verb_idx + 1, words.len())?;
-    let subject = render_token_slice(&tokens[subject_range])
-        .trim()
-        .to_string();
-    let tail =
-        normalize_exiled_with_source_ability_tail(render_token_slice(&tokens[tail_range]).trim());
-    if subject.is_empty() || tail.is_empty() {
-        return None;
-    }
-
-    Some(format!("there is {subject} {tail} with {ability}"))
-}
-
 fn rewrite_borrow_static_condition(condition: &str, ability: &str) -> Option<String> {
-    let tokens = lex_line(condition.trim(), 0).ok()?;
-    let words = TokenWordView::new(&tokens);
-    let ability_tokens = lex_line(ability, 0).ok()?;
-    let ability_words = parser_token_word_refs(&ability_tokens);
-
-    if let Some(rewritten) = rewrite_exiled_with_borrowed_ability_condition(&tokens, ability) {
-        return Some(rewritten);
-    }
-
-    if words.len() > ability_words.len() + 1 {
-        let ability_start = words.len() - ability_words.len();
-        let verb_idx = ability_start.saturating_sub(1);
-        if words.at_is_any(verb_idx, &["has", "have"])
-            && words.slice_eq(ability_start, &ability_words)
-        {
-            let subject_range = words.token_range_for_word_range(0, verb_idx)?;
-            let subject = render_token_slice(&tokens[subject_range])
-                .trim()
-                .to_string();
-            if !subject.is_empty() {
-                return Some(format!("there is {subject} with {ability}"));
-            }
+    match preprocess_grammar::parse_borrow_static_condition_surface(condition, ability)? {
+        preprocess_grammar::BorrowStaticConditionSurface::ExiledWithAbility {
+            subject,
+            tail,
+            source_noun,
+        } => {
+            let tail = source_noun
+                .map(|noun| format!("exiled with this {noun}"))
+                .unwrap_or(tail);
+            Some(format!("there is {subject} {tail} with {ability}"))
+        }
+        preprocess_grammar::BorrowStaticConditionSurface::HasAbility { subject } => {
+            Some(format!("there is {subject} with {ability}"))
+        }
+        preprocess_grammar::BorrowStaticConditionSurface::InZone {
+            plural,
+            subject,
+            zone_tail,
+        } => {
+            let intro = if plural { "there are" } else { "there is" };
+            Some(format!("{intro} {subject} in {zone_tail}"))
         }
     }
-
-    for (verb, rewritten_intro) in [("is", "there is"), ("are", "there are")] {
-        let Some(verb_idx) = (1..words.len().saturating_sub(1))
-            .find(|idx| words.at_is(*idx, verb) && words.at_is(idx + 1, "in"))
-        else {
-            continue;
-        };
-        let subject_range = words.token_range_for_word_range(0, verb_idx)?;
-        let zone_range = words.token_range_for_word_range(verb_idx + 2, words.len())?;
-        let subject = render_token_slice(&tokens[subject_range])
-            .trim()
-            .to_string();
-        let zone_tail = render_token_slice(&tokens[zone_range]).trim().to_string();
-        if !subject.is_empty() && !zone_tail.is_empty() {
-            return Some(format!("{rewritten_intro} {subject} in {zone_tail}"));
-        }
-    }
-
-    None
 }
 
 fn rewrite_borrow_static_sentence(sentence: &str) -> String {
     let Some(ability) = find_borrow_ability_source_phrase(sentence) else {
         return sentence.to_string();
     };
-
-    let Ok(tokens) = lex_line(sentence.trim(), 0) else {
-        return sentence.to_string();
-    };
-    let words = TokenWordView::new(&tokens);
-
-    if words.starts_with(&["if"]) {
-        let Some(condition_start) = words.token_index_after_words(1) else {
-            return sentence.to_string();
-        };
-        if let Some(comma_idx) = tokens[condition_start..]
-            .iter()
-            .position(|token| token.kind == TokenKind::Comma)
-            .map(|idx| condition_start + idx)
-        {
-            let condition = render_token_slice(&tokens[condition_start..comma_idx]);
-            let consequence = render_token_slice(&tokens[comma_idx + 1..]);
-            if let Some(rewritten) = rewrite_borrow_static_condition(condition.as_str(), ability) {
-                return format!("as long as {}, {}", rewritten, consequence.trim());
-            }
+    match preprocess_grammar::parse_borrow_static_sentence_surface(sentence) {
+        Some(preprocess_grammar::BorrowStaticSentenceSurface::Leading {
+            condition,
+            consequence,
+        }) => rewrite_borrow_static_condition(condition.as_str(), ability)
+            .map(|rewritten| format!("as long as {rewritten}, {consequence}"))
+            .unwrap_or_else(|| sentence.to_string()),
+        Some(preprocess_grammar::BorrowStaticSentenceSurface::Trailing { prefix, condition }) => {
+            rewrite_borrow_static_condition(condition.as_str(), ability)
+                .map(|rewritten| format!("{prefix} as long as {rewritten}"))
+                .unwrap_or_else(|| sentence.to_string())
         }
+        None => sentence.to_string(),
     }
-
-    if word_slice_starts_with(&parser_token_word_refs(&tokens), AS_LONG_AS_PREFIX) {
-        let Some(condition_start) = words.token_index_after_words(3) else {
-            return sentence.to_string();
-        };
-        if let Some(comma_idx) = tokens[condition_start..]
-            .iter()
-            .position(|token| token.kind == TokenKind::Comma)
-            .map(|idx| condition_start + idx)
-        {
-            let condition = render_token_slice(&tokens[condition_start..comma_idx]);
-            let consequence = render_token_slice(&tokens[comma_idx + 1..]);
-            if let Some(rewritten) = rewrite_borrow_static_condition(condition.as_str(), ability) {
-                return format!("as long as {}, {}", rewritten, consequence.trim());
-            }
-        }
-    }
-
-    if let Some(as_long_as_idx) = words.find_phrase_start(&["as", "long", "as"])
-        && as_long_as_idx > 0
-    {
-        let Some(prefix_range) = words.token_range_for_word_range(0, as_long_as_idx) else {
-            return sentence.to_string();
-        };
-        let Some(condition_range) =
-            words.token_range_for_word_range(as_long_as_idx + 3, words.len())
-        else {
-            return sentence.to_string();
-        };
-        let condition = render_token_slice(&tokens[condition_range]);
-        if let Some(rewritten) = rewrite_borrow_static_condition(condition.as_str(), ability) {
-            let prefix = render_token_slice(&tokens[prefix_range]);
-            return format!("{} as long as {}", prefix.trim(), rewritten);
-        }
-    }
-
-    sentence.to_string()
 }
 
 fn same_is_true_tail(sentence: &str) -> Option<String> {
-    const SAME_IS_TRUE_FOR_PREFIX: &[&str] = &["the", "same", "is", "true", "for"];
-
-    let tokens = lex_line(sentence.trim(), 0).ok()?;
-    let words = TokenWordView::new(&tokens);
-    if !words.starts_with(SAME_IS_TRUE_FOR_PREFIX) {
-        return None;
-    }
-    let tail_start = words.token_index_after_words(SAME_IS_TRUE_FOR_PREFIX.len())?;
-    let tail = render_token_slice(&tokens[tail_start..]).trim().to_string();
-    (!tail.is_empty()).then_some(tail)
+    preprocess_grammar::parse_same_is_true_surface(sentence).map(|surface| surface.tail)
 }
 
 fn expand_borrow_ability_line(text: &str) -> String {
@@ -1163,7 +739,7 @@ fn expand_borrow_ability_line(text: &str) -> String {
     }
 
     let mut joined = expanded.join(". ");
-    if str_ends_with_char(text.trim_end(), '.') {
+    if preprocess_grammar::parse_terminal_period(text) {
         joined.push('.');
     }
     joined
@@ -1172,95 +748,25 @@ fn expand_borrow_ability_line(text: &str) -> String {
 fn rewrite_vote_count_followups_line(text: &str) -> String {
     fn rewrite_vote_count_sentence(sentence: &str) -> String {
         let trimmed = sentence.trim();
-        let Ok(tokens) = lex_line(trimmed, 0) else {
-            return trimmed.to_string();
-        };
-        let word_positions = super::lexer::parser_token_word_positions(&tokens);
-        let words = word_positions
-            .iter()
-            .map(|(_, word)| *word)
-            .collect::<Vec<_>>();
-
-        if word_slice_eq(&words, TRUTH_VOTE_DRAW_SENTENCE) {
-            return "For each truth vote, draw a card".to_string();
-        }
-
-        if word_slice_eq(&words, CONSEQUENCES_VOTE_DAMAGE_SENTENCE) {
-            return "For each consequences vote, Truth or Consequences deals 3 damage to that player"
-                .to_string();
-        }
-
-        if let Some(death_word_idx) =
-            find_phrase_start(words.as_slice(), FOR_EACH_DEATH_VOTE_AND_PHRASE)
-            && let Some(taxes_word_idx) = find_phrase_start(
-                &words[death_word_idx + FOR_EACH_DEATH_VOTE_AND_PHRASE.len()..],
-                FOR_EACH_TAXES_VOTE_PHRASE,
-            )
-            .map(|idx| death_word_idx + FOR_EACH_DEATH_VOTE_AND_PHRASE.len() + idx)
-        {
-            let left_end = byte_start_for_word(&tokens, &word_positions, death_word_idx);
-            let middle_start = byte_start_for_word(
-                &tokens,
-                &word_positions,
-                death_word_idx + FOR_EACH_DEATH_VOTE_AND_PHRASE.len(),
-            );
-            let taxes_start = byte_start_for_word(&tokens, &word_positions, taxes_word_idx);
-            let left = trimmed[..left_end].trim();
-            let middle = trimmed[middle_start..taxes_start].trim();
-            if !left.is_empty() && !middle.is_empty() {
-                return format!(
-                    "For each death vote, {}. For each taxes vote, Each opponent {}",
-                    left, middle
-                );
+        match preprocess_grammar::parse_vote_count_rewrite_surface(trimmed) {
+            Some(preprocess_grammar::VoteCountRewriteSurface::TruthDraw) => {
+                "For each truth vote, draw a card".to_string()
             }
-        }
-
-        if let Some(marker_word_idx) = find_last_phrase_start(words.as_slice(), FOR_EACH_PHRASE) {
-            let head_end = byte_start_for_word(&tokens, &word_positions, marker_word_idx);
-            let tail_start = byte_start_for_word(
-                &tokens,
-                &word_positions,
-                marker_word_idx + FOR_EACH_PHRASE.len(),
-            );
-            let head = trimmed[..head_end].trim();
-            let tail = trimmed[tail_start..].trim();
-            let tail_words = &words[marker_word_idx + FOR_EACH_PHRASE.len()..];
-            if !head.is_empty()
-                && tail_words.len() >= 2
-                && matches!(tail_words.last().copied(), Some("vote") | Some("votes"))
-            {
-                return format!("For each {tail}, {head}");
+            Some(preprocess_grammar::VoteCountRewriteSurface::ConsequencesDamage) => {
+                "For each consequences vote, Truth or Consequences deals 3 damage to that player"
+                    .to_string()
             }
+            Some(preprocess_grammar::VoteCountRewriteSurface::DeathAndTaxes { left, middle }) => {
+                format!("For each death vote, {left}. For each taxes vote, Each opponent {middle}")
+            }
+            Some(preprocess_grammar::VoteCountRewriteSurface::TrailingForEach { head, tail }) => {
+                format!("For each {tail}, {head}")
+            }
+            None => trimmed.to_string(),
         }
-
-        trimmed.to_string()
     }
 
-    fn find_phrase_start(words: &[&str], phrase: &[&str]) -> Option<usize> {
-        words
-            .windows(phrase.len())
-            .position(|window| word_slice_eq(window, phrase))
-    }
-
-    fn find_last_phrase_start(words: &[&str], phrase: &[&str]) -> Option<usize> {
-        words
-            .windows(phrase.len())
-            .rposition(|window| word_slice_eq(window, phrase))
-    }
-
-    fn byte_start_for_word(
-        tokens: &[OwnedLexToken],
-        word_positions: &[(usize, &str)],
-        word_idx: usize,
-    ) -> usize {
-        word_positions
-            .get(word_idx)
-            .and_then(|(token_idx, _)| tokens.get(*token_idx))
-            .map(|token| token.span.start)
-            .unwrap_or_else(|| tokens.last().map(|token| token.span.end).unwrap_or(0))
-    }
-
-    let had_period = str_ends_with_char(text.trim_end(), '.');
+    let had_period = preprocess_grammar::parse_terminal_period(text);
     let rewritten = split_period_sentences(text)
         .into_iter()
         .map(|sentence| rewrite_vote_count_sentence(sentence.as_str()))
@@ -1275,32 +781,12 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
 
 fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
     fn source_leaves_subject(sentence: &str) -> Option<String> {
-        const RETURN_SOURCE_LEAVES_PATTERN: LexPattern<'static> = LexPattern::new(&[
-            LexPattern::phrase(RETURN_THAT_CARD_UNDER_OWNER_CONTROL_WHEN_THIS_PREFIX),
-            LexPattern::subject(
-                "source",
-                LexCaptureKind::UntilPhrase(LEAVES_THE_BATTLEFIELD_SUFFIX),
-            ),
-            LexPattern::phrase(LEAVES_THE_BATTLEFIELD_SUFFIX),
-        ]);
-
-        let tokens = lex_line(sentence.trim(), 0).ok()?;
-        let clause = LexedClause::new(&tokens);
-        let matched = RETURN_SOURCE_LEAVES_PATTERN.match_clause(clause)?;
-        let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-        let subject = render_token_slice(source_clause.tokens())
-            .trim()
-            .to_string();
-        (!subject.is_empty()).then_some(subject)
+        preprocess_grammar::parse_return_source_leaves_surface(sentence)
+            .map(|surface| surface.subject)
     }
 
     fn previous_sentence_has_exile_without_until_this(previous: &str) -> bool {
-        let Ok(tokens) = lex_line(previous, 0) else {
-            return false;
-        };
-        let words = parser_token_word_refs(&tokens);
-        word_slice_contains_word(&words, "exile")
-            && !word_slice_contains_phrase(&words, UNTIL_THIS_PHRASE)
+        preprocess_grammar::parse_previous_exile_surface(previous).is_some()
     }
 
     let sentences = split_period_sentences(text);
@@ -1332,7 +818,7 @@ fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
     }
 
     let mut joined = rewritten.join(". ");
-    if str_ends_with_char(text.trim_end(), '.') {
+    if preprocess_grammar::parse_terminal_period(text) {
         joined.push('.');
     }
     joined
@@ -1370,8 +856,7 @@ fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec
 }
 
 fn is_ignorable_unparsed_line(line: &str) -> bool {
-    let trimmed = line.trim();
-    !trimmed.is_empty() && str_starts_with_char(trimmed, '(') && str_ends_with_char(trimmed, ')')
+    preprocess_grammar::parse_ignorable_parenthetical_line(line)
 }
 
 pub(crate) fn preprocess_document(
@@ -1389,130 +874,7 @@ pub(crate) fn preprocess_document(
     }
 
     fn short_name_for_self_reference(name: &str) -> String {
-        fn is_reserved_short_alias(alias_lower: &str) -> bool {
-            matches!(
-                alias_lower,
-                "a" | "an"
-                    | "the"
-                    | "one"
-                    | "two"
-                    | "three"
-                    | "four"
-                    | "five"
-                    | "six"
-                    | "seven"
-                    | "eight"
-                    | "nine"
-                    | "ten"
-                    | "x"
-                    | "this"
-                    | "that"
-                    | "these"
-                    | "those"
-                    | "you"
-                    | "your"
-                    | "when"
-                    | "whenever"
-                    | "if"
-                    | "at"
-                    | "add"
-                    | "move"
-                    | "deal"
-                    | "draw"
-                    | "counter"
-                    | "destroy"
-                    | "exile"
-                    | "untap"
-                    | "scry"
-                    | "discard"
-                    | "transform"
-                    | "regenerate"
-                    | "mill"
-                    | "get"
-                    | "reveal"
-                    | "look"
-                    | "lose"
-                    | "gain"
-                    | "put"
-                    | "sacrifice"
-                    | "create"
-                    | "investigate"
-                    | "attach"
-                    | "remove"
-                    | "return"
-                    | "exchange"
-                    | "become"
-                    | "switch"
-                    | "skip"
-                    | "surveil"
-                    | "shuffle"
-                    | "reorder"
-                    | "pay"
-                    | "goad"
-                    | "power"
-                    | "toughness"
-                    | "mana"
-                    | "life"
-                    | "commander"
-                    | "player"
-                    | "opponent"
-                    | "creature"
-                    | "artifact"
-                    | "enchantment"
-                    | "land"
-                    | "spell"
-                    | "card"
-                    | "token"
-                    | "permanent"
-                    | "library"
-                    | "graveyard"
-                    | "hand"
-                    | "battlefield"
-                    | "controller"
-                    | "owner"
-                    | "planeswalker"
-                    | "battle"
-                    | "equipment"
-                    | "aura"
-            ) || parse_single_word_keyword_action(alias_lower).is_some()
-        }
-
-        let trimmed = name.trim();
-        let comma_short = trimmed.split(',').next().unwrap_or(trimmed).trim();
-        if comma_short != trimmed {
-            return comma_short.to_string();
-        }
-
-        let Ok(tokens) = lex_line(trimmed, 0) else {
-            return trimmed.to_string();
-        };
-        let words = parser_token_word_refs(&tokens);
-        let Some(first_word) = words.first().copied() else {
-            return trimmed.to_string();
-        };
-        if words.len() == 1 {
-            return trimmed.to_string();
-        }
-
-        let alias = tokens
-            .iter()
-            .find(|token| !token.parser_word_pieces().is_empty())
-            .map(|token| {
-                token
-                    .slice
-                    .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-')
-            })
-            .unwrap_or(first_word);
-        if alias.len() <= 2 {
-            return trimmed.to_string();
-        }
-
-        let alias_lower = alias.to_ascii_lowercase();
-        if is_reserved_short_alias(alias_lower.as_str()) {
-            return trimmed.to_string();
-        }
-
-        alias.to_string()
+        preprocess_grammar::parse_short_self_reference_name(name)
     }
 
     fn normalize_non_metadata_line(
@@ -1566,12 +928,17 @@ pub(crate) fn preprocess_document(
         annotations.record_char_map(line_index, normalized.char_map.clone());
 
         let tokens = lex_line(normalized.normalized.as_str(), line_index)?;
+        let source_tokens =
+            lex_line(raw_line.trim(), line_index).unwrap_or_else(|_| tokens.clone());
+        let semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);
         Ok(Some(PreprocessedLine {
             info: LineInfo {
                 line_index,
                 display_line_index,
                 raw_line: raw_line.trim().to_string(),
+                source_tokens,
                 normalized,
+                semantic_facts,
             },
             tokens,
         }))
@@ -1710,11 +1077,15 @@ pub(crate) fn make_line_info(
     raw_line: impl Into<String>,
     normalized: NormalizedLine,
 ) -> LineInfo {
+    let raw_line = raw_line.into();
+    let source_tokens = lex_line(raw_line.as_str(), line_index).unwrap_or_default();
     LineInfo {
         line_index,
         display_line_index: line_index,
-        raw_line: raw_line.into(),
+        raw_line,
+        source_tokens,
         normalized,
+        semantic_facts: Default::default(),
     }
 }
 
@@ -1792,5 +1163,49 @@ mod tests {
             preprocessed.items.get(2),
             Some(PreprocessedItem::Line(_))
         ));
+    }
+
+    #[test]
+    fn typed_line_shapes_preserve_preprocess_rewrite_behavior() {
+        assert_eq!(
+            split_parse_line_variants(
+                "As an additional cost to cast this spell, discard a card. Draw two cards."
+            ),
+            vec![
+                "As an additional cost to cast this spell, discard a card.".to_string(),
+                "Draw two cards.".to_string(),
+            ]
+        );
+
+        assert_eq!(
+            strip_parenthetical_segments(
+                "It's an enchantment in addition to its other types. (It's not a creature.)"
+            ),
+            "It's an enchantment in addition to its other types. It's not a creature."
+        );
+
+        let normalized = normalize_line_for_parse("Draw a card as it resolves.", "", "", false)
+            .expect("resolution line should normalize");
+        assert_eq!(normalized.normalized, "draw a card.");
+    }
+
+    #[test]
+    fn typed_borrow_vote_and_return_shapes_drive_textual_rewrites() {
+        assert_eq!(
+            rewrite_borrow_static_sentence(
+                "As long as a creature with flying is in your graveyard, creatures you control have flying"
+            ),
+            "as long as there is a creature with flying in your graveyard, creatures you control have flying"
+        );
+        assert_eq!(
+            rewrite_vote_count_followups_line("You draw cards equal to the number of truth votes."),
+            "For each truth vote, draw a card."
+        );
+        assert_eq!(
+            rewrite_exile_return_when_source_leaves_line(
+                "Exile target creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield."
+            ),
+            "Exile target creature until this artifact leaves the battlefield."
+        );
     }
 }

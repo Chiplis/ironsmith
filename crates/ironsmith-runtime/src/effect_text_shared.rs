@@ -165,7 +165,14 @@ where
     }
 
     if let Some(spec) = &effect.target_spec {
-        return (describe_choose_spec(spec), choose_spec_is_plural(spec));
+        let described = describe_choose_spec(spec);
+        if let Some(is_plural) = demonstrative_reference_plurality(&described) {
+            return (described, is_plural);
+        }
+        if attached_reference_surface_is_singular(&described) {
+            return (described, false);
+        }
+        return (described, choose_spec_is_plural(spec));
     }
 
     match &effect.target {
@@ -174,7 +181,12 @@ where
             if filter.other {
                 describe_each_other_filter(filter)
             } else {
-                (describe_plural_filter(filter), true)
+                let described = filter.description();
+                if attached_reference_surface_is_singular(&described) {
+                    (described, false)
+                } else {
+                    (describe_plural_filter(filter), true)
+                }
             }
         }
         EffectTarget::Source => ("this source".to_string(), false),

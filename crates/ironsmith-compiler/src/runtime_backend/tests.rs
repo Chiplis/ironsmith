@@ -1,11 +1,14 @@
 use crate::ability::AbilityKind;
-use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ChoiceCount};
+use crate::cards::builders::{
+    CardDefinitionBuilder, CardTextError, ChoiceCount, EffectAst, LineAst, ParsedLineAst,
+    ParsedModalHeader, SubjectVerbActionAst, TriggerSpec,
+};
 use crate::color::ColorSet;
 use crate::effect::Value;
 use crate::ids::CardId;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
-use crate::static_abilities::StaticAbilityId;
+use crate::static_abilities::{StaticAbilityId, StaticAbilityPayload};
 use crate::triggers::TriggerKind;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
@@ -27,17 +30,84 @@ use super::{
 };
 use crate::runtime_backend::util::parse_value_expr_words;
 
+fn rewrite_parsed_line(item: &RewriteSemanticItem) -> Option<&ParsedLineAst> {
+    match item {
+        RewriteSemanticItem::ParsedLine(line) => Some(line),
+        _ => None,
+    }
+}
+
+fn rewrite_item_is_triggered(item: &RewriteSemanticItem) -> bool {
+    rewrite_parsed_line(item).is_some_and(|line| {
+        line.chunks.iter().any(|chunk| match chunk {
+            LineAst::Triggered { .. } => true,
+            LineAst::Ability(parsed) => parsed.trigger_spec.is_some(),
+            _ => false,
+        })
+    })
+}
+
+fn rewrite_direct_triggered_chunk(
+    item: &RewriteSemanticItem,
+) -> Option<(&TriggerSpec, &[EffectAst], Option<u32>)> {
+    rewrite_parsed_line(item)?
+        .chunks
+        .iter()
+        .find_map(|chunk| match chunk {
+            LineAst::Triggered {
+                trigger,
+                effects,
+                max_triggers_per_turn,
+            } => Some((trigger, effects.as_slice(), *max_triggers_per_turn)),
+            LineAst::Ability(parsed) => {
+                let AbilityKind::Triggered(triggered) = parsed.kind() else {
+                    return None;
+                };
+                Some((
+                    parsed.trigger_spec.as_ref()?,
+                    parsed.effects_ast.as_deref()?,
+                    triggered
+                        .intervening_if
+                        .as_ref()
+                        .and_then(trigger_frequency_limit),
+                ))
+            }
+            _ => None,
+        })
+}
+
+fn trigger_frequency_limit(condition: &crate::ConditionExpr) -> Option<u32> {
+    match condition {
+        crate::ConditionExpr::FirstTimeThisTurn
+        | crate::ConditionExpr::SourceFirstCrewedThisTurn => Some(1),
+        crate::ConditionExpr::MaxTimesEachTurn(limit)
+        | crate::ConditionExpr::DoThisMaxTimesEachTurn(limit) => Some(*limit),
+        crate::ConditionExpr::And(left, right) | crate::ConditionExpr::Or(left, right) => {
+            trigger_frequency_limit(left).or_else(|| trigger_frequency_limit(right))
+        }
+        _ => None,
+    }
+}
+
 fn rewrite_line_info(text: &str) -> super::LineInfo {
     super::LineInfo {
         line_index: 0,
         display_line_index: 0,
         raw_line: text.to_string(),
+        source_tokens: super::lexer::lex_line(text, 0).unwrap_or_default(),
         normalized: super::NormalizedLine {
             original: text.to_string(),
             normalized: text.to_string(),
             char_map: Vec::new(),
         },
+        semantic_facts: Default::default(),
     }
+}
+
+fn parse_modal_header_for_test(text: &str) -> Result<Option<ParsedModalHeader>, CardTextError> {
+    let info = rewrite_line_info(text);
+    let tokens = lex_line(&info.normalized.normalized, info.line_index)?;
+    super::modal_support::parse_modal_header(&info, &tokens)
 }
 
 fn parse_error_message<T>(result: Result<T, CardTextError>) -> String {
@@ -124,7 +194,7 @@ fn parser_mod_non_test_reexports_stay_minimal() {
         "pub(crate) use pipeline::parse_text_with_annotations;",
         "pub(crate) use reference_model::{ReferenceEnv, ReferenceExports, ReferenceImports};",
         "pub(crate) use shared_types::{ CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine, NormalizedLine, };",
-        "pub(crate) use util::{ SubjectAst, contains_until_end_of_turn, find_activation_cost_start, is_basic_color_word, parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_number_or_x_value, parse_power_toughness, parse_scryfall_mana_cost, parse_target_phrase, replace_unbound_x_with_value, span_from_tokens, starts_with_activation_cost, token_index_for_word_index, value_contains_unbound_x, words, };",
+        "pub(crate) use util::{ SubjectAst, contains_until_end_of_turn, find_activation_cost_start, is_basic_color_word, parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_number_or_x_value, parse_power_toughness, parse_scryfall_mana_cost, parse_target_phrase, replace_unbound_x_with_value, span_from_tokens, starts_with_activation_cost, token_boundary_for_word, value_contains_unbound_x, words, };",
         "pub(crate) use facade::{CardTextCompiler, CompilePolicy, CompiledCardText};",
     ];
 
@@ -665,15 +735,15 @@ fn rewrite_winnow_separator_slice_helpers_split_keyword_lists() {
 #[test]
 fn rewrite_winnow_search_helpers_scan_anywhere_in_token_stream() {
     use super::grammar::primitives::{
-        contains_any_phrase, contains_phrase, contains_word, find_phrase_start,
+        contains_word, find_phrase_start, has_any_phrase, has_phrase,
     };
 
     let tokens = lex_line("Draw a card, then discard a card.", 0)
         .expect("rewrite lexer should classify comma-then sentence");
 
     assert!(contains_word(&tokens, "discard"));
-    assert!(contains_phrase(&tokens, &["discard", "a", "card"]));
-    assert!(contains_any_phrase(
+    assert!(has_phrase(&tokens, &["discard", "a", "card"]));
+    assert!(has_any_phrase(
         &tokens,
         &[&["mill", "a", "card"], &["discard", "a", "card"]]
     ));
@@ -1035,6 +1105,47 @@ fn rewrite_effect_sentence_parser_handles_broken_visage_sequence() {
         parsed.is_ok(),
         "Broken Visage effect sentences should parse directly, got {parsed:?}"
     );
+    let effects = parsed.expect("Broken Visage effects");
+    let Some(EffectAst::SubjectVerb(subject_verb)) = effects.last() else {
+        panic!("expected final token creation effect, got {effects:#?}");
+    };
+    let super::ast::SubjectVerbActionAst::CreateTokenWithMods {
+        dynamic_power_toughness,
+        sacrifice_at_next_end_step,
+        ..
+    } = &subject_verb.action
+    else {
+        panic!("expected typed token creation action, got {subject_verb:#?}");
+    };
+    assert!(matches!(
+        dynamic_power_toughness,
+        Some((Value::PowerOf(_), Value::ToughnessOf(_)))
+    ));
+    assert!(*sacrifice_at_next_end_step);
+}
+
+#[test]
+fn rewrite_effect_sentence_parser_merges_quoted_token_rule_reminder() {
+    let tokens = lex_line(
+        "Create a 1/1 red Devil creature token. It has \"When this token dies, it deals 1 damage to any target.\"",
+        0,
+    )
+    .expect("rewrite lexer should classify standalone token rule reminder");
+    let effects = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("standalone token rule reminder should merge into the create effect");
+
+    let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
+        panic!("expected one token creation effect, got {effects:#?}");
+    };
+    let super::ast::SubjectVerbActionAst::CreateTokenWithMods { definition, .. } =
+        &subject_verb.action
+    else {
+        panic!("expected typed token creation action, got {subject_verb:#?}");
+    };
+    let super::token_definition::TokenDefinitionSpec::Creature(creature) = definition else {
+        panic!("expected a typed creature token definition, got {definition:#?}");
+    };
+    assert_eq!(creature.rules.dies_damage_any_target, Some(1));
 }
 
 #[test]
@@ -1058,7 +1169,7 @@ fn rewrite_semantic_parse_handles_broken_visage_statement() -> Result<(), CardTe
     )?;
 
     assert!(
-        matches!(doc.items.as_slice(), [RewriteSemanticItem::Statement(_)]),
+        matches!(doc.items.as_slice(), [RewriteSemanticItem::ParsedLine(_)]),
         "expected Broken Visage to remain a statement line, got {:#?}",
         doc.items
     );
@@ -1693,7 +1804,7 @@ fn rewrite_structure_state_triggered_clause_parser_splits_state_with_gate() {
 #[test]
 fn rewrite_modal_header_parser_tracks_unchosen_turn_scope() {
     let text = "Whenever another creature you control enters, choose one that hasn't been chosen this turn —";
-    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+    let header = parse_modal_header_for_test(text)
         .expect("modal header should parse")
         .expect("modal header should be recognized");
 
@@ -1705,7 +1816,7 @@ fn rewrite_modal_header_parser_tracks_unchosen_turn_scope() {
 #[test]
 fn rewrite_modal_header_parser_supports_activated_choose_header_directly() {
     let text = "{T}: Choose one —";
-    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+    let header = parse_modal_header_for_test(text)
         .expect("modal header should parse")
         .expect("modal header should be recognized");
 
@@ -1718,19 +1829,44 @@ fn rewrite_modal_header_parser_supports_activated_choose_header_directly() {
 #[test]
 fn rewrite_modal_header_parser_accepts_pawprint_worth_clause() {
     let text = "Choose up to five {P} worth of modes. You may choose the same mode more than once.";
-    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+    let header = parse_modal_header_for_test(text)
         .expect("Season of the Burrow modal header should parse")
         .expect("Season of the Burrow modal header should be recognized");
 
     assert_eq!(header.min, crate::effect::Value::Fixed(0));
     assert_eq!(header.max, Some(crate::effect::Value::Fixed(5)));
+    assert!(header.weighted_mode_points, "{header:?}");
     assert!(header.same_mode_more_than_once, "{header:?}");
+}
+
+#[test]
+fn rewrite_lowered_pawprint_modal_uses_typed_header_and_mode_costs() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Pawprint Modal Variant")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Choose up to two {P} worth of modes.\n{P} — Draw a card.\n{P} — You gain 1 life."
+            .to_string(),
+        false,
+    )?;
+    let choose_mode = definition
+        .spell_effect
+        .as_ref()
+        .and_then(|effects| {
+            effects
+                .iter()
+                .find_map(crate::effect::Effect::as_choose_mode)
+        })
+        .expect("pawprint modal should lower to a choose-mode effect");
+
+    assert_eq!(choose_mode.mode_point_costs, vec![1, 1]);
+    Ok(())
 }
 
 #[test]
 fn rewrite_modal_header_parser_keeps_choose_one_when_later_choose_both_is_present() {
     let text = "Choose one. If you control a commander as you cast this spell, you may choose both instead.";
-    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+    let header = parse_modal_header_for_test(text)
         .expect("modal header should parse")
         .expect("modal header should be recognized");
 
@@ -1741,7 +1877,7 @@ fn rewrite_modal_header_parser_keeps_choose_one_when_later_choose_both_is_presen
 #[test]
 fn rewrite_modal_header_parser_tracks_x_replacement_without_word_view_scan() {
     let text = "Choose one. X is the number of spells you've cast this turn —";
-    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+    let header = parse_modal_header_for_test(text)
         .expect("modal header should parse")
         .expect("modal header should be recognized");
 
@@ -1756,7 +1892,7 @@ fn rewrite_modal_header_parser_tracks_x_replacement_without_word_view_scan() {
 #[test]
 fn rewrite_modal_header_parser_keeps_prefix_effect_and_result_gate() {
     let text = "Whenever this creature enters or attacks, draw a card. If you do, choose one —";
-    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+    let header = parse_modal_header_for_test(text)
         .expect("modal header should parse")
         .expect("modal header should be recognized");
 
@@ -1774,7 +1910,7 @@ fn rewrite_modal_header_parser_keeps_prefix_effect_and_result_gate() {
 #[test]
 fn rewrite_modal_header_parser_marks_remove_mode_only_gate() {
     let text = "Whenever this creature attacks, remove a +1/+1 counter from it. If you removed it this way, choose one —";
-    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+    let header = parse_modal_header_for_test(text)
         .expect("modal header should parse")
         .expect("modal header should be recognized");
 
@@ -1789,8 +1925,8 @@ fn rewrite_modal_header_parser_marks_remove_mode_only_gate() {
 
 #[test]
 fn rewrite_modal_header_parse_all_reports_invalid_choose_clause() {
-    let error = parse_error_message(super::modal_support::parse_modal_header(
-        &rewrite_line_info("Whenever this creature enters, choose nonsense —"),
+    let error = parse_error_message(parse_modal_header_for_test(
+        "Whenever this creature enters, choose nonsense —",
     ));
 
     assert!(
@@ -2012,6 +2148,56 @@ fn rewrite_document_parser_dispatches_keyword_lines_by_head_phrase() -> Result<(
 }
 
 #[test]
+fn rewrite_splice_keyword_lines_lower_typed_subject_and_cost_without_alternative_casting()
+-> Result<(), CardTextError> {
+    for (line, expected_label) in [
+        (
+            "Splice onto Arcane {1}{R} (As you cast an Arcane spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)",
+            "Splice onto Arcane {1}{R}",
+        ),
+        (
+            "Splice onto instant or sorcery {2}{U} (As you cast an instant or sorcery spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)",
+            "Splice onto instant or sorcery {2}{U}",
+        ),
+    ] {
+        let preprocessed = super::preprocess::preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Keyword Probe")
+                .card_types(vec![CardType::Instant]),
+            line,
+        )?;
+        let cst = super::document_parser::parse_document_cst(&preprocessed, false)?;
+        assert!(matches!(
+            cst.lines.as_slice(),
+            [super::cst::RewriteLineCst::Keyword(keyword)]
+                if keyword.kind == super::cst::KeywordLineKindCst::Splice
+        ));
+
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Keyword Probe")
+            .card_types(vec![CardType::Instant])
+            .parse_text(line)?;
+        assert!(
+            definition.alternative_casts.is_empty(),
+            "splice must remain a static hand ability, not an AlternativeCastingMethod"
+        );
+        let static_ability = definition
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::KeywordMarker =>
+                {
+                    Some(static_ability)
+                }
+                _ => None,
+            })
+            .expect("typed splice line should lower to a supported keyword marker");
+        assert_eq!(static_ability.display(), expected_label);
+    }
+
+    Ok(())
+}
+
+#[test]
 fn rewrite_static_lowering_reuses_token_sentences_for_multi_sentence_lines()
 -> Result<(), CardTextError> {
     let text =
@@ -2019,8 +2205,7 @@ fn rewrite_static_lowering_reuses_token_sentences_for_multi_sentence_lines()
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify multi-sentence static line");
 
-    let parsed =
-        super::lower_rewrite_static_to_chunk(rewrite_line_info(text), text, &tokens, None)?;
+    let parsed = super::parse_static_line(rewrite_line_info(text), text, &tokens, None)?;
 
     match parsed {
         crate::cards::builders::LineAst::StaticAbilities(abilities) => {
@@ -2039,8 +2224,7 @@ fn rewrite_static_lowering_reuses_token_split_for_compound_unblockable_line()
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify compound buff static line");
 
-    let parsed =
-        super::lower_rewrite_static_to_chunk(rewrite_line_info(text), text, &tokens, None)?;
+    let parsed = super::parse_static_line(rewrite_line_info(text), text, &tokens, None)?;
 
     match parsed {
         crate::cards::builders::LineAst::StaticAbilities(abilities) => {
@@ -2059,7 +2243,7 @@ fn rewrite_keyword_lowering_reuses_token_sentences_for_optional_cost_cast_trigge
     let tokens = lex_line(text, 0)
         .expect("rewrite lexer should classify additional-cost cast-trigger keyword line");
 
-    let parsed = super::lower_rewrite_keyword_to_chunk(
+    let parsed = super::parse_keyword_line_for_test(
         rewrite_line_info(text),
         text,
         &tokens,
@@ -2084,17 +2268,107 @@ fn rewrite_keyword_lowering_reuses_token_sentences_for_optional_cost_cast_trigge
     Ok(())
 }
 
+fn assert_composed_keyword_cost(
+    parsed: crate::cards::builders::LineAst,
+    expected_name: &str,
+    expected_cost: &str,
+) {
+    let crate::cards::builders::LineAst::AlternativeCastingMethod(method) = parsed else {
+        panic!("expected {expected_name} alternative casting method");
+    };
+    assert_eq!(method.as_runtime().name(), expected_name);
+    assert_eq!(
+        method
+            .as_runtime()
+            .mana_cost()
+            .expect("keyword alternative cost should contain mana")
+            .to_oracle(),
+        expected_cost
+    );
+}
+
+#[test]
+fn rewrite_keyword_lowering_uses_carried_surge_tokens_after_cst_rewrite()
+-> Result<(), CardTextError> {
+    let raw = "Surge {3}{U}{U} (You may cast this spell for its surge cost if you or a teammate has cast another spell this turn.)";
+    let parse_tokens = lex_line(
+        "If you've cast another spell this turn, you may pay {3}{U}{U} rather than pay this spell's mana cost.",
+        0,
+    )?;
+    let full_parse_tokens = lex_line(raw, 0)?;
+    let parsed = super::parse_keyword_line_with_full_tokens_for_test(
+        rewrite_line_info(raw),
+        raw,
+        &parse_tokens,
+        &full_parse_tokens,
+        RewriteKeywordLineKind::AlternativeCast,
+    )?;
+
+    assert_composed_keyword_cost(parsed, "Surge", "{3}{U}{U}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_keyword_lowering_uses_carried_freerunning_tokens_after_cst_rewrite()
+-> Result<(), CardTextError> {
+    let raw = "Freerunning {2}{R} (You may cast this spell for its freerunning cost if you dealt combat damage to a player this turn with an Assassin or commander.)";
+    let parse_tokens = lex_line(
+        "If you dealt combat damage to a player this turn with an Assassin or commander, you may pay {2}{R} rather than pay this spell's mana cost.",
+        0,
+    )?;
+    let full_parse_tokens = lex_line(raw, 0)?;
+    let parsed = super::parse_keyword_line_with_full_tokens_for_test(
+        rewrite_line_info(raw),
+        raw,
+        &parse_tokens,
+        &full_parse_tokens,
+        RewriteKeywordLineKind::AlternativeCast,
+    )?;
+
+    assert_composed_keyword_cost(parsed, "Freerunning", "{2}{R}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_keyword_lowering_uses_normalized_sneak_cost_and_full_form_tokens()
+-> Result<(), CardTextError> {
+    let raw = "Sneak {1}{B} (You may cast this spell for {1}{B} if you also return an unblocked attacker you control to hand during the declare blockers step.)";
+    let parse_tokens = lex_line("Sneak {1}{B}", 0)?;
+    let full_parse_tokens = lex_line(raw, 0)?;
+    let parsed = super::parse_keyword_line_with_full_tokens_for_test(
+        rewrite_line_info(raw),
+        raw,
+        &parse_tokens,
+        &full_parse_tokens,
+        RewriteKeywordLineKind::AlternativeCast,
+    )?;
+
+    assert_composed_keyword_cost(parsed, "Sneak", "{1}{B}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_keyword_lowering_does_not_relex_stale_text_for_cost() -> Result<(), CardTextError> {
+    let raw = "Freerunning {2}{R}";
+    let tokens = lex_line(raw, 0)?;
+    let parsed = super::parse_keyword_line_for_test(
+        rewrite_line_info(raw),
+        "Freerunning {9}{U}",
+        &tokens,
+        RewriteKeywordLineKind::AlternativeCast,
+    )?;
+
+    assert_composed_keyword_cost(parsed, "Freerunning", "{2}{R}");
+    Ok(())
+}
+
 #[test]
 fn rewrite_statement_lowering_reuses_full_token_slice_for_pact_line() -> Result<(), CardTextError> {
     let text = "search your library for a green creature card, reveal it, put it into your hand, then shuffle. at the beginning of your next upkeep, pay {2}{G}{G}. if you don't, you lose the game.";
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify pact statement line");
 
-    let parsed_chunks = super::lower_rewrite_statement_token_groups_to_chunks(
-        rewrite_line_info(text),
-        text,
-        &tokens,
-        &[],
-    )?;
+    let parsed_chunks =
+        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), text, &tokens, &[])?;
 
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
@@ -2116,7 +2390,7 @@ fn rewrite_statement_lowering_uses_parse_tokens_when_groups_are_missing()
     let tokens =
         lex_line(token_text, 0).expect("rewrite lexer should classify statement token fallback");
 
-    let parsed_chunks = super::lower_rewrite_statement_token_groups_to_chunks(
+    let parsed_chunks = super::parse_statement_token_groups_to_chunks(
         rewrite_line_info("placeholder statement text"),
         "placeholder statement text",
         &tokens,
@@ -2141,12 +2415,8 @@ fn rewrite_statement_lowering_parses_soul_partition_via_parser_path() -> Result<
     let text = "Exile target nonland permanent. For as long as that card remains exiled, its owner may play it. A spell cast by an opponent this way costs {2} more to cast.";
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify Soul Partition text");
 
-    let parsed_chunks = super::lower_rewrite_statement_token_groups_to_chunks(
-        rewrite_line_info(text),
-        text,
-        &tokens,
-        &[],
-    )?;
+    let parsed_chunks =
+        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), text, &tokens, &[])?;
 
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
@@ -2167,12 +2437,8 @@ fn rewrite_statement_lowering_parses_empty_laboratory_via_parser_path() -> Resul
     let text = "Sacrifice X Zombies, then reveal cards from the top of your library until you reveal a number of Zombie creature cards equal to the number of Zombies sacrificed this way. Put those cards onto the battlefield and the rest on the bottom of your library in a random order.";
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify Empty Laboratory text");
 
-    let parsed_chunks = super::lower_rewrite_statement_token_groups_to_chunks(
-        rewrite_line_info(text),
-        text,
-        &tokens,
-        &[],
-    )?;
+    let parsed_chunks =
+        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), text, &tokens, &[])?;
 
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
@@ -2195,12 +2461,8 @@ fn rewrite_statement_lowering_parses_shape_anew_via_parser_path() -> Result<(), 
     let text = "The controller of target artifact sacrifices it, then reveals cards from the top of their library until they reveal an artifact card. That player puts that card onto the battlefield, then shuffles all other cards revealed this way into their library.";
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify Shape Anew text");
 
-    let parsed_chunks = super::lower_rewrite_statement_token_groups_to_chunks(
-        rewrite_line_info(text),
-        text,
-        &tokens,
-        &[],
-    )?;
+    let parsed_chunks =
+        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), text, &tokens, &[])?;
 
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
@@ -2222,13 +2484,19 @@ fn rewrite_lexed_for_each_exiled_reveal_until_then_bottom_uses_consult() {
 
     let parsed = parse_effect_sentence_lexed(&lexed)
         .expect("for-each exiled reveal-until-bottom sentence should parse");
-    let debug = format!("{parsed:?}");
+    let [EffectAst::ForEachObject { filter, effects }] = parsed.as_slice() else {
+        panic!("expected typed outer object iteration, got {parsed:#?}");
+    };
+    assert!(filter.tagged_constraints.iter().any(|constraint| matches!(
+        constraint.relation,
+        crate::target::TaggedOpbjectRelation::IsTaggedObject
+    )));
 
-    assert!(debug.contains("ForEachTagged"), "{debug}");
-    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    let inner = format!("{effects:#?}");
+    assert!(inner.contains("ConsultTopOfLibrary"), "{inner}");
     assert!(
-        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
-        "{debug}"
+        inner.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{inner}"
     );
 }
 
@@ -2239,12 +2507,8 @@ fn rewrite_statement_lowering_parses_nissas_encouragement_via_parser_path()
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify Nissa's Encouragement text");
 
-    let parsed_chunks = super::lower_rewrite_statement_token_groups_to_chunks(
-        rewrite_line_info(text),
-        text,
-        &tokens,
-        &[],
-    )?;
+    let parsed_chunks =
+        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), text, &tokens, &[])?;
 
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
@@ -2285,7 +2549,7 @@ fn rewrite_triggered_lowering_uses_parse_tokens_when_text_fields_are_stale()
     let effect_tokens =
         lex_line(effect_text, 0).expect("rewrite lexer should classify triggered effect");
 
-    let parsed = super::lower_rewrite_triggered_to_chunk(
+    let parsed = super::parse_triggered_line(
         rewrite_line_info("placeholder triggered text"),
         "placeholder triggered text",
         &full_tokens,
@@ -2319,7 +2583,7 @@ fn rewrite_combat_death_blocked_damage_special_case_uses_parse_tokens() -> Resul
     let effect_tokens =
         lex_line(effect_text, 0).expect("rewrite lexer should classify blocked-damage effect");
 
-    let parsed = super::lower_rewrite_triggered_to_chunk(
+    let parsed = super::parse_triggered_line(
         rewrite_line_info("placeholder triggered text"),
         "placeholder triggered text",
         &full_tokens,
@@ -2363,7 +2627,7 @@ fn rewrite_gift_keyword_lowering_builds_closed_form_followup_effects() -> Result
 
     for (text, expected_followup, expected_timing) in cases {
         let tokens = lex_line(text, 0).expect("rewrite lexer should classify gift keyword line");
-        let parsed = super::lower_rewrite_keyword_to_chunk(
+        let parsed = super::parse_keyword_line_for_test(
             rewrite_line_info(text),
             text,
             &tokens,
@@ -2457,7 +2721,7 @@ fn rewrite_token_word_view_caches_lower_words_and_word_token_indices() {
     let words = TokenWordView::new(&tokens);
     assert_eq!(words.get(0), Some("activate"));
     assert_eq!(words.get(3), Some("your"));
-    assert_eq!(words.token_index_for_word_index(4), Some(4));
+    assert_eq!(words.token_boundary_for_word(4), Some(4));
     assert!(words.starts_with(&["activate", "only"]));
     assert!(words.has_phrase(&["during", "your", "turn"]));
 }
@@ -2480,7 +2744,7 @@ fn rewrite_token_word_view_normalizes_parser_word_shapes() {
             "w/u"
         ]
     );
-    assert_eq!(words.token_index_for_word_index(2), Some(2));
+    assert_eq!(words.token_boundary_for_word(2), Some(2));
     assert_eq!(words.token_index_after_words(4), Some(3));
     assert_eq!(words.token_index_after_words(5), Some(4));
 }
@@ -2617,8 +2881,12 @@ fn rewrite_parser_support_splits_quoted_sentences_and_queues_restrictions() {
         vec!["Draw a card".to_string(), "\"Choose one.\"".to_string()]
     );
     assert_eq!(
-        restrictions.activation,
-        vec!["Activate only during your turn".to_string()]
+        restrictions
+            .activation
+            .iter()
+            .map(|restriction| restriction.presentation_text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Activate only during your turn"]
     );
     assert!(restrictions.trigger.is_empty());
 }
@@ -2877,9 +3145,18 @@ fn rewrite_restriction_support_preserves_text_only_attack_conditions() {
         mana_usage_restrictions: vec![],
         is_loyalty_ability: false,
     };
+    let attacked_restriction =
+        super::grammar::restriction_facts::parse_activation_restriction_tokens(
+            &lex_line(
+                "Activate only once each turn and only if this creature attacked this turn",
+                0,
+            )
+            .unwrap(),
+        )
+        .unwrap();
     super::restriction_support::apply_pending_activation_restriction(
         &mut attacked_ability,
-        "Activate only once each turn and only if this creature attacked this turn",
+        &attacked_restriction,
     );
 
     assert_eq!(
@@ -2909,9 +3186,18 @@ fn rewrite_restriction_support_preserves_text_only_attack_conditions() {
         mana_usage_restrictions: vec![],
         is_loyalty_ability: false,
     };
+    let didnt_attack_restriction =
+        super::grammar::restriction_facts::parse_activation_restriction_tokens(
+            &lex_line(
+                "Activate only if it didn't attack this turn and only once each turn",
+                0,
+            )
+            .unwrap(),
+        )
+        .unwrap();
     super::restriction_support::apply_pending_activation_restriction(
         &mut didnt_attack_ability,
-        "Activate only if it didn't attack this turn and only once each turn",
+        &didnt_attack_restriction,
     );
 
     assert_eq!(
@@ -3273,15 +3559,21 @@ fn rewrite_if_clause_binds_that_enchantment_and_created_token_references() {
     else {
         panic!("expected attach effect, got {effects:?}");
     };
-    assert!(matches!(
-        object,
-        crate::cards::builders::TargetAst::Tagged(tag, _) if tag.as_str() == "triggering"
-    ));
-    assert!(matches!(
-        target,
-        crate::cards::builders::TargetAst::Tagged(tag, _)
-            if tag.as_str() == crate::cards::builders::IT_TAG
-    ));
+    assert!(
+        matches!(
+            object,
+            crate::cards::builders::TargetAst::Tagged(tag, _) if tag.as_str() == "triggering"
+        ),
+        "expected attachment object to bind the triggering enchantment, got {object:?}"
+    );
+    assert!(
+        matches!(
+            target,
+            crate::cards::builders::TargetAst::Tagged(tag, _)
+                if tag.as_str() == crate::cards::builders::IT_TAG
+        ),
+        "expected attachment destination to bind the created token, got {target:?}"
+    );
 }
 
 #[test]
@@ -3586,6 +3878,25 @@ fn rewrite_copy_activated_abilities_static_preserves_counter_display_and_once_li
         debug.contains("You may activate each of those abilities only once each turn"),
         "{debug}"
     );
+
+    let loyalty_tokens = lex_line(
+        "This planeswalker has all loyalty abilities of all other planeswalkers on the battlefield.",
+        0,
+    )
+    .expect("rewrite lexer should classify copied loyalty abilities");
+    let loyalty = super::keyword_static::parse_static_ability_ast_line_lexed(&loyalty_tokens)
+        .expect("copied loyalty abilities should parse")
+        .expect("copied loyalty abilities should produce an ability");
+    let loyalty_debug = format!("{loyalty:#?}");
+    assert!(
+        loyalty_debug.contains("only_loyalty: true"),
+        "{loyalty_debug}"
+    );
+    assert!(loyalty_debug.contains("counter: None"), "{loyalty_debug}");
+    assert!(
+        !loyalty_debug.contains("Named(\"battlefield\")"),
+        "{loyalty_debug}"
+    );
 }
 
 #[test]
@@ -3708,6 +4019,104 @@ fn rewrite_verb_handlers_keep_draw_for_each_player_condition_after_structure_cut
         }
         other => panic!("expected for-each-player draw clause, got {other:?}"),
     }
+}
+
+#[test]
+fn each_player_exiles_hand_and_draws_keeps_draw_on_iterated_player() {
+    let tokens = lex_line(
+        "Each player exiles all cards from their hand face down and draws seven cards.",
+        0,
+    )
+    .expect("rewrite lexer should classify each-player hand exchange clause");
+
+    let parsed = parse_effect_sentence_lexed(&tokens).expect("hand exchange clause should parse");
+    let debug = format!("{parsed:#?}");
+
+    let has_iterated_draw = parsed.iter().any(|effect| {
+        matches!(
+            effect,
+            crate::cards::builders::EffectAst::ForEachPlayer { effects }
+                if effects.iter().any(|inner| {
+                    matches!(
+                        inner,
+                        crate::cards::builders::EffectAst::SubjectVerb(
+                            crate::cards::builders::SubjectVerbEffectAst {
+                                subject:
+                                    crate::cards::builders::SubjectVerbSubjectAst {
+                                        player: crate::cards::builders::PlayerAst::That,
+                                        ..
+                                    },
+                                action:
+                                    crate::cards::builders::SubjectVerbActionAst::Draw { .. },
+                            },
+                        )
+                    )
+                })
+        )
+    });
+    assert!(has_iterated_draw, "{debug}");
+    assert!(!debug.contains("ItsOwner"), "{debug}");
+    assert!(!debug.contains("LibraryOwner"), "{debug}");
+}
+
+#[test]
+fn each_player_exiles_hand_and_draws_keeps_draw_on_iterated_player_in_sequence() {
+    let tokens = lex_line(
+        "Each player exiles all cards from their hand face down and draws seven cards. At the beginning of the next end step, each player discards their hand.",
+        0,
+    )
+    .expect("rewrite lexer should classify each-player hand exchange sequence");
+
+    let parsed = super::effect_sentences::parse_effect_sentences_lexed(&tokens)
+        .expect("hand exchange sequence should parse");
+    let debug = format!("{parsed:#?}");
+
+    let has_iterated_draw = parsed.iter().any(|effect| {
+        matches!(
+            effect,
+            crate::cards::builders::EffectAst::ForEachPlayer { effects }
+                if effects.iter().any(|inner| {
+                    matches!(
+                        inner,
+                        crate::cards::builders::EffectAst::SubjectVerb(
+                            crate::cards::builders::SubjectVerbEffectAst {
+                                subject:
+                                    crate::cards::builders::SubjectVerbSubjectAst {
+                                        player: crate::cards::builders::PlayerAst::That,
+                                        ..
+                                    },
+                                action:
+                                    crate::cards::builders::SubjectVerbActionAst::Draw { .. },
+                            },
+                        )
+                    )
+                })
+        )
+    });
+    assert!(has_iterated_draw, "{debug}");
+    assert!(!debug.contains("ItsOwner"), "{debug}");
+    assert!(!debug.contains("LibraryOwner"), "{debug}");
+}
+
+#[test]
+fn each_player_return_with_additional_counter_clause_keeps_counter_followup() {
+    let tokens = lex_line(
+        "Each player returns each creature card from their graveyard to the battlefield with an additional -1/-1 counter on it.",
+        0,
+    )
+    .expect("rewrite lexer should classify each-player return-with-counter clause");
+
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("return-with-counter clause should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        debug.contains("ForEachPlayer")
+            && debug.contains("ReturnAllToBattlefield")
+            && debug.contains("PutCounters")
+            && debug.contains("MinusOneMinusOne"),
+        "expected each-player return plus counter follow-up, got {debug}"
+    );
 }
 
 #[test]
@@ -3983,6 +4392,121 @@ fn rewrite_zone_handlers_keep_conditional_destroy_clause_after_structure_cutover
         }
         other => panic!("expected conditional destroy clause, got {other:?}"),
     }
+}
+
+#[test]
+fn rewrite_zone_handlers_parse_destroy_unless_target_color_sets_differ() {
+    let tokens = lex_line(
+        "Destroy two target nonblack creatures unless either one is a color the other isn't.",
+        0,
+    )
+    .expect("rewrite lexer should classify target-set conditional destroy clause");
+
+    let parsed = parse_effect_sentence_lexed(&tokens)
+        .expect("target-set conditional destroy clause should parse");
+
+    let [
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        },
+    ] = parsed.as_slice()
+    else {
+        panic!("expected conditional destroy clause, got {parsed:#?}");
+    };
+    assert!(if_false.is_empty());
+    assert!(matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::Not(inner)
+            if matches!(
+                inner.as_ref(),
+                crate::cards::builders::PredicateAst::TargetObjectsHaveDifferentColorSets
+            )
+    ));
+
+    let [
+        EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                crate::cards::builders::SubjectVerbActionAst::Destroy {
+                    target,
+                    no_regeneration: false,
+                },
+            ..
+        }),
+    ] = if_true.as_slice()
+    else {
+        panic!("expected one typed destroy branch, got {if_true:#?}");
+    };
+    let crate::cards::builders::TargetAst::WithCount(inner, count) = target else {
+        panic!("expected a counted target set, got {target:#?}");
+    };
+    assert_eq!(*count, ChoiceCount::exactly(2));
+    assert!(matches!(
+        inner.as_ref(),
+        crate::cards::builders::TargetAst::Object(filter, Some(_), _)
+            if filter.card_types == [CardType::Creature]
+                && filter.excluded_colors.contains(crate::color::Color::Black)
+    ));
+}
+
+#[test]
+fn rewrite_dead_ringers_lowers_target_color_condition_and_regeneration_prohibition()
+-> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Dead Ringers")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Destroy two target nonblack creatures unless either one is a color the other isn't. They can't be regenerated.",
+        )?;
+    let effects = &definition
+        .spell_effect
+        .as_ref()
+        .expect("Dead Ringers should lower to a spell program")
+        .segments[0]
+        .default_effects;
+    let conditional = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
+        .expect("Dead Ringers should lower to a conditional effect");
+
+    assert!(matches!(
+        &conditional.condition,
+        crate::effect::Condition::Not(inner)
+            if matches!(
+                inner.as_ref(),
+                crate::effect::Condition::TargetObjectsHaveDifferentColorSets
+            )
+    ));
+    let destroy = conditional
+        .if_true
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<crate::effects::TaggedEffect>()
+                        .and_then(|tagged| {
+                            tagged
+                                .effect
+                                .downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
+                        })
+                })
+        })
+        .expect("regeneration follow-up should remain inside the conditional destroy branch");
+    let Some(crate::target::ChooseSpec::WithCount(target, count)) = destroy.target.as_ref() else {
+        panic!("destroy branch should preserve its counted target set: {destroy:#?}");
+    };
+    assert_eq!(*count, ChoiceCount::exactly(2));
+    let crate::target::ChooseSpec::Target(target) = target.as_ref() else {
+        panic!("destroy branch should preserve targeted selection: {target:#?}");
+    };
+    let crate::target::ChooseSpec::Object(filter) = target.as_ref() else {
+        panic!("destroy branch should preserve its object filter: {target:#?}");
+    };
+    assert_eq!(filter.card_types, [CardType::Creature]);
+    assert!(filter.excluded_colors.contains(crate::color::Color::Black));
+    Ok(())
 }
 
 #[test]
@@ -6298,6 +6822,121 @@ fn rewrite_lexed_keyword_line_and_static_cost_probe_work_natively() {
 }
 
 #[test]
+fn rewrite_cost_reductions_count_controlled_creatures_with_counters() {
+    let text = "This spell costs {1} less to cast for each creature you control with a +1/+1 counter on it.\nCreature spells you cast cost {1} less to cast for each creature you control with a +1/+1 counter on it.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Countered Creature Reduction")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("countered-creature reductions should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+
+    let amounts = compiled
+        .definition
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => match &static_ability.payload {
+                StaticAbilityPayload::ThisSpellCostReduction(reduction) => Some(&reduction.amount),
+                StaticAbilityPayload::CostReduction(reduction) => Some(&reduction.amount),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(amounts.len(), 2, "{:#?}", compiled.definition.abilities);
+    for amount in amounts {
+        let Value::Count(filter) = amount else {
+            panic!("expected a creature count reduction, got {amount:?}");
+        };
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.controller, Some(crate::target::PlayerFilter::You));
+        assert_eq!(
+            filter.with_counter,
+            Some(crate::filter::CounterConstraint::Typed(
+                CounterType::PlusOnePlusOne
+            ))
+        );
+    }
+}
+
+#[test]
+fn rewrite_simultaneous_phase_pair_keeps_both_all_subjects() {
+    let text = "Simultaneously, all phased-out creatures phase in and all creatures with phasing phase out.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Simultaneous Phasing")
+                .card_types(vec![CardType::Instant]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("simultaneous phase pair should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let effects = compiled
+        .definition
+        .spell_effect
+        .as_ref()
+        .expect("simultaneous phasing should lower as a spell program")
+        .flattened_default_effects();
+    let phase_in = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::PhaseInEffect>())
+        .expect("simultaneous phasing should retain the phase-in action");
+    let phase_out = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::PhaseOutEffect>())
+        .expect("simultaneous phasing should retain the phase-out action");
+    assert!(
+        matches!(&phase_in.target, crate::target::ChooseSpec::All(_))
+            && matches!(&phase_out.target, crate::target::ChooseSpec::All(_)),
+        "both plural phase subjects should lower to all-object specs: {phase_in:#?}, {phase_out:#?}"
+    );
+}
+
+#[test]
+fn rewrite_endure_source_surface_keeps_typed_source_target() {
+    let text = "Whenever this creature attacks, you lose 1 life and this creature endures 1.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Endure Source Surface")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("source endure trigger should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let choose = compiled
+        .definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseModeEffect>()),
+            _ => None,
+        })
+        .expect("endure should lower to a typed two-mode choice");
+    let put = choose
+        .modes
+        .iter()
+        .flat_map(|mode| &mode.effects)
+        .find_map(|effect| effect.downcast_ref::<crate::effects::PutCountersEffect>())
+        .expect("endure should keep its counter mode");
+    assert!(
+        matches!(put.target.base(), crate::target::ChooseSpec::Source),
+        "endure's source-reference surface should still be semantically Source: {put:?}"
+    );
+}
+
+#[test]
 fn flashback_keyword_accepts_non_mana_total_cost() {
     let flashback_tokens = lex_line("Flashback--Sacrifice three creatures", 0)
         .expect("rewrite lexer should classify non-mana flashback keyword line");
@@ -6644,6 +7283,491 @@ fn rewrite_anthem_subject_parses_enchanted_player_controls() {
 }
 
 #[test]
+fn rewrite_anthem_subject_preserves_typed_commander_and_attacking_token_filters() {
+    for (subject_text, is_commander, token, attacking) in [
+        ("Commanders you control", true, false, false),
+        ("Attacking tokens you control", false, true, true),
+    ] {
+        let tokens =
+            lex_line(subject_text, 0).expect("rewrite lexer should classify typed anthem subject");
+        let (parsed, loss) =
+            crate::parse_loss::capture(|| super::keyword_static::parse_anthem_subject(&tokens));
+        let parsed = parsed.expect("typed anthem subject should parse");
+        let super::keyword_static::AnthemSubjectAst::Filter(filter) = parsed else {
+            panic!("{subject_text}: expected typed object filter subject");
+        };
+
+        assert!(
+            !loss.is_lossy(),
+            "{}: {}",
+            subject_text,
+            loss.reasons_text()
+        );
+        assert_eq!(filter.zone, Some(Zone::Battlefield), "{subject_text}");
+        assert_eq!(
+            filter.controller,
+            Some(crate::PlayerFilter::You),
+            "{subject_text}"
+        );
+        assert_eq!(filter.is_commander, is_commander, "{subject_text}");
+        assert_eq!(filter.token, token, "{subject_text}");
+        assert_eq!(filter.attacking, attacking, "{subject_text}");
+    }
+}
+
+#[test]
+fn rewrite_anthem_subject_rejects_speculative_non_subject_fragments_without_loss() {
+    for fragment in [
+        "all abilities and",
+        "you draw two cards lose 2 life and",
+        "as long as enchanted permanent is an equipment it",
+    ] {
+        let tokens =
+            lex_line(fragment, 0).expect("rewrite lexer should classify speculative fragment");
+        let (parsed, loss) =
+            crate::parse_loss::capture(|| super::keyword_static::parse_anthem_subject(&tokens));
+
+        assert!(parsed.is_err(), "{fragment}: {parsed:#?}");
+        assert!(!loss.is_lossy(), "{}: {}", fragment, loss.reasons_text());
+    }
+}
+
+#[test]
+fn rewrite_representative_suffix_recovery_cards_compile_without_parse_loss() {
+    for (name, text) in [
+        (
+            "Typed Commander Grant",
+            "During your turn, commanders you control have indestructible.",
+        ),
+        (
+            "Typed Attacking Token Grant",
+            "Attacking tokens you control have deathtouch.",
+        ),
+        (
+            "Typed Lose Abilities Transform",
+            "Enchanted creature loses all abilities and is a blue Frog creature with base power and toughness 1/1.",
+        ),
+        (
+            "Typed Effect Sequence",
+            "You draw two cards, lose 2 life, and get {E}{E}.",
+        ),
+        (
+            "Typed Conditional Grant",
+            "As long as enchanted permanent is an Equipment, it has \"Equipped creature gets +1/+1 and has trample.\"",
+        ),
+    ] {
+        let (compiled, loss) = crate::parse_loss::capture(|| {
+            super::compile_card_text(
+                CardDefinitionBuilder::new(CardId::from_raw(1), name),
+                text,
+                false,
+            )
+        });
+
+        compiled.unwrap_or_else(|err| panic!("{name}: {err:?}"));
+        assert!(!loss.is_lossy(), "{}: {}", name, loss.reasons_text());
+    }
+}
+
+#[test]
+fn rewrite_tagged_plural_pump_after_untap_compiles_without_parse_loss() {
+    for (name, text) in [
+        (
+            "Typed Fancy Footwork",
+            "Untap one or two target creatures. They each get +2/+2 until end of turn.",
+        ),
+        (
+            "Typed Join Forces",
+            "Untap up to two target creatures. They each get +2/+2 until end of turn.",
+        ),
+    ] {
+        let (compiled, loss) = crate::parse_loss::capture(|| {
+            super::compile_card_text(
+                CardDefinitionBuilder::new(CardId::from_raw(1), name),
+                text,
+                false,
+            )
+        });
+
+        compiled.unwrap_or_else(|err| panic!("{name}: {err:?}"));
+        assert!(!loss.is_lossy(), "{}: {}", name, loss.reasons_text());
+    }
+}
+
+#[test]
+fn rewrite_unpreventable_damage_followup_marks_previous_damage() {
+    let text =
+        "This deals 4 damage to target player or planeswalker. The damage can't be prevented.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Unpreventable Damage"),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("unpreventable damage rider should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let damage = compiled
+        .definition
+        .spell_effect
+        .as_ref()
+        .expect("damage statement should lower as a spell program")
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::DealDamageEffect>())
+        .expect("damage statement should retain its typed damage effect");
+    assert!(
+        damage.unpreventable,
+        "damage rider should set the typed unpreventable field: {damage:#?}"
+    );
+}
+
+#[test]
+fn rewrite_conditional_self_damage_prevention_preserves_counter_amount() {
+    for (name, text, dynamic_amount) in [
+        (
+            "Typed Oathsworn Counter Prevention",
+            "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage and remove a +1/+1 counter from it.",
+            false,
+        ),
+        (
+            "Typed Conjurant Counter Prevention",
+            "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage and remove that many +1/+1 counters from it.",
+            true,
+        ),
+    ] {
+        let (compiled, loss) = crate::parse_loss::capture(|| {
+            super::compile_card_text(
+                CardDefinitionBuilder::new(CardId::from_raw(1), name)
+                    .card_types(vec![CardType::Creature]),
+                text,
+                false,
+            )
+        });
+        let compiled = compiled.unwrap_or_else(|err| panic!("{name}: {err:?}"));
+        assert!(!loss.is_lossy(), "{}: {}", name, loss.reasons_text());
+        let amount = compiled
+            .definition
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => match &static_ability.payload {
+                    StaticAbilityPayload::Conditional { ability, .. } => match &ability.payload {
+                        StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
+                            counter_type: CounterType::PlusOnePlusOne,
+                            amount,
+                            ..
+                        } => Some(amount),
+                        _ => None,
+                    },
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{name}: expected conditional counter prevention"));
+        if dynamic_amount {
+            assert_eq!(
+                amount,
+                &Value::EventValue(crate::effect::EventValueSpec::Amount)
+            );
+        } else {
+            assert_eq!(amount, &Value::Fixed(1));
+        }
+    }
+}
+
+#[test]
+fn rewrite_counter_prevention_keeps_each_player_counter_followup() {
+    let text = "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage, remove that many +1/+1 counters from it, then give each player a rad counter for each +1/+1 counter removed this way.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Counter Prevention Followup")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("counter-derived player-counter follow-up should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let follow_up = compiled
+        .definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => match &static_ability.payload {
+                StaticAbilityPayload::Conditional { ability, .. } => match &ability.payload {
+                    StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
+                        follow_up, ..
+                    } => *follow_up,
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("expected typed counter-removal follow-up");
+    assert_eq!(
+        follow_up,
+        ironsmith_core::CounterRemovalFollowUp::EachPlayerGetsCounters {
+            counter_type: CounterType::Rad,
+            counters_per_removed: 1,
+        }
+    );
+}
+
+#[test]
+fn rewrite_possessive_self_counters_move_from_source_lki() {
+    let text = "{1}, Sacrifice this creature: Target creature you control gains indestructible until end of turn. Put this's counters on that creature and attach an Equipment that was attached to this creature to that creature.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Counter Inheritance")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("possessive source counter transfer should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let debug = format!("{:#?}", compiled.definition.abilities);
+    assert!(debug.contains("MoveAllCountersEffect"), "{debug}");
+    assert!(debug.contains("from: Source"), "{debug}");
+}
+
+#[test]
+fn rewrite_conditional_self_damage_prevention_can_precede_triggered_followup() {
+    let text = "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage and remove that many +1/+1 counters from it. When one or more counters are removed from this creature this way, it deals that much damage to any target.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Prevention Followup")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("static prevention and triggered followup should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    assert!(
+        compiled
+            .definition
+            .abilities
+            .iter()
+            .any(|ability| matches!(&ability.kind, AbilityKind::Static(_))),
+        "expected the prevention sentence to remain a static ability"
+    );
+    assert!(
+        compiled
+            .definition
+            .abilities
+            .iter()
+            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))),
+        "expected the counter-removal sentence to remain a triggered ability"
+    );
+}
+
+#[test]
+fn triggered_conditional_preserves_leading_duration_for_compound_effects() {
+    let text = "Whenever this creature attacks, if you control three or more Dragons, until end of turn, this creature becomes a Dragon with base power and toughness 5/5 and gains flying.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Conditional Duration")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("conditional compound duration should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let debug = format!("{:#?}", compiled.definition.abilities);
+    assert!(
+        debug.matches("until: EndOfTurn").count() >= 2,
+        "both compound effects should retain the leading duration: {debug}"
+    );
+}
+
+#[test]
+fn rewrite_scaled_dynamic_target_count_reaches_typed_target_ast() {
+    let tokens = lex_line("up to twice X target cards from graveyards", 0).unwrap();
+    let target = super::util::parse_target_phrase(&tokens).expect("dynamic target phrase");
+    assert!(matches!(
+        target,
+        crate::cards::builders::TargetAst::WithCountValue(
+            _,
+            count,
+            Value::XTimes(2)
+        ) if count.is_up_to_dynamic_x()
+    ));
+
+    let text = "Choose one —\n• Target creature gets -X/-X until end of turn. You gain X life.\n• Exile up to twice X target cards from graveyards.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Erebos Intervention")
+                .card_types(vec![CardType::Instant]),
+            text,
+            false,
+        )
+    });
+    compiled.expect("scaled dynamic target modal spell should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+}
+
+#[test]
+fn rewrite_hyphenated_artifact_creature_token_compiles_without_loss() {
+    let text = "{7}, {T}: Create a 2/2 colorless Assembly-Worker artifact creature token.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Assembly Worker Factory")
+                .card_types(vec![CardType::Land]),
+            text,
+            false,
+        )
+    });
+    compiled.expect("hyphenated artifact creature token should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+}
+
+#[test]
+fn rewrite_kicked_counter_entry_preserves_quoted_defender_permission() {
+    let text = "Kicker {1}{W}\nIf this creature was kicked, it enters with a +1/+1 counter on it and with \"This creature can attack as though it didn't have defender.\"";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Prison Barricade")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("kicked counter entry with ability should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let debug = format!("{:#?}", compiled.definition.abilities);
+    assert!(debug.contains("ThisSpellWasKicked"), "{debug}");
+    assert!(debug.contains("CanAttackAsThoughNoDefender"), "{debug}");
+}
+
+#[test]
+fn rewrite_target_mana_value_where_x_pump_compiles_without_loss() {
+    let text = "Target creature gains trample and gets +X/+0 until end of turn, where X is that creature's mana value.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Surge Strength")
+                .card_types(vec![CardType::Instant]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("target mana-value where-X pump should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let debug = format!("{:#?}", compiled.definition);
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+}
+
+#[test]
+fn rewrite_all_graveyard_card_types_where_x_keeps_typed_value() {
+    let text = "Whenever a creature you control attacks alone, it gets +X/+X until end of turn, where X is the number of card types among cards in all graveyards.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Card Types Among")
+                .card_types(vec![CardType::Artifact]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("card-types-among where-X trigger should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let debug = format!("{:#?}", compiled.definition);
+    assert!(debug.contains("CardTypesAmong"), "{debug}");
+    assert!(debug.contains("zone: Some(\n"), "{debug}");
+    assert!(debug.contains("Graveyard"), "{debug}");
+}
+
+#[test]
+fn rewrite_counter_entry_counts_loyalty_counters_across_controlled_planeswalkers() {
+    let text = "This creature enters with a +1/+1 counter on it for each loyalty counter on planeswalkers you control.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Loyalty Counter Entry")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("loyalty-counter entry value should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let debug = format!("{:#?}", compiled.definition);
+    assert!(debug.contains("CountersOn"), "{debug}");
+    assert!(debug.contains("Loyalty"), "{debug}");
+    assert!(debug.contains("Planeswalker"), "{debug}");
+    assert!(debug.contains("controller: Some(\n"), "{debug}");
+}
+
+#[test]
+fn rewrite_created_token_tap_mana_ability_keeps_spending_restriction() {
+    let text = "Create a 1/1 red Wizard creature token with \"{T}: Add {R}. Spend this mana only to cast a planeswalker spell.\"";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Restricted Mana Token")
+                .card_types(vec![CardType::Sorcery]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("restricted token mana ability should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let debug = format!("{:#?}", compiled.definition);
+    assert!(debug.contains("mana_output: Some"), "{debug}");
+    assert!(debug.contains("Red"), "{debug}");
+    assert!(debug.contains("mana_usage_restrictions"), "{debug}");
+    assert!(debug.contains("Planeswalker"), "{debug}");
+}
+
+#[test]
+fn rewrite_created_token_followup_keeps_tap_mana_ability() {
+    let text = "{G}, {T}, Discard a card: Create a 1/1 green Elf Druid creature token named Llanowar Elves. It has \"{T}: Add {G}.\"";
+    let effect_text = "Create a 1/1 green Elf Druid creature token named Llanowar Elves. It has \"{T}: Add {G}.\"";
+    let effect_tokens = lex_line(effect_text, 0).expect("token followup should lex");
+    let sentences = split_lexed_sentences(&effect_tokens);
+    assert_eq!(sentences.len(), 2, "expected creation plus reminder");
+    assert!(
+        crate::runtime_backend::grammar::token_definitions::parse_token_tap_mana_ability_tokens(
+            sentences[1]
+        )
+        .is_some(),
+        "typed reminder grammar should preserve the quoted tap-mana ability"
+    );
+    let effect_ast = super::clause_support::parse_effect_sentences_lexed(&effect_tokens)
+        .expect("token followup should parse");
+    let token_definition = effect_ast.iter().find_map(|effect| match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::CreateTokenWithMods { definition, .. } => Some(definition),
+            _ => None,
+        },
+        _ => None,
+    });
+    let Some(crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature)) =
+        token_definition
+    else {
+        panic!("expected creature token definition, got {effect_ast:#?}");
+    };
+    assert!(
+        creature.rules.tap_mana_ability.is_some(),
+        "expected typed tap-mana rule, got {creature:#?}"
+    );
+
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Token Ability Followup")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("token ability followup should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let debug = format!("{:#?}", compiled.definition);
+    assert!(debug.contains("mana_output: Some"), "{debug}");
+    assert!(debug.contains("Green"), "{debug}");
+}
+
+#[test]
 fn rewrite_verb_handlers_parse_look_normalizes_target_player_apostrophe_shapes() {
     let tokens = lex_line("Look at target player's hand.", 0)
         .expect("rewrite lexer should classify target player's hand look clause");
@@ -6721,6 +7845,24 @@ fn rewrite_subject_verb_primitives_unless_clause_normalizes_controller_apostroph
     assert!(debug.contains("UnlessPays"), "{debug}");
     assert!(debug.contains("player: ItsController"), "{debug}");
     assert!(debug.contains("Draw"), "{debug}");
+}
+
+#[test]
+fn rewrite_destroy_unless_dynamic_life_cost_tracks_target_toughness() {
+    let tokens = lex_line(
+        "Destroy target creature unless its controller pays life equal to its toughness.",
+        0,
+    )
+    .expect("rewrite lexer should classify dynamic destroy-unless payment");
+
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("dynamic destroy-unless clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("UnlessPays"), "{debug}");
+    assert!(debug.contains("player: ItsController"), "{debug}");
+    assert!(debug.contains("ToughnessOf"), "{debug}");
+    assert!(debug.contains("Target(Object"), "{debug}");
 }
 
 #[test]
@@ -7010,9 +8152,10 @@ fn rewrite_search_library_head_splitter_ignores_quoted_emblem_search_text() {
     match effects.as_slice() {
         [crate::cards::builders::EffectAst::SubjectVerb(subject_verb)] => {
             match &subject_verb.action {
-                crate::cards::builders::SubjectVerbActionAst::CreateEmblem { text } => assert!(
-                    text.contains("may search your library"),
-                    "emblem text should retain the quoted search clause, got {text}"
+                crate::cards::builders::SubjectVerbActionAst::CreateEmblem { emblem } => assert!(
+                    emblem.text.contains("may search your library"),
+                    "emblem text should retain the quoted search clause, got {}",
+                    emblem.text
                 ),
                 other => panic!("expected a CreateEmblem action, got {other:#?}"),
             }
@@ -7039,15 +8182,88 @@ fn rewrite_trailing_if_splitter_ignores_quoted_emblem_conditionals() {
     match effects.as_slice() {
         [crate::cards::builders::EffectAst::SubjectVerb(subject_verb)] => {
             match &subject_verb.action {
-                crate::cards::builders::SubjectVerbActionAst::CreateEmblem { text } => assert!(
-                    text.contains("if it's not a creature"),
-                    "emblem text should retain the quoted conditional sentence, got {text}"
+                crate::cards::builders::SubjectVerbActionAst::CreateEmblem { emblem } => assert!(
+                    emblem.text.contains("if it's not a creature"),
+                    "emblem text should retain the quoted conditional sentence, got {}",
+                    emblem.text
                 ),
                 other => panic!("expected a CreateEmblem action, got {other:#?}"),
             }
         }
         other => panic!("expected a single CreateEmblem effect, got {other:#?}"),
     }
+}
+
+fn compile_typed_emblem(text: &str) -> crate::effect::EmblemDescription {
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(1), "Emblem Test Spell")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(text)
+        .expect("emblem spell should compile");
+    definition
+        .spell_effect
+        .as_ref()
+        .expect("sorcery should have a spell effect")
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::CreateEmblemEffect>()
+                .map(|effect| effect.emblem.clone())
+        })
+        .expect("spell should create an emblem")
+}
+
+#[test]
+fn rewrite_emblem_payload_lowers_a_typed_triggered_ability() {
+    let emblem =
+        compile_typed_emblem(r#"You get an emblem with "Whenever you cast a spell, draw a card.""#);
+    assert!(matches!(
+        emblem.abilities.as_slice(),
+        [crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(_),
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn rewrite_emblem_payload_lowers_a_typed_static_ability() {
+    let emblem = compile_typed_emblem(r#"You get an emblem with "You have no maximum hand size.""#);
+    assert!(matches!(
+        emblem.abilities.as_slice(),
+        [crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Static(_),
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn rewrite_emblem_payload_lowers_a_typed_activated_ability() {
+    let emblem = compile_typed_emblem(r#"You get an emblem with "{T}: Draw a card.""#);
+    assert!(matches!(
+        emblem.abilities.as_slice(),
+        [crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(_),
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn rewrite_emblem_payload_lowers_multiple_quoted_abilities() {
+    let emblem = compile_typed_emblem(
+        r#"You get an emblem with "You have no maximum hand size." and "{T}: Draw a card.""#,
+    );
+    assert_eq!(emblem.abilities.len(), 2, "{emblem:#?}");
+    assert!(matches!(
+        &emblem.abilities[0].kind,
+        crate::ability::AbilityKind::Static(_)
+    ));
+    assert!(matches!(
+        &emblem.abilities[1].kind,
+        crate::ability::AbilityKind::Activated(_)
+    ));
 }
 
 #[test]
@@ -8033,11 +9249,10 @@ fn rewrite_search_library_count_prefix_parser_tracks_search_modes() {
 fn rewrite_search_library_same_name_tail_parser_splits_reference_suffixes() {
     let chosen_name = lex_line("artifact card with the chosen name", 0)
         .expect("rewrite lexer should classify chosen-name filter text");
-    let chosen_words = crate::runtime_backend::token_word_refs(&chosen_name);
     let parsed = super::grammar::effects::parse_search_library_same_name_reference_lexed(
         &chosen_name,
         chosen_name.clone(),
-        &chosen_words,
+        &render_token_slice(&chosen_name),
     )
     .expect("same-name helper should parse chosen-name suffix");
 
@@ -8053,11 +9268,10 @@ fn rewrite_search_library_same_name_tail_parser_splits_reference_suffixes() {
 
     let target_reference = lex_line("creature card with the same name as target creature", 0)
         .expect("rewrite lexer should classify target same-name filter text");
-    let target_words = crate::runtime_backend::token_word_refs(&target_reference);
     let parsed = super::grammar::effects::parse_search_library_same_name_reference_lexed(
         &target_reference,
         target_reference.clone(),
-        &target_words,
+        &render_token_slice(&target_reference),
     )
     .expect("same-name helper should parse target-reference suffix");
 
@@ -8069,6 +9283,22 @@ fn rewrite_search_library_same_name_tail_parser_splits_reference_suffixes() {
     assert!(matches!(
         parsed.same_name_reference,
         Some(super::grammar::effects::SearchLibrarySameNameReference::Target(_))
+    ));
+
+    let exiled_reference = lex_line("cards with the same name as the exiled card", 0)
+        .expect("rewrite lexer should classify source-exiled same-name filter text");
+    let parsed = super::grammar::effects::parse_search_library_same_name_reference_lexed(
+        &exiled_reference,
+        exiled_reference.clone(),
+        &render_token_slice(&exiled_reference),
+    )
+    .expect("same-name helper should preserve a source-exiled reference");
+
+    assert_eq!(render_token_slice(&parsed.filter_tokens), "cards");
+    assert!(matches!(
+        parsed.same_name_reference,
+        Some(super::grammar::effects::SearchLibrarySameNameReference::Tagged(tag))
+            if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
     ));
 }
 
@@ -8192,10 +9422,9 @@ fn rewrite_object_filter_parser_handles_same_name_as_the_spell_reference() {
 fn rewrite_search_library_object_filter_parser_handles_named_and_disjunction_shapes() {
     let named_filter = lex_line("artifact card named Sol Ring", 0)
         .expect("rewrite lexer should classify named search filter text");
-    let named_words = crate::runtime_backend::token_word_refs(&named_filter);
     let parsed = super::grammar::effects::parse_search_library_object_filter_lexed(
         &named_filter,
-        &named_words,
+        &render_token_slice(&named_filter),
     )
     .expect("search-library object-filter helper should parse named filter");
 
@@ -8203,10 +9432,9 @@ fn rewrite_search_library_object_filter_parser_handles_named_and_disjunction_sha
 
     let leading_article_name = lex_line("card named The Unspeakable", 0)
         .expect("rewrite lexer should classify leading-article card name text");
-    let leading_article_words = crate::runtime_backend::token_word_refs(&leading_article_name);
     let parsed = super::grammar::effects::parse_search_library_object_filter_lexed(
         &leading_article_name,
-        &leading_article_words,
+        &render_token_slice(&leading_article_name),
     )
     .expect("search-library object-filter helper should preserve card-name articles");
 
@@ -8214,10 +9442,9 @@ fn rewrite_search_library_object_filter_parser_handles_named_and_disjunction_sha
 
     let counted_named = lex_line("exactly two artifact cards named Sol Ring", 0)
         .expect("rewrite lexer should classify counted named search filter text");
-    let counted_named_words = crate::runtime_backend::token_word_refs(&counted_named);
     let parsed = super::grammar::effects::parse_search_library_object_filter_lexed(
         &counted_named,
-        &counted_named_words,
+        &render_token_slice(&counted_named),
     )
     .expect("search-library object-filter helper should strip count prefixes before named filters");
 
@@ -8226,10 +9453,9 @@ fn rewrite_search_library_object_filter_parser_handles_named_and_disjunction_sha
 
     let negated_named = lex_line("artifact card not named Sol Ring", 0)
         .expect("rewrite lexer should classify negated named search filter text");
-    let negated_named_words = crate::runtime_backend::token_word_refs(&negated_named);
     let parsed = super::grammar::effects::parse_search_library_object_filter_lexed(
         &negated_named,
-        &negated_named_words,
+        &render_token_slice(&negated_named),
     )
     .expect("search-library object-filter helper should parse negated named filter");
 
@@ -8238,10 +9464,9 @@ fn rewrite_search_library_object_filter_parser_handles_named_and_disjunction_sha
 
     let disjunction = lex_line("artifact or enchantment card", 0)
         .expect("rewrite lexer should classify disjunction search filter text");
-    let disjunction_words = crate::runtime_backend::token_word_refs(&disjunction);
     let parsed = super::grammar::effects::parse_search_library_object_filter_lexed(
         &disjunction,
-        &disjunction_words,
+        &render_token_slice(&disjunction),
     )
     .expect("search-library object-filter helper should parse disjunction filter");
 
@@ -8252,10 +9477,9 @@ fn rewrite_search_library_object_filter_parser_handles_named_and_disjunction_sha
 
     let different_names = lex_line("cards with different names", 0)
         .expect("rewrite lexer should classify different-names search filter text");
-    let different_names_words = crate::runtime_backend::token_word_refs(&different_names);
     let parsed = super::grammar::effects::parse_search_library_object_filter_lexed(
         &different_names,
-        &different_names_words,
+        &render_token_slice(&different_names),
     )
     .expect("search-library object-filter helper should parse bare different-names filters");
 
@@ -8272,6 +9496,29 @@ fn rewrite_grammar_mana_group_slash_marker_probe_matches_keyword_shape() {
     assert!(
         super::grammar::abilities::is_mana_group_slash_marker_line_lexed(&tokens),
         "mana-group slash marker probe should recognize slash-bearing keyword line"
+    );
+}
+
+#[test]
+fn prototype_keyword_lowering_retains_typed_cast_characteristics() {
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(88_003), "Prototype Probe")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(crate::PowerToughness::fixed(6, 4))
+        .parse_text("Prototype {2}{R} — 3/2")
+        .expect("typed Prototype keyword should lower");
+
+    let method = definition
+        .alternative_casts
+        .first()
+        .expect("Prototype should create an alternative casting method");
+    assert_eq!(
+        method.mana_cost().map(|cost| cost.to_oracle()),
+        Some("{2}{R}".to_string())
+    );
+    assert_eq!(
+        method.prototype_power_toughness(),
+        Some(crate::PowerToughness::fixed(3, 2)),
+        "the grammar's typed P/T must survive lowering without display-text reparsing"
     );
 }
 
@@ -9073,6 +10320,14 @@ fn rewrite_grammar_protection_and_ward_probes_match_static_shapes() {
     let debug = format!("{ward:?}");
     assert_eq!(ward.id(), StaticAbilityId::Ward);
     assert!(debug.contains("Life(Fixed(3))"), "{debug}");
+
+    let mana_ward_tokens =
+        lex_line("Ward {8}.", 0).expect("rewrite lexer should classify mana ward line");
+    let mana_ward = super::keyword_static::parse_static_text_marker_line(&mana_ward_tokens)
+        .expect("mana ward line should parse");
+    let mana_debug = format!("{mana_ward:?}");
+    assert!(mana_debug.contains("Mana("), "{mana_debug}");
+    assert!(!mana_debug.contains("ManaPaymentCost"), "{mana_debug}");
 }
 
 #[test]
@@ -9354,6 +10609,32 @@ fn rewrite_keyword_static_pt_color_type_addition_bundle() {
 }
 
 #[test]
+fn rewrite_lose_all_transform_name_uses_parser_word_coordinates() {
+    for (text, expected_name) in [
+        (
+            "Enchanted creature loses all abilities and is a Citizen with base power and toughness 1/1 and \"{T}: Add {C}\" named Humble Merchant.",
+            "Humble Merchant",
+        ),
+        (
+            "Enchanted creature loses all abilities and is a green and white Citizen creature with base power and toughness 1/1 named Legitimate Businessperson.",
+            "Legitimate Businessperson",
+        ),
+    ] {
+        let tokens = lex_line(text, 0).expect("transform line should lex");
+        let abilities =
+            super::keyword_static::parse_lose_all_abilities_and_transform_base_pt_line(&tokens)
+                .expect("transform line should parse")
+                .expect("transform line should produce static abilities");
+
+        assert!(abilities.iter().any(|ability| matches!(
+            &ability.payload,
+            crate::static_abilities::StaticAbilityPayload::SetName { name, .. }
+                if name == expected_name
+        )));
+    }
+}
+
+#[test]
 fn rewrite_grammar_exile_to_countered_exile_instead_of_graveyard_splitter_matches_static_shape() {
     let tokens = lex_line(
         "If a creature would be put into an opponent's graveyard from anywhere, exile it instead with a stun counter on it.",
@@ -9530,6 +10811,124 @@ fn rewrite_grammar_branching_evolution_counter_line_matches_static_shape() {
         ),
         "got {parsed:?}"
     );
+}
+
+#[test]
+fn rewrite_typed_replacement_predicate_regression_shapes_preserve_semantics() {
+    let explore = lex_line(
+        "If a creature you control would explore, instead it explores, then it explores again.",
+        0,
+    )
+    .expect("explore replacement should lex");
+    let explore_ability = super::keyword_static::parse_keyword_action_replacement_line(&explore)
+        .expect("explore replacement should parse")
+        .expect("explore replacement should be recognized");
+    assert_eq!(
+        explore_ability.id(),
+        StaticAbilityId::KeywordActionReplacement
+    );
+    let explore_debug = format!("{explore_ability:#?}");
+    assert!(
+        explore_debug.matches("ExploreEffect").count() >= 2,
+        "double-explore replacement must retain both replacement actions: {explore_debug}"
+    );
+
+    let counters = lex_line(
+        "If one or more +1/+1 counters would be put on a permanent you control, that many plus one +1/+1 counters are put on that permanent instead.",
+        0,
+    )
+    .expect("counter replacement should lex");
+    let counter_ability = super::keyword_static::parse_double_counters_replacement_line(&counters)
+        .expect("counter replacement should parse")
+        .expect("counter replacement should be recognized");
+    assert_eq!(
+        counter_ability.id(),
+        StaticAbilityId::AddCountersPlacementReplacement
+    );
+    let StaticAbilityPayload::AddCountersPlacementReplacement {
+        filter,
+        player_filter,
+        counter_type,
+        additional,
+        ..
+    } = &counter_ability.payload
+    else {
+        panic!("expected additive counter replacement payload: {counter_ability:#?}");
+    };
+    assert_eq!(filter.zone, Some(Zone::Battlefield));
+    assert_eq!(filter.controller, Some(crate::filter::PlayerFilter::You));
+    assert_eq!(
+        filter.card_types,
+        vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Land,
+            CardType::Planeswalker,
+            CardType::Battle,
+        ]
+    );
+    assert_eq!(*player_filter, None);
+    assert_eq!(*counter_type, Some(CounterType::PlusOnePlusOne));
+    assert_eq!(*additional, 1);
+
+    let heart = lex_line(
+        "Prevent all damage that would be dealt to and dealt by enchanted creature.",
+        0,
+    )
+    .expect("combined attached prevention should lex");
+    let heart_ability =
+        super::keyword_static::parse_attached_prevent_all_damage_dealt_to_and_by_attached_line(
+            &heart,
+        )
+        .expect("combined attached prevention should parse")
+        .expect("combined attached prevention should be recognized");
+    let heart_debug = format!("{heart_ability:#?}");
+    assert!(
+        heart_debug.contains("AttachedStaticAbilityGrant")
+            && heart_debug.contains("PreventAllDamageDealtToAndByThisPermanent"),
+        "combined prevention must remain one attached event-layer ability: {heart_debug}"
+    );
+
+    let ocelot = lex_line(
+        "Then if you have the city's blessing, for each token you control that entered this turn, create a token that's a copy of it.",
+        0,
+    )
+    .expect("conditional for-each copy should lex");
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&ocelot)
+        .expect("conditional for-each copy should parse");
+    let [
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        },
+    ] = parsed.as_slice()
+    else {
+        panic!("expected one conditional token-copy clause: {parsed:#?}");
+    };
+    assert!(
+        matches!(
+            predicate,
+            crate::cards::builders::PredicateAst::PlayerHasCitysBlessing { .. }
+        ),
+        "conditional token-copy clause must retain its city-blessing predicate: {parsed:#?}"
+    );
+    assert!(if_false.is_empty());
+    let [EffectAst::ForEachObject { filter, effects }] = if_true.as_slice() else {
+        panic!("expected object iteration under city-blessing predicate: {parsed:#?}");
+    };
+    assert!(filter.token);
+    assert!(filter.entered_battlefield_this_turn);
+    assert!(matches!(
+        effects.as_slice(),
+        [EffectAst::SubjectVerb(subject_verb)]
+            if matches!(
+                &subject_verb.action,
+                SubjectVerbActionAst::CreateTokenCopy { .. }
+                    | SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
+            )
+    ));
 }
 
 #[test]
@@ -9792,6 +11191,28 @@ fn rewrite_grammar_replacement_static_probes_match_keyword_static_shapes() {
 }
 
 #[test]
+fn rewrite_discard_or_redirect_replacement_stays_static_through_document_dispatch() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Mox Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "If this artifact would enter the battlefield, you may discard a land card instead. If you do, put this artifact onto the battlefield. If you don't, put it into its owner's graveyard.",
+        )
+        .expect("discard-or-redirect replacement should bypass effect-statement dispatch");
+
+    assert!(
+        definition.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::DiscardOrRedirectReplacement
+            )
+        }),
+        "expected a typed discard-or-redirect static ability, got {:#?}",
+        definition.abilities
+    );
+}
+
+#[test]
 fn rewrite_cast_restriction_keeps_multiword_no_permanents_named_card_name() {
     let tokens = lex_line(
         "Cast this spell only if no permanents named Tidal Influence are on the battlefield.",
@@ -9837,6 +11258,56 @@ fn rewrite_grammar_krrik_life_payment_probe_matches_static_line() {
         [crate::cards::builders::StaticAbilityAst::Static(ability)]
             if ability.id() == crate::static_abilities::StaticAbilityId::BlackManaMayBePaidWithLife
     ));
+}
+
+#[test]
+fn rewrite_grammar_once_each_turn_enchantment_life_cost_grant_is_typed() {
+    let tokens = lex_line(
+        "Once during each of your turns, you may cast an enchantment spell by paying life equal to its mana value rather than paying its mana cost.",
+        0,
+    )
+    .expect("life-equal-mana-value grant line should lex");
+
+    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("life-equal-mana-value grant line should parse")
+        .expect("life-equal-mana-value grant line should produce an ability");
+
+    let [crate::cards::builders::StaticAbilityAst::Static(ability)] = parsed.as_slice() else {
+        panic!("expected one static life-cost grant, got {parsed:?}");
+    };
+    let StaticAbilityPayload::Grants(spec) = &ability.payload else {
+        panic!("life-equal-mana-value ability should expose a grant spec: {ability:?}");
+    };
+    assert_eq!(spec.zone, Zone::Hand);
+    assert_eq!(spec.filter.card_types, [CardType::Enchantment]);
+    assert!(matches!(
+        spec.grantable,
+        crate::grant::Grantable::DerivedAlternativeCast(
+            crate::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand {
+                usage_limit: Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)
+            }
+        )
+    ));
+}
+
+#[test]
+fn rewrite_demon_sacrifice_cost_binds_mana_value_pump_to_cost_object() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Demon Probe")
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .parse_text(
+            "Once during each of your turns, you may cast an enchantment spell by paying life equal to its mana value rather than paying its mana cost.\n\
+             {2}{B}, Sacrifice another enchantment: This creature gets +X/+0 until end of turn, where X is the sacrificed enchantment's mana value.",
+        )
+        .expect("Demon-style life-cost grant and sacrifice pump should parse");
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("sacrifice_cost_0")
+            && debug.contains("ManaValueOf")
+            && debug.contains("WhereXIs")
+            && debug.contains("the sacrificed enchantment")
+            && !debug.contains("the sacrificed enchantment'"),
+        "sacrificed enchantment should remain the typed basis of the pump: {debug}"
+    );
 }
 
 #[test]
@@ -10885,10 +12356,7 @@ fn rewrite_document_normalizes_labeled_named_tivit_vote_trigger() {
     let (semantic, _) = parse_text_to_semantic_document(builder.clone(), text.to_string(), false)
         .expect("Tivit semantic document should parse");
     assert!(
-        semantic
-            .items
-            .iter()
-            .any(|item| matches!(item, RewriteSemanticItem::Triggered(_))),
+        semantic.items.iter().any(rewrite_item_is_triggered),
         "expected labeled named-source Tivit vote trigger semantic item, got {:?}",
         semantic.items
     );
@@ -11447,6 +12915,66 @@ fn rewrite_lexed_triggered_line_parses_player_contraction_dealt_damage_trigger()
         debug.contains("EventValue") && debug.contains("Amount"),
         "{debug}"
     );
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_parses_generic_damage_to_object_trigger() {
+    let text = "Whenever equipped creature deals damage to a blocking creature, draw a card.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify damage-to-object trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("damage-to-object triggered line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("DealsDamageTo"), "{debug}");
+    assert!(debug.contains("source"), "{debug}");
+    assert!(debug.contains("target"), "{debug}");
+    assert!(debug.contains("blocking: true"), "{debug}");
+    assert!(debug.contains("Draw"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_damage_to_object_trigger_preserves_generic_source_surface() {
+    let text = "Whenever a source deals damage to this creature, draw a card.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify source damage trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("generic-source damage-to-object line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("DealsDamageTo"), "{debug}");
+    assert!(debug.contains("source_surface: Source"), "{debug}");
+    assert!(debug.contains("Draw"), "{debug}");
+}
+
+#[test]
+fn rewrite_result_gated_consult_preserves_sacrificed_card_type_relation() {
+    let text = "If the player does, they reveal cards from the top of their library until they reveal a permanent card that shares a card type with the sacrificed permanent, put that card onto the battlefield, then shuffle.";
+    let tokens = lex_line(text, 0).expect("result-gated consult should lex");
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("result-gated consult should parse through typed bundle grammar");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("IfResult"), "{debug}");
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("SharesCardType"), "{debug}");
+    assert!(debug.contains("sacrificed_0"), "{debug}");
+    assert!(debug.contains("ShuffleLibrary"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_parses_spell_countered_trigger() {
+    let text = "Whenever a spell you've cast is countered, draw a card.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify spell-countered trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("spell-countered triggered line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("SpellCountered"), "{debug}");
+    assert!(debug.contains("You"), "{debug}");
+    assert!(!debug.contains("SpellCast"), "{debug}");
+    assert!(debug.contains("Draw"), "{debug}");
 }
 
 #[test]
@@ -12110,8 +13638,10 @@ fn compile_named_source_leaves_trigger_preserves_surface() {
         .expect("named source leaves trigger should parse semantically");
     let semantic_debug = format!("{semantic:#?}");
     assert!(
-        semantic_debug.contains("trigger_text: \"emrakul leaves the battlefield\""),
-        "expected semantic document to keep named source trigger text, got {semantic_debug}"
+        semantic_debug.contains("ThisLeavesBattlefieldWithSurface")
+            && semantic_debug.contains("ShortName")
+            && semantic_debug.contains("\"Emrakul\""),
+        "expected semantic document to carry the typed named-source trigger, got {semantic_debug}"
     );
 
     let compiled = crate::runtime_backend::front_end::shared::util::with_source_reference_context(
@@ -12466,6 +13996,64 @@ fn rewrite_lexed_gain_ability_sentence_keeps_if_you_do_result_prefix() {
     );
     assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
     assert!(debug.contains("LeavesBattlefield"), "{debug}");
+    assert!(
+        debug.contains("ThisPermanentType(\"this creature\")"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_gain_ability_named_creature_subject_prefers_this_creature_surface() {
+    crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
+        "Thief of Existence",
+        &[CardType::Creature],
+        &[],
+        || {
+            let lexed = lex_line(
+                "If you do, Thief of Existence gains \"When this creature leaves the battlefield, target opponent draws a card.\"",
+                0,
+            )
+            .expect("rewrite lexer should classify named source gain-ability sentence");
+
+            let parsed = parse_effect_sentence_lexed(&lexed)
+                .expect("named source gain ability should parse");
+            let debug = format!("{parsed:?}");
+
+            assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+            assert!(
+                debug.contains("ThisPermanentType(\"this creature\")"),
+                "{debug}"
+            );
+            assert!(
+                !debug.contains("FullName(\"Thief of Existence\")"),
+                "{debug}"
+            );
+        },
+    );
+}
+
+#[test]
+fn rewrite_preprocessed_named_gain_ability_keeps_card_identity_surface() {
+    let (semantic, _) = parse_text_to_semantic_document(
+        CardDefinitionBuilder::new(CardId::from_raw(1), "Thief of Existence")
+            .card_types(vec![CardType::Creature]),
+        "Thief of Existence gains \"When this creature leaves the battlefield, target opponent draws a card.\"."
+            .to_string(),
+        false,
+    )
+    .expect("preprocessed named source gain ability should parse semantically");
+    let normalized = semantic
+        .items
+        .iter()
+        .find_map(rewrite_parsed_line)
+        .map(|line| line.info.normalized.normalized.as_str());
+
+    assert_eq!(
+        normalized,
+        Some(
+            "this creature gains \"when this creature leaves the battlefield, target opponent draws a card. \"."
+        )
+    );
 }
 
 #[test]
@@ -12584,6 +14172,13 @@ fn rewrite_lexed_effect_sequence_builds_self_replacement_for_return_followup() {
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("SelfReplacement"), "{debug}");
+    assert!(matches!(
+        parsed.as_slice(),
+        [EffectAst::SelfReplacement {
+            attach_to_previous_ability: false,
+            ..
+        }]
+    ));
 }
 
 #[test]
@@ -12595,6 +14190,13 @@ fn rewrite_lexed_effect_sequence_builds_self_replacement_for_damage_followup() {
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("SelfReplacement"), "{debug}");
+    assert!(matches!(
+        parsed.as_slice(),
+        [EffectAst::SelfReplacement {
+            attach_to_previous_ability: false,
+            ..
+        }]
+    ));
 }
 
 #[test]
@@ -12606,6 +14208,13 @@ fn rewrite_lexed_effect_sequence_builds_self_replacement_for_toxic_followup() {
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("SelfReplacement"), "{debug}");
+    assert!(matches!(
+        parsed.as_slice(),
+        [EffectAst::SelfReplacement {
+            attach_to_previous_ability: false,
+            ..
+        }]
+    ));
 }
 
 #[test]
@@ -12617,6 +14226,13 @@ fn rewrite_lexed_effect_sequence_builds_self_replacement_for_creatures_died_coun
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("SelfReplacement"), "{debug}");
+    assert!(matches!(
+        parsed.as_slice(),
+        [EffectAst::SelfReplacement {
+            attach_to_previous_ability: true,
+            ..
+        }]
+    ));
 }
 
 #[test]
@@ -12931,6 +14547,70 @@ fn rewrite_sequence_registry_matches_consult_land_cards_battlefield_tapped_rest_
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
     );
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_consult_remainder_first_battlefield_graveyard_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Target opponent reveals cards from the top of their library until they reveal a creature card. That player puts all noncreature cards revealed this way into their graveyard, then you put the creature card onto the battlefield under your control.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match Telemin-style consult bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "consult-match-into-battlefield-others-graveyard"
+    );
+    assert_eq!(matched.consumed_sentences, 2);
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+    assert!(debug.contains("PutOntoBattlefield"), "{debug}");
+    assert!(debug.contains("controller: You"), "{debug}");
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_tempting_offer_copy_spell_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Tempting offer — Choose target instant or sorcery spell. Each opponent may copy that spell and may choose new targets for the copy they control. You copy that spell once plus an additional time for each opponent who copied the spell this way. You may choose new targets for the copies you control.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match Tempt with Mayhem-style copy bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(matched.name, "tempting-offer-copy-spell");
+    assert_eq!(matched.consumed_sentences, 4);
+    assert!(debug.contains("TargetOnly"), "{debug}");
+    assert!(debug.contains("ForEachOpponent"), "{debug}");
+    assert!(debug.contains("MayByPlayer"), "{debug}");
+    assert!(debug.contains("PendingEffectMetricOffset"), "{debug}");
+    assert!(debug.contains("PlayersWithPositiveCount"), "{debug}");
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_reciprocal_creature_control_bundle() {
+    let sentences = registry_sentence_inputs(
+        "You and target opponent each gain control of all creatures the other controls until end of turn. Untap those creatures. Those creatures gain haste until end of turn.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match reciprocal creature-control bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(matched.name, "reciprocal-creature-control");
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("TagMatchingObjects"), "{debug}");
+    assert!(debug.contains("GainControl"), "{debug}");
+    assert!(debug.contains("TargetOpponent"), "{debug}");
+    assert!(debug.contains("UntapAll"), "{debug}");
+    assert!(debug.contains("GrantAbilitiesAll"), "{debug}");
+    assert!(debug.contains("haste"), "{debug}");
 }
 
 #[test]
@@ -13479,6 +15159,27 @@ fn rewrite_damage_this_way_would_die_registers_source_history_replacement() {
 }
 
 #[test]
+fn rewrite_serial_damage_fanout_emits_distinct_damage_effects() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Serpentine Spike")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Serpentine Spike deals 2 damage to target creature, 3 damage to another target creature, and 4 damage to a third target creature. If a creature dealt damage this way would die this turn, exile it instead.",
+        )
+        .expect("serial damage fanout should parse");
+    let debug = format!("{:#?}", def.spell_effect);
+    let compact = debug.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert!(debug.matches("DealDamageEffect").count() >= 3, "{debug}");
+    assert!(compact.contains("amount: Fixed( 2, )"), "{debug}");
+    assert!(compact.contains("amount: Fixed( 3, )"), "{debug}");
+    assert!(compact.contains("amount: Fixed( 4, )"), "{debug}");
+    assert!(
+        debug.contains("RegisterDamagedBySourceZoneReplacementEffect"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_destroy_all_keeps_named_counter_filter() {
     let lexed = lex_line("Destroy each permanent with a doom counter on it.", 0)
         .expect("rewrite lexer should classify destroy-with-counter text");
@@ -13811,6 +15512,56 @@ fn rewrite_lowered_triggered_effect_keeps_delayed_that_creature_dies_followup()
             && effects_debug.contains("target_tag: Some")
             && effects_debug.contains("until_end_of_turn: true")
             && effects_debug.contains("SurveilEffect"),
+        "{effects_debug}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_that_creature_delayed_trigger_uses_typed_attachment_fact()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Typed Delayed Followup")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(3, 2));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever you attack, target attacking creature gets +1/+0 until end of turn. Whenever that creature is dealt damage this turn, draw a card.".to_string(),
+        false,
+    )?;
+
+    assert_eq!(definition.abilities.len(), 1, "{:#?}", definition.abilities);
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let effects_debug = format!("{:#?}", triggered.effects);
+    assert!(
+        effects_debug.contains("ScheduleDelayedTriggerEffect")
+            && effects_debug.contains("IsDealtDamage")
+            && effects_debug.contains("DrawCardsEffect"),
+        "{effects_debug}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_unrelated_delayed_trigger_does_not_attach_to_previous_ability()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Unrelated Delayed Trigger")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(3, 2));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever you attack, target attacking creature gets +1/+0 until end of turn. Whenever you draw a card this turn, gain 1 life.".to_string(),
+        false,
+    )?;
+
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let effects_debug = format!("{:#?}", triggered.effects);
+    assert!(
+        !effects_debug.contains("ScheduleDelayedTriggerEffect")
+            && !effects_debug.contains("GainLifeEffect"),
         "{effects_debug}"
     );
     Ok(())
@@ -14188,8 +15939,19 @@ fn rewrite_lexed_effect_sequence_parses_inline_consult_battlefield_bottom_family
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
-    assert!(debug.contains("ManaValueLtTagged"), "{debug}");
-    assert!(debug.contains("sacrificed_0"), "{debug}");
+    let relative_filter = parsed
+        .iter()
+        .find_map(|effect| match effect {
+            EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+                SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. } => Some(filter),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("inline consult should carry its typed stop filter");
+    assert!(relative_filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::target::TaggedOpbjectRelation::ManaValueLtTagged
+    }));
     assert!(debug.contains("MoveToZone"), "{debug}");
     assert!(
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
@@ -14256,6 +16018,74 @@ fn rewrite_lexed_if_you_do_consult_battlefield_bottom_pair_preserves_remainder()
 }
 
 #[test]
+fn rewrite_lexed_consult_dispositions_preserve_typed_collection_tags() {
+    for text in [
+        "That player reveals cards from the top of their library until they reveal a creature card. Put that card onto the battlefield under your control. That player puts the rest of the revealed cards into their graveyard.",
+        "Reveal cards from the top of your library until you reveal three nonland cards. Put the nonland cards revealed this way into your hand, then put the rest of the revealed cards on the bottom of your library in any order.",
+        "Reveal cards from the top of your library until you reveal that many creature cards, put all creature cards revealed this way onto the battlefield, then shuffle the rest of the revealed cards into your library.",
+        "Target opponent reveals cards from the top of their library until an artifact card or X cards are revealed, whichever comes first. If an artifact card is revealed this way, put it onto the battlefield under your control and sacrifice this artifact. Put the rest of the revealed cards into that player's graveyard.",
+    ] {
+        let lexed = lex_line(text, 0).expect("consult disposition should lex");
+        let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+            .expect("consult disposition should parse");
+        let debug = format!("{parsed:#?}");
+        assert!(debug.contains("ConsultTopOfLibrary"), "{text}: {debug}");
+        assert!(
+            debug.contains("PutTaggedRemainderInZone")
+                || debug.contains("PutTaggedRemainderOnBottomOfLibrary")
+                || debug.contains("ShuffleLibrary"),
+            "{text}: {debug}"
+        );
+        assert!(
+            !debug.contains("Tagged(\n            TagKey(\n                \"rest\""),
+            "{text}: {debug}"
+        );
+    }
+}
+
+#[test]
+fn rewrite_lexed_consult_any_number_and_repeated_moves_keep_explicit_subsets() {
+    let vivid = lex_line(
+        "Reveal cards from the top of your library until you reveal X permanent cards, where X is the number of colors among permanents you control. Put any number of those permanent cards onto the battlefield, then put the rest of the revealed cards on the bottom of your library in a random order.",
+        0,
+    )
+    .unwrap();
+    let vivid = super::clause_support::parse_effect_sentences_lexed(&vivid)
+        .expect("vivid consult disposition should parse");
+    let vivid_debug = format!("{vivid:#?}");
+    assert!(vivid_debug.contains("ColorsAmong"), "{vivid_debug}");
+    assert!(vivid.iter().any(|effect| matches!(
+        effect,
+        EffectAst::ChooseObjects { count, .. } if count.is_any_number()
+    )));
+    assert!(
+        vivid_debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{vivid_debug}"
+    );
+
+    let glimpse = lex_line(
+        "Shuffle all permanents you own into your library, then reveal that many cards from the top of your library. Put all non-Aura permanent cards revealed this way onto the battlefield, then do the same for Aura cards, then put the rest on the bottom of your library in a random order.",
+        0,
+    )
+    .unwrap();
+    let glimpse = super::clause_support::parse_effect_sentences_lexed(&glimpse)
+        .expect("repeated reveal disposition should parse");
+    let glimpse_debug = format!("{glimpse:#?}");
+    assert!(
+        glimpse_debug.contains("SnapshotLastObjectTag"),
+        "{glimpse_debug}"
+    );
+    assert!(
+        glimpse_debug.contains("TagMatchingObjects"),
+        "{glimpse_debug}"
+    );
+    assert!(
+        glimpse_debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{glimpse_debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_reveal_top_count_handles_their_library() {
     let text = "That player reveals the top two cards of their library. You choose one of those cards and put it into their graveyard.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify reveal-top-count text");
@@ -14264,8 +16094,68 @@ fn rewrite_lexed_reveal_top_count_handles_their_library() {
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
     assert!(!debug.contains("RevealTop"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_three_way_looked_card_dispositions_keep_distinct_subsets() {
+    for (text, expected_middle_zone, expects_library_top) in [
+        (
+            "Look at the top three cards of your library. Put one of those cards into your hand, one on top of your library, and one on the bottom of your library.",
+            "zone: Library",
+            true,
+        ),
+        (
+            "Look at the top three cards of your library. Put one of those cards into your hand, one into your graveyard, and one on the bottom of your library.",
+            "zone: Graveyard",
+            false,
+        ),
+    ] {
+        let lexed = lex_line(text, 0).expect("three-way looked-card text should lex");
+        let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+            .expect("three-way looked-card disposition should parse");
+        let debug = format!("{parsed:#?}");
+
+        assert_eq!(
+            debug.matches("ChooseTaggedObjectsInZone").count(),
+            3,
+            "each destination must receive its own one-card subset: {debug}"
+        );
+        assert!(debug.contains("looked_candidates"), "{debug}");
+        assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+        assert!(debug.contains("zone: Hand"), "{debug}");
+        assert!(debug.contains(expected_middle_zone), "{debug}");
+        assert_eq!(
+            debug.contains("to_top: true"),
+            expects_library_top,
+            "{text}: {debug}"
+        );
+        assert!(debug.contains("to_top: false"), "{text}: {debug}");
+    }
+}
+
+#[test]
+fn rewrite_lexed_revealed_card_choices_are_scoped_to_the_revealed_candidates() {
+    for text in [
+        "That player reveals the top two cards of their library. You choose one of those cards and put it into their graveyard.",
+        "Reveal the top three cards of your library. Target opponent chooses one of those cards. Put that card into your graveyard, then draw two cards.",
+    ] {
+        let lexed = lex_line(text, 0).expect("revealed-card choice text should lex");
+        let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+            .expect("revealed-card choice should parse");
+        let debug = format!("{parsed:#?}");
+
+        assert!(debug.contains("revealed_candidates"), "{text}: {debug}");
+        assert!(debug.contains("revealed_choice"), "{text}: {debug}");
+        assert!(
+            debug.contains("ChooseTaggedObjectsInZone"),
+            "{text}: {debug}"
+        );
+        assert!(debug.contains("IsTaggedObject"), "{text}: {debug}");
+        assert!(debug.contains("zone: Library"), "{text}: {debug}");
+        assert!(debug.contains("zone: Graveyard"), "{text}: {debug}");
+    }
 }
 
 #[test]
@@ -14298,6 +16188,143 @@ fn rewrite_lexed_effect_sequence_parses_prefixed_consult_sequence() {
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
     );
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_preserves_up_to_four_target_count() {
+    let text = "Choose up to four target creatures you don't control.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify target choice text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("target choice should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("TargetOnly") && debug.contains("min: 0") && debug.contains("max: Some(4)"),
+        "expected a typed up-to-four target count, got {debug}"
+    );
+}
+
+#[test]
+fn combat_damage_trigger_exile_top_keeps_damaged_players_library_as_object() {
+    let built = CardDefinitionBuilder::new(CardId::from_raw(98_502), "Vaan Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Whenever one or more Scouts, Pirates, and/or Rogues you control deal combat damage to a player, exile the top card of that player's library. You may cast it. If you don't, create a Treasure token.")
+        .expect("combat-damage exile-top trigger should compile");
+    let debug = format!("{built:#?}");
+
+    assert!(
+        debug.contains("ExileTopOfLibraryEffect")
+            && debug.contains("player: IteratedPlayer")
+            && !debug.contains("ChooseObjectsEffect"),
+        "expected exile-top to retain the damaged player's library, got {debug}"
+    );
+}
+
+#[test]
+fn typed_villainous_choice_statement_lowers_without_reparsing_its_target_clause() {
+    let built = CardDefinitionBuilder::new(CardId::from_raw(98_503), "Villainous Choice Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Choose up to four target creatures you don't control. For each of them, that creature's controller faces a villainous choice — That creature becomes a 1/1 white Human creature and loses all abilities, or you create a token that's a copy of it.")
+        .expect("typed villainous-choice statement should compile");
+    let debug = format!("{built:#?}");
+
+    assert!(
+        debug.contains("TargetOnlyEffect")
+            && debug.contains("ForEachTaggedEffect")
+            && debug.contains("VillainousChoiceEffect")
+            && debug.contains("white Human creature"),
+        "expected typed target selection and per-target villainous choice, got {debug}"
+    );
+}
+
+#[test]
+fn each_player_optional_hand_wheel_keeps_discard_and_draw_in_one_may_scope() {
+    let tokens = lex_line(
+        "Each player may discard their hand and draw seven cards.",
+        0,
+    )
+    .expect("optional hand-wheel sentence should lex");
+    let effects = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("optional hand-wheel sentence should parse");
+
+    let [crate::cards::builders::EffectAst::ForEachPlayer { effects }] = effects.as_slice() else {
+        panic!("expected each-player wrapper, got {effects:#?}");
+    };
+    let [crate::cards::builders::EffectAst::May { effects }] = effects.as_slice() else {
+        panic!("expected one iterated-player may scope, got {effects:#?}");
+    };
+    assert!(matches!(
+        effects.as_slice(),
+        [
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::DiscardHand,
+                    subject: crate::cards::builders::SubjectVerbSubjectAst {
+                        player: crate::cards::builders::PlayerAst::Implicit,
+                        ..
+                    },
+                    ..
+                }
+            ),
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::Draw {
+                        count: crate::effect::Value::Fixed(7)
+                    },
+                    subject: crate::cards::builders::SubjectVerbSubjectAst {
+                        player: crate::cards::builders::PlayerAst::Implicit,
+                        ..
+                    },
+                    ..
+                }
+            )
+        ]
+    ));
+}
+
+#[test]
+fn conditional_optional_hand_wheel_keeps_the_typed_sequence_inside_one_may_scope() {
+    let tokens = lex_line(
+        "If embark gets more votes or the vote is tied, each player may discard their hand and draw seven cards.",
+        0,
+    )
+    .expect("conditional optional hand-wheel sentence should lex");
+    let effects = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("conditional optional hand-wheel sentence should parse");
+
+    let [crate::cards::builders::EffectAst::Conditional { if_true, .. }] = effects.as_slice()
+    else {
+        panic!("expected conditional wrapper, got {effects:#?}");
+    };
+    let [crate::cards::builders::EffectAst::ForEachPlayer { effects }] = if_true.as_slice() else {
+        panic!("expected each-player wrapper inside conditional, got {if_true:#?}");
+    };
+    let optional_effects = match effects.as_slice() {
+        [crate::cards::builders::EffectAst::May { effects }]
+        | [crate::cards::builders::EffectAst::MayByPlayer { effects, .. }] => effects,
+        _ => panic!("expected one may scope inside conditional, got {effects:#?}"),
+    };
+    assert_eq!(
+        optional_effects.len(),
+        2,
+        "discard and draw must remain in the same may scope: {optional_effects:#?}"
+    );
+}
+
+#[test]
+fn activated_self_move_from_the_command_zone_is_functional_there() {
+    let built = CardDefinitionBuilder::new(CardId::from_raw(98_504), "Derevi")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{1}{G}{W}{U}: Put Derevi onto the battlefield from the command zone.")
+        .expect("command-zone self-move activation should compile");
+
+    let activated = built
+        .abilities
+        .iter()
+        .find(|ability| matches!(&ability.kind, crate::ability::AbilityKind::Activated(_)))
+        .expect("expected activated ability");
+    assert_eq!(activated.functional_zones, vec![crate::zone::Zone::Command]);
 }
 
 #[test]
@@ -14493,7 +16520,7 @@ fn rewrite_semantic_parse_supports_adamant_spent_to_cast_statement_line()
 
     assert!(matches!(
         doc.items.as_slice(),
-        [RewriteSemanticItem::Statement(_)]
+        [RewriteSemanticItem::ParsedLine(_)]
     ));
     Ok(())
 }
@@ -14597,6 +16624,17 @@ fn rewrite_lowered_supports_spent_to_cast_conditional_chain() -> Result<(), Card
 
 #[test]
 fn rewrite_lowered_preserves_etb_spent_to_cast_it_intervening_if() -> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("etb_spent_to_cast_intervening_if_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_preserves_etb_spent_to_cast_it_intervening_if_inner)
+        .expect("etb spent-to-cast regression thread should spawn")
+        .join()
+        .expect("etb spent-to-cast regression thread should not panic")
+}
+
+fn rewrite_lowered_preserves_etb_spent_to_cast_it_intervening_if_inner() -> Result<(), CardTextError>
+{
     let builder = CardDefinitionBuilder::new(CardId::new(), "Gruul Scrapper")
         .card_types(vec![CardType::Creature]);
     let (definition, _) = parse_text_with_annotations_lowered(
@@ -14785,6 +16823,17 @@ fn rewrite_lowered_retargets_spell_cast_no_mana_intervening_if() -> Result<(), C
 #[test]
 fn rewrite_lowered_binds_event_object_intervening_if_to_triggering_object()
 -> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("event_object_intervening_if_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_binds_event_object_intervening_if_to_triggering_object_inner)
+        .expect("event-object intervening-if regression thread should spawn")
+        .join()
+        .expect("event-object intervening-if regression thread should not panic")
+}
+
+fn rewrite_lowered_binds_event_object_intervening_if_to_triggering_object_inner()
+-> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Deathknell Variant")
         .card_types(vec![CardType::Creature]);
     let (definition, _) = parse_text_with_annotations_lowered(
@@ -14799,6 +16848,280 @@ fn rewrite_lowered_binds_event_object_intervening_if_to_triggering_object()
     assert!(debug.contains("\"triggering\""), "{debug}");
     assert!(!debug.contains("TargetMatches"), "{debug}");
     assert!(debug.contains("CreateTokenEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_second_landfall_intervening_if_comes_from_predicate_grammar()
+-> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("second_landfall_intervening_if_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_second_landfall_intervening_if_comes_from_predicate_grammar_inner)
+        .expect("second-landfall regression thread should spawn")
+        .join()
+        .expect("second-landfall regression thread should not panic")
+}
+
+fn rewrite_lowered_second_landfall_intervening_if_comes_from_predicate_grammar_inner()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Tunnel Ignus Variant")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever a land enters under an opponent's control, if that player had another land enter the battlefield under their control this turn, this creature deals 3 damage to that player."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("intervening_if: Some"), "{debug}");
+    assert!(debug.contains("LandsEnteredBattlefieldThisTurn"), "{debug}");
+    assert!(debug.contains("GreaterThanOrEqual"), "{debug}");
+    assert!(debug.contains("ControllerOf"), "{debug}");
+    assert!(debug.contains("\"triggering\""), "{debug}");
+    assert!(debug.contains("DealDamageEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_generic_damage_to_object_trigger_preserves_recipient_filter()
+-> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("generic_damage_to_object_trigger_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_generic_damage_to_object_trigger_preserves_recipient_filter_inner)
+        .expect("generic damage-to-object regression thread should spawn")
+        .join()
+        .expect("generic damage-to-object regression thread should not panic")
+}
+
+fn rewrite_lowered_generic_damage_to_object_trigger_preserves_recipient_filter_inner()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Kusari-Gama Variant")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Equipped creature has \"{2}: This creature gets +1/+0 until end of turn.\"\nWhenever equipped creature deals damage to a blocking creature, this Equipment deals that much damage to each other creature defending player controls.\nEquip {3}"
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("DealsDamageTo"), "{debug}");
+    assert!(debug.contains("blocking: true"), "{debug}");
+    assert!(debug.contains("EventValue"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_spell_countered_trigger_comes_from_trigger_grammar() -> Result<(), CardTextError>
+{
+    std::thread::Builder::new()
+        .name("spell_countered_trigger_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_spell_countered_trigger_comes_from_trigger_grammar_inner)
+        .expect("spell-countered regression thread should spawn")
+        .join()
+        .expect("spell-countered regression thread should not panic")
+}
+
+fn rewrite_lowered_spell_countered_trigger_comes_from_trigger_grammar_inner()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Multani's Presence Variant")
+        .card_types(vec![CardType::Enchantment]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever a spell you've cast is countered, draw a card.".to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("SpellCountered"), "{debug}");
+    assert!(debug.contains("controller: You"), "{debug}");
+    assert!(!debug.contains("SpellCast"), "{debug}");
+    assert!(debug.contains("DrawCardsEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lexed_return_all_cycled_or_discarded_cards_keeps_history_filter() {
+    let text =
+        "Return all cards in your graveyard that you cycled or discarded this turn to your hand.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify cycled/discarded return");
+
+    let parsed = parse_effect_sentence_lexed(&tokens)
+        .expect("cycled/discarded return sentence should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("ReturnAllToHand"), "{debug}");
+    assert!(
+        debug.contains("discarded_or_cycled_this_turn_by: Some"),
+        "{debug}"
+    );
+    assert!(debug.contains("You"), "{debug}");
+}
+
+#[test]
+fn rewrite_lowered_cycled_or_discarded_graveyard_return_comes_from_filter_grammar()
+-> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("cycled_or_discarded_return_filter_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_cycled_or_discarded_graveyard_return_comes_from_filter_grammar_inner)
+        .expect("cycled/discarded return regression thread should spawn")
+        .join()
+        .expect("cycled/discarded return regression thread should not panic")
+}
+
+fn rewrite_lowered_cycled_or_discarded_graveyard_return_comes_from_filter_grammar_inner()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Shadow of the Grave Variant")
+        .card_types(vec![CardType::Instant]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Return to your hand all cards in your graveyard that you cycled or discarded this turn."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("ReturnToHandEffect"), "{debug}");
+    assert!(
+        debug.contains("discarded_or_cycled_this_turn_by: Some"),
+        "{debug}"
+    );
+    assert!(debug.contains("You"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_telemin_consult_sequence_comes_from_sequence_grammar()
+-> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("telemin_consult_sequence_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_telemin_consult_sequence_comes_from_sequence_grammar_inner)
+        .expect("Telemin consult regression thread should spawn")
+        .join()
+        .expect("Telemin consult regression thread should not panic")
+}
+
+fn rewrite_lowered_telemin_consult_sequence_comes_from_sequence_grammar_inner()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Telemin Performance Variant")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Target opponent reveals cards from the top of their library until they reveal a creature card. That player puts all noncreature cards revealed this way into their graveyard, then you put the creature card onto the battlefield under your control."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("ConsultTopOfLibraryEffect"), "{debug}");
+    assert!(debug.contains("PutOntoBattlefieldEffect"), "{debug}");
+    assert!(debug.contains("ForEachTagged"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_tempting_offer_copy_spell_comes_from_sequence_grammar()
+-> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("tempting_offer_copy_spell_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_tempting_offer_copy_spell_comes_from_sequence_grammar_inner)
+        .expect("Tempting offer copy-spell regression thread should spawn")
+        .join()
+        .expect("Tempting offer copy-spell regression thread should not panic")
+}
+
+fn rewrite_lowered_tempting_offer_copy_spell_comes_from_sequence_grammar_inner()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Tempt with Mayhem Variant")
+        .card_types(vec![CardType::Instant]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Tempting offer — Choose target instant or sorcery spell. Each opponent may copy that spell and may choose new targets for the copy they control. You copy that spell once plus an additional time for each opponent who copied the spell this way. You may choose new targets for the copies you control."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("CopySpellEffect"), "{debug}");
+    assert!(debug.contains("copier: IteratedPlayer"), "{debug}");
+    assert!(debug.contains("PlayersWithPositiveCount"), "{debug}");
+    assert!(!debug.contains("PendingEffectMetric"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_reciprocal_creature_control_comes_from_sequence_grammar()
+-> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("reciprocal_creature_control_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_reciprocal_creature_control_comes_from_sequence_grammar_inner)
+        .expect("reciprocal creature-control regression thread should spawn")
+        .join()
+        .expect("reciprocal creature-control regression thread should not panic")
+}
+
+fn rewrite_lowered_reciprocal_creature_control_comes_from_sequence_grammar_inner()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Twist Allegiance Variant")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "You and target opponent each gain control of all creatures the other controls until end of turn. Untap those creatures. Those creatures gain haste until end of turn."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("TagMatchingObjectsEffect"), "{debug}");
+    assert!(debug.contains("__twist_your_creatures__"), "{debug}");
+    assert!(debug.contains("__twist_opponent_creatures__"), "{debug}");
+    assert!(debug.contains("ChangeControllerToPlayer"), "{debug}");
+    assert!(debug.contains("Target("), "{debug}");
+    assert!(debug.contains("Opponent"), "{debug}");
+    assert!(debug.contains("UntapEffect"), "{debug}");
+    assert!(debug.contains("AddAbility"), "{debug}");
+    assert!(debug.contains("haste"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_tempting_offer_return_uses_iterated_opponent_chooser()
+-> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("tempting_offer_return_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_tempting_offer_return_uses_iterated_opponent_chooser_inner)
+        .expect("tempting-offer return regression thread should spawn")
+        .join()
+        .expect("tempting-offer return regression thread should not panic")
+}
+
+fn rewrite_lowered_tempting_offer_return_uses_iterated_opponent_chooser_inner()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Tempting Offer Variant")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Tempting offer — Return a creature card from your graveyard to the battlefield. Each opponent may return a creature card from their graveyard to the battlefield. For each opponent who does, return a creature card from your graveyard to the battlefield."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:?}");
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(debug.contains("decider: Some(IteratedPlayer)"), "{debug}");
+    assert!(debug.contains("chooser: IteratedPlayer"), "{debug}");
+    assert!(debug.contains("owner: Some(IteratedPlayer)"), "{debug}");
     Ok(())
 }
 
@@ -14829,6 +17152,17 @@ fn rewrite_lowered_binds_effect_level_it_condition_to_prior_chosen_object()
 
 #[test]
 fn rewrite_lowered_binds_effect_level_it_condition_to_prior_search_result()
+-> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("effect_level_it_search_result_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_binds_effect_level_it_condition_to_prior_search_result_inner)
+        .expect("effect-level search-result regression thread should spawn")
+        .join()
+        .expect("effect-level search-result regression thread should not panic")
+}
+
+fn rewrite_lowered_binds_effect_level_it_condition_to_prior_search_result_inner()
 -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Oriq Variant")
         .card_types(vec![CardType::Creature]);
@@ -15301,6 +17635,56 @@ fn rewrite_lexed_effect_sentence_does_not_strip_unknown_labeled_prefix() {
 }
 
 #[test]
+fn typed_labeled_line_regressions_cover_saga_choice_cycling_and_quoted_rules() {
+    let saga = CardDefinitionBuilder::new(CardId::new(), "Labeled Saga")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "I, II, III — Pain — You draw a card and you lose 1 life.\nIV — Oblivion — Each opponent sacrifices a creature of their choice and loses 3 life.",
+        )
+        .expect("typed Saga chapter presentation labels should parse");
+    let saga_debug = format!("{saga:#?}");
+    assert!(saga_debug.contains("SagaChapter"), "{saga_debug}");
+    assert!(saga_debug.contains("Draw"), "{saga_debug}");
+    assert!(saga_debug.contains("Sacrifice"), "{saga_debug}");
+
+    let villainous = CardDefinitionBuilder::new(CardId::new(), "Villainous Choice Trigger")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of your end step, draw a card. Then each opponent faces a villainous choice — That player discards a card, or you may put a Construct, Robot, or Vehicle card from your hand onto the battlefield.",
+        )
+        .expect("typed each-opponent villainous-choice separator should parse");
+    let villainous_debug = format!("{villainous:#?}");
+    assert!(
+        villainous_debug.contains("VillainousChoiceEffect")
+            && villainous_debug.contains("IteratedPlayer"),
+        "{villainous_debug}"
+    );
+
+    let cycling = CardDefinitionBuilder::new(CardId::new(), "Nonmana Cycling")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Cycling—Sacrifice a land. (Sacrifice a land, Discard this card: Draw a card.)")
+        .expect("typed nonmana cycling cost should parse");
+    let cycling_debug = format!("{cycling:#?}");
+    assert!(cycling_debug.contains("SacrificeEffect"), "{cycling_debug}");
+    assert!(cycling_debug.contains("Cycle"), "{cycling_debug}");
+
+    let quoted_token_rule =
+        CardDefinitionBuilder::new(CardId::new(), "Quoted Labeled Token Rule")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, create Zabu, a legendary 2/2 green Cat creature token with \"Landfall — Whenever a land you control enters, put a +1/+1 counter on Zabu.\"",
+        )
+        .expect("a dash inside quoted token rules must not be classified as a leading label");
+    let quoted_token_debug = format!("{quoted_token_rule:#?}");
+    assert!(
+        quoted_token_debug.contains("PutCountersEffect")
+            && quoted_token_debug.contains("PlusOnePlusOne")
+            && quoted_token_debug.contains("Land"),
+        "the typed token rule must lower its land trigger and counter effect: {quoted_token_debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_preserves_non_vampire_sacrifice_filter() {
     let text = "Each player sacrifices a non-Vampire creature of their choice.";
     let lexed =
@@ -15483,13 +17867,13 @@ fn rewrite_count_word_parser_handles_digits_and_words() {
 
     let split_word_tokens = lex_line("twenty one", 0).expect("lexer should classify split words");
     assert_eq!(
-        super::grammar::values::parse_number_from_lexed(&split_word_tokens),
+        super::grammar::values::parse_number_prefix_lexed(&split_word_tokens),
         Some((21, 2))
     );
 
     let hundred_tokens = lex_line("one hundred", 0).expect("lexer should classify hundred");
     assert_eq!(
-        super::grammar::values::parse_number_from_lexed(&hundred_tokens),
+        super::grammar::values::parse_number_prefix_lexed(&hundred_tokens),
         Some((100, 2))
     );
 }
@@ -15639,10 +18023,10 @@ fn rewrite_shared_scryfall_mana_cost_parser_handles_grouped_and_empty_costs() {
 }
 
 #[test]
-fn rewrite_values_parse_value_from_lexed_trims_edge_punctuation() {
+fn rewrite_values_parse_value_prefix_trims_edge_punctuation() {
     let tokens = lex_line("\"three,\"", 0)
         .expect("rewrite lexer should classify punctuation-wrapped values");
-    let (value, used) = super::grammar::values::parse_value_from_lexed(&tokens)
+    let (value, used) = super::grammar::values::parse_value_prefix_lexed(&tokens)
         .expect("direct values parser should trim edge punctuation");
 
     assert_eq!(value, crate::effect::Value::Fixed(3));
@@ -15827,10 +18211,10 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
         [super::ActivationCostSegmentCst::RemoveCountersAmong {
             counter_type: None,
             count: 1,
-            filter_text,
+            filter,
             display_x: false,
             dynamic: false,
-        }] if filter_text == "this creature"
+        }] if filter.source
     ));
     assert!(matches!(
         exile_hand.segments.as_slice(),
@@ -15877,7 +18261,7 @@ fn rewrite_activation_cost_parses_pay_mana_life_exert_and_bare_symbols() {
 
     assert!(matches!(
         pay_life.segments.as_slice(),
-        [super::ActivationCostSegmentCst::Life(3)]
+        [super::ActivationCostSegmentCst::Life(Value::Fixed(3))]
     ));
     match pay_mana.segments.as_slice() {
         [super::ActivationCostSegmentCst::Mana(cost)] => assert_eq!(
@@ -15974,6 +18358,34 @@ fn rewrite_activation_cost_parses_shard_style_without_raw_branch_splitting() {
 }
 
 #[test]
+fn rewrite_activation_cost_preserves_alternative_and_dynamic_life_branches() {
+    let alternative = parse_activation_cost_rewrite("Pay {3} or discard a card")
+        .expect("activation-cost grammar should preserve alternative payments");
+    assert!(alternative.segments.is_empty());
+    assert_eq!(alternative.alternative_branches.len(), 2);
+    let lowered = lower_activation_cost_cst(&alternative)
+        .expect("alternative activation cost should lower recursively");
+    let choose = lowered
+        .as_all()
+        .and_then(|costs| costs.first())
+        .and_then(crate::costs::Cost::effect_ref)
+        .and_then(crate::effect::Effect::as_choose_mode)
+        .expect("alternative activation cost should lower to a cost-executable modal choice");
+    assert_eq!(choose.modes.len(), 2);
+    assert_eq!(choose.modes[0].source_text, "Pay {3}");
+    assert_eq!(choose.modes[1].source_text, "discard a card");
+
+    let dynamic = parse_activation_cost_rewrite("Pay 1 life for each card in your hand")
+        .expect("activation-cost grammar should parse dynamic life payments");
+    assert!(matches!(
+        dynamic.segments.as_slice(),
+        [super::ActivationCostSegmentCst::Life(Value::CardsInHand(
+            crate::target::PlayerFilter::You
+        ))]
+    ));
+}
+
+#[test]
 fn rewrite_activation_cost_token_entrypoint_parses_pay_bare_symbol_and_exert_variants() {
     let pay_energy_tokens =
         lex_line("Pay two {E}", 0).expect("lexer should classify counted-energy activation cost");
@@ -16066,14 +18478,12 @@ fn rewrite_activation_cost_preserves_named_card_and_followup_segments() {
                 other,
                 ..
             },
-            super::ActivationCostSegmentCst::SacrificeChosen {
-                count, filter_text, ..
-            },
+            super::ActivationCostSegmentCst::SacrificeChosen { count, filter, .. },
         ] => {
             assert_eq!(name, "skoa, embermage");
             assert!(*other, "expected 'another' modifier to be preserved");
-            assert_eq!(*count, 2);
-            assert_eq!(filter_text, "mountains");
+            assert_eq!(*count, crate::effect::ChoiceCount::exactly(2));
+            assert_eq!(filter.subtypes, vec![Subtype::Mountain]);
         }
         other => panic!("unexpected activation cost segments: {other:?}"),
     }
@@ -16102,9 +18512,11 @@ fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants
         tap_cst.segments.as_slice(),
         [super::ActivationCostSegmentCst::TapChosen {
             count: 1,
-            filter_text,
-            other: true,
-        }] if filter_text == "creature you control"
+            filter,
+        }] if filter.card_types == [CardType::Creature]
+            && filter.controller == Some(crate::target::PlayerFilter::You)
+            && filter.untapped
+            && filter.other
     ));
 
     let return_tokens = lex_line("Return a creature you control to its owner's hand", 0)
@@ -16113,8 +18525,9 @@ fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants
         .expect("token activation-cost parser should parse return-to-hand costs");
     assert!(matches!(
         return_cst.segments.as_slice(),
-        [super::ActivationCostSegmentCst::ReturnChosenToHand { count: 1, filter_text }]
-            if filter_text == "creature you control"
+        [super::ActivationCostSegmentCst::ReturnChosenToHand { count: 1, filter }]
+            if filter.card_types == [CardType::Creature]
+                && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
 
     let exile_tokens = lex_line("Exile one or more cards from your graveyard", 0)
@@ -16125,11 +18538,10 @@ fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants
         exile_cst.segments.as_slice(),
         [super::ActivationCostSegmentCst::ExileChosen {
             choice_count,
-            filter_text,
-            source_zone,
+            filter,
         }] if *choice_count == ChoiceCount::at_least(1)
-            && filter_text == "cards from your graveyard"
-            && *source_zone == Some(Zone::Graveyard)
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.owner == Some(crate::target::PlayerFilter::You)
     ));
 
     let single_graveyard_tokens = lex_line("Exile a card from a single graveyard", 0)
@@ -16140,11 +18552,10 @@ fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants
         single_graveyard_cst.segments.as_slice(),
         [super::ActivationCostSegmentCst::ExileChosen {
             choice_count,
-            filter_text,
-            source_zone,
+            filter,
         }] if *choice_count == ChoiceCount::exactly(1)
-            && filter_text == "card from a graveyard"
-            && source_zone.is_none()
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.single_graveyard
     ));
 
     let exile_hand_tokens = lex_line("Exile a nonland card from your hand", 0)
@@ -16207,8 +18618,10 @@ fn rewrite_activation_cost_token_entrypoint_parses_counter_variants() {
         [super::ActivationCostSegmentCst::PutCountersChosen {
             counter_type: CounterType::PlusOnePlusOne,
             count: 1,
-            filter_text,
-        }] if filter_text == "a creature you control"
+            filter,
+            source_equivalent: true,
+        }] if filter.card_types == [CardType::Creature]
+            && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
 
     let processor_tokens = lex_line(
@@ -16235,10 +18648,11 @@ fn rewrite_activation_cost_token_entrypoint_parses_counter_variants() {
         [super::ActivationCostSegmentCst::RemoveCountersAmong {
             counter_type: Some(CounterType::Charge),
             count: 0,
-            filter_text,
+            filter,
             display_x: false,
             dynamic: true,
-        }] if filter_text == "artifacts you control"
+        }] if filter.card_types == [CardType::Artifact]
+            && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
 
     let one_or_more_tokens = lex_line(
@@ -16253,10 +18667,11 @@ fn rewrite_activation_cost_token_entrypoint_parses_counter_variants() {
         [super::ActivationCostSegmentCst::RemoveCountersAmong {
             counter_type: Some(CounterType::PlusOnePlusOne),
             count: 1,
-            filter_text,
+            filter,
             display_x: false,
             dynamic: true,
-        }] if filter_text == "creatures you control"
+        }] if filter.card_types == [CardType::Creature]
+            && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
 }
 
@@ -16273,7 +18688,7 @@ fn rewrite_activation_cost_parser_keeps_among_list_with_commas_in_one_segment() 
         super::ActivationCostSegmentCst::RemoveCountersAmong {
             counter_type: None,
             count: 3,
-            filter_text,
+            filter,
             display_x: false,
             dynamic: false,
         },
@@ -16281,11 +18696,16 @@ fn rewrite_activation_cost_parser_keeps_among_list_with_commas_in_one_segment() 
     else {
         panic!("unexpected segments: {:?}", cst.segments);
     };
-    assert!(
-        filter_text == "other artifacts, creatures, and planeswalkers you control"
-            || filter_text == "other artifacts creatures and planeswalkers you control",
-        "unexpected filter text: {filter_text}"
+    assert_eq!(
+        filter.card_types,
+        vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Planeswalker
+        ]
     );
+    assert_eq!(filter.controller, Some(crate::target::PlayerFilter::You));
+    assert!(filter.other);
 }
 
 #[test]
@@ -16754,7 +19174,7 @@ fn rewrite_semantic_parse_merges_multiline_spell_when_you_do_followup() -> Resul
 
     assert!(matches!(
         doc.items.as_slice(),
-        [RewriteSemanticItem::Statement(_)]
+        [RewriteSemanticItem::ParsedLine(_)]
     ));
     Ok(())
 }
@@ -16812,23 +19232,74 @@ fn hordewing_skaab_parses_and_keeps_if_you_do_discard_followup() -> Result<(), C
 
 #[test]
 fn night_shift_parses_die_adjustment_and_zombie_employee_token() -> Result<(), CardTextError> {
+    std::thread::Builder::new()
+        .name("night_shift_parse_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(night_shift_parses_die_adjustment_and_zombie_employee_token_inner)
+        .expect("night shift regression thread should spawn")
+        .join()
+        .expect("night shift regression thread should not panic")
+}
+
+fn night_shift_parses_die_adjustment_and_zombie_employee_token_inner() -> Result<(), CardTextError>
+{
     let builder = CardDefinitionBuilder::new(CardId::new(), "Night Shift of the Living Dead")
         .card_types(vec![CardType::Enchantment]);
     let text = "After you roll a die, you may pay 1 life. If you do, increase or decrease the result by 1. Do this only once each turn.\nWhenever you roll a 6, create a 2/2 black Zombie Employee creature token.";
     let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
 
-    let debug = format!("{definition:#?}");
+    let die_adjustment = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::DieRollResultAdjustment =>
+            {
+                match &static_ability.payload {
+                    StaticAbilityPayload::DieRollResultAdjustment(spec) => Some(spec),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .expect("expected lowered die-roll result adjustment static ability");
+    assert_eq!(die_adjustment.life_cost, 1);
+    assert_eq!(die_adjustment.amount, 1);
     assert!(
-        debug.contains("DieRollResultAdjustment"),
-        "expected lowered die-roll result adjustment static ability: {debug}"
+        die_adjustment.once_each_turn,
+        "expected die-roll adjustment to keep once-each-turn restriction"
     );
     assert!(
-        debug.contains("PlayerRollsResult") && debug.contains("CreateTokenEffect"),
-        "expected die-roll trigger to create a token: {debug}"
+        matches!(&die_adjustment.player, crate::target::PlayerFilter::You),
+        "expected die-roll adjustment to apply to you"
     );
+
+    let roll_trigger = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if matches!(
+                    &triggered.trigger.kind,
+                    TriggerKind::PlayerRollsResult {
+                        player: crate::target::PlayerFilter::You,
+                        result: 6,
+                    }
+                ) =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("expected die-roll trigger");
+    let created_token = roll_trigger
+        .effects
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("expected die-roll trigger to create a token");
     assert!(
-        debug.contains("Zombie") && debug.contains("Employee"),
-        "expected created token to keep both creature subtypes: {debug}"
+        created_token.token.card.subtypes == vec![Subtype::Zombie, Subtype::Employee],
+        "expected created token to keep both creature subtypes"
     );
 
     Ok(())
@@ -16960,13 +19431,15 @@ fn rewrite_semantic_parse_keeps_nested_combat_whenever_trigger() -> Result<(), C
         false,
     )?;
 
-    match doc.items.as_slice() {
-        [RewriteSemanticItem::Triggered(triggered)] => {
-            assert_eq!(triggered.trigger_text, "this creature attacks");
-            assert_eq!(triggered.effect_text, "draw a card.");
-        }
-        other => panic!("expected one triggered semantic item, got {other:?}"),
-    }
+    let [item] = doc.items.as_slice() else {
+        panic!("expected one triggered semantic item, got {:?}", doc.items);
+    };
+    let (trigger, effects, _) =
+        rewrite_direct_triggered_chunk(item).expect("expected a typed triggered semantic chunk");
+    let trigger_debug = format!("{trigger:?}");
+    let effects_debug = format!("{effects:?}");
+    assert!(trigger_debug.contains("Attacks"), "{trigger_debug}");
+    assert!(effects_debug.contains("Draw"), "{effects_debug}");
 
     Ok(())
 }
@@ -16982,13 +19455,15 @@ fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Result<(), Card
     )?;
     let parsed = super::pipeline::parse_semantic_document(doc)?;
 
-    let expect_toggo_token_name = |effects: &[crate::cards::builders::EffectAst]| match effects {
+    let expect_toggo_token_shape = |effects: &[crate::cards::builders::EffectAst]| match effects {
         [
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
                     action:
                         crate::cards::builders::SubjectVerbActionAst::CreateTokenWithMods {
-                            name, ..
+                            name,
+                            definition,
+                            ..
                         },
                     ..
                 },
@@ -17007,75 +19482,34 @@ fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Result<(), Card
                 lower_name.contains("equip {1}"),
                 "expected equip text in token payload, got {name}"
             );
-
-            let words: Vec<&str> = lower_name
-                .split_whitespace()
-                .map(|word| {
-                    word.trim_matches(|ch: char| {
-                        !ch.is_ascii_alphanumeric() && ch != '/' && ch != '+' && ch != '-'
-                    })
-                })
-                .map(|word| match word {
-                    "can't" | "cannot" => "cant",
-                    "aren't" => "arent",
-                    "isn't" => "isnt",
-                    "they're" => "theyre",
-                    "it's" => "its",
-                    "you're" => "youre",
-                    _ => word,
-                })
-                .filter(|word| !word.is_empty())
-                .collect();
-            let rules_text = super::compile_support::parse_equipment_rules_text(&words, name)
-                .expect("toggo token payload should yield equipment rules text");
-            let manual_def = CardDefinitionBuilder::new(CardId::new(), "Rock")
-                    .token()
-                    .card_types(vec![CardType::Artifact])
-                    .subtypes(vec![Subtype::Equipment])
-                    .with_ability(crate::ability::Ability::static_ability(
-                        crate::static_abilities::StaticAbility::make_colorless(
-                            crate::target::ObjectFilter::source(),
-                        ),
-                    ))
-                    .parse_text(&rules_text)
-                    .unwrap_or_else(|err| {
-                        panic!(
-                            "toggo equipment rules text should parse: {err:?}\nname={name}\nrules_text={rules_text}"
-                        )
-                    });
-            let manual_activated_costs = manual_def
-                .abilities
-                .iter()
-                .filter_map(|ability| match &ability.kind {
-                    crate::ability::AbilityKind::Activated(activated) => {
-                        Some(activated.mana_cost.display())
-                    }
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            assert!(
-                manual_activated_costs
-                    .iter()
-                    .any(|text| text.contains("{1}")),
-                "expected manual token reparse to keep equip cost, got {manual_activated_costs:?}"
-            );
-
-            let def = super::compile_support::token_definition_for(name)
-                .expect("toggo token payload should round-trip into a token definition");
-            let activated_costs = def
-                .abilities
-                .iter()
-                .filter_map(|ability| match &ability.kind {
-                    crate::ability::AbilityKind::Activated(activated) => {
-                        Some(activated.mana_cost.display())
-                    }
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            assert!(
-                activated_costs.iter().any(|text| text.contains("{1}")),
-                "expected round-tripped token to keep equip cost, got {activated_costs:?}"
-            );
+            let super::token_definition::TokenDefinitionSpec::Artifact(artifact) = definition
+            else {
+                panic!("expected typed artifact token definition, got {definition:?}");
+            };
+            assert_eq!(artifact.name, "Rock");
+            assert_eq!(artifact.subtypes, vec![Subtype::Equipment]);
+            let equipment = artifact
+                .equipment_rules
+                .as_ref()
+                .expect("Toggo should carry typed equipment rules before lowering");
+            assert!(equipment.lines.iter().any(|line| matches!(
+                line,
+                super::token_definition::EquipmentRuleLineShape::GrantedDamage {
+                    grant: super::token_definition::EquipmentDamageGrantShape {
+                        generic_amount: Some(1),
+                        tap_cost: true,
+                        sacrifice_equipment: true,
+                        damage_amount: 2,
+                    },
+                    ..
+                }
+            )));
+            assert!(equipment.lines.iter().any(|line| matches!(
+                line,
+                super::token_definition::EquipmentRuleLineShape::Equip(
+                    super::token_definition::TokenEquipShape { amount: 1 }
+                )
+            )));
         }
         other => panic!("expected a single token creation effect, got {other:?}"),
     };
@@ -17083,13 +19517,13 @@ fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Result<(), Card
     match parsed.items.as_slice() {
         [crate::cards::builders::ParsedCardItem::Line(line)] => match line.chunks.as_slice() {
             [crate::cards::builders::LineAst::Triggered { effects, .. }] => {
-                expect_toggo_token_name(&effects);
+                expect_toggo_token_shape(&effects);
             }
             [crate::cards::builders::LineAst::Ability(parsed)] => {
                 let Some(effects) = parsed.effects_ast.as_ref() else {
                     panic!("expected landfall ability to keep parsed effects ast");
                 };
-                expect_toggo_token_name(effects);
+                expect_toggo_token_shape(effects);
             }
             other => panic!("expected triggered line ast, got {other:?}"),
         },
@@ -17128,12 +19562,16 @@ fn rewrite_semantic_parse_keeps_trigger_trigger_caps_and_first_time_suffixes()
         false,
     )?;
 
-    match capped_doc.items.as_slice() {
-        [RewriteSemanticItem::Triggered(triggered)] => {
-            assert_eq!(triggered.max_triggers_per_turn, Some(1));
-        }
-        other => panic!("expected one triggered semantic item, got {other:?}"),
-    }
+    let [capped] = capped_doc.items.as_slice() else {
+        panic!(
+            "expected one triggered semantic item, got {:?}",
+            capped_doc.items
+        );
+    };
+    assert_eq!(
+        rewrite_direct_triggered_chunk(capped).map(|(_, _, cap)| cap),
+        Some(Some(1))
+    );
 
     let (first_time_doc, _) = parse_text_to_semantic_document(
         CardDefinitionBuilder::new(CardId::new(), "First Time Trigger Variant")
@@ -17143,14 +19581,17 @@ fn rewrite_semantic_parse_keeps_trigger_trigger_caps_and_first_time_suffixes()
         false,
     )?;
 
-    match first_time_doc.items.as_slice() {
-        [RewriteSemanticItem::Triggered(triggered)] => {
-            assert_eq!(triggered.max_triggers_per_turn, Some(1));
-            assert_eq!(triggered.trigger_text, "one or more creatures attack you");
-            assert_eq!(triggered.effect_text, "draw a card.");
-        }
-        other => panic!("expected one triggered semantic item, got {other:?}"),
-    }
+    let [first_time] = first_time_doc.items.as_slice() else {
+        panic!(
+            "expected one triggered semantic item, got {:?}",
+            first_time_doc.items
+        );
+    };
+    let (trigger, effects, cap) = rewrite_direct_triggered_chunk(first_time)
+        .expect("expected first-time trigger to carry typed semantic data");
+    assert_eq!(cap, Some(1));
+    assert!(format!("{trigger:?}").contains("Attacks"));
+    assert!(format!("{effects:?}").contains("Draw"));
 
     Ok(())
 }
@@ -17168,34 +19609,42 @@ fn rewrite_semantic_parse_accepts_do_this_only_once_each_turn_trigger_cap()
     let triggered = doc
         .items
         .iter()
-        .find_map(|item| match item {
-            RewriteSemanticItem::Triggered(triggered) => Some(triggered),
-            _ => None,
+        .filter_map(rewrite_parsed_line)
+        .find(|line| {
+            line.chunks
+                .iter()
+                .any(|chunk| matches!(chunk, LineAst::Triggered { .. } | LineAst::Ability(_)))
         })
         .expect("expected Deep Gnome Terramancer to parse as a triggered line");
 
-    assert_eq!(triggered.max_triggers_per_turn, Some(1));
+    let chunk_debug = format!("{:?}", triggered.chunks);
     assert!(
-        triggered
-            .trigger_text
-            .contains("one or more lands enter under an opponent's control without being played"),
-        "unexpected trigger text: {}",
-        triggered.trigger_text
+        chunk_debug.contains("max_triggers_per_turn: Some(1)")
+            || chunk_debug.contains("DoThisMaxTimesEachTurn(1)"),
+        "{chunk_debug}"
     );
     assert!(
         triggered
-            .effect_text
+            .info
+            .normalized
+            .normalized
+            .contains("one or more lands enter under an opponent's control without being played"),
+        "unexpected normalized line: {}",
+        triggered.info.normalized.normalized
+    );
+    assert!(
+        triggered
+            .info
+            .normalized
+            .normalized
             .to_ascii_lowercase()
             .contains("search your library for a plains card"),
-        "unexpected effect text: {}",
-        triggered.effect_text
+        "unexpected normalized line: {}",
+        triggered.info.normalized.normalized
     );
     assert!(
-        !triggered
-            .effect_text
-            .contains("Do this only once each turn"),
-        "cap sentence should stay out of the effect text: {}",
-        triggered.effect_text
+        !chunk_debug.contains("Do this only once each turn"),
+        "cap sentence should stay out of the typed effect: {chunk_debug}",
     );
 
     Ok(())
@@ -17211,13 +19660,13 @@ fn rewrite_semantic_parse_keeps_intervening_if_trigger_split() -> Result<(), Car
         false,
     )?;
 
-    match doc.items.as_slice() {
-        [RewriteSemanticItem::Triggered(triggered)] => {
-            assert_eq!(triggered.trigger_text, "the beginning of your upkeep");
-            assert_eq!(triggered.effect_text, "draw a card.");
-        }
-        other => panic!("expected one triggered semantic item, got {other:?}"),
-    }
+    let [item] = doc.items.as_slice() else {
+        panic!("expected one triggered semantic item, got {:?}", doc.items);
+    };
+    let (trigger, effects, _) =
+        rewrite_direct_triggered_chunk(item).expect("expected typed intervening-if trigger");
+    assert!(format!("{trigger:?}").contains("Upkeep"));
+    assert!(format!("{effects:?}").contains("Draw"));
 
     Ok(())
 }
@@ -17233,19 +19682,13 @@ fn rewrite_semantic_parse_accepts_becomes_targeted_by_spell_filter_trigger()
         false,
     )?;
 
-    match doc.items.as_slice() {
-        [RewriteSemanticItem::Triggered(triggered)] => {
-            assert_eq!(
-                triggered.trigger_text,
-                "a creature you control becomes the target of an instant or sorcery spell"
-            );
-            assert_eq!(
-                triggered.effect_text,
-                "that creature gets +3/+3 until end of turn."
-            );
-        }
-        other => panic!("expected one triggered semantic item, got {other:?}"),
-    }
+    let [item] = doc.items.as_slice() else {
+        panic!("expected one triggered semantic item, got {:?}", doc.items);
+    };
+    let (trigger, effects, _) =
+        rewrite_direct_triggered_chunk(item).expect("expected typed becomes-targeted trigger");
+    assert!(format!("{trigger:?}").contains("Target"));
+    assert!(format!("{effects:?}").contains("Pump"));
 
     Ok(())
 }
@@ -17271,6 +19714,17 @@ fn rewrite_semantic_parse_marks_plumb_additional_cost_as_non_choice() -> Result<
 #[test]
 fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result<(), CardTextError>
 {
+    std::thread::Builder::new()
+        .name("former_section9_regression".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(rewrite_lowered_former_section9_cases_parse_without_fallback_text_inner)
+        .expect("former section-9 regression thread should spawn")
+        .join()
+        .expect("former section-9 regression thread should not panic")
+}
+
+fn rewrite_lowered_former_section9_cases_parse_without_fallback_text_inner()
+-> Result<(), CardTextError> {
     let cases = vec![
         (
             CardDefinitionBuilder::new(CardId::new(), "Section 9 Poison")
@@ -18280,5 +20734,115 @@ fn mill_then_compound_payment_if_you_do_choice_uses_milled_cards() {
     assert!(
         !debug.contains("Library"),
         "milled-card choice should not look back into the library: {debug}"
+    );
+}
+
+#[test]
+fn typed_backup_actions_preserve_boundaries_and_never_grant_generated_backup_triggers() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Multiple Backup")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Backup 1\nFlying\nBackup 2\nVigilance".to_string(),
+        false,
+    )
+    .expect("typed Backup keyword lines should lower");
+
+    assert_eq!(definition.abilities.len(), 4);
+    let ability_ids = |abilities: &[crate::ability::Ability]| {
+        abilities
+            .iter()
+            .map(|ability| match &ability.kind {
+                AbilityKind::Static(ability) => ability.id(),
+                other => panic!("Backup should grant only actual trailing abilities: {other:?}"),
+            })
+            .collect::<Vec<_>>()
+    };
+    let backup_at = |index: usize| {
+        let AbilityKind::Triggered(triggered) = &definition.abilities[index].kind else {
+            panic!("expected Backup trigger at ability {index}");
+        };
+        let effects = triggered.effects.to_vec();
+        let backup = effects
+            .first()
+            .and_then(|effect| {
+                effect.downcast_ref::<crate::effects::BackupEffect<crate::ability::Ability>>()
+            })
+            .expect("generated ETB ability should contain BackupEffect");
+        (backup.amount, ability_ids(&backup.granted_abilities))
+    };
+
+    assert_eq!(
+        backup_at(0),
+        (1, vec![StaticAbilityId::Flying, StaticAbilityId::Vigilance])
+    );
+    assert!(matches!(
+        &definition.abilities[1].kind,
+        AbilityKind::Static(ability) if ability.id() == StaticAbilityId::Flying
+    ));
+    assert_eq!(backup_at(2), (2, vec![StaticAbilityId::Vigilance]));
+    assert!(matches!(
+        &definition.abilities[3].kind,
+        AbilityKind::Static(ability) if ability.id() == StaticAbilityId::Vigilance
+    ));
+}
+
+#[test]
+fn typed_cipher_action_appends_resolution_effect_without_marker_ability() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Typed Cipher")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) =
+        parse_text_with_annotations_lowered(builder, "Draw a card.\nCipher".to_string(), false)
+            .expect("typed Cipher keyword line should lower");
+
+    assert!(
+        definition.abilities.is_empty(),
+        "Cipher must not survive lowering as a marker ability"
+    );
+    let effects = definition
+        .spell_effect
+        .expect("Cipher spell should have a resolution program")
+        .to_vec();
+    assert_eq!(
+        effects
+            .iter()
+            .filter(|effect| effect
+                .downcast_ref::<crate::effects::CipherEffect>()
+                .is_some())
+            .count(),
+        1,
+        "Cipher should append exactly one typed resolution effect"
+    );
+}
+
+#[test]
+fn exile_play_event_followups_lower_as_reflexive_or_delayed_triggers() {
+    let reflexive = CardDefinitionBuilder::new(CardId::new(), "Reflexive Exile Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{2}{R}, {T}: Exile the top card of your library. You may play that card this turn. When you exile a nonland card this way, this creature deals damage equal to the exiled card's mana value to any target.",
+        )
+        .expect("nonland exile followup should parse");
+    let reflexive_debug = format!("{:#?}", reflexive.abilities);
+    assert!(
+        reflexive_debug.contains("ReflexiveTriggerEffect")
+            && reflexive_debug.contains("AffectedObjectMatchesCardType")
+            && reflexive_debug.contains("Land")
+            && reflexive_debug.contains("negated: true"),
+        "{reflexive_debug}"
+    );
+
+    let delayed = CardDefinitionBuilder::new(CardId::new(), "Delayed Play Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "{2}{R}: Exile the top card of your library. You may play that card this turn. When you play a card this way, this enchantment deals 2 damage to each player.",
+        )
+        .expect("play-this-way followup should parse");
+    let delayed_debug = format!("{:#?}", delayed.abilities);
+    assert!(
+        delayed_debug.contains("ScheduleDelayedTriggerEffect")
+            && delayed_debug.contains("SpellCast")
+            && delayed_debug.contains("PlayerPlaysLand"),
+        "{delayed_debug}"
     );
 }

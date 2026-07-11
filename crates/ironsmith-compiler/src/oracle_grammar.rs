@@ -3,6 +3,7 @@ use crate::diagnostics::CardTextError;
 use crate::ids::CardId;
 use crate::runtime_backend::cst::{LevelItemKindCst, RewriteLineCst, UnsupportedLineCst};
 use crate::runtime_backend::document_parser::parse_document_cst;
+use crate::runtime_backend::ir::ChosenOptionContext;
 use crate::runtime_backend::lexer::{OwnedLexToken, render_token_slice};
 use crate::runtime_backend::model::LineInfo;
 use crate::runtime_backend::preprocess::preprocess_document;
@@ -142,7 +143,7 @@ fn convert_line(line: RewriteLineCst) -> OracleGrammarLine {
             cost_debug: format!("{:?}", line.cost),
             effect_text: line.effect_text,
             effect_parse_text: render_tokens(&line.effect_parse_tokens),
-            chosen_option_label: line.chosen_option_label,
+            chosen_option_label: chosen_option_surface(line.chosen_option),
         },
         RewriteLineCst::Triggered(line) => OracleGrammarLine::Triggered {
             info: convert_info(&line.info),
@@ -156,13 +157,13 @@ fn convert_line(line: RewriteLineCst) -> OracleGrammarLine {
                 .as_ref()
                 .map(|predicate| format!("{predicate:?}")),
             max_triggers_per_turn: line.max_triggers_per_turn,
-            chosen_option_label: line.chosen_option_label,
+            chosen_option_label: chosen_option_surface(line.chosen_option),
         },
         RewriteLineCst::Static(line) => OracleGrammarLine::Static {
             info: convert_info(&line.info),
             text: line.text,
             parse_text: render_tokens(&line.parse_tokens),
-            chosen_option_label: line.chosen_option_label,
+            chosen_option_label: chosen_option_surface(line.chosen_option),
         },
         RewriteLineCst::Statement(line) => OracleGrammarLine::Statement {
             info: convert_info(&line.info),
@@ -227,6 +228,13 @@ fn convert_line(line: RewriteLineCst) -> OracleGrammarLine {
             }
         }
     }
+}
+
+fn chosen_option_surface(context: Option<ChosenOptionContext>) -> Option<String> {
+    context.map(|context| match context {
+        ChosenOptionContext::SourceOption(label) => label,
+        other => format!("{other:?}"),
+    })
 }
 
 fn convert_info(info: &LineInfo) -> OracleGrammarLineInfo {

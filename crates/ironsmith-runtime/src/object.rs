@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::ability::Ability;
 use crate::alternative_cast::AlternativeCastingMethod;
-use crate::card::{Card, LinkedFaceLayout, PtValue};
+use crate::card::{Card, LinkedFaceLayout, PowerToughness, PtValue};
 use crate::color::{Color, ColorSet};
 use crate::cost::{OptionalCost, OptionalCostsPaid, TotalCost};
 use crate::filter::PlayerFilterExt;
@@ -1304,40 +1304,14 @@ impl Object {
         colors
     }
 
-    fn prototype_power_toughness_from_marker(&self) -> Option<(PtValue, PtValue)> {
-        self.abilities.iter().find_map(|ability| {
-            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
-                return None;
-            };
-            if static_ability.id() != StaticAbilityId::KeywordMarker {
-                return None;
-            }
-            let text = static_ability.display();
-            if !text
-                .trim_start()
-                .to_ascii_lowercase()
-                .starts_with("prototype ")
-            {
-                return None;
-            }
-            let pt_text = text
-                .split(|ch| matches!(ch, '-' | '—' | '–'))
-                .nth(1)?
-                .trim();
-            let (power, toughness) = pt_text.split_once('/')?;
-            let power = power.trim().parse::<i32>().ok()?;
-            let toughness = toughness.trim().parse::<i32>().ok()?;
-            Some((PtValue::Fixed(power), PtValue::Fixed(toughness)))
-        })
-    }
-
-    pub fn apply_prototype_cast_overlay(&mut self, cost: ManaCost) -> bool {
+    pub fn apply_prototype_cast_overlay(
+        &mut self,
+        cost: ManaCost,
+        power_toughness: PowerToughness,
+    ) -> bool {
         if self.prototype_cast_state.is_some() {
             return false;
         }
-        let Some((power, toughness)) = self.prototype_power_toughness_from_marker() else {
-            return false;
-        };
 
         self.prototype_cast_state = Some(PrototypeCastState {
             mana_cost: self.mana_cost.clone(),
@@ -1349,8 +1323,8 @@ impl Object {
         let colors = Self::colors_from_mana_cost(&cost);
         self.mana_cost = Some(cost.into());
         self.color_override = (!colors.is_empty()).then_some(colors);
-        self.base_power = Some(power);
-        self.base_toughness = Some(toughness);
+        self.base_power = Some(power_toughness.power);
+        self.base_toughness = Some(power_toughness.toughness);
         true
     }
 

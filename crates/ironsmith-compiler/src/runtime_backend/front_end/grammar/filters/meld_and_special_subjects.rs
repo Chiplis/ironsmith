@@ -1,27 +1,9 @@
-use super::super::super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
-use super::super::super::lexer::{LexedClause, OwnedLexToken};
+use super::super::super::lexer::{LexStream, LexedClause, OwnedLexToken};
 use super::*;
-const THERE_ARE_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["there", "are"])]);
-const YOU_HAVE_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["you", "have"])]);
-const MANA_OF_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["mana", "of"])]);
-const SAME_COLOR_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["same", "color"])]);
-const MANA_SPENT_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::any_phrase(&[
-    &["mana", "was", "spent", "to", "cast", "this", "spell"],
-    &["mana", "were", "spent", "to", "cast", "this", "spell"],
-    &["mana", "was", "spent", "to", "cast", "it"],
-    &["mana", "were", "spent", "to", "cast", "it"],
-    &["mana", "was", "spent", "to", "cast", "that", "spell"],
-    &["mana", "were", "spent", "to", "cast", "that", "spell"],
-])]);
-const SAME_COLOR_MANA_SPENT_TAIL_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::any_phrase(&[
-        &["was", "spent", "to", "cast", "it"],
-        &["was", "spent", "to", "cast", "this", "spell"],
-    ])]);
+use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
+use winnow::error::ModalResult as WResult;
+use winnow::prelude::*;
+use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GraveyardThresholdPrefix {
@@ -38,57 +20,95 @@ enum GraveyardThresholdOwner {
     Opponent,
 }
 
-const GRAVEYARD_THRESHOLD_OWNER_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::capture(
-        "owner",
-        LexCaptureKind::OneOfPhrase(&[
-            &["your", "graveyard"],
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct GraveyardThresholdShape<'a> {
+    prefix: GraveyardThresholdPrefix,
+    body_tokens: &'a [OwnedLexToken],
+    owner: GraveyardThresholdOwner,
+}
+
+fn parse_graveyard_threshold_prefix_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<GraveyardThresholdPrefix> {
+    alt((
+        primitives::phrase(&["there", "are"]).value(GraveyardThresholdPrefix::Existential),
+        primitives::phrase(&["you", "have"]).value(GraveyardThresholdPrefix::YouHave),
+    ))
+    .parse_next(input)
+}
+
+fn parse_graveyard_threshold_owner_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<GraveyardThresholdOwner> {
+    alt((
+        primitives::phrase(&["your", "graveyard"]).value(GraveyardThresholdOwner::You),
+        primitives::any_phrase(&[
             &["that", "player", "graveyard"],
             &["that", "players", "graveyard"],
+        ])
+        .value(GraveyardThresholdOwner::ThatPlayer),
+        primitives::any_phrase(&[
             &["target", "player", "graveyard"],
             &["target", "players", "graveyard"],
+        ])
+        .value(GraveyardThresholdOwner::TargetPlayer),
+        primitives::any_phrase(&[
             &["target", "opponent", "graveyard"],
             &["target", "opponents", "graveyard"],
-            &["opponent", "graveyard"],
-            &["opponents", "graveyard"],
-        ]),
-    )]);
-
-fn parse_graveyard_threshold_prefix(prefix: LexedClause<'_>) -> Option<GraveyardThresholdPrefix> {
-    if THERE_ARE_PREFIX_PATTERN.matches_clause(prefix) {
-        Some(GraveyardThresholdPrefix::Existential)
-    } else if YOU_HAVE_PREFIX_PATTERN.matches_clause(prefix) {
-        Some(GraveyardThresholdPrefix::YouHave)
-    } else {
-        None
-    }
+        ])
+        .value(GraveyardThresholdOwner::TargetOpponent),
+        primitives::any_phrase(&[&["opponent", "graveyard"], &["opponents", "graveyard"]])
+            .value(GraveyardThresholdOwner::Opponent),
+    ))
+    .parse_next(input)
 }
 
-fn parse_graveyard_threshold_owner_shape(
-    owner: LexedClause<'_>,
-) -> Option<GraveyardThresholdOwner> {
-    GRAVEYARD_THRESHOLD_OWNER_PATTERN.match_clause(owner)?;
-    match owner.word_refs().as_slice() {
-        ["your", "graveyard"] => Some(GraveyardThresholdOwner::You),
-        ["that", "player" | "players", "graveyard"] => Some(GraveyardThresholdOwner::ThatPlayer),
-        ["target", "player" | "players", "graveyard"] => {
-            Some(GraveyardThresholdOwner::TargetPlayer)
-        }
-        ["target", "opponent" | "opponents", "graveyard"] => {
-            Some(GraveyardThresholdOwner::TargetOpponent)
-        }
-        ["opponent" | "opponents", "graveyard"] => Some(GraveyardThresholdOwner::Opponent),
-        _ => None,
-    }
+fn parse_graveyard_threshold_shape_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<GraveyardThresholdShape<'a>> {
+    let prefix = parse_graveyard_threshold_prefix_lexed.parse_next(input)?;
+    let body_tokens = repeat_till(
+        1..,
+        any.void(),
+        peek((
+            primitives::kw("in"),
+            parse_graveyard_threshold_owner_lexed,
+            opt(primitives::period()),
+            eof,
+        )),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::kw("in").parse_next(input)?;
+    let owner = parse_graveyard_threshold_owner_lexed.parse_next(input)?;
+    opt(primitives::period()).parse_next(input)?;
+    eof.void().parse_next(input)?;
+    Ok(GraveyardThresholdShape {
+        prefix,
+        body_tokens,
+        owner,
+    })
 }
 
-fn graveyard_threshold_owner_player(owner: LexedClause<'_>) -> Option<PlayerAst> {
-    match parse_graveyard_threshold_owner_shape(owner)? {
-        GraveyardThresholdOwner::You => Some(PlayerAst::You),
-        GraveyardThresholdOwner::ThatPlayer => Some(PlayerAst::That),
-        GraveyardThresholdOwner::TargetPlayer => Some(PlayerAst::Target),
-        GraveyardThresholdOwner::TargetOpponent => Some(PlayerAst::TargetOpponent),
-        GraveyardThresholdOwner::Opponent => Some(PlayerAst::Opponent),
+fn parse_graveyard_threshold_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<GraveyardThresholdShape<'_>> {
+    primitives::parse_all(
+        tokens,
+        parse_graveyard_threshold_shape_lexed,
+        "graveyard-threshold",
+    )
+    .ok()
+}
+
+fn graveyard_threshold_owner_player(owner: GraveyardThresholdOwner) -> PlayerAst {
+    match owner {
+        GraveyardThresholdOwner::You => PlayerAst::You,
+        GraveyardThresholdOwner::ThatPlayer => PlayerAst::That,
+        GraveyardThresholdOwner::TargetPlayer => PlayerAst::Target,
+        GraveyardThresholdOwner::TargetOpponent => PlayerAst::TargetOpponent,
+        GraveyardThresholdOwner::Opponent => PlayerAst::Opponent,
     }
 }
 
@@ -135,48 +155,23 @@ pub(super) fn parse_graveyard_threshold_predicate(
         Some((count, used))
     }
 
-    let clause = LexedClause::new(tokens);
-    let atoms = [
-        LexPattern::subject("prefix", LexCaptureKind::WordCount(2)),
-        LexPattern::object("body", LexCaptureKind::UntilLastPhrase(&["in"])),
-        LexPattern::word("in"),
-        LexPattern::modifier("graveyard_owner", LexCaptureKind::Rest),
-    ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(shape) = parse_graveyard_threshold_shape(tokens) else {
         return Ok(None);
     };
-    let prefix = matched
-        .capture_clause_by_role(LexCaptureRole::Subject, clause)
-        .ok_or_else(|| {
-            CardTextError::ParseError("missing prefix in graveyard threshold".to_string())
-        })?;
-    let constrained_player = match parse_graveyard_threshold_prefix(prefix) {
-        Some(GraveyardThresholdPrefix::Existential) => None,
-        Some(GraveyardThresholdPrefix::YouHave) => Some(PlayerAst::You),
-        None => return Ok(None),
+    let constrained_player = match shape.prefix {
+        GraveyardThresholdPrefix::Existential => None,
+        GraveyardThresholdPrefix::YouHave => Some(PlayerAst::You),
     };
 
-    let body = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
-        .ok_or_else(|| {
-            CardTextError::ParseError("missing body in graveyard threshold".to_string())
-        })?;
-    let Some((count, used)) = parse_at_least_quantity_prefix(body.tokens()) else {
+    let Some((count, used)) = parse_at_least_quantity_prefix(shape.body_tokens) else {
         return Ok(None);
     };
-    let raw_filter_tokens = body.tokens().get(used..).unwrap_or_default();
+    let raw_filter_tokens = shape.body_tokens.get(used..).unwrap_or_default();
     if raw_filter_tokens.is_empty() || tokens_contain_type_marker(raw_filter_tokens) {
         return Ok(None);
     }
 
-    let owner = matched
-        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
-        .ok_or_else(|| {
-            CardTextError::ParseError("missing graveyard owner in graveyard threshold".to_string())
-        })?;
-    let Some(player) = graveyard_threshold_owner_player(owner) else {
-        return Ok(None);
-    };
+    let player = graveyard_threshold_owner_player(shape.owner);
     if constrained_player.is_some_and(|expected| expected != player) {
         return Ok(None);
     }
@@ -254,7 +249,7 @@ pub(super) fn parse_mana_spent_to_cast_predicate(
         None
     };
 
-    if MANA_SPENT_TAIL_PATTERN.matches_clause(LexedClause::new(&tokens[idx..])) {
+    if matches_mana_spent_tail(&tokens[idx..]) {
         return Some((amount, symbol));
     }
 
@@ -278,23 +273,62 @@ pub(crate) fn parse_same_color_mana_spent_to_cast_predicate(
     .flatten()?;
 
     let mut idx = used;
-    if !MANA_OF_PREFIX_PATTERN.matches_prefix(LexedClause::new(&tokens[idx..])) {
-        return None;
-    }
-    idx += 2;
+    let (_, after_mana_of) =
+        primitives::parse_prefix(&tokens[idx..], primitives::phrase(&["mana", "of"]))?;
+    idx = tokens.len().checked_sub(after_mana_of.len())?;
     if tokens.get(idx).is_some_and(|token| token.is_word("the")) {
         idx += 1;
     }
-    if !SAME_COLOR_PREFIX_PATTERN.matches_prefix(LexedClause::new(&tokens[idx..])) {
-        return None;
-    }
-    idx += 2;
+    let (_, after_same_color) =
+        primitives::parse_prefix(&tokens[idx..], primitives::phrase(&["same", "color"]))?;
+    idx = tokens.len().checked_sub(after_same_color.len())?;
 
-    if SAME_COLOR_MANA_SPENT_TAIL_PATTERN.matches_clause(LexedClause::new(&tokens[idx..])) {
+    if matches_same_color_mana_spent_tail(&tokens[idx..]) {
         return Some(amount);
     }
 
     None
+}
+
+fn parse_sentence_punctuation_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    repeat(0.., alt((primitives::comma(), primitives::period())).void()).parse_next(input)
+}
+
+fn parse_mana_spent_tail_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::any_phrase(&[
+        &["mana", "was", "spent", "to", "cast", "this", "spell"],
+        &["mana", "were", "spent", "to", "cast", "this", "spell"],
+        &["mana", "was", "spent", "to", "cast", "it"],
+        &["mana", "were", "spent", "to", "cast", "it"],
+        &["mana", "was", "spent", "to", "cast", "that", "spell"],
+        &["mana", "were", "spent", "to", "cast", "that", "spell"],
+    ])
+    .parse_next(input)?;
+    parse_sentence_punctuation_lexed.parse_next(input)?;
+    eof.void().parse_next(input)
+}
+
+fn matches_mana_spent_tail(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_all(tokens, parse_mana_spent_tail_lexed, "mana-spent-tail").is_ok()
+}
+
+fn parse_same_color_mana_spent_tail_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::any_phrase(&[
+        &["was", "spent", "to", "cast", "it"],
+        &["was", "spent", "to", "cast", "this", "spell"],
+    ])
+    .parse_next(input)?;
+    parse_sentence_punctuation_lexed.parse_next(input)?;
+    eof.void().parse_next(input)
+}
+
+fn matches_same_color_mana_spent_tail(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_all(
+        tokens,
+        parse_same_color_mana_spent_tail_lexed,
+        "same-color-mana-spent-tail",
+    )
+    .is_ok()
 }
 
 pub(super) fn parse_mana_symbol_word(word: &str) -> Option<ManaSymbol> {

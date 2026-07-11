@@ -830,6 +830,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn compute_legal_attackers_reuses_one_derived_view_for_many_candidates() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        for index in 0..32 {
+            let creature = CardBuilder::new(
+                CardId::from_raw(701_100 + index),
+                &format!("Attack Candidate {index}"),
+            )
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+            let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+            game.remove_summoning_sickness(creature_id);
+        }
+        game.refresh_continuous_state();
+
+        let before = game.work_counters();
+        let options = compute_legal_attackers(&game, &CombatState::default());
+        let after = game.work_counters();
+
+        assert_eq!(options.len(), 32);
+        assert_eq!(
+            after.derived_view_rebuilds - before.derived_view_rebuilds,
+            1,
+            "legal-attacker generation should share one derived view across all candidates"
+        );
+    }
+
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_compute_legal_attackers_respects_cant_attack_restriction_tracker() {
@@ -1307,6 +1337,14 @@ mod tests {
             .expect("prototype probe should parse");
         let spell_id = game.create_object_from_definition(&prototype_def, alice, Zone::Hand);
         let spell = game.object(spell_id).expect("prototype spell exists");
+        assert_eq!(
+            spell
+                .alternative_casts
+                .first()
+                .and_then(|method| method.prototype_power_toughness()),
+            Some(crate::PowerToughness::fixed(3, 2)),
+            "typed Prototype P/T should survive compiler-to-runtime conversion"
+        );
         let view = DerivedGameView::new(&game);
 
         let normal_effective = calculate_effective_mana_cost_with_view_for_casting_method(

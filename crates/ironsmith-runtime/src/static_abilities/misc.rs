@@ -2081,6 +2081,33 @@ impl StaticAbilityKind for RedirectDamageToSource {
     }
 }
 
+/// "Prevent all damage that would be dealt to and dealt by this permanent."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PreventAllDamageDealtToAndByThisPermanent;
+
+impl StaticAbilityKind for PreventAllDamageDealtToAndByThisPermanent {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllDamageDealtToAndByThisPermanent
+    }
+
+    fn display(&self) -> String {
+        "Prevent all damage that would be dealt to and dealt by this permanent.".to_string()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::DamageToOrFromSelfMatcher::new(),
+            ReplacementAction::Prevent,
+        ))
+    }
+}
+
 /// "Prevent all damage that would be dealt by this permanent."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PreventAllDamageDealtByThisPermanent;
@@ -2365,14 +2392,24 @@ impl StaticAbilityKind for PreventDamageToYouFromSourceFilter {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventDamageToSelfRemoveCounter {
     pub counter_type: CounterType,
-    pub amount: u32,
+    pub amount: Value,
+    pub follow_up: Option<ironsmith_core::CounterRemovalFollowUp>,
 }
 
 impl PreventDamageToSelfRemoveCounter {
-    pub const fn new(counter_type: CounterType, amount: u32) -> Self {
+    pub fn new(counter_type: CounterType, amount: impl Into<Value>) -> Self {
+        Self::new_with_follow_up(counter_type, amount, None)
+    }
+
+    pub fn new_with_follow_up(
+        counter_type: CounterType,
+        amount: impl Into<Value>,
+        follow_up: Option<ironsmith_core::CounterRemovalFollowUp>,
+    ) -> Self {
         Self {
             counter_type,
-            amount,
+            amount: amount.into(),
+            follow_up,
         }
     }
 }
@@ -2384,11 +2421,39 @@ impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
 
     fn display(&self) -> String {
         let counter = self.counter_type.description().into_owned();
-        let amount_word = number_word_u32(self.amount).unwrap_or_else(|| self.amount.to_string());
-        let suffix = if self.amount == 1 { "" } else { "s" };
-        format!(
+        let (amount_word, suffix) = match &self.amount {
+            Value::Fixed(amount) => {
+                let rendered = u32::try_from(*amount)
+                    .ok()
+                    .and_then(number_word_u32)
+                    .unwrap_or_else(|| amount.to_string());
+                (rendered, if *amount == 1 { "" } else { "s" })
+            }
+            Value::EventValue(EventValueSpec::Amount) => ("that many".to_string(), "s"),
+            amount => (describe_value(amount), "s"),
+        };
+        let mut display = format!(
             "If damage would be dealt to this creature, prevent that damage. Remove {amount_word} {counter} counter{suffix} from this creature."
-        )
+        );
+        if let Some(ironsmith_core::CounterRemovalFollowUp::EachPlayerGetsCounters {
+            counter_type,
+            counters_per_removed,
+        }) = self.follow_up
+        {
+            let gained = counter_type.description();
+            let amount = number_word_u32(counters_per_removed)
+                .unwrap_or_else(|| counters_per_removed.to_string());
+            let article_or_amount = if counters_per_removed == 1 {
+                "a".to_string()
+            } else {
+                amount
+            };
+            let plural = if counters_per_removed == 1 { "" } else { "s" };
+            display.push_str(&format!(
+                " Then give each player {article_or_amount} {gained} counter{plural} for each {counter} counter removed this way."
+            ));
+        }
+        display
     }
 
     fn generate_replacement_effect(
@@ -2396,15 +2461,43 @@ impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
+        let mut effects = vec![Effect::remove_counters(
+            self.counter_type,
+            self.amount.clone(),
+            ChooseSpec::Source,
+        )];
+        if let Some(ironsmith_core::CounterRemovalFollowUp::EachPlayerGetsCounters {
+            counter_type,
+            counters_per_removed,
+        }) = self.follow_up
+        {
+            const REMOVED_COUNTER_COUNT_EFFECT_ID: u32 = 0;
+            let remove_effect = effects.remove(0);
+            effects.push(Effect::with_id(
+                REMOVED_COUNTER_COUNT_EFFECT_ID,
+                remove_effect,
+            ));
+            let removed_count =
+                Value::EffectValue(crate::effect::EffectId(REMOVED_COUNTER_COUNT_EFFECT_ID));
+            let count = if counters_per_removed == 1 {
+                removed_count
+            } else {
+                Value::Scaled(Box::new(removed_count), counters_per_removed as i32)
+            };
+            effects.push(Effect::for_players(
+                crate::target::PlayerFilter::Any,
+                vec![Effect::new(crate::effects::PlayerCountersEffect::new(
+                    counter_type,
+                    count,
+                    crate::target::PlayerFilter::IteratedPlayer,
+                ))],
+            ));
+        }
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
             crate::events::DamageToSelfMatcher::new(),
-            ReplacementAction::Instead(vec![Effect::remove_counters(
-                self.counter_type,
-                Value::Fixed(self.amount as i32),
-                ChooseSpec::Source,
-            )]),
+            ReplacementAction::Instead(effects),
         ))
     }
 }
@@ -7786,6 +7879,84 @@ mod tests {
         assert_eq!(remove.counter_type, CounterType::PlusOnePlusOne);
         assert_eq!(remove.count, Value::Fixed(1));
         assert!(matches!(remove.target, ChooseSpec::Source));
+
+        let dynamic = PreventDamageToSelfRemoveCounter::new(
+            CounterType::PlusOnePlusOne,
+            Value::EventValue(EventValueSpec::Amount),
+        );
+        let replacement = dynamic
+            .generate_replacement_effect(src, alice)
+            .expect("dynamic prevention should generate replacement effect");
+        let ReplacementAction::Instead(effects) = &replacement.replacement else {
+            panic!("expected dynamic replacement to use Instead action");
+        };
+        let remove = effects[0]
+            .downcast_ref::<crate::effects::RemoveCountersEffect>()
+            .expect("expected dynamic remove counters effect");
+        assert_eq!(remove.count, Value::EventValue(EventValueSpec::Amount));
+    }
+
+    #[test]
+    fn counter_prevention_followup_uses_actual_removed_count_for_each_player() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_card = CardBuilder::new(CardId::new(), "Counter Shield")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(0, 0))
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.add_counters(source, CounterType::PlusOnePlusOne, 2);
+
+        let ability = PreventDamageToSelfRemoveCounter::new_with_follow_up(
+            CounterType::PlusOnePlusOne,
+            Value::EventValue(EventValueSpec::Amount),
+            Some(
+                ironsmith_core::CounterRemovalFollowUp::EachPlayerGetsCounters {
+                    counter_type: CounterType::Rad,
+                    counters_per_removed: 1,
+                },
+            ),
+        );
+        let replacement = ability
+            .generate_replacement_effect(source, alice)
+            .expect("prevention should generate a replacement");
+        let ReplacementAction::Instead(effects) = replacement.replacement else {
+            panic!("expected replacement effects");
+        };
+        assert_eq!(effects.len(), 2);
+
+        let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+            DamageEvent::with_cause(
+                ObjectId::from_raw(99),
+                DamageTarget::Object(source),
+                5,
+                false,
+                EventCause::effect(),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+            .with_triggering_event(damage_event);
+        for effect in effects {
+            crate::effects::execute_effect(&mut game, &effect, &mut ctx)
+                .expect("replacement follow-up should resolve");
+        }
+
+        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 0);
+        assert_eq!(
+            game.player(alice)
+                .expect("alice exists")
+                .counter_count(CounterType::Rad),
+            2
+        );
+        assert_eq!(
+            game.player(bob)
+                .expect("bob exists")
+                .counter_count(CounterType::Rad),
+            2
+        );
     }
 
     #[test]

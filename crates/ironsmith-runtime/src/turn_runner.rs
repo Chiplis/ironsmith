@@ -1047,16 +1047,16 @@ impl TurnRunner {
         tq: &mut TriggerQueue,
     ) -> Result<RunnerProgress<()>, GameLoopError> {
         use crate::rules::state_based::{
-            StateBasedAction, StateBasedActionContext, apply_legend_rule_choice,
-            apply_state_based_actions_from_actions_with, check_state_based_actions_with_context,
-            legend_rule_specs_from_actions,
+            StateBasedAction, StateBasedActionContext, apply_state_based_actions_from_actions_with,
+            check_state_based_actions_with_context, legend_rule_specs_from_actions,
         };
 
-        game.refresh_continuous_state();
-
         loop {
+            // Every applied SBA can change which static effects exist. Refresh
+            // at the fixed-point boundary; this is a no-op while state is clean.
+            game.refresh_continuous_state();
             let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
-            let all_effects = view.effects().to_vec();
+            let all_effects = view.effects_arc();
             let context = StateBasedActionContext::from_trigger_queue(tq);
             let actions = check_state_based_actions_with_context(game, &view, &context);
             drop(view);
@@ -1087,7 +1087,11 @@ impl TurnRunner {
                             .unwrap_or_else(|| {
                                 spec.default_response(crate::decision::FallbackStrategy::Decline)
                             });
-                        apply_legend_rule_choice(game, keep_id);
+                        crate::rules::state_based::apply_legend_rule_choice_from_group(
+                            game,
+                            keep_id,
+                            &spec.legends,
+                        );
                         crate::game_loop::drain_pending_trigger_events(game, tq);
                         continue;
                     }
@@ -1118,7 +1122,7 @@ impl TurnRunner {
                 let applied = apply_state_based_actions_from_actions_with(
                     game,
                     other_actions,
-                    &all_effects,
+                    all_effects.as_slice(),
                     &mut auto_dm,
                 );
                 crate::game_loop::drain_pending_trigger_events(game, tq);

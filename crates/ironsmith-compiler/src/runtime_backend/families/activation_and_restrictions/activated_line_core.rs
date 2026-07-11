@@ -1,118 +1,15 @@
 use super::*;
 use crate::runtime_backend::SubjectAst;
 use crate::runtime_backend::ast::SubjectVerbActionAst;
-use crate::runtime_backend::lexer::{
-    render_token_slice, word_slice_contains_all_words, word_slice_contains_any_word,
-    word_slice_contains_phrase, word_slice_ends_with, word_slice_ends_with_any, word_slice_eq,
-    word_slice_eq_any, word_slice_starts_with, word_slice_starts_with_any,
+use crate::runtime_backend::grammar::activated_lines::{
+    self as activated_line_grammar, ActivatedBlockRequirement, ActivatedDevotionParseError,
+    ActivatedLoyaltyShorthand, CostReductionLineHead, EntersTappedLineShape,
+    ThisAbilityReductionRemainder, ThisCostReductionRemainder, ThisSpellReductionRemainder,
 };
+use crate::runtime_backend::grammar::leaf::parse_leaf_fixed_mana_output_tokens;
+use crate::runtime_backend::lexer::render_token_slice;
 
 pub(crate) type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
-
-const PRIMARY_ADD_MANA_CLAUSE_PREFIXES: &[&[&str]] = &[
-    &["add"],
-    &["adds"],
-    &["you", "add"],
-    &["that", "player", "add"],
-    &["that", "player", "adds"],
-    &["target", "player", "add"],
-    &["target", "player", "adds"],
-];
-const THAT_COLOR_PREFIX: &[&str] = &["that", "color"];
-const THIS_ENTERS_TAPPED_PREFIX: &[&str] = &["this"];
-const ATTACKING_TRAILS: &[&[&str]] = &[&["and", "attacking"], &["attacking"]];
-const THIS_COST_REDUCED_BY_PREFIX: &[&str] = &["this", "cost", "is", "reduced", "by"];
-const ACTIVATED_ABILITIES_OF_PREFIX: &[&str] = &["activated", "abilities", "of"];
-const LESS_TO_ACTIVATE_PREFIX: &[&str] = &["less", "to", "activate"];
-const LESS_TO_ACTIVATE_WORDS: &[&str] = &["less", "to", "activate"];
-const LESS_TO_ACTIVATE_IF_PREFIX: &[&str] = &["less", "to", "activate", "if"];
-const IT_TARGETS_PREFIX: &[&str] = &["it", "targets"];
-const LESS_TO_ACTIVATE_FOR_EACH_PREFIX: &[&str] = &["less", "to", "activate", "for", "each"];
-const THIS_ABILITY_COSTS_PREFIX: &[&str] = &["this", "ability", "costs"];
-const THIS_SPELL_COSTS_PREFIX: &[&str] = &["this", "spell", "costs"];
-const X_COST_WORDS: &[&str] = &["x", "+x", "-x"];
-const WHERE_X_IS_WORDS: &[&str] = &["where", "x", "is"];
-const THAT_PLAYER_DEVOTION_OWNER_SUFFIXES: &[&[&str]] = &[
-    &["that", "players"],
-    &["that", "player"],
-    &["that", "player's"],
-    &["that", "players'"],
-];
-const ALL_CREATURES_ABLE_TO_BLOCK_SOURCE_WORDS: &[&[&str]] = &[
-    &[
-        "all",
-        "creatures",
-        "able",
-        "to",
-        "block",
-        "this",
-        "creature",
-        "do",
-        "so",
-    ],
-    &[
-        "all",
-        "creatures",
-        "able",
-        "to",
-        "block",
-        "this",
-        "do",
-        "so",
-    ],
-];
-const SOURCE_MUST_BE_BLOCKED_IF_ABLE_WORDS: &[&[&str]] = &[
-    &["this", "creature", "must", "be", "blocked", "if", "able"],
-    &["this", "must", "be", "blocked", "if", "able"],
-];
-
-fn find_token_word_exact(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
-    find_index(tokens, |token| {
-        token
-            .as_word()
-            .is_some_and(|_| token.parser_text() == expected)
-    })
-}
-
-fn activated_words_start_with(words: &[&str], prefix: &[&str]) -> bool {
-    word_slice_starts_with(words, prefix)
-}
-
-fn activated_words_start_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
-    word_slice_starts_with_any(words, prefixes)
-}
-
-fn activated_words_equal(words: &[&str], expected: &[&str]) -> bool {
-    word_slice_eq(words, expected)
-}
-
-fn activated_words_equal_any(words: &[&str], expected: &[&[&str]]) -> bool {
-    word_slice_eq_any(words, expected)
-}
-
-fn activated_words_contain_all(words: &[&str], required: &[&str]) -> bool {
-    word_slice_contains_all_words(words, required)
-}
-
-fn activated_words_contain_any(words: &[&str], candidates: &[&str]) -> bool {
-    word_slice_contains_any_word(words, candidates)
-}
-
-fn activated_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    word_slice_contains_phrase(words, phrase)
-}
-
-fn activated_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
-    word_slice_ends_with(words, suffix)
-}
-
-fn activated_words_end_with_any(words: &[&str], suffixes: &[&[&str]]) -> bool {
-    word_slice_ends_with_any(words, suffixes)
-}
-
-fn activated_word_is_any(word: &str, candidates: &[&str]) -> bool {
-    candidates.iter().any(|candidate| word == *candidate)
-}
 
 pub(crate) fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
     crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -133,24 +30,6 @@ pub(crate) fn parse_prefixed_activated_ability_label(
         Some("renew") => Some("Renew".to_string()),
         _ => None,
     }
-}
-
-pub(crate) fn contains_granted_keyword_before_word(
-    words: &ActivationRestrictionCompatWords,
-    keyword_idx: usize,
-) -> bool {
-    (0..keyword_idx)
-        .filter_map(|idx| words.get(idx))
-        .any(|word| activated_word_is_any(word, &["has", "have"]))
-}
-
-pub(crate) fn find_cycling_keyword_word_index(
-    words: &ActivationRestrictionCompatWords,
-) -> Option<usize> {
-    words
-        .word_refs()
-        .iter()
-        .position(|word| word_is_cycling_keyword_marker(word))
 }
 
 pub(crate) fn parse_hand_keyword_activated_body_lexed(
@@ -180,22 +59,6 @@ pub(crate) fn parse_activated_line(
     parse_activated_line_with_raw(tokens)
 }
 
-fn fixed_mana_symbols_from_mana_groups(tokens: &[OwnedLexToken]) -> Option<Vec<ManaSymbol>> {
-    let mut mana = Vec::new();
-    for token in tokens {
-        match token.kind {
-            TokenKind::ManaGroup => {
-                let inner = token.mana_group_inner()?;
-                mana.push(parse_mana_symbol(inner).ok()?);
-            }
-            TokenKind::Period | TokenKind::Comma => {}
-            _ => return None,
-        }
-    }
-
-    if mana.is_empty() { None } else { Some(mana) }
-}
-
 fn subject_allows_direct_mana_output(subject: &Option<SubjectAst>) -> bool {
     matches!(
         subject,
@@ -206,13 +69,13 @@ fn subject_allows_direct_mana_output(subject: &Option<SubjectAst>) -> bool {
 pub(crate) fn parse_activated_line_with_raw(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let Some(colon_idx) = find_index(tokens, |token| token.is_colon()) else {
+    let Some(line_split) = activated_line_grammar::parse_activated_line_split_tokens(tokens) else {
         return Ok(None);
     };
 
-    let cost_start = find_activation_cost_start(&tokens[..colon_idx]).unwrap_or(0);
-    let cost_tokens = &tokens[cost_start..colon_idx];
-    let effect_tokens = &tokens[colon_idx + 1..];
+    let cost_start = find_activation_cost_start(line_split.before_colon).unwrap_or(0);
+    let cost_tokens = &line_split.before_colon[cost_start..];
+    let effect_tokens = line_split.after_colon;
     if cost_tokens.is_empty() || effect_tokens.is_empty() {
         return Ok(None);
     }
@@ -245,15 +108,9 @@ pub(crate) fn parse_activated_line_with_raw(
     if !effect_sentences.is_empty() {
         let primary_sentence = &effect_sentences[0];
         let x_defined_by_cost = activation_cost_mentions_x(cost_tokens);
-        let effect_words = ActivationRestrictionCompatWords::new(primary_sentence);
-        let primary_sentence_words = effect_words.to_word_refs();
-        let is_primary_add_clause = activated_words_start_with_any(
-            &primary_sentence_words,
-            PRIMARY_ADD_MANA_CLAUSE_PREFIXES,
-        );
-        let is_primary_color_among_add_clause =
-            is_for_each_color_among_add_mana_clause(primary_sentence);
-        if is_primary_add_clause || is_primary_color_among_add_clause {
+        if let Some(primary_mana) =
+            activated_line_grammar::parse_primary_mana_clause_tokens(primary_sentence)
+        {
             let mana_cost = if let Some(cost) = &loyalty_shorthand_cost {
                 cost.clone()
             } else {
@@ -275,23 +132,9 @@ pub(crate) fn parse_activated_line_with_raw(
                 }
             }
 
-            let add_token_idx = find_index(primary_sentence, |token| {
-                token
-                    .as_word()
-                    .is_some_and(|word| matches!(word, "add" | "adds"))
-            })
-            .unwrap_or(0);
-            let mana_tokens = if is_primary_color_among_add_clause {
-                primary_sentence
-            } else {
-                &primary_sentence[add_token_idx + 1..]
-            };
-            let mana_subject = (add_token_idx > 0 && !is_primary_color_among_add_clause)
-                .then(|| parse_subject(&primary_sentence[..add_token_idx]));
-            let mana_words_view = ActivationRestrictionCompatWords::new(mana_tokens);
-            let mana_words = mana_words_view.to_word_refs();
-            let has_for_each_tail = mana_words_view.has_phrase(&["for", "each"]);
-            let dynamic_amount = if has_for_each_tail {
+            let mana_tokens = primary_mana.mana_tokens;
+            let mana_subject = primary_mana.subject_tokens.map(parse_subject);
+            let dynamic_amount = if primary_mana.has_for_each {
                 Some(
                     parse_dynamic_cost_modifier_value(mana_tokens)?.ok_or_else(|| {
                         CardTextError::ParseError(format!(
@@ -305,18 +148,6 @@ pub(crate) fn parse_activated_line_with_raw(
                     .or_else(|| parse_add_mana_equal_amount_value(mana_tokens))
             };
 
-            let has_imprinted_colors = activated_words_contain_all(&mana_words, &["exiled"])
-                && activated_words_contain_any(&mana_words, &["card", "cards"])
-                && activated_words_contain_any(&mana_words, &["color", "colors"]);
-            let has_any_combination_mana =
-                activated_words_contain_phrase(&mana_words, &["any", "combination", "of"]);
-            let has_any_choice_mana = has_any_combination_mana
-                || (activated_words_contain_all(&mana_words, &["any"])
-                    && activated_words_contain_any(&mana_words, &["color", "type"]));
-            let has_or_choice_mana = activated_words_contain_all(&mana_words, &["or"]);
-            let has_chosen_color = activated_words_contain_all(&mana_words, &["chosen", "color"]);
-            let uses_commander_identity = activated_words_contain_all(&mana_words, &["identity"])
-                && activated_words_contain_any(&mana_words, &["commander", "commanders"]);
             let loyalty_timing = if loyalty_shorthand_cost.is_some() {
                 ActivationTiming::SorcerySpeed
             } else {
@@ -330,13 +161,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 restrictions.extend(additional_activation_restrictions.clone());
                 restrictions
             };
-            if is_primary_color_among_add_clause
-                || has_imprinted_colors
-                || has_any_choice_mana
-                || has_or_choice_mana
-                || uses_commander_identity
-                || has_chosen_color
-            {
+            if primary_mana.requires_general_effect {
                 let mut mana_ast = parse_add_mana(mana_tokens, mana_subject.clone())?;
                 resolve_activated_mana_x_requirements(
                     &mut mana_ast,
@@ -369,7 +194,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 }));
             }
 
-            if let Some(mana) = fixed_mana_symbols_from_mana_groups(mana_tokens) {
+            if let Some(mana) = parse_leaf_fixed_mana_output_tokens(mana_tokens) {
                 if dynamic_amount.is_none()
                     && extra_effects_ast.is_empty()
                     && subject_allows_direct_mana_output(&mana_subject)
@@ -540,15 +365,7 @@ fn prefixed_activated_ability_display_text(
 }
 
 pub(crate) fn activation_cost_mentions_x(tokens: &[OwnedLexToken]) -> bool {
-    tokens
-        .iter()
-        .filter_map(OwnedLexToken::as_word)
-        .any(|word| {
-            activated_word_is_any(word, X_COST_WORDS)
-                || word
-                    .split('/')
-                    .any(|part| activated_word_is_any(part, X_COST_WORDS))
-        })
+    activated_line_grammar::parse_activation_cost_x_fact_tokens(tokens).is_some()
 }
 
 pub(crate) fn resolve_activated_mana_x_requirements(
@@ -556,20 +373,10 @@ pub(crate) fn resolve_activated_mana_x_requirements(
     sentence_tokens: &[OwnedLexToken],
     x_defined_by_cost: bool,
 ) -> Result<(), CardTextError> {
-    let clause_word_view = ActivationRestrictionCompatWords::new(sentence_tokens);
-    let clause_words = clause_word_view.to_word_refs();
-    if let Some(where_idx) = clause_words
-        .windows(WHERE_X_IS_WORDS.len())
-        .position(|window| activated_words_equal(window, WHERE_X_IS_WORDS))
-    {
-        let clause = clause_words.join(" ");
-        let where_token_idx =
-            token_index_for_word_index(sentence_tokens, where_idx).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unable to map where-x clause in mana ability (clause: '{clause}')"
-                ))
-            })?;
-        let where_tokens = &sentence_tokens[where_token_idx..];
+    let clause_words = ActivationRestrictionCompatWords::new(sentence_tokens).to_word_refs();
+    let clause = clause_words.join(" ");
+    let x_clause = activated_line_grammar::parse_activated_mana_x_clause_tokens(sentence_tokens);
+    if let Some(where_tokens) = x_clause.where_clause_tokens {
         let where_value = parse_value_binding_clause_lexed(where_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported where-x clause in mana ability (clause: '{clause}')"
@@ -578,14 +385,9 @@ pub(crate) fn resolve_activated_mana_x_requirements(
         replace_unbound_x_in_effect_anywhere(effect, &where_value, &clause)?;
     }
 
-    let x_defined_by_removed_this_way =
-        activated_words_contain_phrase(&clause_words, &["this", "way"])
-            && activated_words_contain_all(&clause_words, &["removed"])
-            && activated_words_contain_any(&clause_words, &["counter", "counters"]);
-
     if mana_effect_contains_unbound_x(effect)
         && !x_defined_by_cost
-        && !x_defined_by_removed_this_way
+        && !x_clause.removed_counters_this_way
     {
         return Err(CardTextError::ParseError(format!(
             "unresolved X in mana ability without an X activation cost or where-x definition (clause: '{}')",
@@ -625,95 +427,18 @@ pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
 pub(crate) fn parse_loyalty_shorthand_activation_cost(
     cost_tokens: &[OwnedLexToken],
 ) -> Option<TotalCost> {
-    let cost_tokens = trim_bracketed_loyalty_cost_tokens(cost_tokens);
-    let shorthand = match cost_tokens {
-        [token] => parse_loyalty_shorthand_word(token.as_word()?),
-        [sign, value] if sign.kind == TokenKind::Plus => {
-            let amount = parse_ascii_u32(value.as_word()?)?;
-            Some(LoyaltyShorthandCost::Add(amount))
-        }
-        [sign, value] if sign.kind == TokenKind::Dash => {
-            let value = value.as_word()?;
-            if activated_word_is_any(value, X_COST_WORDS) {
-                Some(LoyaltyShorthandCost::RemoveX)
-            } else {
-                parse_ascii_u32(value).map(LoyaltyShorthandCost::Remove)
-            }
-        }
-        _ => None,
-    };
-    match shorthand {
-        Some(LoyaltyShorthandCost::Add(amount)) => {
-            return Some(if amount == 0 {
-                TotalCost::free()
-            } else {
-                TotalCost::from_cost(crate::costs::Cost::add_counters(
-                    CounterType::Loyalty,
-                    amount,
-                ))
-            });
-        }
-        Some(LoyaltyShorthandCost::RemoveX) => {
-            return Some(TotalCost::from_cost(
-                crate::costs::Cost::remove_any_counters_from_source(
-                    Some(CounterType::Loyalty),
-                    true,
-                ),
-            ));
-        }
-        Some(LoyaltyShorthandCost::Remove(amount)) => {
-            return Some(TotalCost::from_cost(crate::costs::Cost::remove_counters(
-                CounterType::Loyalty,
-                amount,
-            )));
-        }
-        None => {}
+    match activated_line_grammar::parse_loyalty_shorthand_activation_tokens(cost_tokens)? {
+        ActivatedLoyaltyShorthand::Add(0) => Some(TotalCost::free()),
+        ActivatedLoyaltyShorthand::Add(amount) => Some(TotalCost::from_cost(
+            crate::costs::Cost::add_counters(CounterType::Loyalty, amount),
+        )),
+        ActivatedLoyaltyShorthand::RemoveX => Some(TotalCost::from_cost(
+            crate::costs::Cost::remove_any_counters_from_source(Some(CounterType::Loyalty), true),
+        )),
+        ActivatedLoyaltyShorthand::Remove(amount) => Some(TotalCost::from_cost(
+            crate::costs::Cost::remove_counters(CounterType::Loyalty, amount),
+        )),
     }
-    None
-}
-
-fn trim_bracketed_loyalty_cost_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let mut start = 0usize;
-    let mut end = tokens.len();
-    if start < end && tokens[start].kind == TokenKind::LBracket {
-        start += 1;
-    }
-    if end > start && tokens[end - 1].kind == TokenKind::RBracket {
-        end -= 1;
-    }
-    &tokens[start..end]
-}
-
-enum LoyaltyShorthandCost {
-    Add(u32),
-    Remove(u32),
-    RemoveX,
-}
-
-fn parse_loyalty_shorthand_word(word: &str) -> Option<LoyaltyShorthandCost> {
-    let mut chars = word.chars();
-    let sign = chars.next()?;
-    let rest = chars.as_str();
-    match sign {
-        '0' if rest.is_empty() => Some(LoyaltyShorthandCost::Add(0)),
-        '+' => parse_ascii_u32(rest).map(LoyaltyShorthandCost::Add),
-        '-' | '−' if activated_word_is_any(rest, X_COST_WORDS) => {
-            Some(LoyaltyShorthandCost::RemoveX)
-        }
-        '-' | '−' => parse_ascii_u32(rest).map(LoyaltyShorthandCost::Remove),
-        _ => None,
-    }
-}
-
-fn parse_ascii_u32(text: &str) -> Option<u32> {
-    let mut value = 0u32;
-    let mut consumed = false;
-    for ch in text.chars() {
-        let digit = ch.to_digit(10)?;
-        consumed = true;
-        value = value.checked_mul(10)?.checked_add(digit)?;
-    }
-    consumed.then_some(value)
 }
 
 pub(crate) fn loyalty_additional_restrictions(is_loyalty_shorthand: bool) -> Vec<String> {
@@ -737,66 +462,24 @@ pub(crate) fn infer_activated_functional_zones(
     cost_tokens: &[OwnedLexToken],
     effect_sentences: &[Vec<OwnedLexToken>],
 ) -> Vec<Zone> {
-    let cost_words = crate::runtime_backend::util::non_article_token_word_refs(cost_tokens);
-    let effect_words_match = |f: fn(&[&str]) -> bool| {
-        effect_sentences.iter().any(|sentence| {
-            let clause_words = crate::runtime_backend::util::non_article_token_word_refs(sentence);
-            f(&clause_words)
-        })
-    };
-    if contains_source_from_your_graveyard_phrase(&cost_words)
-        || effect_words_match(contains_source_from_your_graveyard_phrase)
-    {
-        vec![Zone::Graveyard]
-    } else if contains_from_command_zone_phrase(&cost_words)
-        || effect_words_match(contains_from_command_zone_phrase)
-    {
-        vec![Zone::Command]
-    } else if contains_source_from_your_hand_phrase(&cost_words)
-        || contains_discard_source_phrase(&cost_words)
-        || effect_words_match(contains_source_from_your_hand_phrase)
-    {
-        vec![Zone::Hand]
-    } else {
-        vec![Zone::Battlefield]
-    }
+    let effect_sentences = effect_sentences
+        .iter()
+        .map(Vec::as_slice)
+        .collect::<Vec<_>>();
+    crate::runtime_backend::grammar::functional_zones::parse_activated_functional_zones_tokens(
+        cost_tokens,
+        &effect_sentences,
+    )
 }
 
 pub(crate) fn infer_activated_functional_zones_lexed(
     cost_tokens: &[OwnedLexToken],
     effect_sentences: &[&[OwnedLexToken]],
 ) -> Vec<Zone> {
-    let cost_view = ActivationRestrictionCompatWords::new(cost_tokens);
-    let cost_words = non_article_word_refs(&cost_view.to_word_refs());
-    let effect_words_match = |f: fn(&[&str]) -> bool| {
-        effect_sentences.iter().any(|sentence| {
-            let sentence_view = ActivationRestrictionCompatWords::new(sentence);
-            let clause_words = non_article_word_refs(&sentence_view.to_word_refs());
-            f(&clause_words)
-        })
-    };
-    let has_stack_only_activation_modifier = effect_sentences.iter().any(|sentence| {
-        is_any_player_may_activate_sentence_lexed(sentence)
-            && ActivationRestrictionCompatWords::new(sentence).has_phrase(&["on", "the", "stack"])
-    });
-    if has_stack_only_activation_modifier {
-        vec![Zone::Stack]
-    } else if contains_source_from_your_graveyard_phrase(&cost_words)
-        || effect_words_match(contains_source_from_your_graveyard_phrase)
-    {
-        vec![Zone::Graveyard]
-    } else if contains_from_command_zone_phrase(&cost_words)
-        || effect_words_match(contains_from_command_zone_phrase)
-    {
-        vec![Zone::Command]
-    } else if contains_source_from_your_hand_phrase(&cost_words)
-        || contains_discard_source_phrase(&cost_words)
-        || effect_words_match(contains_source_from_your_hand_phrase)
-    {
-        vec![Zone::Hand]
-    } else {
-        vec![Zone::Battlefield]
-    }
+    crate::runtime_backend::grammar::functional_zones::parse_activated_functional_zones_tokens(
+        cost_tokens,
+        effect_sentences,
+    )
 }
 
 pub(crate) fn parse_activate_only_timing(tokens: &[OwnedLexToken]) -> Option<ActivationTiming> {
@@ -814,12 +497,6 @@ pub(crate) fn normalize_activate_only_restriction(
     timing: &ActivationTiming,
 ) -> Option<String> {
     activated_sentence_parsers::normalize_activate_only_restriction(tokens, timing)
-}
-
-pub(crate) fn is_for_each_color_among_add_mana_clause(tokens: &[OwnedLexToken]) -> bool {
-    let words = ActivationRestrictionCompatWords::new(tokens).to_word_refs();
-    activated_words_contain_phrase(&words, &["for", "each", "color", "among"])
-        && activated_words_contain_phrase(&words, &["add", "one", "mana", "of", "that", "color"])
 }
 
 pub(crate) fn flatten_mana_activation_conditions(
@@ -946,75 +623,21 @@ pub(crate) fn parse_devotion_value_from_add_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(devotion_idx) = words.iter().position(|word| *word == "devotion") else {
-        return Ok(None);
-    };
-
-    let player = parse_devotion_player_from_words(&words, devotion_idx).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unsupported devotion player in clause (clause: '{}')",
-            words.join(" ")
-        ))
-    })?;
-
-    let to_idx = words[devotion_idx + 1..]
-        .iter()
-        .position(|word| *word == "to")
-        .map(|idx| devotion_idx + 1 + idx)
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing color after devotion clause (clause: '{}')",
-                words.join(" ")
-            ))
-        })?;
-    if activated_words_start_with(&words[to_idx + 1..], THAT_COLOR_PREFIX) {
-        return Ok(Some(Value::DevotionToChosenColor(player)));
-    }
-    let color_word = words.get(to_idx + 1).copied().ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing devotion color (clause: '{}')",
-            words.join(" ")
-        ))
-    })?;
-    let color_set = parse_color(color_word).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unsupported devotion color '{}' (clause: '{}')",
-            color_word,
-            words.join(" ")
-        ))
-    })?;
-    let color = color_from_color_set(color_set).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "ambiguous devotion color '{}' (clause: '{}')",
-            color_word,
-            words.join(" ")
-        ))
-    })?;
-
-    Ok(Some(Value::Devotion { player, color }))
-}
-
-pub(crate) fn parse_devotion_player_from_words(
-    words: &[&str],
-    devotion_idx: usize,
-) -> Option<PlayerFilter> {
-    if devotion_idx == 0 {
-        return None;
-    }
-    let left = &words[..devotion_idx];
-    if activated_words_end_with(left, &["your"]) {
-        return Some(PlayerFilter::You);
-    }
-    if activated_words_end_with(left, &["their"]) {
-        return Some(PlayerFilter::IteratedPlayer);
-    }
-    if activated_words_end_with_any(left, &[&["opponent"], &["opponents"]]) {
-        return Some(PlayerFilter::Opponent);
-    }
-    if activated_words_end_with_any(left, THAT_PLAYER_DEVOTION_OWNER_SUFFIXES) {
-        return Some(PlayerFilter::Target(Box::new(PlayerFilter::Any)));
-    }
-    None
+    activated_line_grammar::parse_activated_devotion_value_tokens(tokens).map_err(|error| {
+        let detail = match error {
+            ActivatedDevotionParseError::UnsupportedPlayer => {
+                "unsupported devotion player in clause".to_string()
+            }
+            ActivatedDevotionParseError::MissingColorAfterDevotion => {
+                "missing color after devotion clause".to_string()
+            }
+            ActivatedDevotionParseError::MissingColor => "missing devotion color".to_string(),
+            ActivatedDevotionParseError::UnsupportedColor(color) => {
+                format!("unsupported devotion color '{color}'")
+            }
+        };
+        CardTextError::ParseError(format!("{detail} (clause: '{}')", words.join(" ")))
+    })
 }
 
 pub(crate) fn color_from_color_set(colors: ColorSet) -> Option<crate::color::Color> {
@@ -1058,286 +681,236 @@ pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
 pub(crate) fn parse_enters_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words.is_empty() {
-        return Ok(None);
+    let clause = joined_activation_clause_text(tokens);
+    match activated_line_grammar::parse_enters_tapped_line_shape(tokens) {
+        EntersTappedLineShape::NoMatch
+        | EntersTappedLineShape::NegatedUntap
+        | EntersTappedLineShape::AttackingVariant => Ok(None),
+        EntersTappedLineShape::EntersTapped => Ok(Some(StaticAbility::enters_tapped_ability())),
+        EntersTappedLineShape::MixedNegatedUntap => Err(CardTextError::ParseError(format!(
+            "unsupported mixed enters-tapped and negated-untap clause (clause: '{clause}')"
+        ))),
+        EntersTappedLineShape::UnsupportedTrailing => Err(CardTextError::ParseError(format!(
+            "unsupported trailing enters-tapped clause (clause: '{clause}')"
+        ))),
     }
-    if is_negated_untap_clause(&clause_words) {
-        let has_enters_tapped = activated_words_contain_all(&clause_words, &["enters", "tapped"]);
-        if has_enters_tapped {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported mixed enters-tapped and negated-untap clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-        return Ok(None);
-    }
-    if activated_words_start_with(&clause_words, THIS_ENTERS_TAPPED_PREFIX)
-        && activated_words_contain_all(&clause_words, &["enters", "tapped"])
-    {
-        let tapped_word_idx = clause_words
-            .iter()
-            .position(|word| *word == "tapped")
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "missing tapped keyword in enters-tapped clause (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
-        let tapped_token_idx =
-            token_index_for_word_index(tokens, tapped_word_idx).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unable to map tapped keyword in enters-tapped clause (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
-        let trailing_words =
-            crate::runtime_backend::token_word_refs(&tokens[tapped_token_idx + 1..]);
-        if activated_words_equal_any(&trailing_words, ATTACKING_TRAILS) {
-            return Ok(None);
-        }
-        if !trailing_words.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing enters-tapped clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-        return Ok(Some(StaticAbility::enters_tapped_ability()));
-    }
-    Ok(None)
 }
 
 pub(crate) fn parse_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = crate::runtime_backend::token_word_refs(tokens);
-    if activated_words_start_with(&line_words, THIS_COST_REDUCED_BY_PREFIX) && line_words.len() > 6
-    {
-        let amount_tokens = trim_commas(&tokens[5..]);
-        let parsed_amount = parse_cost_modifier_amount(&amount_tokens);
-        let (amount_value, used) = parsed_amount.clone().unwrap_or((Value::Fixed(1), 0));
-        let amount_fixed = if let Value::Fixed(value) = amount_value {
-            value
-        } else {
-            1
-        };
-        let remaining_tokens = amount_tokens.get(used..).unwrap_or_default();
-        let remaining_words = crate::runtime_backend::token_word_refs(remaining_tokens);
-        if activated_words_contain_all(&remaining_words, &["for", "each"])
-            && let Some(dynamic) = parse_dynamic_cost_modifier_value(remaining_tokens)?
-        {
-            let reduction = scale_dynamic_cost_modifier_value(dynamic, amount_fixed);
-            return Ok(Some(StaticAbility::new(
-                crate::static_abilities::ThisSpellCostReduction::new(
-                    reduction,
-                    crate::static_abilities::ThisSpellCostCondition::Always,
-                ),
-            )));
-        }
+    let Some(head) = activated_line_grammar::parse_cost_reduction_line_head_tokens(tokens) else {
+        return Ok(None);
+    };
 
-        let amount_word = line_words[5];
-        let amount_text = if amount_word.chars().all(|ch| ch.is_ascii_digit()) {
-            format!("{{{amount_word}}}")
-        } else {
-            amount_word.to_string()
-        };
-        let tail = line_words[6..].join(" ");
-        let text = format!("This cost is reduced by {amount_text} {tail}");
-        return Err(CardTextError::ParseError(format!(
-            "unsupported cost-reduction static clause (clause: '{}')",
-            text
-        )));
-    }
-
-    if activated_words_start_with(&line_words, ACTIVATED_ABILITIES_OF_PREFIX) {
-        let Some(cost_idx) = line_words
-            .iter()
-            .position(|word| activated_word_is_any(*word, &["cost", "costs"]))
-        else {
-            return Ok(None);
-        };
-        if cost_idx <= 3 {
-            return Ok(None);
-        }
-        let subject_tokens = trim_commas(&tokens[3..cost_idx]);
-        if subject_tokens.is_empty() {
-            return Ok(None);
-        }
-        let mut filter = parse_object_filter(&subject_tokens, false).map_err(|_| {
-            CardTextError::ParseError(format!(
-                "unsupported activated-ability cost reduction subject (clause: '{}')",
-                line_words.join(" ")
-            ))
-        })?;
-        if filter.zone.is_none() {
-            filter.zone = Some(Zone::Battlefield);
-        }
-
-        let amount_tokens = trim_commas(&tokens[cost_idx + 1..]);
-        let Some((amount_value, used)) = parse_cost_modifier_amount(&amount_tokens) else {
-            return Ok(None);
-        };
-        let reduction = match amount_value {
-            Value::Fixed(value) if value > 0 => value as u32,
-            _ => {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported activated-ability cost reduction amount (clause: '{}')",
-                    line_words.join(" ")
+    match head {
+        CostReductionLineHead::ThisCost {
+            amount_tokens,
+            diagnostic_amount_word,
+            diagnostic_tail,
+        } => {
+            let parsed_amount = parse_cost_modifier_amount(amount_tokens);
+            let (amount_value, used) = parsed_amount.clone().unwrap_or((Value::Fixed(1), 0));
+            let amount_fixed = if let Value::Fixed(value) = amount_value {
+                value
+            } else {
+                1
+            };
+            let remaining_tokens = amount_tokens.get(used..).unwrap_or_default();
+            if activated_line_grammar::parse_this_cost_reduction_remainder_tokens(remaining_tokens)
+                == ThisCostReductionRemainder::ForEach
+                && let Some(dynamic) = parse_dynamic_cost_modifier_value(remaining_tokens)?
+            {
+                let reduction = scale_dynamic_cost_modifier_value(dynamic, amount_fixed);
+                return Ok(Some(StaticAbility::new(
+                    crate::static_abilities::ThisSpellCostReduction::new(
+                        reduction,
+                        crate::static_abilities::ThisSpellCostCondition::Always,
+                    ),
                 )));
             }
-        };
-        let tail_words = crate::runtime_backend::token_word_refs(&amount_tokens[used..]);
-        if !activated_words_start_with(&tail_words, LESS_TO_ACTIVATE_PREFIX) {
-            return Ok(None);
+
+            let amount_text = if diagnostic_amount_word.chars().all(|ch| ch.is_ascii_digit()) {
+                format!("{{{diagnostic_amount_word}}}")
+            } else {
+                diagnostic_amount_word.to_string()
+            };
+            let text = format!("This cost is reduced by {amount_text} {diagnostic_tail}");
+            Err(CardTextError::ParseError(format!(
+                "unsupported cost-reduction static clause (clause: '{text}')"
+            )))
         }
-
-        return Ok(Some(StaticAbility::reduce_activated_ability_costs(
-            filter,
-            reduction,
-            Some(1),
-        )));
-    }
-
-    if activated_words_start_with(&line_words, THIS_ABILITY_COSTS_PREFIX) {
-        let amount_tokens = trim_commas(&tokens[3..]);
-        let Some((amount_value, used)) = parse_cost_modifier_amount(&amount_tokens) else {
-            return Ok(None);
-        };
-        let reduction = match amount_value {
-            Value::Fixed(value) if value > 0 => value as u32,
-            _ => {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported activated-ability cost reduction amount (clause: '{}')",
+        CostReductionLineHead::ActivatedAbilitiesOf {
+            subject_tokens,
+            amount_tokens,
+        } => {
+            let mut filter = parse_object_filter(subject_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported activated-ability cost reduction subject (clause: '{}')",
                     line_words.join(" ")
-                )));
+                ))
+            })?;
+            if filter.zone.is_none() {
+                filter.zone = Some(Zone::Battlefield);
             }
-        };
-        let tail_tokens = trim_commas(&amount_tokens[used..]);
-        let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
-        if activated_words_equal(&tail_words, LESS_TO_ACTIVATE_WORDS) {
-            return Ok(Some(StaticAbility::reduce_activated_ability_costs(
-                ObjectFilter::source(),
-                reduction,
-                None,
-            )));
-        }
-        if activated_words_start_with(&tail_words, LESS_TO_ACTIVATE_IF_PREFIX) {
-            let condition_tokens = trim_commas(&tail_tokens[4..]);
-            let condition_words = crate::runtime_backend::token_word_refs(&condition_tokens);
-            if activated_words_start_with(&condition_words, IT_TARGETS_PREFIX) {
-                let (count, used) = parse_number(&condition_tokens[2..]).ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "unsupported activated-ability target condition count (clause: '{}')",
+
+            let Some((amount_value, used)) = parse_cost_modifier_amount(amount_tokens) else {
+                return Ok(None);
+            };
+            let reduction = match amount_value {
+                Value::Fixed(value) if value > 0 => value as u32,
+                _ => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported activated-ability cost reduction amount (clause: '{}')",
                         line_words.join(" ")
-                    ))
-                })?;
-                let mut filter = parse_object_filter(&condition_tokens[2 + used..], false)
-                    .map_err(|_| {
+                    )));
+                }
+            };
+            if activated_line_grammar::parse_activated_abilities_reduction_remainder_tokens(
+                &amount_tokens[used..],
+            )
+            .is_none()
+            {
+                return Ok(None);
+            }
+            Ok(Some(StaticAbility::reduce_activated_ability_costs(
+                filter,
+                reduction,
+                Some(1),
+            )))
+        }
+        CostReductionLineHead::ThisAbility { amount_tokens } => {
+            let Some((amount_value, used)) = parse_cost_modifier_amount(amount_tokens) else {
+                return Ok(None);
+            };
+            let reduction = match amount_value {
+                Value::Fixed(value) if value > 0 => value as u32,
+                _ => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported activated-ability cost reduction amount (clause: '{}')",
+                        line_words.join(" ")
+                    )));
+                }
+            };
+            let tail_tokens = trim_commas(&amount_tokens[used..]);
+            match activated_line_grammar::parse_this_ability_reduction_remainder_tokens(
+                &tail_tokens,
+            ) {
+                ThisAbilityReductionRemainder::Unconditional => {
+                    Ok(Some(StaticAbility::reduce_activated_ability_costs(
+                        ObjectFilter::source(),
+                        reduction,
+                        None,
+                    )))
+                }
+                ThisAbilityReductionRemainder::Targets {
+                    count_and_filter_tokens,
+                } => {
+                    let (count, used) = parse_number(count_and_filter_tokens).ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported activated-ability target condition count (clause: '{}')",
+                            line_words.join(" ")
+                        ))
+                    })?;
+                    let mut filter = parse_object_filter(&count_and_filter_tokens[used..], false)
+                        .map_err(|_| {
                         CardTextError::ParseError(format!(
                             "unsupported activated-ability target condition filter (clause: '{}')",
                             line_words.join(" ")
                         ))
                     })?;
-                if filter.zone.is_none() {
-                    filter.zone = Some(Zone::Battlefield);
+                    if filter.zone.is_none() {
+                        filter.zone = Some(Zone::Battlefield);
+                    }
+                    Ok(Some(
+                        StaticAbility::reduce_activated_ability_costs_if_targets(
+                            ObjectFilter::source(),
+                            reduction,
+                            crate::static_abilities::ActivatedAbilityCostCondition::TargetsExactly {
+                                count: count as usize,
+                                filter,
+                            },
+                            None,
+                        ),
+                    ))
                 }
-                return Ok(Some(
-                    StaticAbility::reduce_activated_ability_costs_if_targets(
-                        ObjectFilter::source(),
-                        reduction,
-                        crate::static_abilities::ActivatedAbilityCostCondition::TargetsExactly {
-                            count: count as usize,
-                            filter,
-                        },
-                        None,
-                    ),
-                ));
+                ThisAbilityReductionRemainder::ForEach { filter_tokens } => {
+                    if let Some(Value::BasicLandTypesAmong(lands_filter)) =
+                        parse_dynamic_cost_modifier_value(&tail_tokens)?
+                    {
+                        return Ok(Some(
+                            StaticAbility::reduce_activated_ability_costs_for_each_basic_land_type(
+                                ObjectFilter::source(),
+                                reduction,
+                                lands_filter,
+                                None,
+                            ),
+                        ));
+                    }
+                    let mut per_filter =
+                        parse_object_filter(filter_tokens, false).map_err(|_| {
+                            CardTextError::ParseError(format!(
+                                "unsupported activated-ability cost reduction tail (clause: '{}')",
+                                line_words.join(" ")
+                            ))
+                        })?;
+                    if per_filter.zone.is_none() {
+                        per_filter.zone = Some(Zone::Battlefield);
+                    }
+                    Ok(Some(
+                        StaticAbility::reduce_activated_ability_costs_for_each(
+                            ObjectFilter::source(),
+                            reduction,
+                            per_filter,
+                            None,
+                        ),
+                    ))
+                }
+                ThisAbilityReductionRemainder::UnsupportedCondition => {
+                    Err(CardTextError::ParseError(format!(
+                        "unsupported activated-ability cost reduction condition (clause: '{}')",
+                        line_words.join(" ")
+                    )))
+                }
+                ThisAbilityReductionRemainder::NotReduction => Ok(None),
             }
-            return Err(CardTextError::ParseError(format!(
-                "unsupported activated-ability cost reduction condition (clause: '{}')",
-                line_words.join(" ")
-            )));
         }
-        if activated_words_start_with(&tail_words, LESS_TO_ACTIVATE_FOR_EACH_PREFIX) {
-            if let Some(Value::BasicLandTypesAmong(lands_filter)) =
-                parse_dynamic_cost_modifier_value(&tail_tokens)?
-            {
-                return Ok(Some(
-                    StaticAbility::reduce_activated_ability_costs_for_each_basic_land_type(
-                        ObjectFilter::source(),
-                        reduction,
-                        lands_filter,
-                        None,
-                    ),
-                ));
+        CostReductionLineHead::ThisSpell { amount_tokens } => {
+            let parsed_amount = parse_cost_modifier_amount(amount_tokens);
+            let (amount_value, used) = parsed_amount.clone().unwrap_or((Value::Fixed(1), 0));
+            let amount_fixed = if let Value::Fixed(value) = amount_value {
+                value
+            } else {
+                1
+            };
+            let remaining_tokens = &amount_tokens[used..];
+            let remainder = activated_line_grammar::parse_this_spell_reduction_remainder_tokens(
+                remaining_tokens,
+            );
+            if remainder == ThisSpellReductionRemainder::NotReduction {
+                return Ok(None);
             }
-            let mut per_filter = parse_object_filter(&tail_tokens[5..], false).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported activated-ability cost reduction tail (clause: '{}')",
-                    line_words.join(" ")
-                ))
-            })?;
-            if per_filter.zone.is_none() {
-                per_filter.zone = Some(Zone::Battlefield);
+            if let Some(dynamic) = parse_dynamic_cost_modifier_value(remaining_tokens)? {
+                let reduction =
+                    crate::static_abilities::CostReduction::new(ObjectFilter::default(), dynamic);
+                return Ok(Some(StaticAbility::new(reduction)));
             }
-            return Ok(Some(
-                StaticAbility::reduce_activated_ability_costs_for_each(
-                    ObjectFilter::source(),
-                    reduction,
-                    per_filter,
-                    None,
-                ),
-            ));
+            if parsed_amount.is_none() {
+                return Ok(None);
+            }
+            if remainder == ThisSpellReductionRemainder::CardTypesInGraveyard {
+                if amount_fixed != 1 {
+                    return Ok(None);
+                }
+                let reduction = crate::effect::Value::CardTypesInGraveyard(PlayerFilter::You);
+                let cost_reduction =
+                    crate::static_abilities::CostReduction::new(ObjectFilter::default(), reduction);
+                return Ok(Some(StaticAbility::new(cost_reduction)));
+            }
+            Ok(None)
         }
     }
-
-    if !activated_words_start_with(&line_words, THIS_SPELL_COSTS_PREFIX) {
-        return Ok(None);
-    }
-
-    let costs_idx = find_token_word_exact(tokens, "costs")
-        .ok_or_else(|| CardTextError::ParseError("missing costs keyword".to_string()))?;
-    let amount_tokens = &tokens[costs_idx + 1..];
-    let parsed_amount = parse_cost_modifier_amount(amount_tokens);
-    let (amount_value, used) = parsed_amount.clone().unwrap_or((Value::Fixed(1), 0));
-    let amount_fixed = if let Value::Fixed(value) = amount_value {
-        value
-    } else {
-        1
-    };
-
-    let remaining_tokens = &tokens[costs_idx + 1 + used..];
-    let remaining_words: Vec<&str> = crate::runtime_backend::token_word_refs(remaining_tokens);
-
-    if !activated_words_contain_all(&remaining_words, &["less"]) {
-        return Ok(None);
-    }
-
-    if let Some(dynamic) = parse_dynamic_cost_modifier_value(remaining_tokens)? {
-        let reduction =
-            crate::static_abilities::CostReduction::new(ObjectFilter::default(), dynamic);
-        return Ok(Some(StaticAbility::new(reduction)));
-    }
-
-    if parsed_amount.is_none() {
-        return Ok(None);
-    }
-
-    let has_each = activated_words_contain_all(&remaining_words, &["each"]);
-    let has_card_type = activated_words_contain_phrase(&remaining_words, &["card", "type"]);
-    let has_graveyard = activated_words_contain_all(&remaining_words, &["graveyard"]);
-
-    if has_each && has_card_type && has_graveyard {
-        if amount_fixed != 1 {
-            return Ok(None);
-        }
-        let reduction = crate::effect::Value::CardTypesInGraveyard(PlayerFilter::You);
-        let cost_reduction =
-            crate::static_abilities::CostReduction::new(ObjectFilter::default(), reduction);
-        return Ok(Some(StaticAbility::new(cost_reduction)));
-    }
-
-    Ok(None)
 }
 
 pub(crate) fn scale_dynamic_cost_modifier_value(dynamic: Value, multiplier: i32) -> Value {
@@ -1365,7 +938,9 @@ pub(crate) fn parse_all_creatures_able_to_block_source_line(
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    if activated_words_equal_any(&words, ALL_CREATURES_ABLE_TO_BLOCK_SOURCE_WORDS) {
+    if activated_line_grammar::parse_activated_block_requirement_words(&words)
+        == Some(ActivatedBlockRequirement::AllCreaturesBlockSource)
+    {
         return Ok(Some(StaticAbilityAst::GrantStaticAbility {
             filter: ObjectFilter::creature(),
             ability: Box::new(StaticAbilityAst::Static(StaticAbility::must_block())),
@@ -1380,7 +955,9 @@ pub(crate) fn parse_source_must_be_blocked_if_able_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    if activated_words_equal_any(&words, SOURCE_MUST_BE_BLOCKED_IF_ABLE_WORDS) {
+    if activated_line_grammar::parse_activated_block_requirement_words(&words)
+        == Some(ActivatedBlockRequirement::SourceMustBeBlocked)
+    {
         return Ok(Some(StaticAbility::restriction(
             crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
             "this creature must be blocked if able".to_string(),

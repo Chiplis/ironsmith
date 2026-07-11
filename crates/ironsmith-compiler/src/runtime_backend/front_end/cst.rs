@@ -1,7 +1,53 @@
 use super::leaf::ActivationCostCst;
 use super::lexer::OwnedLexToken;
 use super::shared_types::{LineInfo, MetadataLine};
-use crate::cards::builders::{EffectAst, ParsedLevelAbilityItemAst, PredicateAst};
+use crate::ability::PresentationLabel;
+use crate::cards::builders::{EffectAst, LineAst, ParsedLevelAbilityItemAst, PredicateAst};
+use crate::runtime_backend::ir::ChosenOptionContext;
+
+#[derive(Debug, Clone)]
+pub(crate) enum KeywordLinePayloadCst {
+    Ast(LineAst),
+    Kicker {
+        cost: crate::cost::TotalCost,
+        label: Option<String>,
+    },
+}
+
+impl KeywordLinePayloadCst {
+    pub(crate) fn ast(ast: LineAst) -> Self {
+        Self::Ast(ast)
+    }
+
+    pub(crate) fn kicker(cost: crate::cost::TotalCost) -> Self {
+        Self::Kicker { cost, label: None }
+    }
+
+    pub(crate) fn set_kicker_label(&mut self, label: String) -> Result<(), String> {
+        let Self::Kicker {
+            label: current_label,
+            ..
+        } = self
+        else {
+            return Err("custom kicker label attached to a non-kicker payload".to_string());
+        };
+        *current_label = Some(label);
+        Ok(())
+    }
+
+    pub(crate) fn to_line_ast(&self) -> LineAst {
+        match self {
+            Self::Ast(ast) => ast.clone(),
+            Self::Kicker { cost, label } => {
+                let cost = match label {
+                    Some(label) => crate::cost::OptionalCost::custom(label, cost.clone()),
+                    None => crate::cost::OptionalCost::kicker(cost.clone()),
+                };
+                LineAst::OptionalCost(cost.into())
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct RewriteDocumentCst {
@@ -34,6 +80,7 @@ pub(crate) struct KeywordLineCst {
     pub(crate) parse_tokens: Vec<OwnedLexToken>,
     pub(crate) full_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) kind: KeywordLineKindCst,
+    pub(crate) payload: KeywordLinePayloadCst,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +110,7 @@ pub(crate) enum KeywordLineKindCst {
     Reinforce,
     Retrace,
     Squad,
+    Splice,
     Transmute,
     Entwine,
     Escalate,
@@ -84,7 +132,7 @@ pub(crate) struct ActivatedLineCst {
     pub(crate) effect_text: String,
     pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) presentation_label: Option<String>,
-    pub(crate) chosen_option_label: Option<String>,
+    pub(crate) chosen_option: Option<ChosenOptionContext>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,8 +153,8 @@ pub(crate) struct TriggeredLineCst {
     pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) intervening_if: Option<PredicateAst>,
     pub(crate) max_triggers_per_turn: Option<u32>,
-    pub(crate) chosen_option_label: Option<String>,
-    pub(crate) presentation_label: Option<String>,
+    pub(crate) chosen_option: Option<ChosenOptionContext>,
+    pub(crate) presentation: Option<PresentationLabel>,
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +162,8 @@ pub(crate) struct StaticLineCst {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
     pub(crate) parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) chosen_option_label: Option<String>,
+    pub(crate) chosen_option: Option<ChosenOptionContext>,
+    pub(crate) parsed: Option<LineAst>,
 }
 
 #[derive(Debug, Clone)]
@@ -128,6 +177,7 @@ pub(crate) struct StatementLineCst {
 #[derive(Debug, Clone)]
 pub(crate) struct ModalBlockCst {
     pub(crate) header: LineInfo,
+    pub(crate) header_tokens: Vec<OwnedLexToken>,
     pub(crate) modes: Vec<ModalModeCst>,
 }
 

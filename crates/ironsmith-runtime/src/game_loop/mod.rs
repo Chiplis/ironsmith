@@ -56,7 +56,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::triggers::{
     DamageEventTarget, TriggerEvent, TriggerQueue, TriggeredAbilityEntry, check_triggers,
-    generate_step_trigger_events, verify_intervening_if,
+    check_triggers_batch, generate_step_trigger_events, verify_intervening_if,
 };
 use crate::turn::{
     PriorityResult, PriorityTracker, TurnError, pass_priority, priority_after_player_action,

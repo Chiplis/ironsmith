@@ -812,6 +812,9 @@ pub enum Condition {
     /// "you attacked with N or more creatures this turn"
     AttackedWithNOrMoreCreaturesThisTurn(u32),
     OpponentLostLifeThisTurn,
+    AnyPlayerLostLifeThisTurnOrMore {
+        count: u32,
+    },
     OpponentWasDealtDamageThisTurn,
     PermanentLeftBattlefieldThisTurn,
     NonlandPermanentLeftBattlefieldThisTurn,
@@ -912,6 +915,11 @@ pub enum Condition {
     TaggedObjectWasCast(TagKey),
     TaggedObjectIsSoulbondPaired(TagKey),
     EnchantedPermanentAttackedThisTurn,
+    /// Two or more selected object targets do not all have the same current color set.
+    ///
+    /// This is resolution-context-only because it compares the objects selected for
+    /// the resolving spell or ability after continuous effects are applied.
+    TargetObjectsHaveDifferentColorSets,
     TargetMatches(ObjectFilter),
     TargetIsSoulbondPaired,
     PlayerTaggedObjectMatches {

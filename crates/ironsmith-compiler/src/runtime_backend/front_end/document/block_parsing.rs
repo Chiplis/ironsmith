@@ -103,6 +103,7 @@ pub(super) fn try_parse_modal_bullet_block(
     Ok(Some((
         RewriteLineCst::Modal(ModalBlockCst {
             header: line.info.clone(),
+            header_tokens: line.tokens.clone(),
             modes: bullet_modes,
         }),
         probe_idx,

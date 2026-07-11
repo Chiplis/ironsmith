@@ -16,6 +16,12 @@ pub enum DamagedBySource {
     EnchantedCreature,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DamageSourceSurface {
+    Filter,
+    Source,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TriggerKind {
     StateBased {
@@ -148,6 +154,7 @@ pub enum TriggerKind {
     DealsDamageTo {
         source: ObjectFilter,
         target: ObjectFilter,
+        source_surface: DamageSourceSurface,
     },
     DealsDamageToPlayer {
         source: ObjectFilter,
@@ -156,6 +163,7 @@ pub enum TriggerKind {
     DealsNoncombatDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,
+        source_surface: DamageSourceSurface,
     },
     DealsCombatDamage {
         filter: ObjectFilter,
@@ -731,9 +739,20 @@ impl Trigger {
         Self::typed("deals_damage", TriggerKind::DealsDamage { filter })
     }
     pub fn deals_damage_to(source: ObjectFilter, target: ObjectFilter) -> Self {
+        Self::deals_damage_to_with_source_surface(source, target, DamageSourceSurface::Filter)
+    }
+    pub fn deals_damage_to_with_source_surface(
+        source: ObjectFilter,
+        target: ObjectFilter,
+        source_surface: DamageSourceSurface,
+    ) -> Self {
         Self::typed(
             "deals_damage_to",
-            TriggerKind::DealsDamageTo { source, target },
+            TriggerKind::DealsDamageTo {
+                source,
+                target,
+                source_surface,
+            },
         )
     }
     pub fn deals_damage_to_player(source: ObjectFilter, player: PlayerFilter) -> Self {
@@ -743,9 +762,24 @@ impl Trigger {
         )
     }
     pub fn deals_noncombat_damage_to_player(source: ObjectFilter, player: PlayerFilter) -> Self {
+        Self::deals_noncombat_damage_to_player_with_source_surface(
+            source,
+            player,
+            DamageSourceSurface::Filter,
+        )
+    }
+    pub fn deals_noncombat_damage_to_player_with_source_surface(
+        source: ObjectFilter,
+        player: PlayerFilter,
+        source_surface: DamageSourceSurface,
+    ) -> Self {
         Self::typed(
             "deals_noncombat_damage_to_player",
-            TriggerKind::DealsNoncombatDamageToPlayer { source, player },
+            TriggerKind::DealsNoncombatDamageToPlayer {
+                source,
+                player,
+                source_surface,
+            },
         )
     }
     pub fn deals_combat_damage(filter: ObjectFilter) -> Self {

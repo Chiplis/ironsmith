@@ -1,16 +1,17 @@
-use crate::cards::builders::{CardDefinitionBuilder, ParsedRestrictions};
+use crate::cards::builders::CardDefinitionBuilder;
+use crate::runtime_backend::semantic::ParsedRestrictions;
 use crate::types::CardType;
 use winnow::combinator::{alt, opt};
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 
-use super::activation_and_restrictions::{
-    is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed,
-};
+use super::grammar::document_shapes;
 use super::grammar::primitives as grammar;
+use super::grammar::restriction_facts::{
+    parse_activation_restriction_tokens, parse_trigger_restriction_tokens,
+};
 use super::lexer::{
     LexStream, OwnedLexToken, TokenKind, lex_line, render_token_slice, split_lexed_sentences,
-    token_word_refs, word_slice_contains_phrase,
 };
 
 pub(crate) fn split_text_for_parse(
@@ -22,22 +23,75 @@ pub(crate) fn split_text_for_parse(
     let mut restrictions = ParsedRestrictions::default();
     let mut parsed_portion = Vec::new();
     for sentence in line_sentences {
-        if sentence.is_empty() {
+        if sentence.text.is_empty() {
             continue;
         }
 
-        if queue_restriction(&sentence, line_index, &mut restrictions) {
+        if queue_restriction(&sentence.tokens, &mut restrictions) {
             continue;
         }
 
-        parsed_portion.push(sentence);
+        parsed_portion.push(sentence.text);
     }
 
     for restriction in extract_parenthetical_restrictions(raw_text) {
-        let _ = queue_restriction(&restriction, line_index, &mut restrictions);
+        let _ = queue_restriction(&restriction.tokens, &mut restrictions);
     }
 
     (parsed_portion, restrictions)
+}
+
+/// Splits an already-lexed line into semantic sentences and typed restriction
+/// facts without rendering and lexing the source a second time.
+pub(crate) fn split_tokens_for_parse(
+    tokens: &[OwnedLexToken],
+) -> (Vec<Vec<OwnedLexToken>>, ParsedRestrictions) {
+    let mut restrictions = ParsedRestrictions::default();
+    let mut parsed_portion = Vec::new();
+    for sentence in split_lexed_sentences(tokens) {
+        if sentence.is_empty() {
+            continue;
+        }
+        if queue_restriction(sentence, &mut restrictions) {
+            continue;
+        }
+        parsed_portion.push(sentence.to_vec());
+    }
+
+    for parenthetical in parenthetical_token_slices(tokens) {
+        for sentence in split_lexed_sentences(parenthetical) {
+            let _ = queue_restriction(sentence, &mut restrictions);
+        }
+    }
+
+    (parsed_portion, restrictions)
+}
+
+fn parenthetical_token_slices(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+    let mut slices = Vec::new();
+    let mut depth = 0u32;
+    let mut start = None;
+    for (idx, token) in tokens.iter().enumerate() {
+        match token.kind {
+            TokenKind::LParen => {
+                if depth == 0 {
+                    start = Some(idx + 1);
+                }
+                depth = depth.saturating_add(1);
+            }
+            TokenKind::RParen => {
+                if depth == 1
+                    && let Some(start) = start.take()
+                    && start <= idx
+                {
+                    slices.push(&tokens[start..idx]);
+                }
+                depth = depth.saturating_sub(1);
+            }
+            _ => {}
+        }
+    }
+    slices
 }
 
 pub(crate) fn spell_card_prefers_resolution_line_merge(builder: &CardDefinitionBuilder) -> bool {
@@ -61,13 +115,20 @@ pub(crate) fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]
         || looks_like_otherwise_followup_lexed(tokens)
 }
 
-fn split_sentences_for_parse(line: &str, _line_index: usize) -> Vec<String> {
-    if let Ok(tokens) = lex_line(line, _line_index) {
+struct ParsedSentenceSurface {
+    text: String,
+    tokens: Vec<OwnedLexToken>,
+}
+
+fn split_sentences_for_parse(line: &str, line_index: usize) -> Vec<ParsedSentenceSurface> {
+    if let Ok(tokens) = lex_line(line, line_index) {
         let sentences = split_lexed_sentences(&tokens)
             .into_iter()
-            .map(render_token_slice)
-            .map(|sentence| sentence.trim().to_string())
-            .filter(|sentence| !sentence.is_empty())
+            .map(|tokens| ParsedSentenceSurface {
+                text: render_token_slice(tokens).trim().to_string(),
+                tokens: tokens.to_vec(),
+            })
+            .filter(|sentence| !sentence.text.is_empty())
             .collect::<Vec<_>>();
         if !sentences.is_empty() {
             return sentences;
@@ -75,6 +136,12 @@ fn split_sentences_for_parse(line: &str, _line_index: usize) -> Vec<String> {
     }
 
     split_sentences_for_parse_fallback(line)
+        .into_iter()
+        .map(|text| ParsedSentenceSurface {
+            tokens: lex_line(&text, line_index).unwrap_or_default(),
+            text,
+        })
+        .collect()
 }
 
 fn split_sentences_for_parse_fallback(line: &str) -> Vec<String> {
@@ -142,10 +209,6 @@ fn starts_with_lexed_parser<'a>(
         .is_some_and(|tail| grammar::parse_prefix(tail, parser).is_some())
 }
 
-pub(crate) fn is_at_trigger_intro(tokens: &[OwnedLexToken], idx: usize) -> bool {
-    starts_with_lexed_parser(tokens, idx, parse_at_trigger_intro_inner)
-}
-
 pub(crate) fn is_at_trigger_intro_lexed(tokens: &[OwnedLexToken], idx: usize) -> bool {
     starts_with_lexed_parser(tokens, idx, parse_at_trigger_intro_inner)
 }
@@ -174,43 +237,8 @@ fn looks_like_delayed_next_turn_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     grammar::parse_prefix(tokens, parse_delayed_next_turn_intro_inner).is_some()
 }
 
-fn parse_when_one_or_more_followup_head_inner<'a>(
-    input: &mut LexStream<'a>,
-) -> Result<(), ErrMode<ContextError>> {
-    alt((
-        (
-            alt((grammar::kw("when"), grammar::kw("whenever"))),
-            grammar::kw("one"),
-            grammar::kw("or"),
-            grammar::kw("more"),
-        )
-            .void(),
-        (
-            alt((grammar::kw("when"), grammar::kw("whenever"))),
-            grammar::kw("you"),
-            alt((
-                grammar::kw("discard"),
-                grammar::kw("exile"),
-                grammar::kw("mill"),
-                grammar::kw("sacrifice"),
-            )),
-            grammar::kw("one"),
-            grammar::kw("or"),
-            grammar::kw("more"),
-        )
-            .void(),
-    ))
-    .parse_next(input)
-}
-
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-        .map(|(before, _after)| {
-            word_slice_contains_phrase(&token_word_refs(before), &["this", "way"])
-        })
-        .unwrap_or_else(|| word_slice_contains_phrase(&token_word_refs(tokens), &["this", "way"]));
-    starts_with_lexed_parser(tokens, 0, parse_when_one_or_more_followup_head_inner)
-        && this_way_in_prefix
+    document_shapes::parse_when_one_or_more_this_way_followup_surface(tokens).is_some()
 }
 
 fn parse_when_it_connives_this_way_followup_intro_inner<'a>(
@@ -272,29 +300,19 @@ fn looks_like_otherwise_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
     starts_with_lexed_parser(tokens, 0, parse_otherwise_followup_intro_inner)
 }
 
-fn queue_restriction(
-    restriction: &str,
-    line_index: usize,
-    pending: &mut ParsedRestrictions,
-) -> bool {
-    let normalized = normalize_restriction_text(restriction);
-    if normalized.is_empty() {
-        return false;
-    }
-
-    let tokens = lex_line(&normalized, line_index).unwrap_or_default();
-    if is_activate_only_restriction_sentence_lexed(&tokens) {
-        pending.activation.push(normalized);
+fn queue_restriction(tokens: &[OwnedLexToken], pending: &mut ParsedRestrictions) -> bool {
+    if let Some(parsed) = parse_activation_restriction_tokens(tokens) {
+        pending.activation.push(parsed);
         true
-    } else if is_trigger_only_restriction_sentence_lexed(&tokens) {
-        pending.trigger.push(normalized);
+    } else if let Some(parsed) = parse_trigger_restriction_tokens(tokens) {
+        pending.trigger.push(parsed);
         true
     } else {
         false
     }
 }
 
-fn extract_parenthetical_restrictions(line: &str) -> Vec<String> {
+fn extract_parenthetical_restrictions(line: &str) -> Vec<ParsedSentenceSurface> {
     let mut restrictions = Vec::new();
     let mut paren_depth = 0u32;
     let mut start = None::<usize>;
@@ -311,9 +329,7 @@ fn extract_parenthetical_restrictions(line: &str) -> Vec<String> {
                 if paren_depth == 1 {
                     if let Some(start_idx) = start.take() {
                         let inside = &line[start_idx..byte_idx];
-                        for sentence in split_sentences_for_parse(inside, 0) {
-                            restrictions.push(sentence);
-                        }
+                        restrictions.extend(split_sentences_for_parse(inside, 0));
                     }
                 }
                 paren_depth = paren_depth.saturating_sub(1);
@@ -323,12 +339,4 @@ fn extract_parenthetical_restrictions(line: &str) -> Vec<String> {
     }
 
     restrictions
-        .into_iter()
-        .map(|restriction| normalize_restriction_text(&restriction))
-        .filter(|restriction| !restriction.is_empty())
-        .collect()
-}
-
-fn normalize_restriction_text(text: &str) -> String {
-    text.trim().trim_end_matches('.').trim().to_string()
 }

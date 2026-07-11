@@ -1,252 +1,88 @@
-const LABELED_ROUND_UP_EACH_TIME_PREFIX: &[&str] = &["round", "up", "each", "time"];
-const LABELED_THE_NEXT_PREFIX: &[&str] = &["the", "next"];
-const LABELED_YOU_MAY_CAST_PREFIX: &[&str] = &["you", "may", "cast"];
-const LABELED_FROM_AMONG_THEM_PHRASE: &[&str] = &["from", "among", "them"];
-const LABELED_WITHOUT_PAYING_ITS_MANA_COST_PHRASE: &[&str] =
-    &["without", "paying", "its", "mana", "cost"];
-const LABELED_CAST_HAND_FREE_PREFIX: &[&str] =
-    &["you", "may", "cast", "a", "spell", "from", "your", "hand"];
-const LABELED_EXILE_ALL_CARDS_FROM_PREFIX: &[&str] = &["exile", "all", "cards", "from"];
-const LABELED_HAND_WORDS: &[&str] = &["hand", "hands"];
-const LABELED_GRAVEYARD_WORDS: &[&str] = &["graveyard", "graveyards"];
-const LABELED_UNLESS_WORD: &str = "unless";
-const LABELED_GAIN_LOSE_WORDS: &[&str] = &["gain", "gains", "lose", "loses"];
-const LABELED_VOTE_WORDS: &[&str] = &["vote", "votes"];
-const LABELED_RETURN_PREFIX: &[&str] = &["return"];
-const LABELED_ROUNDED_UP_WORDS: &[&str] = &["rounded", "up"];
-const LABELED_CHOOSE_PREFIX: &[&str] = &["choose"];
-const LABELED_DO_THE_SAME_FOR_PHRASE: &[&str] = &["do", "the", "same", "for"];
-const LABELED_EACH_PLAYER_CHOOSE_PREFIXES: &[&[&str]] = &[
-    &["each", "player", "choose"],
-    &["each", "player", "chooses"],
-];
-const LABELED_CAST_ANY_NUMBER_GRAVEYARD_FREE_PREFIX: &[&str] = &["cast", "any", "number", "of"];
-const LABELED_FROM_YOUR_GRAVEYARD_PHRASE: &[&str] = &["from", "your", "graveyard"];
-const LABELED_WITHOUT_PAYING_THEIR_MANA_COSTS_PHRASE: &[&str] =
-    &["without", "paying", "their", "mana", "costs"];
-const LABELED_TAP_PREFIX: &[&str] = &["tap"];
-const LABELED_PREVENT_TAKE_MONSTROSITY_WORDS: &[&str] = &["prevent", "take", "monstrosity"];
-const LABELED_ENCHANT_WORD: &str = "enchant";
-const LABELED_EARTHBEND_WORD: &str = "earthbend";
-const LABELED_SACRIFICE_WORD: &str = "sacrifice";
-const LABELED_ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
-const LABELED_IS_OR_ARE_WORDS: &[&str] = &["is", "are"];
-const LABELED_ARTICLE_AND_WORDS: &[&str] = &["a", "an", "and"];
-const LABELED_GAIN_OR_GAINS_WORDS: &[&str] = &["gain", "gains"];
-const LABELED_GAIN_HAS_LOSE_WORDS: &[&str] = &["gain", "gains", "has", "have", "lose", "loses"];
-const LABELED_HAS_HAVE_WORDS: &[&str] = &["has", "have"];
-const LABELED_SIMPLE_ABILITY_TAIL_STOP_WORDS: &[&str] = &["and", "then", "if"];
-const LABELED_TRIGGER_WORDS: &[&str] = &["when", "whenever"];
-const LABELED_OR_UNTAP_ALL_EACH_PHRASES: &[&[&str]] =
-    &[&["or", "untap", "all"], &["or", "untap", "each"]];
-const LABELED_SIMPLE_ABILITY_EXCLUSION_WORDS: &[&str] = &["shares", "choice"];
-const LABELED_ANOTHER_WORD: &str = "another";
-const LABELED_HASTE_WORD: &str = "haste";
-const LABELED_LIFE_WORD: &str = "life";
-
-fn labeled_mana_value_or_less_bound(tokens: &[OwnedLexToken]) -> Option<u32> {
-    let mut search_start = 0usize;
-    while search_start < tokens.len() {
-        let relative_idx = find_token_word_sequence(&tokens[search_start..], &["mana", "value"])?;
-        let phrase_start = search_start + relative_idx;
-        let tail_start = phrase_start + 2;
-        let tail = tokens.get(tail_start..)?;
-        let Some((count, _used)) =
-            crate::runtime_backend::util::parse_less_than_or_equal_quantity_prefix(
-                tail,
-                false,
-                false,
-                "mana value bound",
-            )
-            .ok()
-            .flatten()
-        else {
-            search_start = tail_start;
-            continue;
-        };
-        return Some(count);
+fn parse_player_villainous_choice_mode_program(
+    program: crate::runtime_backend::grammar::semantic_lowering::VillainousChoiceModeProgram<'_>,
+) -> Result<Vec<EffectAst>, CardTextError> {
+    match program {
+        crate::runtime_backend::grammar::semantic_lowering::VillainousChoiceModeProgram::Direct(
+            tokens,
+        ) => parse_effect_sentence_lexed(tokens),
+        crate::runtime_backend::grammar::semantic_lowering::VillainousChoiceModeProgram::SharedSubjectPair(pair) => {
+            let parse_action = |action_tokens: &[OwnedLexToken]| {
+                let mut clause = Vec::with_capacity(
+                    pair.subject_tokens
+                        .len()
+                        .saturating_add(action_tokens.len()),
+                );
+                clause.extend_from_slice(pair.subject_tokens);
+                clause.extend_from_slice(action_tokens);
+                parse_effect_sentence_lexed(&clause)
+            };
+            let mut effects = parse_action(pair.first_action_tokens)?;
+            effects.extend(parse_action(pair.second_action_tokens)?);
+            Ok(effects)
+        }
     }
-    None
 }
 
-const LABELED_SIMPLE_ABILITY_WORDS: &[&str] = &[
-    "indestructible",
-    "haste",
-    "flying",
-    "vigilance",
-    "lifelink",
-    "trample",
-    "reach",
-    "menace",
-    "fear",
-    "deathtouch",
-    "horsemanship",
-    "hexproof",
-    "shroud",
-    "shadow",
-    "strike",
-    "protection",
-    "blocked",
-    "abilities",
-    "when",
-    "whenever",
-];
-const LABELED_TOKEN_SACRIFICE_PREFIXES: &[&[&str]] = &[
-    &["sacrifice", "it"],
-    &["sacrifice", "them"],
-    &["sacrifice", "that", "token"],
-    &["sacrifice", "those", "tokens"],
-];
-const LABELED_TOKEN_EXILE_PREFIXES: &[&[&str]] = &[&["exile", "it"], &["exile", "them"]];
-const LABELED_NEXT_END_STEP_PHRASE: &[&str] = &["at", "beginning", "of", "next", "end", "step"];
-const LABELED_DELAYED_END_STEP_SACRIFICE_PREFIXES: &[&[&str]] = &[
-    &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "end",
-        "step",
-        "sacrifice",
-    ],
-    &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "next",
-        "end",
-        "step",
-        "sacrifice",
-    ],
-    &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "next",
-        "end",
-        "step",
-        "sacrifice",
-    ],
-];
-const LABELED_DELAYED_END_STEP_EXILE_PREFIXES: &[&[&str]] = &[
-    &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "end",
-        "step",
-        "exile",
-    ],
-    &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "next",
-        "end",
-        "step",
-        "exile",
-    ],
-    &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "next",
-        "end",
-        "step",
-        "exile",
-    ],
-];
-
-fn labeled_contains_any_word(words: &[&str], expected: &[&str]) -> bool {
-    words.iter().any(|word| expected.contains(word))
-}
-
-fn labeled_cast_from_among_free(words: &[&str]) -> bool {
-    word_slice_starts_with(words, LABELED_YOU_MAY_CAST_PREFIX)
-        && word_slice_contains_phrase(words, LABELED_FROM_AMONG_THEM_PHRASE)
-        && word_slice_contains_phrase(words, LABELED_WITHOUT_PAYING_ITS_MANA_COST_PHRASE)
-}
-
-fn labeled_cast_hand_free(words: &[&str]) -> bool {
-    word_slice_starts_with(words, LABELED_CAST_HAND_FREE_PREFIX)
-        && word_slice_contains_phrase(words, LABELED_WITHOUT_PAYING_ITS_MANA_COST_PHRASE)
-}
-
-fn labeled_exile_all_cards_from_hand_graveyard(words: &[&str]) -> bool {
-    word_slice_starts_with(words, LABELED_EXILE_ALL_CARDS_FROM_PREFIX)
-        && labeled_contains_any_word(words, LABELED_HAND_WORDS)
-        && labeled_contains_any_word(words, LABELED_GRAVEYARD_WORDS)
-}
-
-fn labeled_return_rounded_up(words: &[&str]) -> bool {
-    word_slice_starts_with(words, LABELED_RETURN_PREFIX)
-        && word_slice_contains_word(words, LABELED_ROUNDED_UP_WORDS[0])
-        && word_slice_contains_word(words, LABELED_ROUNDED_UP_WORDS[1])
-}
-
-fn labeled_choose_do_same_for(words: &[&str]) -> bool {
-    word_slice_starts_with(words, LABELED_CHOOSE_PREFIX)
-        && word_slice_contains_phrase(words, LABELED_DO_THE_SAME_FOR_PHRASE)
-}
-
-fn labeled_cast_any_number_graveyard_free(words: &[&str]) -> bool {
-    word_slice_starts_with(words, LABELED_CAST_ANY_NUMBER_GRAVEYARD_FREE_PREFIX)
-        && word_slice_contains_phrase(words, LABELED_FROM_YOUR_GRAVEYARD_PHRASE)
-        && word_slice_contains_phrase(words, LABELED_WITHOUT_PAYING_THEIR_MANA_COSTS_PHRASE)
+fn parse_player_villainous_choice_statement(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = crate::runtime_backend::grammar::semantic_lowering::parse_villainous_choice_player_statement_tokens(tokens)
+    else {
+        return Ok(None);
+    };
+    let first_mode_effects = parse_player_villainous_choice_mode_program(shape.first_mode_program)?;
+    let second_mode_effects =
+        parse_player_villainous_choice_mode_program(shape.second_mode_program)?;
+    let choice = EffectAst::VillainousChoice {
+        player: PlayerFilter::IteratedPlayer,
+        player_surface: Some("that player".to_string()),
+        modes: vec![
+            crate::cards::builders::ChooseOneModeAst {
+                description: render_token_slice(shape.first_mode_tokens),
+                effects: first_mode_effects,
+            },
+            crate::cards::builders::ChooseOneModeAst {
+                description: render_token_slice(shape.second_mode_tokens),
+                effects: second_mode_effects,
+            },
+        ],
+    };
+    Ok(Some(match shape.iteration {
+        crate::runtime_backend::grammar::semantic_lowering::VillainousChoicePlayerIteration::EachOpponent => {
+            vec![EffectAst::ForEachOpponent {
+                effects: vec![choice],
+            }]
+        }
+    }))
 }
 
 pub(crate) fn parse_effect_sentence_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    fn contains_unquoted_word(tokens: &[OwnedLexToken], words: &[&str]) -> bool {
-        let mut inside_quotes = false;
-        for token in tokens {
-            if token.is_quote() {
-                inside_quotes = !inside_quotes;
-                continue;
-            }
-            if !inside_quotes
-                && token
-                    .as_word()
-                    .is_some_and(|word| crate::word_primitives::contains_word(words, word))
-            {
-                return true;
-            }
-        }
-        false
+    let dispatch_shape = effect_grammar::labeled_dispatch::parse_labeled_dispatch_shape(tokens);
+    if let Some(effects) = parse_player_villainous_choice_statement(tokens)? {
+        return Ok(effects);
     }
-
-    let word_view = LexClauseView::from_tokens(tokens);
-    let sentence_words = word_view.words.to_word_refs();
     if is_activate_only_restriction_sentence_lexed(tokens) {
         return Ok(Vec::new());
     }
     if is_trigger_only_restriction_sentence_lexed(tokens) {
         return Ok(Vec::new());
     }
-    if word_slice_starts_with(sentence_words.as_slice(), LABELED_ROUND_UP_EACH_TIME_PREFIX) {
+    if dispatch_shape.round_up_each_time {
         return Ok(Vec::new());
     }
 
     if let Some(stripped) = split_labeled_effect_prefix_lexed(tokens) {
         return parse_effect_sentence_lexed(stripped);
     }
-    if token_slice_first_is(tokens, "if")
+    if dispatch_shape.starts_if
         && let Some(mut effects) = parse_exile_replacement_subject_verb_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if token_slice_first_is(tokens, "if")
+    if dispatch_shape.starts_if
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
             PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -259,13 +95,11 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
         return Ok(effects);
     }
-    if let Some(effect) = parse_matching_spell_cost_reduction_this_turn_sentence_lexed(tokens) {
+    if let Some(effect) = lower_matching_spell_cost_reduction_sentence(tokens) {
         return Ok(vec![effect]);
     }
-    if word_slice_first_is_any(
-        sentence_words.as_slice(),
-        LABELED_PREVENT_TAKE_MONSTROSITY_WORDS,
-    ) && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
+    if dispatch_shape.pre_extension_head
+        && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
@@ -275,7 +109,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     {
         return Ok(effects);
     }
-    if token_slice_first_is(tokens, "exile") && grammar::contains_word(tokens, "then") {
+    if dispatch_shape.exile_then {
         if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
             apply_where_x_to_damage_amounts(tokens, &mut effects)?;
             return Ok(effects);
@@ -289,8 +123,8 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             return Ok(effects);
         }
     }
-    if token_slice_first_is(tokens, "then") && tokens.len() > 1 {
-        return parse_effect_sentence_lexed(&tokens[1..]);
+    if let Some(then_tail) = dispatch_shape.then_tail {
+        return parse_effect_sentence_lexed(then_tail);
     }
     if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
         return Ok(vec![match prefix.kind {
@@ -304,13 +138,19 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             },
         }]);
     }
+    if dispatch_shape.each_player_choose
+        && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
+    {
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
     if let Some(effect) = parse_for_each_opponent_clause(tokens)? {
         return Ok(vec![effect]);
     }
     if let Some(effect) = parse_for_each_player_clause(tokens)? {
         return Ok(vec![effect]);
     }
-    if labeled_cast_from_among_free(sentence_words.as_slice()) {
+    if let Some(cast_from_among) = dispatch_shape.cast_from_among_free {
         let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
         filter.card_types.push(CardType::Instant);
         filter.card_types.push(CardType::Sorcery);
@@ -320,7 +160,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         filter.card_types.push(CardType::Planeswalker);
         filter.card_types.push(CardType::Battle);
         filter.type_or_subtype_union = true;
-        if let Some(bound) = labeled_mana_value_or_less_bound(tokens) {
+        if let Some(bound) = cast_from_among.mana_value_or_less {
             filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(bound as i32));
         }
         let chosen = TagKey::from("__chosen_cast_from_among");
@@ -348,7 +188,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             }),
         ]);
     }
-    if labeled_cast_hand_free(sentence_words.as_slice()) {
+    if dispatch_shape.cast_hand_free {
         let chosen = TagKey::from("__chosen_hand_spell_to_cast");
         let filter = ObjectFilter::nonland()
             .in_zone(Zone::Hand)
@@ -377,13 +217,13 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             }),
         ]);
     }
-    if contains_unquoted_word(tokens, &["search", "searches"])
+    if dispatch_shape.has_unquoted_search
         && let Some(mut effects) = parse_search_library_sentence_lexed(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if labeled_exile_all_cards_from_hand_graveyard(sentence_words.as_slice())
+    if dispatch_shape.exile_all_cards_from_hand_graveyard
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
             POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -393,26 +233,26 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_first_is(sentence_words.as_slice(), LABELED_ENCHANT_WORD)
+    if dispatch_shape.starts_enchant
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_first_is(sentence_words.as_slice(), LABELED_EARTHBEND_WORD)
+    if dispatch_shape.starts_earthbend
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_contains_word(sentence_words.as_slice(), LABELED_UNLESS_WORD)
+    if dispatch_shape.has_unless
         && let Some(mut effects) =
             super::parse_sentence_unless_pays(super::SubjectVerbPrimitiveClause::new(tokens))?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_contains_word(sentence_words.as_slice(), LABELED_UNLESS_WORD)
+    if dispatch_shape.has_unless
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
             POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -422,7 +262,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if labeled_contains_any_word(sentence_words.as_slice(), LABELED_GAIN_LOSE_WORDS) {
+    if dispatch_shape.has_gain_or_lose {
         if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
             apply_where_x_to_damage_amounts(tokens, &mut effects)?;
             return Ok(effects);
@@ -444,13 +284,13 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             return Ok(effects);
         }
     }
-    if labeled_contains_any_word(sentence_words.as_slice(), LABELED_VOTE_WORDS)
+    if dispatch_shape.has_vote
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if labeled_return_rounded_up(sentence_words.as_slice())
+    if dispatch_shape.return_rounded_up
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
             POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -460,7 +300,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if labeled_choose_do_same_for(sentence_words.as_slice())
+    if dispatch_shape.choose_do_same_for
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
             POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -470,16 +310,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_starts_with_any(
-        sentence_words.as_slice(),
-        LABELED_EACH_PLAYER_CHOOSE_PREFIXES,
-    ) {
-        if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
-            apply_where_x_to_damage_amounts(tokens, &mut effects)?;
-            return Ok(effects);
-        }
-    }
-    if labeled_cast_any_number_graveyard_free(sentence_words.as_slice()) {
+    if dispatch_shape.cast_any_number_graveyard_free {
         let mut filter = ObjectFilter::default();
         filter.card_types.push(CardType::Instant);
         filter.card_types.push(CardType::Sorcery);
@@ -513,13 +344,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    let sacrifice_counted_prefix = matches!(
-        sentence_words.as_slice(),
-        ["sacrifice", "any", "number", ..] | ["sacrifice", "one", "or", "more", ..]
-    );
-    if word_slice_first_is(sentence_words.as_slice(), LABELED_SACRIFICE_WORD)
-        && !sacrifice_counted_prefix
-    {
+    if dispatch_shape.starts_sacrifice && !dispatch_shape.sacrifice_counted {
         let mut effects = parse_effect_chain_lexed(tokens)?;
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
@@ -528,12 +353,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_starts_with(sentence_words.as_slice(), LABELED_TAP_PREFIX)
-        && word_slice_at_is_any(sentence_words.as_slice(), 1, LABELED_ALL_OR_EACH_WORDS)
-        && LABELED_OR_UNTAP_ALL_EACH_PHRASES
-            .iter()
-            .any(|phrase| word_slice_contains_phrase(sentence_words.as_slice(), phrase))
-    {
+    if dispatch_shape.tap_all_or_each_then_untap_all_or_each {
         let mut effects = super::parse_effect_chain_with_subject_verb_primitives_lexed(tokens)?;
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
@@ -543,99 +363,37 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     Ok(effects)
 }
 
-fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<EffectAst> {
-    let words = TokenWordView::new(tokens);
-    let clause_words = words.to_word_refs();
-    let spell_idx = word_slice_find_word(clause_words.as_slice(), "spells")
-        .or_else(|| word_slice_find_word(clause_words.as_slice(), "spell"))?;
-    let cost_idx = word_slice_find_word(clause_words.as_slice(), "cost")
-        .or_else(|| word_slice_find_word(clause_words.as_slice(), "costs"))?;
-    let less_idx = word_slice_find_word(clause_words.as_slice(), "less")?;
-
-    let has_you_cast = word_slice_contains_phrase(&clause_words, &["you", "cast"]);
-    let has_that_player_casts = word_slice_contains_phrase(&clause_words, &["that", "player", "casts"]);
-    let has_chosen_name = word_slice_contains_phrase(&clause_words, &["with", "chosen", "name"])
-        || word_slice_contains_phrase(&clause_words, &["with", "the", "chosen", "name"]);
-    let has_this_turn_duration = word_slice_contains_phrase(&clause_words, &["this", "turn"]);
-    let has_until_your_next_turn_duration = clause_words.starts_with(&["until", "your", "next", "turn"]);
-
-    if cost_idx <= spell_idx
-        || less_idx <= cost_idx
-        || (!has_you_cast && !has_that_player_casts && !has_chosen_name)
-        || (!has_this_turn_duration && !has_until_your_next_turn_duration)
-        || clause_words.get(less_idx + 1).copied() != Some("to")
-        || clause_words.get(less_idx + 2).copied() != Some("cast")
+fn lower_matching_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let shape =
+        effect_grammar::labeled_dispatch::parse_matching_spell_cost_reduction_shape(tokens)?;
+    let mut reduction = shape.reduction;
+    if let Some(where_tokens) = shape.where_value_tokens
+        && let Some(where_value) = parse_value_binding_clause(where_tokens)
     {
-        return None;
+        reduction = where_value;
     }
 
-    let spell_token_idx = words.token_index_for_word_index(spell_idx)?;
-    let cost_token_idx = words.token_index_for_word_index(cost_idx)?;
-    let less_token_idx = words.token_index_for_word_index(less_idx)?;
-    let subject_start_token_idx = if has_until_your_next_turn_duration {
-        words.token_index_for_word_index(4)?
-    } else {
-        0
-    };
-    let subject_tokens = trim_edge_punctuation(&tokens[subject_start_token_idx..=spell_token_idx]);
-    let reduction_tokens = trim_edge_punctuation(&tokens[cost_token_idx + 1..less_token_idx]);
-    let (mut reduction, used) = parse_value(&reduction_tokens)?;
-    if used != reduction_tokens.len() {
-        return None;
-    }
-    if matches!(reduction, Value::X) && clause_words.get(less_idx + 3).copied() == Some("where") {
-        let where_token_idx = words.token_index_for_word_index(less_idx + 3)?;
-        if let Some(where_value) = parse_value_binding_clause(&tokens[where_token_idx..]) {
-            reduction = where_value;
-        }
-    }
-
-    let mut filter = crate::runtime_backend::parse_spell_filter_lexed(&subject_tokens);
-    let player = if has_you_cast {
-        filter.cast_by = Some(PlayerFilter::You);
-        PlayerAst::You
-    } else if has_that_player_casts {
-        filter.cast_by = Some(PlayerFilter::IteratedPlayer);
-        PlayerAst::That
-    } else {
-        PlayerAst::Any
-    };
-
-    let between_words = &clause_words[spell_idx + 1..cost_idx];
-    if has_chosen_name {
-        filter.name = Some("{chosen name}".to_string());
-    }
-    if word_slice_contains_phrase(between_words, &["from", "exile"]) {
-        filter.zone = Some(Zone::Exile);
-    } else if word_slice_contains_phrase(between_words, &["from", "your", "graveyard"]) {
-        filter.zone = Some(Zone::Graveyard);
-        filter.owner = Some(PlayerFilter::You);
-    }
-
-    if word_slice_starts_with(&clause_words, LABELED_THE_NEXT_PREFIX)
-        && let Some((mana_reduction, used)) = parse_cost_modifier_mana_cost(&reduction_tokens)
-        && used == reduction_tokens.len()
-    {
+    if let Some(mana_reduction) = shape.next_spell_mana_reduction {
         Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
-            player,
-            filter,
+            shape.player,
+            shape.filter,
             mana_reduction,
         ))
     } else {
-        let duration = if has_until_your_next_turn_duration {
-            Until::YourNextTurn
-        } else {
-            Until::EndOfTurn
-        };
-        if duration == Until::EndOfTurn {
-            Some(EffectAst::subject_verb_reduce_matching_spell_cost_this_turn(
-                player, filter, reduction,
-            ))
+        if shape.duration == Until::EndOfTurn {
+            Some(
+                EffectAst::subject_verb_reduce_matching_spell_cost_this_turn(
+                    shape.player,
+                    shape.filter,
+                    reduction,
+                ),
+            )
         } else {
             Some(EffectAst::subject_verb_reduce_matching_spell_cost(
-                player, filter, reduction, duration,
+                shape.player,
+                shape.filter,
+                reduction,
+                shape.duration,
             ))
         }
     }
@@ -653,167 +411,41 @@ fn parse_exile_replacement_subject_verb_sentence(
     Ok(Some(vec![effect]))
 }
 
-fn passive_addition_tail_len(words: &[&str]) -> Option<(usize, bool)> {
-    for (tail, adds_colors) in [
-        (
-            &[
-                "in", "addition", "to", "its", "other", "colors", "and", "types",
-            ][..],
-            true,
-        ),
-        (
-            &[
-                "in", "addition", "to", "their", "other", "colors", "and", "types",
-            ][..],
-            true,
-        ),
-        (
-            &[
-                "in", "addition", "to", "its", "other", "colors", "and", "creature", "types",
-            ][..],
-            true,
-        ),
-        (
-            &[
-                "in", "addition", "to", "their", "other", "colors", "and", "creature", "types",
-            ][..],
-            true,
-        ),
-        (
-            &["in", "addition", "to", "its", "other", "types"][..],
-            false,
-        ),
-        (
-            &["in", "addition", "to", "their", "other", "types"][..],
-            false,
-        ),
-        (
-            &["in", "addition", "to", "its", "other", "creature", "types"][..],
-            false,
-        ),
-        (
-            &[
-                "in", "addition", "to", "their", "other", "creature", "types",
-            ][..],
-            false,
-        ),
-    ] {
-        if slice_ends_with(words, tail) {
-            return Some((tail.len(), adds_colors));
-        }
-    }
-    None
-}
-
-fn passive_subject_is_tagged_object_reference(words: &[&str]) -> bool {
-    matches!(
-        words,
-        ["it"]
-            | ["they"]
-            | ["them"]
-            | ["that"]
-            | ["that", "card"]
-            | ["that", "creature"]
-            | ["that", "permanent"]
-            | ["that", "object"]
-            | ["those"]
-            | ["those", "cards"]
-            | ["those", "creatures"]
-            | ["those", "permanents"]
-            | ["those", "objects"]
-            | ["each", "of", "them"]
-            | ["each", "of", "those"]
-            | ["each", "of", "those", "cards"]
-            | ["each", "of", "those", "creatures"]
-            | ["each", "of", "those", "permanents"]
-            | ["each", "of", "those", "objects"]
-            | ["all", "of", "them"]
-            | ["all", "of", "those"]
-            | ["all", "of", "those", "cards"]
-            | ["all", "of", "those", "creatures"]
-            | ["all", "of", "those", "permanents"]
-            | ["all", "of", "those", "objects"]
-    )
-}
-
 fn parse_passive_color_type_addition_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let word_view = TokenWordView::new(tokens);
-    let words = word_view.to_word_refs();
-    let Some((tail_len, adds_colors)) = passive_addition_tail_len(&words) else {
-        return Ok(None);
-    };
-    let Some(is_word_idx) = words
-        .iter()
-        .position(|word| LABELED_IS_OR_ARE_WORDS.contains(word))
+    let Some(shape) =
+        effect_grammar::labeled_dispatch::parse_passive_color_type_addition_shape(tokens)
     else {
         return Ok(None);
     };
-    if is_word_idx + 1 >= words.len().saturating_sub(tail_len) {
-        return Ok(None);
-    }
 
-    let descriptor_end_word_idx = words.len().saturating_sub(tail_len);
-    let clause = LexedClause::new(tokens);
-    let subject_tokens = clause
-        .before_word(is_word_idx)
-        .unwrap_or_else(|| clause.before(0))
-        .tokens();
-    let descriptor_tokens = clause
-        .between_word_range(is_word_idx + 1, descriptor_end_word_idx)
-        .unwrap_or_else(|| clause.between(tokens.len(), tokens.len()))
-        .tokens();
-    let subject_words = TokenWordView::new(subject_tokens).to_word_refs();
-
-    let target = if passive_subject_is_tagged_object_reference(&subject_words) {
+    let target = if shape.tagged_subject {
         TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()))
     } else {
-        parse_target_phrase(subject_tokens)?
+        parse_target_phrase(shape.subject_tokens)?
     };
 
-    let mut colors = crate::color::ColorSet::new();
-    let mut card_types = Vec::new();
-    let mut subtypes = Vec::<Subtype>::new();
-    for word in TokenWordView::new(descriptor_tokens).to_word_refs() {
-        if LABELED_ARTICLE_AND_WORDS.contains(&word) {
-            continue;
-        }
-        if let Some(color) = parse_color(word) {
-            colors = colors.union(color);
-            continue;
-        }
-        if let Some(card_type) = parse_card_type(word) {
-            crate::slice_primitives::push_unique(&mut card_types, card_type);
-            continue;
-        }
-        if let Some(subtype) = super::parse_subtype_word(word) {
-            crate::slice_primitives::push_unique(&mut subtypes, subtype);
-            continue;
-        }
-        return Ok(None);
-    }
-
     let mut effects = Vec::new();
-    if !colors.is_empty() {
-        let color_effect = if adds_colors {
-            EffectAst::subject_verb_add_colors(target.clone(), colors, Until::Forever)
+    if !shape.colors.is_empty() {
+        let color_effect = if shape.adds_colors {
+            EffectAst::subject_verb_add_colors(target.clone(), shape.colors, Until::Forever)
         } else {
-            EffectAst::subject_verb_set_colors(target.clone(), colors, Until::Forever)
+            EffectAst::subject_verb_set_colors(target.clone(), shape.colors, Until::Forever)
         };
         effects.push(color_effect);
     }
-    if !card_types.is_empty() {
+    if !shape.card_types.is_empty() {
         effects.push(EffectAst::subject_verb_add_card_types(
             target.clone(),
-            card_types,
+            shape.card_types,
             Until::Forever,
         ));
     }
-    if !subtypes.is_empty() {
+    if !shape.subtypes.is_empty() {
         effects.push(EffectAst::subject_verb_add_subtypes(
             target,
-            subtypes,
+            shape.subtypes,
             Until::Forever,
         ));
     }
@@ -878,6 +510,10 @@ pub(crate) fn parse_subject_verb_extension_sentence(
         parse_sentence_delayed_trigger_this_turn(tokens)
     );
     one!(
+        "verb=Deal subject=triggering-spell recognizer=spell-count-opponent-damage",
+        parse_triggered_spell_opponent_damage_subject_verb(tokens)
+    );
+    one!(
         "verb=Choose subject=explicit recognizer=choice-complement-sacrifice",
         parse_choice_complement_subject_verb(tokens)
     );
@@ -893,20 +529,23 @@ pub(crate) fn parse_subject_verb_extension_sentence(
         "verb=Exile subject=explicit recognizer=exile-return-same-object",
         parse_exile_then_return_same_object_sentence(tokens)
     );
-    if let Some(effects) = super::chain_carry::parse_return_it_then_loses_all_abilities_lexed(tokens)?
+    if let Some(effects) =
+        super::chain_carry::parse_return_it_then_loses_all_abilities_lexed(tokens)?
     {
         crate::parse_trace::event(
             "effect-route: subject-verb verb=Return subject=explicit recognizer=return-then-lose-abilities",
         );
         return Ok(Some(effects));
     }
-    if is_simple_source_gain_ability_candidate(tokens) {
+    let ability_candidates =
+        effect_grammar::labeled_dispatch::parse_ability_candidate_shape(tokens);
+    if ability_candidates.simple_source_gain {
         many!(
             "verb=Gain subject=implicit recognizer=source-ability-grant",
             parse_gain_ability_to_source_subject_verb_sentence(tokens)
         );
     }
-    if is_simple_gain_ability_candidate(tokens) {
+    if ability_candidates.simple_gain {
         many!(
             "verb=Gain subject=explicit recognizer=ability-grant",
             parse_gain_ability_subject_verb_sentence(tokens)
@@ -972,167 +611,12 @@ fn parse_gain_ability_subject_verb_sentence(
     super::gain_ability::parse_gain_ability_sentence(tokens)
 }
 
-fn is_simple_source_gain_ability_candidate(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = words
-        .iter()
-        .position(|word| LABELED_GAIN_OR_GAINS_WORDS.contains(word))
-    else {
-        return false;
-    };
-    gain_idx > 0
-        && is_source_reference_words(&words[..gain_idx])
-        && !words[gain_idx + 1..]
-            .iter()
-            .any(|word| LABELED_SIMPLE_ABILITY_TAIL_STOP_WORDS.contains(word))
-}
-
-fn is_simple_gain_ability_candidate(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = words
-        .iter()
-        .position(|word| LABELED_GAIN_HAS_LOSE_WORDS.contains(word))
-    else {
-        return false;
-    };
-
-    let ability_words = &words[gain_idx + 1..];
-    if LABELED_HAS_HAVE_WORDS.contains(&words[gain_idx])
-        && !ability_words
-            .iter()
-            .any(|word| LABELED_TRIGGER_WORDS.contains(word))
-    {
-        return false;
-    }
-    if labeled_contains_any_word(&words[..gain_idx], LABELED_SIMPLE_ABILITY_EXCLUSION_WORDS)
-        || (word_slice_contains_word(&words, LABELED_ANOTHER_WORD)
-            && word_slice_contains_word(&words, LABELED_HASTE_WORD))
-    {
-        return false;
-    }
-    !ability_words.is_empty()
-        && !word_slice_contains_word(ability_words, LABELED_LIFE_WORD)
-        && (labeled_contains_any_word(ability_words, LABELED_SIMPLE_ABILITY_WORDS)
-            || contains_token_kind(tokens, TokenKind::Quote)
-            || contains_token_kind(tokens, TokenKind::Colon))
-}
-
 fn parse_for_each_opponent_doesnt_subject_verb_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     Ok(super::conditionals::parse_for_each_opponent_doesnt(tokens)?.map(|effect| vec![effect]))
 }
 
-pub(crate) fn is_negated_untap_clause(words: &[&str]) -> bool {
-    effect_grammar::is_negated_untap_clause_words(words)
-}
-
-pub(crate) fn parse_token_copy_modifier_sentence(
-    tokens: &[OwnedLexToken],
-) -> Option<TokenCopyFollowup> {
-    let filtered = crate::runtime_backend::util::non_article_token_word_refs(tokens);
-    parse_token_copy_modifier_words(filtered.as_slice())
-}
-
-pub(crate) fn parse_token_copy_modifier_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<TokenCopyFollowup> {
-    let filtered = crate::runtime_backend::util::non_article_token_word_refs(tokens);
-    parse_token_copy_modifier_words(filtered.as_slice())
-}
-
-fn parse_token_copy_modifier_words(filtered: &[&str]) -> Option<TokenCopyFollowup> {
-    let is_gain_haste_until_eot = matches!(
-        filtered,
-        ["it", "gains", "haste", "until", "end", "of", "turn"]
-            | ["they", "gain", "haste", "until", "end", "of", "turn"]
-    );
-    if is_gain_haste_until_eot {
-        return Some(TokenCopyFollowup::GainHasteUntilEndOfTurn);
-    }
-
-    let is_has_haste = matches!(
-        filtered,
-        ["it", "has", "haste"]
-            | ["they", "have", "haste"]
-            | ["token", "created", "this", "way", "has", "haste"]
-            | ["tokens", "created", "this", "way", "have", "haste"]
-            | ["token", "created", "this", "way", "gains", "haste"]
-            | ["tokens", "created", "this", "way", "gain", "haste"]
-    );
-    if is_has_haste {
-        return Some(TokenCopyFollowup::HasHaste);
-    }
-
-    let enters_tapped_and_attacking = matches!(
-        filtered,
-        ["it", "enters", "tapped", "and", "attacking"]
-            | ["they", "enter", "tapped", "and", "attacking"]
-            | ["token", "enters", "tapped", "and", "attacking"]
-            | ["tokens", "enter", "tapped", "and", "attacking"]
-            | [
-                "token",
-                "created",
-                "this",
-                "way",
-                "enters",
-                "tapped",
-                "and",
-                "attacking"
-            ]
-            | [
-                "tokens",
-                "created",
-                "this",
-                "way",
-                "enter",
-                "tapped",
-                "and",
-                "attacking"
-            ]
-    );
-    if enters_tapped_and_attacking {
-        return Some(TokenCopyFollowup::EnterTappedAndAttacking);
-    }
-
-    if word_slice_starts_with_any(filtered, LABELED_TOKEN_SACRIFICE_PREFIXES)
-        && word_slice_contains_phrase(filtered, LABELED_NEXT_END_STEP_PHRASE)
-    {
-        return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
-    }
-    if word_slice_starts_with_any(filtered, LABELED_TOKEN_SACRIFICE_PREFIXES)
-        && word_slice_contains_phrase(filtered, &["next", "upkeep"])
-    {
-        return Some(TokenCopyFollowup::SacrificeAtNextUpkeep);
-    }
-    if word_slice_starts_with_any(filtered, LABELED_TOKEN_EXILE_PREFIXES)
-        && word_slice_contains_phrase(filtered, LABELED_NEXT_END_STEP_PHRASE)
-    {
-        return Some(TokenCopyFollowup::ExileAtNextEndStep);
-    }
-
-    if word_slice_starts_with_any(filtered, LABELED_DELAYED_END_STEP_SACRIFICE_PREFIXES) {
-        return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
-    }
-    if word_slice_starts_with_any(filtered, LABELED_DELAYED_END_STEP_EXILE_PREFIXES) {
-        return Some(TokenCopyFollowup::ExileAtNextEndStep);
-    }
-
-    None
-}
-
-#[cfg(test)]
-mod labeled_prefix_tests {
-    use super::*;
-
-    #[test]
-    fn labeled_mana_value_bound_uses_lexed_tail_tokens() {
-        let tokens = crate::runtime_backend::lex_line(
-            "You may cast any number of spells with mana value 5 or less from among them without paying their mana costs.",
-            0,
-        )
-        .expect("labeled mana-value text should lex");
-
-        assert_eq!(labeled_mana_value_or_less_bound(&tokens), Some(5));
-    }
-}
+#[path = "labeled_prefixes/followup_predicates.rs"]
+mod followup_predicates;
+pub(crate) use followup_predicates::*;

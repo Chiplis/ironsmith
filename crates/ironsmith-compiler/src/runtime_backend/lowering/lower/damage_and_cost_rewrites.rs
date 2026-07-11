@@ -1,8 +1,9 @@
 use super::*;
+use crate::runtime_backend::semantic::ParsedManaRestriction;
 
 pub(crate) fn apply_pending_mana_restrictions(
     parsed: &mut ParsedAbility,
-    restrictions: &[String],
+    restrictions: &[ParsedManaRestriction],
 ) -> Result<(), CardTextError> {
     let AbilityKind::Activated(ability) = parsed.kind_mut() else {
         return Err(CardTextError::InvariantViolation(
@@ -18,54 +19,12 @@ pub(crate) fn apply_pending_mana_restrictions(
 pub(crate) fn parse_next_spell_cost_reduction_sentence_rewrite(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
-    let clause_words = token_word_refs(tokens);
-    if !word_slice_starts_with(clause_words.as_slice(), &["the", "next"]) {
-        return None;
-    }
-
-    let spell_idx = word_slice_find_word(clause_words.as_slice(), "spell")?;
-    let costs_idx = word_slice_find_word(clause_words.as_slice(), "costs")?;
-    let less_idx = word_slice_find_word(clause_words.as_slice(), "less")?;
-    if clause_words.get(spell_idx + 1).copied() != Some("you")
-        || clause_words.get(spell_idx + 2).copied() != Some("cast")
-        || clause_words.get(spell_idx + 3).copied() != Some("this")
-        || clause_words.get(spell_idx + 4).copied() != Some("turn")
-        || clause_words.get(less_idx + 1).copied() != Some("to")
-        || clause_words.get(less_idx + 2).copied() != Some("cast")
-        || costs_idx <= spell_idx
-    {
-        return None;
-    }
-
-    let spell_token_idx = find_index(tokens, |token| token.is_word("spell"))?;
-    let costs_token_idx = find_index(tokens, |token| token.is_word("costs"))?;
-    let less_token_idx = find_index(tokens, |token| token.is_word("less"))?;
-    if less_token_idx <= costs_token_idx + 1 {
-        return None;
-    }
-    let spell_filter_tokens = trim_lexed_commas(&tokens[2..spell_token_idx]);
-    let reduction_tokens = trim_lexed_commas(&tokens[costs_token_idx + 1..less_token_idx]);
-    let filter = parse_spell_filter_with_grammar_entrypoint_lexed(spell_filter_tokens);
-    let reduction_symbols = reduction_tokens
-        .iter()
-        .filter_map(|token| match token.kind {
-            TokenKind::ManaGroup => token.mana_group_inner(),
-            TokenKind::Word | TokenKind::Number => token.as_word(),
-            TokenKind::Comma | TokenKind::Period => None,
-            _ => Some(""),
-        })
-        .map(parse_mana_symbol)
-        .collect::<Result<Vec<_>, _>>()
-        .ok()?;
-    if reduction_symbols.is_empty() {
-        return None;
-    }
-    let reduction = crate::mana::ManaCost::from_symbols(reduction_symbols);
+    let parsed = activated_line_grammar::parse_next_spell_cost_reduction_tokens(tokens)?;
 
     Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
         crate::cards::builders::PlayerAst::You,
-        filter,
-        reduction,
+        parsed.spell_filter,
+        parsed.reduction,
     ))
 }
 
@@ -73,15 +32,7 @@ pub(crate) fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
     _effect_text: &str,
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
-    if !tokens_match_each_player_and_their_creatures_damage(tokens) {
-        return None;
-    }
-    let clause_words = token_word_refs(tokens);
-    let deals_idx = find_index(clause_words.as_slice(), |word| {
-        matches!(*word, "deal" | "deals")
-    })?;
-    let amount_start = token_index_for_word_index(tokens, deals_idx + 1)?;
-    let (amount, _used) = parse_number_or_x_value_lexed(&tokens[amount_start..])?;
+    let parsed = effect_grammar::parse_each_player_creatures_damage_tokens(tokens)?;
 
     let mut filter = crate::filter::ObjectFilter::default();
     filter.card_types = vec![crate::types::CardType::Creature];
@@ -90,13 +41,13 @@ pub(crate) fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
     Some(vec![EffectAst::ForEachPlayer {
         effects: vec![
             EffectAst::subject_verb_damage(
-                amount.clone(),
+                parsed.amount.clone(),
                 crate::cards::builders::TargetAst::Player(
                     crate::PlayerFilter::IteratedPlayer,
                     None,
                 ),
             ),
-            EffectAst::subject_verb_damage_each(amount, filter),
+            EffectAst::subject_verb_damage_each(parsed.amount, filter),
         ],
     }])
 }
@@ -120,12 +71,29 @@ pub(crate) fn lower_parsed_card_ast(
 pub(crate) fn lower_normalized_card_ast(
     ast: NormalizedCardAst,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
+    let lowered = lower_normalized_card_ast_with_facts(ast)?;
+    Ok((lowered.definition, lowered.annotations))
+}
+
+pub(crate) fn lower_normalized_card_ast_with_facts(
+    ast: NormalizedCardAst,
+) -> Result<LoweredCardDocument, CardTextError> {
     let NormalizedCardAst {
         mut builder,
         mut annotations,
         items,
+        overload_branch,
+        semantic_facts,
         allow_unsupported,
     } = ast;
+    let overload_ast = overload_branch.map(|branch| NormalizedCardAst {
+        builder: builder.clone(),
+        annotations: ParseAnnotations::default(),
+        items: branch.items,
+        overload_branch: None,
+        semantic_facts: Default::default(),
+        allow_unsupported,
+    });
 
     let mut level_abilities = Vec::new();
     let mut level_activated_lines = Vec::new();
@@ -176,5 +144,24 @@ pub(crate) fn lower_normalized_card_ast(
     }
 
     builder = rewrite_finalize_lowered_card(builder, &mut state);
-    Ok((builder.build(), annotations))
+    if let Some(overload_ast) = overload_ast {
+        let overloaded = lower_normalized_card_ast_with_facts(overload_ast)?;
+        let overload_effects = overloaded
+            .definition
+            .spell_effect
+            .unwrap_or_default()
+            .to_vec();
+        for method in &mut builder.alternative_casts {
+            if let crate::alternative_cast::AlternativeCastingMethod::Overload { effects, .. } =
+                method
+            {
+                *effects = overload_effects.clone();
+            }
+        }
+    }
+    Ok(LoweredCardDocument {
+        definition: builder.build(),
+        annotations,
+        semantic_facts,
+    })
 }

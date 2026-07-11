@@ -1,3 +1,4 @@
+use crate::PowerToughness;
 use crate::ability::ActivationTiming;
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
@@ -152,6 +153,12 @@ pub enum KeywordAction {
     Annihilator(u32),
     ForMirrodin,
     LivingWeapon,
+    Fuse,
+    Prototype {
+        cost: ManaCost,
+        power_toughness: PowerToughness,
+    },
+    Bolster(u32),
     Crew {
         amount: u32,
         timing: ActivationTiming,
@@ -162,6 +169,8 @@ pub enum KeywordAction {
         timing: ActivationTiming,
         additional_restrictions: Vec<String>,
     },
+    StaticMarker(&'static str),
+    StaticMarkerText(String),
     Marker(&'static str),
     MarkerText(String),
 }
@@ -271,6 +280,8 @@ impl KeywordAction {
                 | Self::Unblockable
                 | Self::Devoid
                 | Self::Annihilator(_)
+                | Self::StaticMarker(_)
+                | Self::StaticMarkerText(_)
                 | Self::Marker(_)
                 | Self::MarkerText(_)
         )
@@ -462,8 +473,21 @@ impl KeywordAction {
             Self::Annihilator(amount) => format!("Annihilator {amount}"),
             Self::ForMirrodin => "For Mirrodin!".to_string(),
             Self::LivingWeapon => "Living weapon".to_string(),
+            Self::Fuse => "Fuse".to_string(),
+            Self::Prototype {
+                cost,
+                power_toughness,
+            } => format!(
+                "Prototype {} {}/{}",
+                cost.to_oracle(),
+                power_toughness.power,
+                power_toughness.toughness
+            ),
+            Self::Bolster(amount) => format!("Bolster {amount}"),
             Self::Crew { amount, .. } => format!("Crew {amount}"),
             Self::Saddle { amount, .. } => format!("Saddle {amount}"),
+            Self::StaticMarker(name) => (*name).to_string(),
+            Self::StaticMarkerText(text) => text.clone(),
             Self::Marker(name) => (*name).to_string(),
             Self::MarkerText(text) => text.clone(),
         }
@@ -477,6 +501,10 @@ pub enum IfResultPredicate {
     SearchedLibrary,
     DiesThisWay,
     ExcessDamageDealt,
+    AffectedObjectMatchesCardType {
+        card_type: crate::types::CardType,
+        negated: bool,
+    },
     WasDeclined,
     Value(ironsmith_core::Comparison),
 }

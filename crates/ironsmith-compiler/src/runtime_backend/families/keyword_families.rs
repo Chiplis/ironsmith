@@ -1,99 +1,21 @@
-use winnow::Parser;
-
-use super::grammar::primitives::{self as grammar, TokenWordView};
+use super::grammar::keyword_dispatch as keyword_dispatch_grammar;
+pub(super) use super::grammar::keyword_dispatch::KeywordDispatchHint;
 use super::keyword_registry as registry;
-use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
-use super::lexer::{LexedClause, OwnedLexToken};
-use super::util::word_is_cycling_keyword_marker;
+use super::lexer::OwnedLexToken;
 
-pub(super) type KeywordRuleFn = fn(
-    &super::preprocess::PreprocessedLine,
-    &[OwnedLexToken],
-) -> Result<bool, crate::cards::builders::CardTextError>;
-pub(super) type KeywordLowerFn =
+pub(super) type KeywordParseFn =
     fn(
-        &super::ir::RewriteKeywordLine,
+        &super::preprocess::PreprocessedLine,
         &[OwnedLexToken],
-    ) -> Result<crate::cards::builders::LineAst, crate::cards::builders::CardTextError>;
+        &[OwnedLexToken],
+    )
+        -> Result<Option<super::cst::KeywordLinePayloadCst>, crate::cards::builders::CardTextError>;
 
 #[derive(Clone, Copy)]
 pub(super) struct KeywordLineRule {
     pub(super) cst_kind: super::cst::KeywordLineKindCst,
     pub(super) hints: &'static [KeywordDispatchHint],
-    pub(super) matches: KeywordRuleFn,
-    pub(super) lower: KeywordLowerFn,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum KeywordDispatchHint {
-    AdditionalCostFamily,
-    AlternativeOrExertFamily,
-    Bestow,
-    Blitz,
-    Bargain,
-    Buyback,
-    Channel,
-    Craft,
-    Cycling,
-    Reinforce,
-    Equip,
-    Reconfigure,
-    Kicker,
-    Flashback,
-    Harmonize,
-    Retrace,
-    Multikicker,
-    Replicate,
-    Entwine,
-    Escalate,
-    Eternalize,
-    Evoke,
-    Epic,
-    Offspring,
-    Madness,
-    Escape,
-    MorphFamily,
-    Mutate,
-    Squad,
-    Transmute,
-    CastThisSpellOnly,
-    Gift,
-    Warp,
-    Exploit,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum KeywordFallbackKind {
-    Aftermath,
-    BasicLandcycling,
-    Encore,
-    JumpStart,
-}
-
-fn keyword_fallback_kind(tokens: &[OwnedLexToken]) -> Option<KeywordFallbackKind> {
-    const KEYWORD_FALLBACK_PREFIX_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::action(
-            "keyword",
-            LexCaptureKind::OneOfPhrase(&[
-                &["aftermath"],
-                &["basic", "landcycling"],
-                &["encore"],
-                &["jumpstart"],
-                &["jump-start"],
-                &["jump", "start"],
-            ]),
-        )]);
-
-    let clause = LexedClause::new(tokens);
-    let matched = KEYWORD_FALLBACK_PREFIX_PATTERN.match_prefix(clause)?;
-    let keyword_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    match keyword_clause.word_refs().as_slice() {
-        ["aftermath"] => Some(KeywordFallbackKind::Aftermath),
-        ["basic", "landcycling"] => Some(KeywordFallbackKind::BasicLandcycling),
-        ["encore"] => Some(KeywordFallbackKind::Encore),
-        ["jumpstart"] | ["jump-start"] | ["jump", "start"] => Some(KeywordFallbackKind::JumpStart),
-        _ => None,
-    }
+    pub(super) parse: KeywordParseFn,
 }
 
 mod additional_costs {
@@ -103,26 +25,22 @@ mod additional_costs {
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::AdditionalCostChoice,
             hints: &[KeywordDispatchHint::AdditionalCostFamily],
-            matches: registry::matches_additional_cost_choice,
-            lower: registry::lower_additional_cost_choice,
+            parse: registry::parse_additional_cost_choice,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::AdditionalCost,
             hints: &[KeywordDispatchHint::AdditionalCostFamily],
-            matches: registry::matches_additional_cost,
-            lower: registry::lower_additional_cost,
+            parse: registry::parse_additional_cost,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::CastThisSpellOnly,
             hints: &[KeywordDispatchHint::CastThisSpellOnly],
-            matches: registry::matches_cast_this_spell_only,
-            lower: registry::lower_cast_this_spell_only,
+            parse: registry::parse_cast_this_spell_only,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Gift,
             hints: &[KeywordDispatchHint::Gift],
-            matches: registry::matches_gift,
-            lower: registry::lower_gift,
+            parse: registry::parse_gift,
         },
     ];
 }
@@ -134,62 +52,52 @@ mod activated_keywords {
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Channel,
             hints: &[KeywordDispatchHint::Channel],
-            matches: registry::matches_channel,
-            lower: registry::lower_channel,
+            parse: registry::parse_channel,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Cycling,
             hints: &[KeywordDispatchHint::Cycling],
-            matches: registry::matches_cycling,
-            lower: registry::lower_cycling,
+            parse: registry::parse_cycling,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Craft,
             hints: &[KeywordDispatchHint::Craft],
-            matches: registry::matches_craft,
-            lower: registry::lower_craft,
+            parse: registry::parse_craft,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Reinforce,
             hints: &[KeywordDispatchHint::Reinforce],
-            matches: registry::matches_reinforce,
-            lower: registry::lower_reinforce,
+            parse: registry::parse_reinforce,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Equip,
             hints: &[KeywordDispatchHint::Equip],
-            matches: registry::matches_equip,
-            lower: registry::lower_equip,
+            parse: registry::parse_equip,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Reconfigure,
             hints: &[KeywordDispatchHint::Reconfigure],
-            matches: registry::matches_reconfigure,
-            lower: registry::lower_reconfigure,
+            parse: registry::parse_reconfigure,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Eternalize,
             hints: &[KeywordDispatchHint::Eternalize],
-            matches: registry::matches_eternalize,
-            lower: registry::lower_eternalize,
+            parse: registry::parse_eternalize,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Morph,
             hints: &[KeywordDispatchHint::MorphFamily],
-            matches: registry::matches_morph,
-            lower: registry::lower_morph,
+            parse: registry::parse_morph,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Mutate,
             hints: &[KeywordDispatchHint::Mutate],
-            matches: registry::matches_mutate,
-            lower: registry::lower_mutate,
+            parse: registry::parse_mutate,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Transmute,
             hints: &[KeywordDispatchHint::Transmute],
-            matches: registry::matches_transmute,
-            lower: registry::lower_transmute,
+            parse: registry::parse_transmute,
         },
     ];
 }
@@ -201,134 +109,117 @@ mod spell_keywords {
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::AlternativeCast,
             hints: &[KeywordDispatchHint::AlternativeOrExertFamily],
-            matches: registry::matches_alternative_cast,
-            lower: registry::lower_alternative_cast,
+            parse: registry::parse_alternative_cast,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Bestow,
             hints: &[KeywordDispatchHint::Bestow],
-            matches: registry::matches_bestow,
-            lower: registry::lower_bestow,
+            parse: registry::parse_bestow,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Blitz,
             hints: &[KeywordDispatchHint::Blitz],
-            matches: registry::matches_blitz,
-            lower: registry::lower_blitz,
+            parse: registry::parse_blitz,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Bargain,
             hints: &[KeywordDispatchHint::Bargain],
-            matches: registry::matches_bargain,
-            lower: registry::lower_bargain,
+            parse: registry::parse_bargain,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Buyback,
             hints: &[KeywordDispatchHint::Buyback],
-            matches: registry::matches_buyback,
-            lower: registry::lower_buyback,
+            parse: registry::parse_buyback,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Kicker,
             hints: &[KeywordDispatchHint::Kicker],
-            matches: registry::matches_kicker,
-            lower: registry::lower_kicker,
+            parse: registry::parse_kicker,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Flashback,
             hints: &[KeywordDispatchHint::Flashback],
-            matches: registry::matches_flashback,
-            lower: registry::lower_flashback,
+            parse: registry::parse_flashback,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Harmonize,
             hints: &[KeywordDispatchHint::Harmonize],
-            matches: registry::matches_harmonize,
-            lower: registry::lower_harmonize,
+            parse: registry::parse_harmonize,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Retrace,
             hints: &[KeywordDispatchHint::Retrace],
-            matches: registry::matches_retrace,
-            lower: registry::lower_retrace,
+            parse: registry::parse_retrace,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Multikicker,
             hints: &[KeywordDispatchHint::Multikicker],
-            matches: registry::matches_multikicker,
-            lower: registry::lower_multikicker,
+            parse: registry::parse_multikicker,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Replicate,
             hints: &[KeywordDispatchHint::Replicate],
-            matches: registry::matches_replicate,
-            lower: registry::lower_replicate,
+            parse: registry::parse_replicate,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Entwine,
             hints: &[KeywordDispatchHint::Entwine],
-            matches: registry::matches_entwine,
-            lower: registry::lower_entwine,
+            parse: registry::parse_entwine,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Escalate,
             hints: &[KeywordDispatchHint::Escalate],
-            matches: registry::matches_escalate,
-            lower: registry::lower_escalate,
+            parse: registry::parse_escalate,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Evoke,
             hints: &[KeywordDispatchHint::Evoke],
-            matches: registry::matches_evoke,
-            lower: registry::lower_evoke,
+            parse: registry::parse_evoke,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Epic,
             hints: &[KeywordDispatchHint::Epic],
-            matches: registry::matches_epic,
-            lower: registry::lower_epic,
+            parse: registry::parse_epic,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Offspring,
             hints: &[KeywordDispatchHint::Offspring],
-            matches: registry::matches_offspring,
-            lower: registry::lower_offspring,
+            parse: registry::parse_offspring,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Madness,
             hints: &[KeywordDispatchHint::Madness],
-            matches: registry::matches_madness,
-            lower: registry::lower_madness,
+            parse: registry::parse_madness,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Escape,
             hints: &[KeywordDispatchHint::Escape],
-            matches: registry::matches_escape,
-            lower: registry::lower_escape,
+            parse: registry::parse_escape,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Squad,
             hints: &[KeywordDispatchHint::Squad],
-            matches: registry::matches_squad,
-            lower: registry::lower_squad,
+            parse: registry::parse_squad,
+        },
+        KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Splice,
+            hints: &[KeywordDispatchHint::Splice],
+            parse: registry::parse_splice,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Warp,
             hints: &[KeywordDispatchHint::Warp],
-            matches: registry::matches_warp,
-            lower: registry::lower_warp,
+            parse: registry::parse_warp,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::ExertAttack,
             hints: &[KeywordDispatchHint::AlternativeOrExertFamily],
-            matches: registry::matches_exert_attack,
-            lower: registry::lower_exert_attack,
+            parse: registry::parse_exert_attack,
         },
         KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Exploit,
             hints: &[KeywordDispatchHint::Exploit],
-            matches: registry::matches_exploit,
-            lower: registry::lower_exploit,
+            parse: registry::parse_exploit,
         },
     ];
 }
@@ -342,99 +233,5 @@ pub(super) fn keyword_line_rules() -> Vec<KeywordLineRule> {
 }
 
 pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<KeywordDispatchHint> {
-    let hinted = grammar::parse_prefix(
-        tokens,
-        winnow::combinator::alt((
-            winnow::combinator::alt((
-                grammar::phrase(&[
-                    "as",
-                    "an",
-                    "additional",
-                    "cost",
-                    "to",
-                    "cast",
-                    "this",
-                    "spell",
-                ])
-                .value(KeywordDispatchHint::AdditionalCostFamily),
-                grammar::kw("you").value(KeywordDispatchHint::AlternativeOrExertFamily),
-                grammar::kw("if").value(KeywordDispatchHint::AlternativeOrExertFamily),
-                grammar::kw("bestow").value(KeywordDispatchHint::Bestow),
-                grammar::kw("blitz").value(KeywordDispatchHint::Blitz),
-                grammar::kw("bargain").value(KeywordDispatchHint::Bargain),
-                grammar::kw("buyback").value(KeywordDispatchHint::Buyback),
-                grammar::kw("channel").value(KeywordDispatchHint::Channel),
-                grammar::kw("cycling").value(KeywordDispatchHint::Cycling),
-            )),
-            winnow::combinator::alt((
-                grammar::kw("reinforce").value(KeywordDispatchHint::Reinforce),
-                grammar::kw("equip").value(KeywordDispatchHint::Equip),
-                grammar::kw("kicker").value(KeywordDispatchHint::Kicker),
-                grammar::kw("flashback").value(KeywordDispatchHint::Flashback),
-                grammar::kw("harmonize").value(KeywordDispatchHint::Harmonize),
-                grammar::kw("multikicker").value(KeywordDispatchHint::Multikicker),
-                grammar::kw("replicate").value(KeywordDispatchHint::Replicate),
-                grammar::kw("entwine").value(KeywordDispatchHint::Entwine),
-                grammar::kw("offspring").value(KeywordDispatchHint::Offspring),
-            )),
-            winnow::combinator::alt((
-                grammar::kw("retrace").value(KeywordDispatchHint::Retrace),
-                grammar::kw("madness").value(KeywordDispatchHint::Madness),
-                grammar::kw("escape").value(KeywordDispatchHint::Escape),
-                winnow::combinator::alt((
-                    grammar::kw("morph").value(KeywordDispatchHint::MorphFamily),
-                    grammar::kw("megamorph").value(KeywordDispatchHint::MorphFamily),
-                    grammar::kw("disguise").value(KeywordDispatchHint::MorphFamily),
-                    grammar::kw("mutate").value(KeywordDispatchHint::Mutate),
-                )),
-                grammar::kw("squad").value(KeywordDispatchHint::Squad),
-                grammar::kw("transmute").value(KeywordDispatchHint::Transmute),
-                grammar::kw("reconfigure").value(KeywordDispatchHint::Reconfigure),
-                grammar::kw("eternalize").value(KeywordDispatchHint::Eternalize),
-                grammar::phrase(&["cast", "this", "spell", "only"])
-                    .value(KeywordDispatchHint::CastThisSpellOnly),
-            )),
-            winnow::combinator::alt((
-                grammar::kw("gift").value(KeywordDispatchHint::Gift),
-                grammar::kw("warp").value(KeywordDispatchHint::Warp),
-                grammar::kw("prowl").value(KeywordDispatchHint::AlternativeOrExertFamily),
-                grammar::kw("sneak").value(KeywordDispatchHint::AlternativeOrExertFamily),
-                grammar::kw("escalate").value(KeywordDispatchHint::Escalate),
-                grammar::kw("evoke").value(KeywordDispatchHint::Evoke),
-                grammar::kw("epic").value(KeywordDispatchHint::Epic),
-                grammar::kw("craft").value(KeywordDispatchHint::Craft),
-                grammar::kw("exploit").value(KeywordDispatchHint::Exploit),
-            )),
-        )),
-    )
-    .map(|(hint, _)| hint);
-    if hinted.is_some() {
-        return hinted;
-    }
-
-    let word_view = TokenWordView::new(tokens);
-    let word_refs = word_view.to_word_refs();
-    let first = word_refs.first().copied()?;
-    let fallback_kind = keyword_fallback_kind(tokens);
-    if matches!(fallback_kind, Some(KeywordFallbackKind::BasicLandcycling)) {
-        return Some(KeywordDispatchHint::Cycling);
-    }
-    if word_view.at_is(0, "basic") {
-        return None;
-    }
-    if word_is_cycling_keyword_marker(first) {
-        return Some(KeywordDispatchHint::Cycling);
-    }
-    if matches!(
-        fallback_kind,
-        Some(
-            KeywordFallbackKind::Aftermath
-                | KeywordFallbackKind::Encore
-                | KeywordFallbackKind::JumpStart
-        )
-    ) {
-        return Some(KeywordDispatchHint::AlternativeOrExertFamily);
-    }
-
-    None
+    keyword_dispatch_grammar::parse_keyword_dispatch_hint_tokens(tokens)
 }

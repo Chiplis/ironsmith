@@ -15,22 +15,20 @@ use super::grammar::filters::{
     parse_object_filter_with_grammar_entrypoint_lexed,
     parse_spell_filter_with_grammar_entrypoint_lexed,
 };
+use super::grammar::permission_shapes::{
+    self, PermissionAtom, PermissionCaptureKind, PermissionCaptureRole, PermissionSequence,
+};
 use super::grammar::primitives as grammar;
 use super::grammar::values::parse_value_comparison_tokens;
-use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom};
 use super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas,
-    word_slice_ends_with,
 };
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{
     TurnDurationPhrase, parse_lexed_prefix, parse_turn_duration_prefix, parse_turn_duration_suffix,
 };
-use super::util::{
-    strip_leading_article_word_refs, strip_leading_token_words_any, token_index_for_word_index,
-    trim_commas,
-};
-use super::value_helpers::parse_value_from_lexed;
+use super::util::{strip_leading_article_word_refs, strip_leading_token_words_any, trim_commas};
+use super::value_helpers::parse_value_prefix_lexed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PermissionLifetime {
@@ -90,10 +88,6 @@ enum UnsupportedPermissionShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct AdditionalLandPlayClause<'a> {
     count_tokens: &'a [OwnedLexToken],
-}
-
-fn clause_matches_any_phrase(clause: LexedClause<'_>, phrases: &[&[&str]]) -> bool {
-    LexPattern::new(&[LexPattern::any_phrase(phrases)]).matches_clause(clause)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -283,27 +277,32 @@ const GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX: &[&str] = &[
     "it",
     "instead",
 ];
+const FROM_AMONG_CARDS_EXILED_WITH_PHRASE: &[&str] = &["from", "among", "cards", "exiled", "with"];
+const FROM_AMONG_CARDS_EXILED_WITH_THIS_PHRASE: &[&str] =
+    &["from", "among", "cards", "exiled", "with", "this"];
 
 fn tagged_permission_target_surface(tokens: &[OwnedLexToken]) -> TaggedPermissionTargetSurface {
-    const SINGLE_TAGGED_TARGET_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::object(
+    const SINGLE_TAGGED_TARGET_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[PermissionSequence::object(
             "target",
-            LexCaptureKind::OneOfPhrase(&[&["it"], &["that", "card"], &["that", "spell"]]),
+            PermissionCaptureKind::OneOfPhrase(&[&["it"], &["that", "card"], &["that", "spell"]]),
         )]);
-    const PLURAL_TAGGED_CARDS_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::object(
+    const PLURAL_TAGGED_CARDS_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[PermissionSequence::object(
             "target",
-            LexCaptureKind::OneOfPhrase(&[&["those", "cards"]]),
+            PermissionCaptureKind::OneOfPhrase(&[&["those", "cards"]]),
         )]);
 
     let clause = LexedClause::new(tokens);
-    if SINGLE_TAGGED_TARGET_PATTERN.match_clause(clause).is_some() {
+    if SINGLE_TAGGED_TARGET_PATTERN.parse_full(clause).is_some() {
         TaggedPermissionTargetSurface::SingleTaggedObject
-    } else if PLURAL_TAGGED_CARDS_PATTERN.match_clause(clause).is_some() {
+    } else if PLURAL_TAGGED_CARDS_PATTERN.parse_full(clause).is_some() {
         TaggedPermissionTargetSurface::PluralTaggedCards
-    } else if token_word_refs(tokens)
-        .windows(5)
-        .any(|window| window == ["from", "among", "cards", "exiled", "with"])
+    } else if PermissionSequence::new(&[PermissionSequence::phrase(
+        FROM_AMONG_CARDS_EXILED_WITH_PHRASE,
+    )])
+    .locate_in(clause)
+    .is_some()
     {
         // "a spell from among cards exiled with this <type>" — a tagged pool
         // reference, eligible for free-cast windows.
@@ -314,40 +313,42 @@ fn tagged_permission_target_surface(tokens: &[OwnedLexToken]) -> TaggedPermissio
 }
 
 fn unsupported_permission_shape(tokens: &[OwnedLexToken]) -> Option<UnsupportedPermissionShape> {
-    const ADDITIONAL_LAND_EACH_TURN_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::phrase(&[
+    const ADDITIONAL_LAND_EACH_TURN_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[PermissionSequence::phrase(&[
             "play", "any", "number", "of", "lands", "on", "each", "of", "your", "turns",
         ])]);
-    const FOR_AS_LONG_AS_PERMISSION_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(&["for", "as", "long", "as"]),
-        LexPattern::tail("permission", LexCaptureKind::Rest),
-    ]);
-    const ONCE_EACH_TURN_PERMISSION_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(&["once", "during", "each", "of", "your", "turns"]),
-        LexPattern::tail("permission", LexCaptureKind::Rest),
-    ]);
+    const FOR_AS_LONG_AS_PERMISSION_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[
+            PermissionSequence::phrase(&["for", "as", "long", "as"]),
+            PermissionSequence::tail("permission", PermissionCaptureKind::Rest),
+        ]);
+    const ONCE_EACH_TURN_PERMISSION_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[
+            PermissionSequence::phrase(&["once", "during", "each", "of", "your", "turns"]),
+            PermissionSequence::tail("permission", PermissionCaptureKind::Rest),
+        ]);
 
     let clause = LexedClause::new(tokens);
     if ADDITIONAL_LAND_EACH_TURN_PATTERN
-        .match_clause(clause)
+        .parse_full(clause)
         .is_some()
     {
         return Some(UnsupportedPermissionShape::AdditionalLandEachTurn);
     }
 
-    if let Some(matched) = FOR_AS_LONG_AS_PERMISSION_PATTERN.match_clause(clause)
+    if let Some(matched) = FOR_AS_LONG_AS_PERMISSION_PATTERN.parse_full(clause)
         && let Some(permission_clause) =
-            matched.capture_clause_by_role(LexCaptureRole::Tail, clause)
-        && clause_matches_any_phrase(permission_clause, &[&["may", "play"], &["may", "cast"]])
+            matched.capture_clause_by_role(PermissionCaptureRole::Tail, clause)
+        && permission_shapes::exact_any(permission_clause, &[&["may", "play"], &["may", "cast"]])
     {
         return Some(UnsupportedPermissionShape::ForAsLongAsPlayCast);
     }
 
-    if let Some(matched) = ONCE_EACH_TURN_PERMISSION_PATTERN.match_clause(clause)
+    if let Some(matched) = ONCE_EACH_TURN_PERMISSION_PATTERN.parse_full(clause)
         && let Some(permission_clause) =
-            matched.capture_clause_by_role(LexCaptureRole::Tail, clause)
-        && permission_clause.contains_word("graveyard")
-        && clause_matches_any_phrase(permission_clause, &[&["may", "play"], &["may", "cast"]])
+            matched.capture_clause_by_role(PermissionCaptureRole::Tail, clause)
+        && permission_shapes::contains_tokens(permission_clause.tokens(), &["graveyard"])
+        && permission_shapes::exact_any(permission_clause, &[&["may", "play"], &["may", "cast"]])
     {
         return Some(UnsupportedPermissionShape::OnceEachTurnGraveyard);
     }
@@ -358,24 +359,24 @@ fn unsupported_permission_shape(tokens: &[OwnedLexToken]) -> Option<UnsupportedP
 fn parse_additional_land_play_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditionalLandPlayClause<'_>> {
-    const ADDITIONAL_LAND_PLAY_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::word("play"),
-        LexPattern::amount(
+    const ADDITIONAL_LAND_PLAY_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::word("play"),
+        PermissionSequence::amount(
             "count",
-            LexCaptureKind::UntilAnyPhrase(&[
+            PermissionCaptureKind::UntilAnyPhrase(&[
                 &["additional", "land", "this", "turn"],
                 &["additional", "lands", "this", "turn"],
             ]),
         ),
-        LexPattern::any_phrase(&[
+        PermissionSequence::any_phrase(&[
             &["additional", "land", "this", "turn"],
             &["additional", "lands", "this", "turn"],
         ]),
     ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = ADDITIONAL_LAND_PLAY_PATTERN.match_clause(clause)?;
-    let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let matched = ADDITIONAL_LAND_PLAY_PATTERN.parse_full(clause)?;
+    let count_clause = matched.capture_clause_by_role(PermissionCaptureRole::Amount, clause)?;
     Some(AdditionalLandPlayClause {
         count_tokens: count_clause.tokens(),
     })
@@ -597,26 +598,23 @@ fn grant_spec_grants_flash_to_hand(spec: &crate::grant::GrantSpec) -> bool {
 }
 
 fn permission_zone_from_location_words(words: &[&str]) -> Option<Zone> {
-    match words {
-        ["the", "top", "of", "your", "library"] => Some(Zone::Library),
-        ["your", "graveyard"] => Some(Zone::Graveyard),
-        ["your", "hand"] => Some(Zone::Hand),
-        ["exile"] => Some(Zone::Exile),
-        _ => None,
-    }
+    permission_shapes::parse_permission_zone_words(words)
 }
 
 fn source_zone_prefix_from_clause<'a>(clause: LexedClause<'a>) -> Option<(Zone, LexedClause<'a>)> {
     let atoms = [
-        LexPattern::word("this"),
-        LexPattern::object("source_kind", LexCaptureKind::OneOf(&["card", "spell"])),
-        LexPattern::action(
-            "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+        PermissionSequence::word("this"),
+        PermissionSequence::object(
+            "source_kind",
+            PermissionCaptureKind::OneOf(&["card", "spell"]),
         ),
-        LexPattern::object("location", LexCaptureKind::OneOrMoreWords),
+        PermissionSequence::action(
+            "from",
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+        ),
+        PermissionSequence::object("location", PermissionCaptureKind::OneOrMoreWords),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let matched = PermissionSequence::new(&atoms).parse_full(clause)?;
     let source_kind = matched.capture_clause("source_kind", clause)?;
     let location = matched.capture_clause("location", clause)?;
     let zone = permission_zone_from_location_words(&location.word_refs())?;
@@ -626,21 +624,21 @@ fn source_zone_prefix_from_clause<'a>(clause: LexedClause<'a>) -> Option<(Zone, 
 fn parse_play_from_zone_rest_tokens<'a>(
     rest_tokens: &'a [OwnedLexToken],
 ) -> Option<PlayFromZoneRest<'a>> {
-    const PLAY_FROM_ZONE_REST_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::object(
+    const PLAY_FROM_ZONE_REST_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::object(
             "spell_filter",
-            LexCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
+            PermissionCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
         ),
-        LexPattern::action(
+        PermissionSequence::action(
             "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
         ),
-        LexPattern::object("location", LexCaptureKind::OneOrMoreWords),
+        PermissionSequence::object("location", PermissionCaptureKind::OneOrMoreWords),
     ]);
 
     let clause = LexedClause::new(rest_tokens);
-    let matched = PLAY_FROM_ZONE_REST_PATTERN.match_clause(clause)?;
-    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let matched = PLAY_FROM_ZONE_REST_PATTERN.parse_full(clause)?;
+    let filter_clause = matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)?;
     let location_clause = matched.capture_clause("location", clause)?;
     let zone = permission_zone_from_location_words(&location_clause.word_refs())?;
     Some(PlayFromZoneRest {
@@ -650,17 +648,17 @@ fn parse_play_from_zone_rest_tokens<'a>(
 }
 
 fn parse_lands_from_top_library_permission_rest_tokens(tokens: &[OwnedLexToken]) -> bool {
-    const LANDS_FROM_TOP_LIBRARY_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::word("lands"),
-        LexPattern::action(
+    const LANDS_FROM_TOP_LIBRARY_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::word("lands"),
+        PermissionSequence::action(
             "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
         ),
-        LexPattern::object("location", LexCaptureKind::OneOrMoreWords),
+        PermissionSequence::object("location", PermissionCaptureKind::OneOrMoreWords),
     ]);
 
     let clause = LexedClause::new(tokens);
-    let Some(matched) = LANDS_FROM_TOP_LIBRARY_PATTERN.match_clause(clause) else {
+    let Some(matched) = LANDS_FROM_TOP_LIBRARY_PATTERN.parse_full(clause) else {
         return false;
     };
     let Some(location_clause) = matched.capture_clause("location", clause) else {
@@ -672,26 +670,27 @@ fn parse_lands_from_top_library_permission_rest_tokens(tokens: &[OwnedLexToken])
 fn parse_lands_and_cast_from_top_library_permission_rest_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<LandsAndCastFromLibraryPermission<'a>> {
-    const LANDS_AND_CAST_FROM_TOP_LIBRARY_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(&["lands", "and", "cast"]),
-        LexPattern::object(
-            "spell_filter",
-            LexCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
-        ),
-        LexPattern::action(
-            "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
-        ),
-        LexPattern::object("location", LexCaptureKind::OneOrMoreWords),
-    ]);
+    const LANDS_AND_CAST_FROM_TOP_LIBRARY_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[
+            PermissionSequence::phrase(&["lands", "and", "cast"]),
+            PermissionSequence::object(
+                "spell_filter",
+                PermissionCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
+            ),
+            PermissionSequence::action(
+                "from",
+                PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            ),
+            PermissionSequence::object("location", PermissionCaptureKind::OneOrMoreWords),
+        ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = LANDS_AND_CAST_FROM_TOP_LIBRARY_PATTERN.match_clause(clause)?;
+    let matched = LANDS_AND_CAST_FROM_TOP_LIBRARY_PATTERN.parse_full(clause)?;
     let location_clause = matched.capture_clause("location", clause)?;
     if permission_zone_from_location_words(&location_clause.word_refs()) != Some(Zone::Library) {
         return None;
     }
-    let spell_filter = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let spell_filter = matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)?;
     let spell_filter_tokens = trim_lexed_commas(spell_filter.tokens());
     (!spell_filter_tokens.is_empty()).then_some(LandsAndCastFromLibraryPermission {
         spell_filter_tokens,
@@ -699,7 +698,7 @@ fn parse_lands_and_cast_from_top_library_permission_rest_tokens<'a>(
 }
 
 fn flash_lifetime_from_tail_clause(clause: LexedClause<'_>) -> Option<PermissionLifetime> {
-    if clause_matches_any_phrase(
+    if permission_shapes::exact_any(
         clause,
         &[
             &["as", "though", "they", "had", "flash"],
@@ -708,7 +707,7 @@ fn flash_lifetime_from_tail_clause(clause: LexedClause<'_>) -> Option<Permission
     ) {
         return Some(PermissionLifetime::Static);
     }
-    if clause_matches_any_phrase(
+    if permission_shapes::exact_any(
         clause,
         &[
             &["this", "turn", "as", "though", "they", "had", "flash"],
@@ -717,7 +716,7 @@ fn flash_lifetime_from_tail_clause(clause: LexedClause<'_>) -> Option<Permission
     ) {
         return Some(PermissionLifetime::ThisTurn);
     }
-    if clause_matches_any_phrase(
+    if permission_shapes::exact_any(
         clause,
         &[
             &[
@@ -736,18 +735,18 @@ fn flash_lifetime_from_tail_clause(clause: LexedClause<'_>) -> Option<Permission
 fn parse_flash_grant_rest_tokens<'a>(
     rest_tokens: &'a [OwnedLexToken],
 ) -> Option<FlashGrantRest<'a>> {
-    const FLASH_GRANT_REST_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::object(
+    const FLASH_GRANT_REST_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::object(
             "spell_filter",
-            LexCaptureKind::UntilAnyPhrase(FLASH_GRANT_TAILS),
+            PermissionCaptureKind::UntilAnyPhrase(FLASH_GRANT_TAILS),
         ),
-        LexPattern::tail("flash_tail", LexCaptureKind::Rest),
+        PermissionSequence::tail("flash_tail", PermissionCaptureKind::Rest),
     ]);
 
     let clause = LexedClause::new(rest_tokens);
-    let matched = FLASH_GRANT_REST_PATTERN.match_clause(clause)?;
-    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let tail_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
+    let matched = FLASH_GRANT_REST_PATTERN.parse_full(clause)?;
+    let filter_clause = matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)?;
+    let tail_clause = matched.capture_clause_by_role(PermissionCaptureRole::Tail, clause)?;
     let lifetime = flash_lifetime_from_tail_clause(tail_clause)?;
     let filter_tokens = trim_lexed_commas(filter_clause.tokens());
     (!filter_tokens.is_empty()).then_some(FlashGrantRest {
@@ -759,20 +758,22 @@ fn parse_flash_grant_rest_tokens<'a>(
 fn parse_revealed_top_library_permission_intro_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<RevealedTopLibraryPermissionIntro<'a>> {
-    const REVEALED_TOP_LIBRARY_PERMISSION_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(REVEALED_TOP_LIBRARY_PERMISSION_PREFIX),
-        LexPattern::object(
-            "referenced_card",
-            LexCaptureKind::UntilPhrase(REVEALED_TOP_LIBRARY_REMAINS_TOP_TAIL),
-        ),
-        LexPattern::phrase(REVEALED_TOP_LIBRARY_REMAINS_TOP_TAIL),
-        LexPattern::tail("permission", LexCaptureKind::Rest),
-    ]);
+    const REVEALED_TOP_LIBRARY_PERMISSION_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[
+            PermissionSequence::phrase(REVEALED_TOP_LIBRARY_PERMISSION_PREFIX),
+            PermissionSequence::object(
+                "referenced_card",
+                PermissionCaptureKind::UntilPhrase(REVEALED_TOP_LIBRARY_REMAINS_TOP_TAIL),
+            ),
+            PermissionSequence::phrase(REVEALED_TOP_LIBRARY_REMAINS_TOP_TAIL),
+            PermissionSequence::tail("permission", PermissionCaptureKind::Rest),
+        ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = REVEALED_TOP_LIBRARY_PERMISSION_PATTERN.match_clause(clause)?;
-    let referenced_card_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !clause_matches_any_phrase(
+    let matched = REVEALED_TOP_LIBRARY_PERMISSION_PATTERN.parse_full(clause)?;
+    let referenced_card_clause =
+        matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)?;
+    if !permission_shapes::exact_any(
         referenced_card_clause,
         &[
             &["that", "card"],
@@ -782,60 +783,35 @@ fn parse_revealed_top_library_permission_intro_tokens<'a>(
     ) {
         return None;
     }
-    let permission_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
+    let permission_clause = matched.capture_clause_by_role(PermissionCaptureRole::Tail, clause)?;
     let permission_tokens = trim_lexed_commas(permission_clause.tokens());
     (!permission_tokens.is_empty())
         .then_some(RevealedTopLibraryPermissionIntro { permission_tokens })
 }
 
 fn permission_lifetime_from_prefix_words(words: &[&str]) -> Option<PermissionLifetime> {
-    match words {
-        ["for", "as", "long", "as", "it", "remains", "exiled"]
-        | [
-            "for",
-            "as",
-            "long",
-            "as",
-            "that",
-            "card",
-            "remains",
-            "exiled",
-        ]
-        | [
-            "for",
-            "as",
-            "long",
-            "as",
-            "those",
-            "cards",
-            "remain",
-            "exiled",
-        ] => Some(PermissionLifetime::ForAsLongAsExiled),
-        [
-            "for",
-            "as",
-            "long",
-            "as",
-            "you",
-            "control",
-            "this",
-            "creature",
-        ] => Some(PermissionLifetime::ForAsLongAsYouControlSource),
-        _ => None,
+    match permission_shapes::parse_permission_lifetime_prefix_words(words)? {
+        permission_shapes::PermissionLifetimePrefixKind::ForAsLongAsExiled => {
+            Some(PermissionLifetime::ForAsLongAsExiled)
+        }
+        permission_shapes::PermissionLifetimePrefixKind::ForAsLongAsYouControlSource => {
+            Some(PermissionLifetime::ForAsLongAsYouControlSource)
+        }
     }
 }
 
 fn parse_permission_lifetime_prefix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<PermissionLifetimePrefix<'a>> {
-    const PERMISSION_LIFETIME_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::any_phrase(PERMISSION_LIFETIME_PREFIXES),
-        LexPattern::tail("rest", LexCaptureKind::Rest),
-    ]);
+    const PERMISSION_LIFETIME_PREFIX_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[
+            PermissionSequence::any_phrase(PERMISSION_LIFETIME_PREFIXES),
+            PermissionSequence::tail("rest", PermissionCaptureKind::Rest),
+        ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = PERMISSION_LIFETIME_PREFIX_PATTERN.match_clause(clause)?;
-    let tail_capture = matched.capture_by_role(LexCaptureRole::Tail)?;
+    let matched = PERMISSION_LIFETIME_PREFIX_PATTERN.parse_full(clause)?;
+    let tail_capture = matched.capture_by_role(PermissionCaptureRole::Tail)?;
     let words = clause.word_refs();
     let lifetime = permission_lifetime_from_prefix_words(&words[..tail_capture.word_range.start])?;
     let rest_clause = tail_capture.clause(clause)?;
@@ -855,14 +831,18 @@ fn strip_for_as_long_as_look_at_tagged_prefix_tokens(
     let prefix_len = tokens.len().checked_sub(parsed.rest_tokens.len())?;
     let rest_tokens = trim_lexed_commas(parsed.rest_tokens);
     let rest_words = token_word_refs(rest_tokens);
-    let look_word_count = if rest_words.starts_with(&["you", "may", "look", "at", "them"]) {
-        5
-    } else if rest_words.starts_with(&["you", "may", "look", "at", "those", "cards"]) {
-        6
-    } else {
-        return None;
-    };
-    let after_look_idx = token_index_for_word_index(rest_tokens, look_word_count)?;
+    let look_word_count =
+        if permission_shapes::prefix_words(&rest_words, &["you", "may", "look", "at", "them"]) {
+            5
+        } else if permission_shapes::prefix_words(
+            &rest_words,
+            &["you", "may", "look", "at", "those", "cards"],
+        ) {
+            6
+        } else {
+            return None;
+        };
+    let after_look_idx = permission_shapes::token_index_after_words(rest_tokens, look_word_count)?;
     let after_look = trim_lexed_commas(strip_leading_token_words_any(
         trim_lexed_commas(&rest_tokens[after_look_idx..]),
         &["and"],
@@ -884,13 +864,13 @@ fn parse_permanent_spells_from_among_tagged_tokens<'a>(
         &["permanent", "spells", "from", "among", "those", "cards"][..],
     ] {
         let words = token_word_refs(tokens);
-        if !words.starts_with(phrase) {
+        if !permission_shapes::prefix_words(&words, phrase) {
             continue;
         }
         let rest_idx = if words.len() == phrase.len() {
             tokens.len()
         } else {
-            token_index_for_word_index(tokens, phrase.len())?
+            permission_shapes::token_index_after_words(tokens, phrase.len())?
         };
         return Some((
             TaggedPermissionTarget {
@@ -918,14 +898,14 @@ fn parse_spell_from_among_source_exiled_tokens<'a>(
     let (filter, phrase_words) = if words.len() >= 9
         && words[0] == "a"
         && words[1] == "spell"
-        && words[2..8] == ["from", "among", "cards", "exiled", "with", "this"]
+        && permission_shapes::prefix_words(&words[2..], FROM_AMONG_CARDS_EXILED_WITH_THIS_PHRASE)
     {
         (None, 9usize)
     } else if words.len() >= 10
         && words[0] == "a"
         && words[1] == "creature"
         && words[2] == "spell"
-        && words[3..9] == ["from", "among", "cards", "exiled", "with", "this"]
+        && permission_shapes::prefix_words(&words[3..], FROM_AMONG_CARDS_EXILED_WITH_THIS_PHRASE)
     {
         (Some(ObjectFilter::creature()), 10usize)
     } else {
@@ -940,7 +920,7 @@ fn parse_spell_from_among_source_exiled_tokens<'a>(
     let rest_idx = if words.len() == phrase_words {
         tokens.len()
     } else {
-        token_index_for_word_index(tokens, phrase_words)?
+        permission_shapes::token_index_after_words(tokens, phrase_words)?
     };
     Some((
         TaggedPermissionTarget {
@@ -955,59 +935,59 @@ fn parse_spell_from_among_source_exiled_tokens<'a>(
 fn parse_once_each_turn_graveyard_cast_rest_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<OnceEachTurnGraveyardCastRest<'a>> {
-    const EXILE_AFTER_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::phrase(
+    const EXILE_AFTER_ATOMS: &[PermissionAtom<'static>] = &[PermissionSequence::phrase(
         GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX,
     )];
-    const PLAIN_EXILE_AFTER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(ONCE_EACH_TURN_GRAVEYARD_CAST_PREFIX),
-        LexPattern::object(
+    const PLAIN_EXILE_AFTER_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::phrase(ONCE_EACH_TURN_GRAVEYARD_CAST_PREFIX),
+        PermissionSequence::object(
             "subject",
-            LexCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
+            PermissionCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
         ),
-        LexPattern::action(
+        PermissionSequence::action(
             "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
         ),
-        LexPattern::object(
+        PermissionSequence::object(
             "location",
-            LexCaptureKind::UntilPhrase(GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX),
+            PermissionCaptureKind::UntilPhrase(GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX),
         ),
-        LexPattern::phrase(GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX),
+        PermissionSequence::phrase(GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX),
     ]);
-    const PLAIN_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(ONCE_EACH_TURN_GRAVEYARD_CAST_PREFIX),
-        LexPattern::object(
+    const PLAIN_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::phrase(ONCE_EACH_TURN_GRAVEYARD_CAST_PREFIX),
+        PermissionSequence::object(
             "subject",
-            LexCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
+            PermissionCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
         ),
-        LexPattern::action(
+        PermissionSequence::action(
             "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
         ),
-        LexPattern::object("location", LexCaptureKind::OneOrMoreWords),
+        PermissionSequence::object("location", PermissionCaptureKind::OneOrMoreWords),
     ]);
-    const COST_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(ONCE_EACH_TURN_GRAVEYARD_CAST_PREFIX),
-        LexPattern::object(
+    const COST_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::phrase(ONCE_EACH_TURN_GRAVEYARD_CAST_PREFIX),
+        PermissionSequence::object(
             "subject",
-            LexCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
+            PermissionCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
         ),
-        LexPattern::action(
+        PermissionSequence::action(
             "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
         ),
-        LexPattern::object("location", LexCaptureKind::UntilPhrase(&["by"])),
-        LexPattern::word("by"),
-        LexPattern::modifier(
+        PermissionSequence::object("location", PermissionCaptureKind::UntilPhrase(&["by"])),
+        PermissionSequence::word("by"),
+        PermissionSequence::modifier(
             "cost",
-            LexCaptureKind::UntilPhrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
+            PermissionCaptureKind::UntilPhrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
         ),
-        LexPattern::phrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
-        LexPattern::optional(EXILE_AFTER_ATOMS),
+        PermissionSequence::phrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
+        PermissionSequence::optional(EXILE_AFTER_ATOMS),
     ]);
 
     let clause = LexedClause::new(tokens);
-    if let Some(matched) = COST_PATTERN.match_clause(clause) {
+    if let Some(matched) = COST_PATTERN.parse_full(clause) {
         let location_clause = matched.capture_clause("location", clause)?;
         if permission_zone_from_location_words(&location_clause.word_refs())
             != Some(Zone::Graveyard)
@@ -1015,10 +995,12 @@ fn parse_once_each_turn_graveyard_cast_rest_tokens<'a>(
             return None;
         }
         let subject_clause = matched.capture_clause("subject", clause)?;
-        let cost_clause = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
-        let exiles_after_resolution = clause
-            .word_refs()
-            .ends_with(GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX);
+        let cost_clause =
+            matched.capture_clause_by_role(PermissionCaptureRole::Modifier, clause)?;
+        let exiles_after_resolution = permission_shapes::suffix_words(
+            &clause.word_refs(),
+            GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX,
+        );
         let subject_tokens = trim_lexed_commas(subject_clause.tokens());
         let cost_tokens = trim_lexed_commas(cost_clause.tokens());
         if subject_tokens.is_empty() || cost_tokens.is_empty() {
@@ -1032,10 +1014,10 @@ fn parse_once_each_turn_graveyard_cast_rest_tokens<'a>(
     }
 
     let (matched, exiles_after_resolution) =
-        if let Some(matched) = PLAIN_EXILE_AFTER_PATTERN.match_clause(clause) {
+        if let Some(matched) = PLAIN_EXILE_AFTER_PATTERN.parse_full(clause) {
             (matched, true)
         } else {
-            (PLAIN_PATTERN.match_clause(clause)?, false)
+            (PLAIN_PATTERN.parse_full(clause)?, false)
         };
     let location_clause = matched.capture_clause("location", clause)?;
     if permission_zone_from_location_words(&location_clause.word_refs()) != Some(Zone::Graveyard) {
@@ -1056,28 +1038,29 @@ fn parse_once_each_turn_graveyard_cast_rest_tokens<'a>(
 fn parse_free_cast_from_your_zone_rest_tokens<'a>(
     rest_tokens: &'a [OwnedLexToken],
 ) -> Option<FreeCastFromYourZoneRest<'a>> {
-    const FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::object(
-            "spell_filter",
-            LexCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
-        ),
-        LexPattern::action(
-            "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
-        ),
-        LexPattern::object(
-            "location",
-            LexCaptureKind::UntilAnyPhrase(WITHOUT_PAYING_MANA_COST_PHRASES),
-        ),
-        LexPattern::tail(
-            "without_paying",
-            LexCaptureKind::OneOfPhrase(WITHOUT_PAYING_MANA_COST_PHRASES),
-        ),
-    ]);
+    const FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[
+            PermissionSequence::object(
+                "spell_filter",
+                PermissionCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
+            ),
+            PermissionSequence::action(
+                "from",
+                PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            ),
+            PermissionSequence::object(
+                "location",
+                PermissionCaptureKind::UntilAnyPhrase(WITHOUT_PAYING_MANA_COST_PHRASES),
+            ),
+            PermissionSequence::tail(
+                "without_paying",
+                PermissionCaptureKind::OneOfPhrase(WITHOUT_PAYING_MANA_COST_PHRASES),
+            ),
+        ]);
 
     let clause = LexedClause::new(rest_tokens);
-    let matched = FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN.match_clause(clause)?;
-    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let matched = FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN.parse_full(clause)?;
+    let filter_clause = matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)?;
     let location_clause = matched.capture_clause("location", clause)?;
     let zone = permission_zone_from_location_words(&location_clause.word_refs())?;
     let filter_tokens = trim_lexed_commas(filter_clause.tokens());
@@ -1090,35 +1073,36 @@ fn parse_free_cast_from_your_zone_rest_tokens<'a>(
 fn parse_mana_value_limited_free_cast_from_your_zone_rest_tokens<'a>(
     rest_tokens: &'a [OwnedLexToken],
 ) -> Option<ManaValueLimitedFreeCastFromYourZoneRest<'a>> {
-    const MANA_VALUE_FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[
-            LexPattern::object(
+    const MANA_VALUE_FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[
+            PermissionSequence::object(
                 "spell_filter",
-                LexCaptureKind::UntilPhrase(WITH_MANA_VALUE_PHRASE),
+                PermissionCaptureKind::UntilPhrase(WITH_MANA_VALUE_PHRASE),
             ),
-            LexPattern::phrase(WITH_MANA_VALUE_PHRASE),
-            LexPattern::amount(
+            PermissionSequence::phrase(WITH_MANA_VALUE_PHRASE),
+            PermissionSequence::amount(
                 "mana_value_comparison",
-                LexCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
+                PermissionCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
             ),
-            LexPattern::action(
+            PermissionSequence::action(
                 "from",
-                LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+                PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
             ),
-            LexPattern::object(
+            PermissionSequence::object(
                 "location",
-                LexCaptureKind::UntilAnyPhrase(WITHOUT_PAYING_MANA_COST_PHRASES),
+                PermissionCaptureKind::UntilAnyPhrase(WITHOUT_PAYING_MANA_COST_PHRASES),
             ),
-            LexPattern::tail(
+            PermissionSequence::tail(
                 "without_paying",
-                LexCaptureKind::OneOfPhrase(WITHOUT_PAYING_MANA_COST_PHRASES),
+                PermissionCaptureKind::OneOfPhrase(WITHOUT_PAYING_MANA_COST_PHRASES),
             ),
         ]);
 
     let clause = LexedClause::new(rest_tokens);
-    let matched = MANA_VALUE_FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN.match_clause(clause)?;
-    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let comparison_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let matched = MANA_VALUE_FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN.parse_full(clause)?;
+    let filter_clause = matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)?;
+    let comparison_clause =
+        matched.capture_clause_by_role(PermissionCaptureRole::Amount, clause)?;
     let location_clause = matched.capture_clause("location", clause)?;
     let zone = permission_zone_from_location_words(&location_clause.word_refs())?;
     let filter_tokens = trim_lexed_commas(filter_clause.tokens());
@@ -1136,34 +1120,35 @@ fn parse_zone_first_mana_value_limited_free_cast_rest_tokens<'a>(
     rest_tokens: &'a [OwnedLexToken],
 ) -> Option<ZoneFirstManaValueLimitedFreeCastRest<'a>> {
     let atoms = [
-        LexPattern::object(
+        PermissionSequence::object(
             "spell_filter",
-            LexCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
+            PermissionCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
         ),
-        LexPattern::action(
+        PermissionSequence::action(
             "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
         ),
-        LexPattern::object(
+        PermissionSequence::object(
             "location",
-            LexCaptureKind::UntilPhrase(WITH_MANA_VALUE_PHRASE),
+            PermissionCaptureKind::UntilPhrase(WITH_MANA_VALUE_PHRASE),
         ),
-        LexPattern::phrase(WITH_MANA_VALUE_PHRASE),
-        LexPattern::amount(
+        PermissionSequence::phrase(WITH_MANA_VALUE_PHRASE),
+        PermissionSequence::amount(
             "mana_value_comparison",
-            LexCaptureKind::UntilPhrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
+            PermissionCaptureKind::UntilPhrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
         ),
-        LexPattern::phrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
+        PermissionSequence::phrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
     ];
     let clause = LexedClause::new(rest_tokens);
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let matched = PermissionSequence::new(&atoms).parse_full(clause)?;
+    let filter_clause = matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)?;
     let location_clause = matched.capture_clause("location", clause)?;
     let zone = permission_zone_from_location_words(&location_clause.word_refs())?;
     if !matches!(zone, Zone::Hand | Zone::Graveyard) {
         return None;
     }
-    let comparison_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let comparison_clause =
+        matched.capture_clause_by_role(PermissionCaptureRole::Amount, clause)?;
     let filter_tokens = trim_lexed_commas(filter_clause.tokens());
     let comparison_tokens = trim_lexed_commas(comparison_clause.tokens());
     (!filter_tokens.is_empty() && !comparison_tokens.is_empty()).then_some(
@@ -1178,17 +1163,18 @@ fn parse_zone_first_mana_value_limited_free_cast_rest_tokens<'a>(
 fn parse_command_zone_free_cast_rest_tokens<'a>(
     rest_tokens: &'a [OwnedLexToken],
 ) -> Option<CommandZoneFreeCastRest<'a>> {
-    const COMMAND_ZONE_FREE_CAST_REST_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::object(
-            "spell_filter",
-            LexCaptureKind::UntilPhrase(COMMAND_ZONE_FREE_CAST_TAIL),
-        ),
-        LexPattern::phrase(COMMAND_ZONE_FREE_CAST_TAIL),
-    ]);
+    const COMMAND_ZONE_FREE_CAST_REST_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[
+            PermissionSequence::object(
+                "spell_filter",
+                PermissionCaptureKind::UntilPhrase(COMMAND_ZONE_FREE_CAST_TAIL),
+            ),
+            PermissionSequence::phrase(COMMAND_ZONE_FREE_CAST_TAIL),
+        ]);
 
     let clause = LexedClause::new(rest_tokens);
-    let matched = COMMAND_ZONE_FREE_CAST_REST_PATTERN.match_clause(clause)?;
-    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let matched = COMMAND_ZONE_FREE_CAST_REST_PATTERN.parse_full(clause)?;
+    let filter_clause = matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)?;
     let filter_tokens = trim_lexed_commas(filter_clause.tokens());
     (!filter_tokens.is_empty()).then_some(CommandZoneFreeCastRest { filter_tokens })
 }
@@ -1201,17 +1187,17 @@ fn free_cast_filter_mentions_singular_spell(filter_tokens: &[OwnedLexToken]) -> 
 fn strip_allow_any_color_for_cast_suffix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<&'a [OwnedLexToken]> {
-    const ALLOW_ANY_COLOR_SUFFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::modifier(
+    const ALLOW_ANY_COLOR_SUFFIX_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::modifier(
             "body",
-            LexCaptureKind::UntilLastAnyPhrase(ALLOW_ANY_COLOR_FOR_CAST_SUFFIXES),
+            PermissionCaptureKind::UntilLastAnyPhrase(ALLOW_ANY_COLOR_FOR_CAST_SUFFIXES),
         ),
-        LexPattern::any_phrase(ALLOW_ANY_COLOR_FOR_CAST_SUFFIXES),
+        PermissionSequence::any_phrase(ALLOW_ANY_COLOR_FOR_CAST_SUFFIXES),
     ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = ALLOW_ANY_COLOR_SUFFIX_PATTERN.match_clause(clause)?;
-    let body = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let matched = ALLOW_ANY_COLOR_SUFFIX_PATTERN.parse_full(clause)?;
+    let body = matched.capture_clause_by_role(PermissionCaptureRole::Modifier, clause)?;
     Some(trim_lexed_commas(body.tokens()))
 }
 
@@ -1260,23 +1246,23 @@ fn parse_tagged_cast_or_play_target_tokens<'a>(
 fn parse_tagged_permission_tail_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> TaggedPermissionTail<'a> {
-    const FROM_EXILE_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::action(
+    const FROM_EXILE_TAIL_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::action(
             "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
         ),
-        LexPattern::object("location", LexCaptureKind::WordCount(1)),
-        LexPattern::tail("tail", LexCaptureKind::Rest),
+        PermissionSequence::object("location", PermissionCaptureKind::WordCount(1)),
+        PermissionSequence::tail("tail", PermissionCaptureKind::Rest),
     ]);
 
     let clause = LexedClause::new(tokens);
-    if let Some(matched) = FROM_EXILE_TAIL_PATTERN.match_clause(clause) {
+    if let Some(matched) = FROM_EXILE_TAIL_PATTERN.parse_full(clause) {
         let location = matched.capture_clause("location", clause);
         if location
             .as_ref()
             .and_then(|location| permission_zone_from_location_words(&location.word_refs()))
             == Some(Zone::Exile)
-            && let Some(tail) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)
+            && let Some(tail) = matched.capture_clause_by_role(PermissionCaptureRole::Tail, clause)
         {
             return TaggedPermissionTail {
                 tail_tokens: tail.tokens(),
@@ -1304,26 +1290,26 @@ fn parse_tagged_permission_mana_value_condition_tokens(
 fn parse_conditional_tagged_free_cast_tail_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<ConditionalTaggedFreeCastTail<'a>> {
-    const IMMEDIATE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
-        LexPattern::condition("condition", LexCaptureKind::Rest),
+    const IMMEDIATE_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::phrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
+        PermissionSequence::condition("condition", PermissionCaptureKind::Rest),
     ]);
-    const THIS_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(&["this", "turn"]),
-        LexPattern::phrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
-        LexPattern::condition("condition", LexCaptureKind::Rest),
+    const THIS_TURN_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::phrase(&["this", "turn"]),
+        PermissionSequence::phrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
+        PermissionSequence::condition("condition", PermissionCaptureKind::Rest),
     ]);
 
     let clause = LexedClause::new(tokens);
-    if let Some(matched) = IMMEDIATE_PATTERN.match_clause(clause) {
-        let condition = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)?;
+    if let Some(matched) = IMMEDIATE_PATTERN.parse_full(clause) {
+        let condition = matched.capture_clause_by_role(PermissionCaptureRole::Condition, clause)?;
         return Some(ConditionalTaggedFreeCastTail {
             lifetime: PermissionLifetime::Immediate,
             condition_tokens: condition.tokens(),
         });
     }
-    if let Some(matched) = THIS_TURN_PATTERN.match_clause(clause) {
-        let condition = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)?;
+    if let Some(matched) = THIS_TURN_PATTERN.parse_full(clause) {
+        let condition = matched.capture_clause_by_role(PermissionCaptureRole::Condition, clause)?;
         return Some(ConditionalTaggedFreeCastTail {
             lifetime: PermissionLifetime::ThisTurn,
             condition_tokens: condition.tokens(),
@@ -1434,79 +1420,87 @@ fn normalize_permission_subject_filter(mut filter: ObjectFilter) -> ObjectFilter
 }
 
 fn filter_tokens_contain_spell_subject(tokens: &[OwnedLexToken]) -> bool {
-    const SPELL_SUBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-        "spell",
-        LexCaptureKind::OneOf(&["spell", "spells"]),
-    )]);
+    const SPELL_SUBJECT_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[PermissionSequence::object(
+            "spell",
+            PermissionCaptureKind::OneOf(&["spell", "spells"]),
+        )]);
 
     SPELL_SUBJECT_PATTERN
-        .find_in_clause(LexedClause::new(tokens))
+        .locate_in(LexedClause::new(tokens))
         .is_some()
 }
 
 fn filter_tokens_contain_singular_spell_subject(tokens: &[OwnedLexToken]) -> bool {
-    const SINGULAR_SPELL_SUBJECT_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::object(
+    const SINGULAR_SPELL_SUBJECT_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[PermissionSequence::object(
             "spell",
-            LexCaptureKind::OneOf(&["spell"]),
+            PermissionCaptureKind::OneOf(&["spell"]),
         )]);
 
     SINGULAR_SPELL_SUBJECT_PATTERN
-        .find_in_clause(LexedClause::new(tokens))
+        .locate_in(LexedClause::new(tokens))
         .is_some()
 }
 
 fn filter_tokens_contain_plural_spell_subject(tokens: &[OwnedLexToken]) -> bool {
-    const PLURAL_SPELL_SUBJECT_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::object(
+    const PLURAL_SPELL_SUBJECT_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[PermissionSequence::object(
             "spells",
-            LexCaptureKind::OneOf(&["spells"]),
+            PermissionCaptureKind::OneOf(&["spells"]),
         )]);
 
     PLURAL_SPELL_SUBJECT_PATTERN
-        .find_in_clause(LexedClause::new(tokens))
+        .locate_in(LexedClause::new(tokens))
         .is_some()
 }
 
 fn filter_tokens_are_generic_spell_subject(tokens: &[OwnedLexToken]) -> bool {
-    const GENERIC_SPELL_SUBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::optional(&[LexPattern::any_word(&["a", "an", "the"])]),
-        LexPattern::object("spell", LexCaptureKind::OneOf(&["spell", "spells"])),
+    const GENERIC_SPELL_SUBJECT_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::optional(&[PermissionSequence::any_word(&["a", "an", "the"])]),
+        PermissionSequence::object("spell", PermissionCaptureKind::OneOf(&["spell", "spells"])),
     ]);
 
-    GENERIC_SPELL_SUBJECT_PATTERN.matches_clause(LexedClause::new(tokens))
+    GENERIC_SPELL_SUBJECT_PATTERN.accepts_full(LexedClause::new(tokens))
 }
 
 fn filter_tokens_are_exact_words(tokens: &[OwnedLexToken], words: &[&str]) -> bool {
-    LexPattern::new(&[LexPattern::phrase(words)]).matches_clause(LexedClause::new(tokens))
+    PermissionSequence::new(&[PermissionSequence::phrase(words)])
+        .accepts_full(LexedClause::new(tokens))
 }
 
 fn filter_tokens_match_any_exact_phrase(tokens: &[OwnedLexToken], phrases: &[&[&str]]) -> bool {
-    LexPattern::new(&[LexPattern::any_phrase(phrases)]).matches_clause(LexedClause::new(tokens))
+    PermissionSequence::new(&[PermissionSequence::any_phrase(phrases)])
+        .accepts_full(LexedClause::new(tokens))
 }
 
 fn filter_tokens_start_with_generic_spell_subject(tokens: &[OwnedLexToken]) -> bool {
-    const GENERIC_SPELL_SUBJECT_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::optional(&[LexPattern::any_word(&["a", "an", "the"])]),
-        LexPattern::object("spell", LexCaptureKind::OneOf(&["spell", "spells"])),
-        LexPattern::tail("tail", LexCaptureKind::Rest),
-    ]);
+    const GENERIC_SPELL_SUBJECT_PREFIX_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[
+            PermissionSequence::optional(&[PermissionSequence::any_word(&["a", "an", "the"])]),
+            PermissionSequence::object("spell", PermissionCaptureKind::OneOf(&["spell", "spells"])),
+            PermissionSequence::tail("tail", PermissionCaptureKind::Rest),
+        ]);
 
-    GENERIC_SPELL_SUBJECT_PREFIX_PATTERN.matches_clause(LexedClause::new(tokens))
+    GENERIC_SPELL_SUBJECT_PREFIX_PATTERN.accepts_full(LexedClause::new(tokens))
 }
 
 fn token_slice_is_spell_word(tokens: &[OwnedLexToken]) -> bool {
-    const SPELL_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-        "spell",
-        LexCaptureKind::OneOf(&["spell", "spells"]),
-    )]);
+    const SPELL_WORD_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[PermissionSequence::object(
+            "spell",
+            PermissionCaptureKind::OneOf(&["spell", "spells"]),
+        )]);
 
-    SPELL_WORD_PATTERN.matches_clause(LexedClause::new(tokens))
+    SPELL_WORD_PATTERN.accepts_full(LexedClause::new(tokens))
 }
 
 fn mark_generic_spell_filter_nonland(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     if filter_tokens_start_with_generic_spell_subject(tokens)
-        && !filter.excluded_card_types.contains(&CardType::Land)
+        && !filter
+            .excluded_card_types
+            .iter()
+            .any(|card_type| card_type == &CardType::Land)
     {
         filter.excluded_card_types.push(CardType::Land);
     }
@@ -1671,15 +1665,19 @@ fn parse_binary_permission_subject_filter_tokens(
     for separator in ["and", "or"] {
         let separator_words = [separator];
         let atoms = [
-            LexPattern::object("left", LexCaptureKind::UntilPhrase(&separator_words)),
-            LexPattern::action("separator", LexCaptureKind::OneOf(&separator_words)),
-            LexPattern::object("right", LexCaptureKind::Rest),
+            PermissionSequence::object(
+                "left",
+                PermissionCaptureKind::UntilPhrase(&separator_words),
+            ),
+            PermissionSequence::action("separator", PermissionCaptureKind::OneOf(&separator_words)),
+            PermissionSequence::object("right", PermissionCaptureKind::Rest),
         ];
         let clause = LexedClause::new(filter_tokens);
-        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        let Some(matched) = PermissionSequence::new(&atoms).parse_full(clause) else {
             continue;
         };
-        let Some(left_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause)
+        let Some(left_clause) =
+            matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)
         else {
             continue;
         };
@@ -1751,7 +1749,7 @@ fn parse_hand_free_cast_grant_spec_from_rest(
         let Some((operator, rhs_tokens)) = parse_value_comparison_tokens(comparison_tokens) else {
             return Ok(None);
         };
-        let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
+        let Some((rhs_value, used)) = parse_value_prefix_lexed(rhs_tokens) else {
             return Ok(None);
         };
         if used != rhs_tokens.len() {
@@ -1785,16 +1783,17 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause(
 fn parse_sacrificing_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<crate::costs::Cost>, CardTextError> {
-    const SACRIFICING_COST_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::word("sacrificing"),
-        LexPattern::object("filter", LexCaptureKind::OneOrMoreWords),
+    const SACRIFICING_COST_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::word("sacrificing"),
+        PermissionSequence::object("filter", PermissionCaptureKind::OneOrMoreWords),
     ]);
 
     let clause = LexedClause::new(tokens);
-    let Some(matched) = SACRIFICING_COST_PATTERN.match_clause(clause) else {
+    let Some(matched) = SACRIFICING_COST_PATTERN.parse_full(clause) else {
         return Ok(None);
     };
-    let Some(filter_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+    let Some(filter_clause) = matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)
+    else {
         return Ok(None);
     };
     let Some(filter) = parse_permission_subject_filter_tokens_lexed(filter_clause.tokens())? else {
@@ -1821,23 +1820,23 @@ fn parse_exiling_graveyard_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<crate::costs::Cost>, CardTextError> {
     const CARD_WORD_PHRASES: &[&[&str]] = &[&["card"], &["cards"]];
-    const EXILING_GRAVEYARD_COST_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::word("exiling"),
-        LexPattern::amount("count", LexCaptureKind::WordCount(1)),
-        LexPattern::object(
+    const EXILING_GRAVEYARD_COST_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::word("exiling"),
+        PermissionSequence::amount("count", PermissionCaptureKind::WordCount(1)),
+        PermissionSequence::object(
             "card_types",
-            LexCaptureKind::UntilAnyPhrase(CARD_WORD_PHRASES),
+            PermissionCaptureKind::UntilAnyPhrase(CARD_WORD_PHRASES),
         ),
-        LexPattern::any_phrase(CARD_WORD_PHRASES),
-        LexPattern::action(
+        PermissionSequence::any_phrase(CARD_WORD_PHRASES),
+        PermissionSequence::action(
             "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
         ),
-        LexPattern::object("location", LexCaptureKind::OneOrMoreWords),
+        PermissionSequence::object("location", PermissionCaptureKind::OneOrMoreWords),
     ]);
 
     let clause = LexedClause::new(tokens);
-    let Some(matched) = EXILING_GRAVEYARD_COST_PATTERN.match_clause(clause) else {
+    let Some(matched) = EXILING_GRAVEYARD_COST_PATTERN.parse_full(clause) else {
         return Ok(None);
     };
     let Some(location_clause) = matched.capture_clause("location", clause) else {
@@ -1846,7 +1845,8 @@ fn parse_exiling_graveyard_additional_cost_tokens(
     if permission_zone_from_location_words(&location_clause.word_refs()) != Some(Zone::Graveyard) {
         return Ok(None);
     }
-    let Some(count_clause) = matched.capture_clause_by_role(LexCaptureRole::Amount, clause) else {
+    let Some(count_clause) = matched.capture_clause_by_role(PermissionCaptureRole::Amount, clause)
+    else {
         return Ok(None);
     };
     let count_words = count_clause.word_refs();
@@ -1856,7 +1856,8 @@ fn parse_exiling_graveyard_additional_cost_tokens(
     let Some(count) = parse_named_number(count_word) else {
         return Ok(None);
     };
-    let Some(card_types_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause)
+    let Some(card_types_clause) =
+        matched.capture_clause_by_role(PermissionCaptureRole::Object, clause)
     else {
         return Ok(None);
     };
@@ -1869,7 +1870,7 @@ fn parse_exiling_graveyard_additional_cost_tokens(
         let Some(card_type) = parse_card_type_word(word) else {
             return Ok(None);
         };
-        if !card_types.contains(&card_type) {
+        if !card_types.iter().any(|existing| existing == &card_type) {
             card_types.push(card_type);
         }
     }
@@ -1891,29 +1892,33 @@ fn parse_graveyard_cast_additional_cost_tokens(
 fn parse_source_graveyard_cast_additional_cost_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<SourceGraveyardCastAdditionalCost<'a>> {
-    const SOURCE_GRAVEYARD_CAST_ADDITIONAL_COST_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::word("this"),
-        LexPattern::object("source_kind", LexCaptureKind::OneOf(&["card", "spell"])),
-        LexPattern::action(
-            "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
-        ),
-        LexPattern::object("location", LexCaptureKind::UntilPhrase(&["by"])),
-        LexPattern::word("by"),
-        LexPattern::modifier(
-            "cost",
-            LexCaptureKind::UntilPhrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
-        ),
-        LexPattern::phrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
-    ]);
+    const SOURCE_GRAVEYARD_CAST_ADDITIONAL_COST_PATTERN: PermissionSequence<'static> =
+        PermissionSequence::new(&[
+            PermissionSequence::word("this"),
+            PermissionSequence::object(
+                "source_kind",
+                PermissionCaptureKind::OneOf(&["card", "spell"]),
+            ),
+            PermissionSequence::action(
+                "from",
+                PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            ),
+            PermissionSequence::object("location", PermissionCaptureKind::UntilPhrase(&["by"])),
+            PermissionSequence::word("by"),
+            PermissionSequence::modifier(
+                "cost",
+                PermissionCaptureKind::UntilPhrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
+            ),
+            PermissionSequence::phrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
+        ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = SOURCE_GRAVEYARD_CAST_ADDITIONAL_COST_PATTERN.match_clause(clause)?;
+    let matched = SOURCE_GRAVEYARD_CAST_ADDITIONAL_COST_PATTERN.parse_full(clause)?;
     let location_clause = matched.capture_clause("location", clause)?;
     if permission_zone_from_location_words(&location_clause.word_refs()) != Some(Zone::Graveyard) {
         return None;
     }
-    let cost_clause = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let cost_clause = matched.capture_clause_by_role(PermissionCaptureRole::Modifier, clause)?;
     let cost_tokens = trim_lexed_commas(cost_clause.tokens());
     (!cost_tokens.is_empty()).then_some(SourceGraveyardCastAdditionalCost { cost_tokens })
 }
@@ -1927,22 +1932,22 @@ fn parse_source_cast_permission_tokens(tokens: &[OwnedLexToken]) -> Option<Sourc
 fn parse_source_graveyard_die_roll_cast_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceGraveyardDieRollCastPermission> {
-    const DIE_ROLL_PERMISSION_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(&["this", "card"]),
-        LexPattern::action(
+    const DIE_ROLL_PERMISSION_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::phrase(&["this", "card"]),
+        PermissionSequence::action(
             "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
         ),
-        LexPattern::object(
+        PermissionSequence::object(
             "location",
-            LexCaptureKind::UntilPhrase(&["as", "long", "as"]),
+            PermissionCaptureKind::UntilPhrase(&["as", "long", "as"]),
         ),
-        LexPattern::phrase(&["as", "long", "as"]),
-        LexPattern::subject("player", LexCaptureKind::OneOf(&["youve", "you've"])),
-        LexPattern::word("rolled"),
-        LexPattern::word("a"),
-        LexPattern::amount("result", LexCaptureKind::WordCount(1)),
-        LexPattern::phrase(&[
+        PermissionSequence::phrase(&["as", "long", "as"]),
+        PermissionSequence::subject("player", PermissionCaptureKind::OneOf(&["youve", "you've"])),
+        PermissionSequence::word("rolled"),
+        PermissionSequence::word("a"),
+        PermissionSequence::amount("result", PermissionCaptureKind::WordCount(1)),
+        PermissionSequence::phrase(&[
             "this",
             "turn",
             "if",
@@ -1966,12 +1971,12 @@ fn parse_source_graveyard_die_roll_cast_permission_tokens(
     ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = DIE_ROLL_PERMISSION_PATTERN.match_clause(clause)?;
+    let matched = DIE_ROLL_PERMISSION_PATTERN.parse_full(clause)?;
     let location_clause = matched.capture_clause("location", clause)?;
     if permission_zone_from_location_words(&location_clause.word_refs()) != Some(Zone::Graveyard) {
         return None;
     }
-    let result_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let result_clause = matched.capture_clause_by_role(PermissionCaptureRole::Amount, clause)?;
     let result_words = result_clause.word_refs();
     let result = parse_named_number(result_words.first().copied()?)?;
     Some(SourceGraveyardDieRollCastPermission { result })
@@ -2015,32 +2020,32 @@ fn parse_once_each_turn_top_library_shared_type_cast_tokens<'a>(
     const CAST_PREFIX: &[&str] = &["once", "each", "turn", "you", "may", "cast"];
     const SHARES_CARD_TYPE_WITH_PHRASE: &[&str] =
         &["if", "it", "shares", "a", "card", "type", "with"];
-    const PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(CAST_PREFIX),
-        LexPattern::object(
+    const PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::phrase(CAST_PREFIX),
+        PermissionSequence::object(
             "subject",
-            LexCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
+            PermissionCaptureKind::UntilAnyPhrase(PERMISSION_FROM_PREPOSITION_PHRASES),
         ),
-        LexPattern::action(
+        PermissionSequence::action(
             "from",
-            LexCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
+            PermissionCaptureKind::OneOf(PERMISSION_FROM_PREPOSITION_WORDS),
         ),
-        LexPattern::object(
+        PermissionSequence::object(
             "location",
-            LexCaptureKind::UntilPhrase(SHARES_CARD_TYPE_WITH_PHRASE),
+            PermissionCaptureKind::UntilPhrase(SHARES_CARD_TYPE_WITH_PHRASE),
         ),
-        LexPattern::phrase(SHARES_CARD_TYPE_WITH_PHRASE),
-        LexPattern::object("source_reference", LexCaptureKind::Rest),
+        PermissionSequence::phrase(SHARES_CARD_TYPE_WITH_PHRASE),
+        PermissionSequence::object("source_reference", PermissionCaptureKind::Rest),
     ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = PATTERN.match_clause(clause)?;
+    let matched = PATTERN.parse_full(clause)?;
     let location = matched.capture_clause("location", clause)?;
     if permission_zone_from_location_words(&location.word_refs()) != Some(Zone::Library) {
         return None;
     }
     let subject = matched.capture_clause("subject", clause)?.trimmed();
-    if !clause_matches_any_phrase(subject, &[&["a", "spell"], &["spells"]]) {
+    if !permission_shapes::exact_any(subject, &[&["a", "spell"], &["spells"]]) {
         return None;
     }
 
@@ -2058,12 +2063,12 @@ fn parse_once_each_turn_top_library_shared_type_cast_tokens<'a>(
 }
 
 fn source_reference_is_card_exiled_with_this(clause: LexedClause<'_>) -> bool {
-    const SOURCE_EXILED_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(&["a", "card", "exiled", "with", "this"]),
-        LexPattern::object("source_kind", LexCaptureKind::WordCount(1)),
+    const SOURCE_EXILED_PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[
+        PermissionSequence::phrase(&["a", "card", "exiled", "with", "this"]),
+        PermissionSequence::object("source_kind", PermissionCaptureKind::WordCount(1)),
     ]);
 
-    SOURCE_EXILED_PATTERN.matches_clause(clause)
+    SOURCE_EXILED_PATTERN.accepts_full(clause)
 }
 
 fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
@@ -2490,13 +2495,8 @@ pub(crate) fn parse_additional_land_plays_clause_lexed(
     };
     let count_tokens = parsed.count_tokens;
     let count_words = token_word_refs(count_tokens);
-    let (count, used) = if matches!(count_words.as_slice(), ["a"] | ["an"]) {
-        (Value::Fixed(1), 1usize)
-    } else {
-        let Some((value, used)) = parse_value_from_lexed(count_tokens) else {
-            return Ok(None);
-        };
-        (value, used)
+    let Some((count, used)) = parse_value_prefix_lexed(count_tokens) else {
+        return Ok(None);
     };
 
     if count_words.len() != used {
@@ -2656,7 +2656,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         mark_generic_spell_filter_nonland(&mut filter, filter_tokens);
         filter.owner = Some(crate::target::PlayerFilter::You);
 
-        let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
+        let Some((rhs_value, used)) = parse_value_prefix_lexed(rhs_tokens) else {
             return Ok(None);
         };
         if used != rhs_tokens.len() {
@@ -2746,7 +2746,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     mark_generic_spell_filter_nonland(&mut filter, filter_tokens);
     filter.owner = Some(crate::target::PlayerFilter::You);
 
-    let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
+    let Some((rhs_value, used)) = parse_value_prefix_lexed(rhs_tokens) else {
         return Ok(None);
     };
     if used != rhs_tokens.len() {

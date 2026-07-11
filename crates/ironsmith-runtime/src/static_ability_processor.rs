@@ -121,6 +121,7 @@ struct GeneratedStaticEffect {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SourceStaticEffectsKey {
     generation_revision: u64,
+    continuous_effect_revision: u64,
     object_revision: u64,
     zone: Zone,
     controller: crate::ids::PlayerId,
@@ -321,6 +322,7 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
     let text_box_scope = text_box_query_scope(&registered_effects);
     let mut text_box_cache: FxMap<ObjectId, TextBoxOverlay> = FxMap::default();
     let text_overlay_revision = game.effect_store.continuous_effects.revision();
+    let continuous_effect_revision = game.effect_store.continuous_effects.revision();
     let generation_revision = game.mutation_revision();
     let mut effects = Vec::new();
     let object_ids = game.object_ids_in_deterministic_order();
@@ -335,6 +337,7 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
         let controller = game.controller_of(object);
         let key = SourceStaticEffectsKey {
             generation_revision,
+            continuous_effect_revision,
             object_revision: object.last_modified,
             zone,
             controller,

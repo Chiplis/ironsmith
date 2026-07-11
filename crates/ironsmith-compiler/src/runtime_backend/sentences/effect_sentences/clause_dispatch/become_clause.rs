@@ -1,266 +1,20 @@
-use super::super::super::keyword_static::{
-    keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier_values,
-};
-use super::super::super::lexer::{
-    LexedClause, OwnedLexToken, render_token_slice, word_slice_eq, word_slice_eq_any,
-    word_slice_starts_with, word_slice_strip_any_suffix,
-};
+use super::super::super::keyword_static::{keyword_action_to_static_ability, parse_ability_line};
+use super::super::super::lexer::{LexedClause, OwnedLexToken};
 use super::super::super::object_filters::parse_object_filter_lexed;
 use super::super::super::util::{
-    parse_card_type, parse_color, parse_subject, parse_target_phrase, parse_value,
-    source_reference_surface_for_words, span_from_tokens, word_refs_except,
+    parse_subject, parse_target_phrase, parse_value, span_from_tokens,
 };
 use super::super::clause_pattern_helpers::extract_subject_player;
 use super::super::parse_granted_abilities_for_gain_clause;
-use super::super::parse_subtype_word;
 use super::super::search_library::parse_restriction_duration;
 use super::super::zone_counter_helpers::parse_half_starting_life_total_value;
-use super::helpers::{
-    parse_become_base_pt_tail, parse_become_creature_descriptor_words,
-    parse_become_power_toughness_equal_value_tail, parse_pt_value_words,
-    parse_subtype_word_or_plural, push_unique_card_type, push_unique_subtype, render_lower_words,
-    strip_base_power_toughness_subject_tokens, subject_references_base_power_toughness,
-};
+use super::helpers::render_lower_words;
 use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value};
 use crate::host::{CardTextError, EffectAst, IT_TAG, TagKey, TargetAst};
+use crate::runtime_backend::grammar::effects::become_shapes as become_grammar;
 use crate::target::{ChooseSpec, ObjectFilter};
-use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
-
-const ADDITION_TAIL_PHRASES: &[&[&str]] = &[
-    &["in", "addition", "to", "its", "other", "types"],
-    &["in", "addition", "to", "their", "other", "types"],
-    &["in", "addition", "to", "its", "other", "type"],
-    &["in", "addition", "to", "their", "other", "type"],
-];
-const ARTICLE_PREFIXES: &[&[&str]] = &[&["the"], &["a"], &["an"]];
-const MONARCH_WORDS: &[&str] = &["monarch"];
-const COPY_OF_PREFIX: &[&str] = &["copy", "of"];
-const COPY_PRESERVES_SOURCE_ABILITIES_WORDS: &[&str] = &["it", "has", "this", "ability"];
-const COPY_NAME_PREFIXES: &[&[&str]] = &[&["its", "name", "is"], &["it", "s", "name", "is"]];
-const COPY_PRESERVE_SOURCE_ABILITY_TAILS: &[&[&str]] = &[
-    &["and", "it", "has", "this", "ability"],
-    &["and", "this", "ability"],
-];
-const COPY_LEGENDARY_ADDITION_TAILS: &[&[&str]] = &[
-    &[
-        "and",
-        "its",
-        "legendary",
-        "in",
-        "addition",
-        "to",
-        "its",
-        "other",
-        "types",
-    ],
-    &[
-        "and",
-        "it",
-        "s",
-        "legendary",
-        "in",
-        "addition",
-        "to",
-        "its",
-        "other",
-        "types",
-    ],
-    &[
-        "and",
-        "it",
-        "is",
-        "legendary",
-        "in",
-        "addition",
-        "to",
-        "its",
-        "other",
-        "types",
-    ],
-];
-const IT_THEY_THEM_CLAUSES: &[&[&str]] = &[&["it"], &["they"], &["them"]];
-const THIS_SOURCE_SUBJECT_CLAUSES: &[&[&str]] = &[
-    &["this"],
-    &["this", "permanent"],
-    &["this", "creature"],
-    &["this", "land"],
-];
-const BASIC_LAND_TYPE_CHOICE_WORDS: &[&str] = &["basic", "land", "type", "of", "your", "choice"];
-const COLOR_CHOICE_CLAUSES: &[&[&str]] = &[
-    &["color", "of", "your", "choice"],
-    &["color", "or", "colors", "of", "your", "choice"],
-    &["colors", "of", "your", "choice"],
-];
-const CREATURE_TYPE_CHOICE_WORDS: &[&str] = &["creature", "type", "of", "your", "choice"];
-const COLORLESS_WORDS: &[&str] = &["colorless"];
-const AURA_ENCHANTMENT_WITH_ENCHANT_CREATURE_PREFIX: &[&str] =
-    &["aura", "enchantment", "with", "enchant", "creature"];
-const AURA_WITH_ENCHANT_CREATURE_PREFIX: &[&str] = &["aura", "with", "enchant", "creature"];
-const SADDLED_WORDS: &[&str] = &["saddled"];
-const YOU_CONTROL_PREFIX: &[&str] = &["you", "control"];
-const EQUAL_TO_PREFIX: &[&str] = &["equal", "to"];
-const SOURCE_POWER_TOUGHNESS_CLAUSES: &[&[&str]] = &[
-    &["this", "power", "and", "toughness"],
-    &["thiss", "power", "and", "toughness"],
-    &["source", "power", "and", "toughness"],
-];
-const CREATURE_OR_CREATURES_WORDS: &[&str] = &["creature", "creatures"];
-const ALL_CREATURE_TYPES_WORDS: &[&str] = &["all", "creature", "types"];
-const AND_ALL_CREATURE_TYPES_WORDS: &[&str] = &["and", "all", "creature", "types"];
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct ParsedCopyException {
-    preserve_source_abilities: bool,
-    name_override: Option<String>,
-    name_override_surface: Option<crate::target::SourceReferenceSurface>,
-    add_supertypes: Vec<Supertype>,
-}
-
-fn split_trailing_except_tokens(
-    tokens: &[OwnedLexToken],
-) -> (Vec<OwnedLexToken>, Option<Vec<OwnedLexToken>>) {
-    let clause = LexedClause::new(tokens);
-    let Some(except_word_idx) = clause.rfind_word("except") else {
-        return (tokens.to_vec(), None);
-    };
-    let Some(except_token_idx) = clause.token_index_for_word_index(except_word_idx) else {
-        return (tokens.to_vec(), None);
-    };
-    let exception = clause.from(except_token_idx + 1).trim();
-    (
-        clause.before(except_token_idx).trim(),
-        (!exception.is_empty()).then_some(exception),
-    )
-}
-
-fn strip_trailing_addition_tail_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    LexedClause::new(tokens)
-        .strip_any_suffix_clause(ADDITION_TAIL_PHRASES)
-        .map(|(_, head)| head.tokens())
-        .unwrap_or(tokens)
-}
-
-fn is_addition_tail_only(tokens: &[OwnedLexToken]) -> bool {
-    !tokens.is_empty() && strip_trailing_addition_tail_tokens(tokens).is_empty()
-}
-
-fn is_still_a_land_suffix(tokens: &[OwnedLexToken]) -> bool {
-    let words = LexedClause::new(tokens).word_refs();
-    matches!(
-        words.as_slice(),
-        ["still", "a", "land"]
-            | ["that", "s", "still", "a", "land"]
-            | ["thats", "still", "a", "land"]
-            | ["it", "s", "still", "a", "land"]
-            | ["its", "still", "a", "land"]
-    )
-}
-
-fn subject_words_are_tagged_object_reference(words: &[&str]) -> bool {
-    if super::is_tagged_object_reference(words) {
-        return true;
-    }
-    for prefix in [
-        &["each", "of"][..],
-        &["all", "of"][..],
-        &["each"][..],
-        &["all"][..],
-    ] {
-        if let Some(rest) = words.strip_prefix(prefix)
-            && super::is_tagged_object_reference(rest)
-        {
-            return true;
-        }
-    }
-    false
-}
-
-fn recover_leading_duration_target(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
-    let clause = LexedClause::new(tokens).trimmed();
-    let words = clause.word_refs();
-    let target_word_idx = words.iter().position(|word| *word == "target")?;
-    let target_token_idx = clause.token_index_for_word_index(target_word_idx)?;
-    let target_tokens = clause.from(target_token_idx).trim();
-    if target_tokens.len() <= 1 {
-        return None;
-    }
-    parse_target_phrase(&target_tokens).ok()
-}
-
-fn parse_become_copy_exception(tokens: &[OwnedLexToken]) -> Option<ParsedCopyException> {
-    let clause = LexedClause::new(tokens).trimmed();
-    let words = clause.word_refs();
-    if word_slice_eq(&words, COPY_PRESERVES_SOURCE_ABILITIES_WORDS) {
-        return Some(ParsedCopyException {
-            preserve_source_abilities: true,
-            ..Default::default()
-        });
-    }
-
-    let prefix_len = COPY_NAME_PREFIXES
-        .iter()
-        .find(|prefix| word_slice_starts_with(&words, prefix))
-        .map(|prefix| prefix.len())?;
-    let mut parsed = ParsedCopyException::default();
-    let mut name_end = words.len();
-
-    if let Some((_tail, head)) =
-        word_slice_strip_any_suffix(&words[..name_end], COPY_PRESERVE_SOURCE_ABILITY_TAILS)
-    {
-        parsed.preserve_source_abilities = true;
-        name_end = head.len();
-    }
-
-    if let Some((_tail, head)) =
-        word_slice_strip_any_suffix(&words[..name_end], COPY_LEGENDARY_ADDITION_TAILS)
-    {
-        parsed.add_supertypes.push(Supertype::Legendary);
-        name_end = head.len();
-    }
-
-    let name_words = words.get(prefix_len..name_end)?;
-    if name_words.is_empty() {
-        return None;
-    }
-    if parsed.add_supertypes.is_empty()
-        && !parsed.preserve_source_abilities
-        && name_words.contains(&"and")
-    {
-        return None;
-    }
-
-    let name_clause = clause.between_words_trimmed(prefix_len, name_end);
-    let rendered_name = render_token_slice(name_clause.tokens()).trim().to_string();
-    if rendered_name.is_empty() {
-        return None;
-    }
-    parsed.name_override_surface = source_reference_surface_for_words(name_words);
-    parsed.name_override = Some(rendered_name);
-    Some(parsed)
-}
-
-fn split_animation_suffix_all_creature_types(
-    tokens: &[OwnedLexToken],
-) -> Option<(Vec<OwnedLexToken>, SubtypeFamily)> {
-    let clause = LexedClause::new(tokens).trimmed();
-    let words = clause.word_refs();
-    if word_slice_eq(&words, ALL_CREATURE_TYPES_WORDS) {
-        return Some((Vec::new(), SubtypeFamily::Creature));
-    }
-    if words.len() > AND_ALL_CREATURE_TYPES_WORDS.len()
-        && words[words.len() - AND_ALL_CREATURE_TYPES_WORDS.len()..]
-            == *AND_ALL_CREATURE_TYPES_WORDS
-    {
-        let split_word_idx = words.len() - AND_ALL_CREATURE_TYPES_WORDS.len();
-        let split_token_idx = clause.token_index_for_word_index(split_word_idx)?;
-        return Some((
-            clause.before(split_token_idx).trim(),
-            SubtypeFamily::Creature,
-        ));
-    }
-    None
-}
+use crate::types::{CardType, SubtypeFamily};
 
 pub(crate) fn parse_become_clause(
     subject_tokens: &[OwnedLexToken],
@@ -268,62 +22,37 @@ pub(crate) fn parse_become_clause(
 ) -> Result<EffectAst, CardTextError> {
     let subject_tokens = LexedClause::new(subject_tokens).trim();
     let original_subject_tokens = subject_tokens.clone();
-    let rest_clause = LexedClause::new(rest_tokens).trimmed();
-    let rest_tokens = if rest_clause
-        .first_word()
-        .is_some_and(|word| matches!(word, "become" | "becomes"))
-    {
-        rest_clause.from(1).trim()
-    } else {
-        rest_clause.tokens().to_vec()
-    };
-    let (rest_core_tokens, copy_exception_tokens) = split_trailing_except_tokens(&rest_tokens);
-    let copy_exception = copy_exception_tokens
-        .as_deref()
-        .and_then(parse_become_copy_exception);
-    let become_clause_tokens = if copy_exception.is_some() {
-        rest_core_tokens.as_slice()
-    } else {
-        rest_tokens.as_slice()
-    };
+    let rest_shape = become_grammar::parse_become_rest_shape(rest_tokens);
+    let rest_tokens = rest_shape.rest_tokens;
+    let copy_exception = rest_shape.copy_exception;
+    let become_clause_tokens = rest_shape.body_tokens;
     let (duration, subject_tokens_vec, become_tokens) = if let Some((duration, remainder)) =
         parse_restriction_duration(&subject_tokens)?
     {
-        (duration, remainder, become_clause_tokens.to_vec())
-    } else if let Some((duration, remainder)) = parse_restriction_duration(become_clause_tokens)? {
+        (duration, remainder, become_clause_tokens)
+    } else if let Some((duration, remainder)) = parse_restriction_duration(&become_clause_tokens)? {
         (duration, subject_tokens.clone(), remainder)
     } else {
-        (
-            Until::Forever,
-            subject_tokens.clone(),
-            become_clause_tokens.to_vec(),
-        )
+        (Until::Forever, subject_tokens.clone(), become_clause_tokens)
     };
     let subject_tokens = subject_tokens_vec.as_slice();
-    let subject_clause = LexedClause::new(subject_tokens);
-    let subject_words = subject_clause.word_refs();
-    let subject_targets_base_pt = subject_references_base_power_toughness(&subject_words);
-    let target_subject_tokens =
-        strip_base_power_toughness_subject_tokens(subject_tokens, &subject_words);
-    let target_subject_clause = LexedClause::new(target_subject_tokens);
-    let target_subject_words = target_subject_clause.word_refs();
+    let base_pt_subject = become_grammar::parse_base_power_toughness_subject_tokens(subject_tokens);
+    let subject_targets_base_pt = base_pt_subject.is_some();
+    let target_subject_tokens = base_pt_subject
+        .map(|shape| shape.target_tokens)
+        .unwrap_or(subject_tokens);
     let subject = parse_subject(subject_tokens);
-    let become_clause = LexedClause::new(&become_tokens);
-    let become_body_clause = if let Some((_article, after_article)) =
-        become_clause.strip_any_prefix_clause(ARTICLE_PREFIXES)
-    {
-        after_article
-    } else {
-        become_clause
-    };
-    let become_words_vec = become_body_clause.word_refs();
+    let become_surface = become_grammar::parse_become_body_surface_shape(&become_tokens);
+    let become_body_tokens = become_surface.body_tokens;
+    let become_words_vec =
+        crate::runtime_backend::front_end::lexer::parser_token_word_refs(become_body_tokens);
     let become_words = &become_words_vec[..];
 
     if let Some(player) = extract_subject_player(Some(subject)) {
-        if word_slice_eq(become_words, MONARCH_WORDS) {
+        if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Monarch) {
             return Ok(EffectAst::subject_verb_become_monarch(player));
         }
-        if subject_clause.contains_word("life") && subject_clause.contains_word("total") {
+        if become_grammar::become_subject_has_life_total(subject_tokens) {
             let amount = parse_value(&become_tokens)
                 .map(|(value, _)| value)
                 .or_else(|| parse_half_starting_life_total_value(&become_tokens, player))
@@ -337,164 +66,126 @@ pub(crate) fn parse_become_clause(
         }
     }
 
-    let mut target = if target_subject_words.as_slice() == ["all"] {
-        let inferred_filter = if become_words.len() == 1 && parse_color(become_words[0]).is_some() {
-            Some(ObjectFilter::creature())
-        } else if become_words.len() == 1
-            && parse_subtype_word_or_plural(become_words[0]).is_some_and(|subtype| {
-                matches!(
-                    subtype,
-                    Subtype::Plains
-                        | Subtype::Island
-                        | Subtype::Swamp
-                        | Subtype::Mountain
-                        | Subtype::Forest
-                )
-            })
-        {
-            Some(ObjectFilter::land())
-        } else {
-            None
-        };
-        TargetAst::Object(
-            inferred_filter.ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported mass become subject (clause: '{}')",
-                    render_lower_words(subject_tokens)
-                ))
-            })?,
+    let target_subject_shape = become_grammar::parse_become_target_subject_shape(
+        target_subject_tokens,
+        become_body_tokens,
+    );
+    let mut target = match target_subject_shape {
+        become_grammar::BecomeTargetSubjectShape::Mass(kind) => {
+            let inferred_filter = match kind {
+                become_grammar::BecomeMassTargetKind::Creature => ObjectFilter::creature(),
+                become_grammar::BecomeMassTargetKind::Land => ObjectFilter::land(),
+                become_grammar::BecomeMassTargetKind::Unsupported => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported mass become subject (clause: '{}')",
+                        render_lower_words(subject_tokens)
+                    )));
+                }
+            };
+            TargetAst::Object(inferred_filter, None, None)
+        }
+        become_grammar::BecomeTargetSubjectShape::Tagged => {
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
+        }
+        become_grammar::BecomeTargetSubjectShape::FilteredMany(filter_tokens) => {
+            TargetAst::Object(parse_object_filter_lexed(filter_tokens, false)?, None, None)
+        }
+        become_grammar::BecomeTargetSubjectShape::Source(surface) => TargetAst::Object(
+            ObjectFilter::source().with_source_surface(surface),
             None,
-            None,
-        )
-    } else if target_subject_words.is_empty()
-        || word_slice_eq_any(&target_subject_words, IT_THEY_THEM_CLAUSES)
-        || subject_words_are_tagged_object_reference(&target_subject_words)
-    {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
-    } else if target_subject_words
-        .first()
-        .is_some_and(|word| matches!(*word, "all" | "each"))
-        && target_subject_words.len() > 1
-    {
-        TargetAst::Object(
-            parse_object_filter_lexed(&target_subject_tokens[1..], false)?,
-            None,
-            None,
-        )
-    } else if word_slice_eq_any(&target_subject_words, THIS_SOURCE_SUBJECT_CLAUSES) {
-        TargetAst::Source(span_from_tokens(subject_tokens))
-    } else {
-        parse_target_phrase(target_subject_tokens)?
+            span_from_tokens(subject_tokens),
+        ),
+        become_grammar::BecomeTargetSubjectShape::Parsed(target_tokens) => {
+            parse_target_phrase(target_tokens)?
+        }
     };
 
     if matches!(target, TargetAst::AnyTarget(_))
-        && let Some(recovered_target) = recover_leading_duration_target(&original_subject_tokens)
+        && let Some(recovered_tokens) =
+            become_grammar::parse_leading_duration_target_tokens(&original_subject_tokens)
+        && let Ok(recovered_target) = parse_target_phrase(recovered_tokens)
     {
         target = recovered_target;
     }
 
-    if word_slice_eq(become_words, BASIC_LAND_TYPE_CHOICE_WORDS) {
-        return Ok(EffectAst::subject_verb_become_basic_land_type_choice(
-            target, duration,
-        ));
+    match become_surface.exact_kind {
+        Some(become_grammar::BecomeExactKind::BasicLandTypeChoice) => {
+            return Ok(EffectAst::subject_verb_become_basic_land_type_choice(
+                target, duration,
+            ));
+        }
+        Some(become_grammar::BecomeExactKind::BasicLandType(subtype)) => {
+            return Ok(EffectAst::subject_verb_become_basic_land_type(
+                target, subtype, duration,
+            ));
+        }
+        Some(become_grammar::BecomeExactKind::ColorChoice) => {
+            return Ok(EffectAst::subject_verb_become_color_choice(
+                target, duration,
+            ));
+        }
+        Some(become_grammar::BecomeExactKind::CreatureTypeChoice) => {
+            return Ok(EffectAst::subject_verb_become_creature_type_choice(
+                target,
+                duration,
+                Vec::new(),
+            ));
+        }
+        _ => {}
     }
 
-    if let [word] = become_words
-        && let Some(subtype) = parse_subtype_word_or_plural(word)
-        && matches!(
-            subtype,
-            Subtype::Plains
-                | Subtype::Island
-                | Subtype::Swamp
-                | Subtype::Mountain
-                | Subtype::Forest
-        )
-    {
-        return Ok(EffectAst::subject_verb_become_basic_land_type(
-            target, subtype, duration,
-        ));
-    }
-
-    if word_slice_eq_any(become_words, COLOR_CHOICE_CLAUSES) {
-        return Ok(EffectAst::subject_verb_become_color_choice(
-            target, duration,
-        ));
-    }
-
-    if word_slice_eq(become_words, CREATURE_TYPE_CHOICE_WORDS) {
-        return Ok(EffectAst::subject_verb_become_creature_type_choice(
-            target,
-            duration,
-            Vec::new(),
-        ));
-    }
-
-    if word_slice_starts_with(become_words, COPY_OF_PREFIX) {
-        let Some(source_clause) = become_body_clause.after_words(2) else {
-            return Err(CardTextError::ParseError(format!(
-                "missing copy source in become clause (clause: '{}')",
-                render_lower_words(&rest_tokens)
-            )));
-        };
-        let source_tokens = source_clause.trim();
-        if source_tokens.is_empty() {
+    match become_surface.copy_source {
+        become_grammar::BecomeCopySourceShape::Missing => {
             return Err(CardTextError::ParseError(format!(
                 "missing copy source in become clause (clause: '{}')",
                 render_lower_words(&rest_tokens)
             )));
         }
-        let source = parse_target_phrase(&source_tokens)?;
-        return Ok(EffectAst::subject_verb_become_copy(
-            target,
-            source,
-            duration,
-            copy_exception
-                .as_ref()
-                .is_some_and(|exception| exception.preserve_source_abilities),
-            copy_exception
-                .as_ref()
-                .and_then(|exception| exception.name_override.clone()),
-            copy_exception
-                .as_ref()
-                .and_then(|exception| exception.name_override_surface.clone()),
-            copy_exception
-                .as_ref()
-                .map(|exception| exception.add_supertypes.clone())
-                .unwrap_or_default(),
-        ));
+        become_grammar::BecomeCopySourceShape::Source(source_tokens) => {
+            let source = parse_target_phrase(source_tokens)?;
+            return Ok(EffectAst::subject_verb_become_copy(
+                target,
+                source,
+                duration,
+                copy_exception
+                    .as_ref()
+                    .is_some_and(|exception| exception.preserve_source_abilities),
+                copy_exception
+                    .as_ref()
+                    .and_then(|exception| exception.name_override.clone()),
+                copy_exception
+                    .as_ref()
+                    .and_then(|exception| exception.name_override_surface.clone()),
+                copy_exception
+                    .as_ref()
+                    .map(|exception| exception.add_supertypes.clone())
+                    .unwrap_or_default(),
+            ));
+        }
+        become_grammar::BecomeCopySourceShape::NotCopy => {}
     }
 
-    if word_slice_eq(become_words, COLORLESS_WORDS) {
+    if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Colorless) {
         return Ok(EffectAst::subject_verb_make_colorless(target, duration));
     }
-
-    let aura_with_enchant_creature_clause =
-        if word_slice_starts_with(become_words, AURA_ENCHANTMENT_WITH_ENCHANT_CREATURE_PREFIX) {
-            become_body_clause.after_words(5)
-        } else if word_slice_starts_with(become_words, AURA_WITH_ENCHANT_CREATURE_PREFIX) {
-            become_body_clause.after_words(4)
-        } else {
-            None
-        };
-    if word_slice_eq(become_words, SADDLED_WORDS) && duration == Until::EndOfTurn {
+    if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Saddled)
+        && duration == Until::EndOfTurn
+    {
         return Ok(EffectAst::subject_verb_become_saddled_until_end_of_turn(
             target,
         ));
     }
-    if let Some(aura_tail_clause) = aura_with_enchant_creature_clause {
-        if matches!(
-            target_subject_words.as_slice(),
-            ["it"] | ["this"] | ["this", "creature"]
-        ) || matches!(&target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG)
+    if let Some(aura) = become_surface.aura {
+        if become_grammar::aura_subject_prefers_source(target_subject_tokens)
+            || matches!(&target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG)
         {
             target = TargetAst::Source(span_from_tokens(subject_tokens));
         }
-        let attachment_filter =
-            if word_slice_starts_with(&aura_tail_clause.word_refs(), YOU_CONTROL_PREFIX) {
-                ObjectFilter::creature().you_control()
-            } else {
-                ObjectFilter::creature()
-            };
+        let attachment_filter = if aura.attachment_you_control {
+            ObjectFilter::creature().you_control()
+        } else {
+            ObjectFilter::creature()
+        };
         return Ok(EffectAst::subject_verb_become_aura_enchantment(
             target,
             attachment_filter,
@@ -502,120 +193,78 @@ pub(crate) fn parse_become_clause(
         ));
     }
 
-    if word_slice_starts_with(become_words, EQUAL_TO_PREFIX) {
-        if become_body_clause
-            .after_words(2)
-            .is_some_and(|rhs| word_slice_eq_any(&rhs.word_refs(), SOURCE_POWER_TOUGHNESS_CLAUSES))
-        {
-            return Ok(EffectAst::subject_verb_set_base_power_toughness(
-                Value::PowerOf(Box::new(ChooseSpec::Source)),
-                Value::ToughnessOf(Box::new(ChooseSpec::Source)),
-                target,
-                duration,
-            ));
-        }
+    if become_surface.equal_to_source_power_toughness {
+        return Ok(EffectAst::subject_verb_set_base_power_toughness(
+            Value::PowerOf(Box::new(ChooseSpec::Source)),
+            Value::ToughnessOf(Box::new(ChooseSpec::Source)),
+            target,
+            duration,
+        ));
     }
 
-    if let Some((power, toughness, pt_word_count)) = parse_pt_value_words(become_words) {
-        if subject_targets_base_pt || become_words.len() == 1 {
+    if let Some(leading_pt) =
+        become_grammar::parse_become_leading_pt_shape(become_words, become_body_tokens)
+    {
+        let become_grammar::BecomeLeadingPtShape {
+            power,
+            toughness,
+            value_word_count,
+            creature_word_index,
+            suffix_tokens,
+        } = leading_pt;
+        if subject_targets_base_pt || value_word_count == become_words.len() {
             return Ok(EffectAst::subject_verb_set_base_power_toughness(
                 power, toughness, target, duration,
             ));
         }
-        if let Some(creature_idx) = become_words
-            .iter()
-            .position(|word| CREATURE_OR_CREATURES_WORDS.contains(word))
-        {
-            let mut card_types = vec![CardType::Creature];
-            let mut subtypes = Vec::new();
-            let mut colors = crate::color::ColorSet::new();
-            let mut all_prefix_words_supported = true;
-            for word in &become_words[pt_word_count..creature_idx] {
-                if matches!(*word, "a" | "an" | "the" | "and") {
-                    continue;
-                }
-                if let Some(color) = parse_color(word) {
-                    colors = colors.union(color);
-                    continue;
-                }
-                if let Some(card_type) = parse_card_type(word) {
-                    if card_type != CardType::Creature {
-                        push_unique_card_type(&mut card_types, card_type);
-                    }
-                    continue;
-                }
-                if let Some(subtype) = parse_subtype_word_or_plural(word) {
-                    push_unique_subtype(&mut subtypes, subtype);
-                    continue;
-                }
-                all_prefix_words_supported = false;
-                break;
-            }
-
+        if let Some(creature_idx) = creature_word_index {
+            let prefix = become_grammar::parse_become_leading_creature_prefix(
+                &become_words[value_word_count..creature_idx],
+            );
             let mut abilities = Vec::new();
             let mut granted_abilities = Vec::<GrantedAbilityAst>::new();
             let mut subtype_families = Vec::<SubtypeFamily>::new();
-            let suffix_tokens = if let Some(creature_token_idx) =
-                become_body_clause.token_index_for_word_index(creature_idx)
-            {
-                become_body_clause.from(creature_token_idx + 1).trim()
-            } else {
-                Vec::new()
-            };
-            let suffix_supported = if suffix_tokens.is_empty() {
-                true
-            } else if is_addition_tail_only(&suffix_tokens) {
-                true
-            } else if is_still_a_land_suffix(&suffix_tokens) {
-                true
-            } else if suffix_tokens
-                .first()
-                .and_then(OwnedLexToken::as_word)
-                .is_some_and(|word| word == "with")
-            {
-                let trimmed_suffix_tokens = LexedClause::new(&suffix_tokens[1..]).trim();
-                let trimmed_suffix = strip_trailing_addition_tail_tokens(&trimmed_suffix_tokens);
-                let (ability_suffix_tokens, suffix_grants_all_creature_types) =
-                    if let Some((ability_tokens, family)) =
-                        split_animation_suffix_all_creature_types(trimmed_suffix)
-                    {
-                        subtype_families.push(family);
-                        (ability_tokens, true)
-                    } else {
-                        (trimmed_suffix.to_vec(), false)
-                    };
-                let suffix_words = LexedClause::new(&ability_suffix_tokens).word_refs();
-                if ability_suffix_tokens.is_empty() {
-                    suffix_grants_all_creature_types
-                } else if let Ok((parsed_abilities, _)) = parse_granted_abilities_for_gain_clause(
-                    &ability_suffix_tokens,
-                    &suffix_words,
-                    false,
-                ) && !parsed_abilities.is_empty()
-                {
-                    granted_abilities = parsed_abilities;
-                    true
-                } else {
-                    parse_ability_line(&ability_suffix_tokens)
-                        .map(|actions| {
-                            abilities = actions
-                                .into_iter()
-                                .filter_map(keyword_action_to_static_ability)
-                                .collect::<Vec<_>>();
-                            !abilities.is_empty()
-                        })
-                        .unwrap_or(false)
-                }
-            } else {
-                false
-            };
-
-            let colors = if colors.is_empty() {
-                None
-            } else {
-                Some(colors)
-            };
-            if !all_prefix_words_supported || !suffix_supported {
+            let suffix_supported =
+                match become_grammar::parse_become_animation_suffix_shape(suffix_tokens) {
+                    become_grammar::BecomeAnimationSuffixShape::Ignored => true,
+                    become_grammar::BecomeAnimationSuffixShape::Unsupported => false,
+                    become_grammar::BecomeAnimationSuffixShape::With {
+                        ability_tokens,
+                        grants_all_creature_types,
+                    } => {
+                        if grants_all_creature_types {
+                            subtype_families.push(SubtypeFamily::Creature);
+                        }
+                        let suffix_words =
+                            crate::runtime_backend::front_end::lexer::parser_token_word_refs(
+                                ability_tokens,
+                            );
+                        if ability_tokens.is_empty() {
+                            grants_all_creature_types
+                        } else if let Ok((parsed_abilities, _)) =
+                            parse_granted_abilities_for_gain_clause(
+                                ability_tokens,
+                                &suffix_words,
+                                false,
+                            )
+                            && !parsed_abilities.is_empty()
+                        {
+                            granted_abilities = parsed_abilities;
+                            true
+                        } else {
+                            parse_ability_line(ability_tokens)
+                                .map(|actions| {
+                                    abilities = actions
+                                        .into_iter()
+                                        .filter_map(keyword_action_to_static_ability)
+                                        .collect::<Vec<_>>();
+                                    !abilities.is_empty()
+                                })
+                                .unwrap_or(false)
+                        }
+                    }
+                };
+            if !prefix.supported || !suffix_supported {
                 return Ok(EffectAst::subject_verb_become_base_pt_creature(
                     power,
                     toughness,
@@ -633,10 +282,10 @@ pub(crate) fn parse_become_clause(
                 power,
                 toughness,
                 target,
-                card_types,
-                subtypes,
+                prefix.card_types,
+                prefix.subtypes,
                 subtype_families,
-                colors,
+                prefix.colors,
                 abilities,
                 granted_abilities,
                 duration,
@@ -644,68 +293,44 @@ pub(crate) fn parse_become_clause(
         }
     }
 
-    if let Some((descriptor_words, power, toughness)) = parse_become_base_pt_tail(become_words)?
-        && let Some((card_types, subtypes, colors)) =
-            parse_become_creature_descriptor_words(descriptor_words)
+    if let Some(pt) = become_grammar::parse_become_base_pt_words(become_words)
+        && let Some(descriptor) =
+            become_grammar::parse_become_creature_descriptor_words(pt.descriptor_words)
     {
         return Ok(EffectAst::subject_verb_become_base_pt_creature(
-            power,
-            toughness,
+            pt.power,
+            pt.toughness,
             target,
-            card_types,
-            subtypes,
+            descriptor.card_types,
+            descriptor.subtypes,
             Vec::new(),
-            colors,
+            descriptor.colors,
             Vec::new(),
             Vec::new(),
             duration,
         ));
     }
 
-    if let Some((descriptor_words, power, toughness)) =
-        parse_become_power_toughness_equal_value_tail(become_words)?
-        && let Some((card_types, subtypes, colors)) =
-            parse_become_creature_descriptor_words(descriptor_words)
+    if let Some(pt) = become_grammar::parse_become_iterated_mana_value_pt_words(become_words)
+        && let Some(descriptor) =
+            become_grammar::parse_become_creature_descriptor_words(pt.descriptor_words)
     {
         return Ok(EffectAst::subject_verb_become_base_pt_creature(
-            power,
-            toughness,
+            pt.power,
+            pt.toughness,
             target,
-            card_types,
-            subtypes,
+            descriptor.card_types,
+            descriptor.subtypes,
             Vec::new(),
-            colors,
+            descriptor.colors,
             Vec::new(),
             Vec::new(),
             duration,
         ));
     }
 
-    let stripped_addition_tail = word_slice_strip_any_suffix(become_words, ADDITION_TAIL_PHRASES);
-    let had_addition_tail = stripped_addition_tail.is_some();
-    let card_type_words = stripped_addition_tail
-        .map(|(_, head)| head)
-        .unwrap_or(become_words);
-    if !card_type_words.is_empty() {
-        let mut colors = crate::color::ColorSet::new();
-        let mut subtypes = Vec::new();
-        let mut all_color_or_subtype_words = true;
-        for word in card_type_words {
-            if *word == "and" {
-                continue;
-            }
-            if let Some(color) = parse_color(word) {
-                colors = colors.union(color);
-                continue;
-            }
-            if let Some(subtype) = parse_subtype_word_or_plural(word) {
-                push_unique_subtype(&mut subtypes, subtype);
-                continue;
-            }
-            all_color_or_subtype_words = false;
-            break;
-        }
-        if all_color_or_subtype_words && !colors.is_empty() && !subtypes.is_empty() {
+    match become_grammar::parse_become_simple_descriptor_words(become_words) {
+        become_grammar::BecomeSimpleDescriptorShape::ColorsAndSubtypes { colors, subtypes } => {
             return Ok(EffectAst::Sequence {
                 effects: vec![
                     EffectAst::subject_verb_set_colors(target.clone(), colors, duration.clone()),
@@ -713,43 +338,16 @@ pub(crate) fn parse_become_clause(
                 ],
             });
         }
-    }
-    if !card_type_words.is_empty() {
-        let mut card_types = Vec::new();
-        let mut all_card_types = true;
-        for word in card_type_words {
-            if let Some(card_type) = parse_card_type(word) {
-                push_unique_card_type(&mut card_types, card_type);
-            } else {
-                all_card_types = false;
-                break;
-            }
-        }
-        if all_card_types && !card_types.is_empty() {
+        become_grammar::BecomeSimpleDescriptorShape::CardTypes(card_types) => {
             return Ok(EffectAst::subject_verb_add_card_types(
                 target, card_types, duration,
             ));
         }
-    }
-
-    if !card_type_words.is_empty() {
-        let mut subtypes = Vec::new();
-        let mut all_subtypes = true;
-        for word in card_type_words {
-            if let Some(subtype) = parse_subtype_word_or_plural(word) {
-                push_unique_subtype(&mut subtypes, subtype);
-            } else {
-                all_subtypes = false;
-                break;
-            }
-        }
-        if all_subtypes && !subtypes.is_empty() {
-            // Plain "becomes a Bird Giant" replaces the creature subtypes
-            // (CR 205.1b); only an explicit "in addition ..." tail adds.
-            let creature_subtypes_only = subtypes
-                .iter()
-                .all(|subtype| crate::types::Subtype::all_creature_types().contains(subtype));
-            if !had_addition_tail && creature_subtypes_only {
+        become_grammar::BecomeSimpleDescriptorShape::Subtypes {
+            subtypes,
+            replace_creature_subtypes,
+        } => {
+            if replace_creature_subtypes {
                 return Ok(EffectAst::subject_verb_set_creature_subtypes(
                     target, subtypes, duration,
                 ));
@@ -758,26 +356,10 @@ pub(crate) fn parse_become_clause(
                 target, subtypes, duration,
             ));
         }
+        become_grammar::BecomeSimpleDescriptorShape::None => {}
     }
 
-    if become_words.len() >= 8
-        && let [
-            color_word,
-            "until",
-            "end",
-            "of",
-            "turn",
-            "and",
-            "attacks",
-            tail @ ..,
-        ] = become_words
-        && matches!(tail, ["if", "able"] | ["this", "turn", "if", "able"])
-        && parse_color(color_word).is_some()
-    {
-        let mut colors = crate::color::ColorSet::new();
-        if let Some(color) = parse_color(color_word) {
-            colors = colors.union(color);
-        }
+    if let Some(colors) = become_grammar::parse_become_attack_color(become_words) {
         return Ok(EffectAst::Sequence {
             effects: vec![
                 EffectAst::subject_verb_set_colors(target.clone(), colors, Until::EndOfTurn),
@@ -790,21 +372,8 @@ pub(crate) fn parse_become_clause(
         });
     }
 
-    let color_tokens = word_refs_except(become_words, &["and", "or"]);
-    if !color_tokens.is_empty() {
-        let mut colors = crate::color::ColorSet::new();
-        let mut all_colors = true;
-        for word in color_tokens {
-            if let Some(color) = parse_color(word) {
-                colors = colors.union(color);
-            } else {
-                all_colors = false;
-                break;
-            }
-        }
-        if all_colors && !colors.is_empty() {
-            return Ok(EffectAst::subject_verb_set_colors(target, colors, duration));
-        }
+    if let Some(colors) = become_grammar::parse_become_color_words(become_words) {
+        return Ok(EffectAst::subject_verb_set_colors(target, colors, duration));
     }
 
     Err(CardTextError::ParseError(format!(

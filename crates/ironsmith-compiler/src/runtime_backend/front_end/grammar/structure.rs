@@ -15,33 +15,11 @@ use ironsmith_core::ValueSurfaceHint;
 
 use super::super::lexer::{
     LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, contains_token_kind,
-    token_slice_first_is_any, token_slice_starts_with_at, trim_lexed_commas,
-    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_word,
-    word_slice_ends_with, word_slice_ends_with_any, word_slice_eq, word_slice_eq_any,
-    word_slice_starts_with, word_slice_starts_with_any, word_slice_strip_prefix,
+    token_slice_first_is_any, trim_lexed_commas, word_slice_strip_prefix,
 };
-use super::super::token_primitives::{find_index_with, rfind_index_with};
-use super::super::util::{parse_card_type, parse_color, parse_subtype_flexible};
-use super::{primitives, values};
+use super::super::util::{parse_card_type, parse_subtype_flexible};
+use super::{leaf, primitives, values};
 
-const TRIGGER_LIST_CONJUNCTION_WORDS: &[&str] = &["or", "and", "and/or"];
-const TYPEISH_WORDS: &[&str] = &["artifact", "artifacts", "creature", "creatures"];
-const FIRST_TIME_EACH_TURN_SUFFIXES: &[&[&str]] = &[
-    &["for", "the", "first", "time", "each", "turn"],
-    &["for", "the", "first", "time", "this", "turn"],
-];
-const ENCHANTED_CONTROLLER_TRIGGER_PREFIXES: &[&[&str]] = &[
-    &["enchanted", "creature", "controller"],
-    &["enchanted", "creatures", "controller"],
-    &["enchanted", "permanent", "controller"],
-    &["enchanted", "permanents", "controller"],
-    &["enchanted", "artifact", "controller"],
-    &["enchanted", "artifacts", "controller"],
-    &["enchanted", "enchantment", "controller"],
-    &["enchanted", "enchantments", "controller"],
-    &["enchanted", "land", "controller"],
-    &["enchanted", "lands", "controller"],
-];
 const QUOTED_GRANT_EXPLICIT_HEAD_PREFIXES: &[&[&str]] = &[&["this"], &["it"], &["all"], &["each"]];
 const QUOTED_GRANT_OBJECT_FILTER_WORDS: &[&str] = &[
     "commander",
@@ -51,121 +29,8 @@ const QUOTED_GRANT_OBJECT_FILTER_WORDS: &[&str] = &[
     "spell",
     "spells",
 ];
-const RESULT_VERB_WORDS: &[&str] = &[
-    "remove",
-    "removed",
-    "sacrifice",
-    "sacrificed",
-    "discard",
-    "discarded",
-    "exile",
-    "exiled",
-    "mill",
-    "milled",
-];
-const SEARCH_RESULT_VERB_WORDS: &[&str] = &["search", "searches", "searched"];
-const UNQUALIFIED_THIS_WAY_RESULT_QUALIFIERS: &[&[&str]] = &[
-    &["it"],
-    &["them"],
-    &["that"],
-    &["card"],
-    &["a", "card"],
-    &["a", "creature", "card"],
-    &["creature", "card"],
-];
-const SHORT_NEGATED_RESULT_VERBS: &[&[&str]] = &[&["dont"], &["didnt"], &["cant"]];
-const SHORT_DID_NOT_RESULT_VERBS: &[&[&str]] = &[&["dont"], &["didnt"]];
-const SPLIT_NEGATED_RESULT_VERBS: &[&[&str]] = &[&["do", "not"], &["did", "not"], &["can", "not"]];
-const SPLIT_DID_NOT_RESULT_VERBS: &[&[&str]] = &[&["do", "not"], &["did", "not"]];
-const IT_CONNIVES_THIS_WAY_RESULTS: &[&[&str]] = &[
-    &["it", "connives", "this", "way"],
-    &["it", "connive", "this", "way"],
-];
-const YOU_WIN_RESULT_PREFIXES: &[&[&str]] = &[&["you", "win"], &["you", "won"]];
-const RESULT_IS_VALUE_PREFIXES: &[&[&str]] = &[&["result", "is"], &["result", "was"]];
-const PLAYER_DO_RESULTS: &[&[&str]] = &[
-    &["player", "do"],
-    &["player", "does"],
-    &["players", "do"],
-    &["players", "does"],
-];
-const THAT_PLAYER_DO_RESULTS: &[&[&str]] =
-    &[&["that", "player", "do"], &["that", "player", "does"]];
-const FIRST_PLAYER_DO_RESULTS: &[&[&str]] =
-    &[&["first", "player", "do"], &["first", "player", "does"]];
-const NO_ONE_DOES_RESULTS: &[&[&str]] = &[&["no", "one", "do"], &["no", "one", "does"]];
-const RESULT_OBJECT_WORDS: &[&str] = &[
-    "card",
-    "cards",
-    "creature",
-    "creatures",
-    "permanent",
-    "permanents",
-];
-const PLAYER_DEALT_DAMAGE_THIS_WAY_RESULTS: &[&[&str]] = &[
-    &["a", "player", "is", "dealt", "damage", "this", "way"],
-    &["player", "is", "dealt", "damage", "this", "way"],
-];
-const SPELL_COUNTERED_THIS_WAY_PREFIXES: &[&[&str]] = &[&["that", "spell"], &["it", "spell"]];
-const OBJECT_DIES_THIS_WAY_PREFIXES: &[&[&str]] = &[
-    &["that", "creature", "dies", "this", "way"],
-    &["that", "permanent", "dies", "this", "way"],
-    &["that", "card", "dies", "this", "way"],
-    &["it", "creature", "dies", "this", "way"],
-    &["it", "permanent", "dies", "this", "way"],
-    &["it", "card", "dies", "this", "way"],
-];
-const OBJECT_DAMAGE_WOULD_DIE_THIS_WAY_PREFIXES: &[&[&str]] = &[
-    &[
-        "creature", "dealt", "damage", "this", "way", "would", "die", "this",
-    ],
-    &[
-        "permanent",
-        "dealt",
-        "damage",
-        "this",
-        "way",
-        "would",
-        "die",
-        "this",
-    ],
-    &[
-        "card", "dealt", "damage", "this", "way", "would", "die", "this",
-    ],
-];
-const YOU_LOSE_FLIP_PREFIXES: &[&[&str]] = &[&["you", "lose"], &["you", "lost"]];
-const PLAYER_SHORT_NEGATED_RESULTS: &[&[&str]] = &[
-    &["player", "dont"],
-    &["player", "doesnt"],
-    &["player", "didnt"],
-    &["player", "cant"],
-    &["players", "dont"],
-    &["players", "doesnt"],
-    &["players", "didnt"],
-    &["players", "cant"],
-];
-const PLAYER_SPLIT_NEGATED_RESULTS: &[&[&str]] = &[
-    &["player", "do", "not"],
-    &["player", "does", "not"],
-    &["player", "did", "not"],
-    &["player", "can", "not"],
-    &["players", "do", "not"],
-    &["players", "does", "not"],
-    &["players", "did", "not"],
-    &["players", "can", "not"],
-];
-const THAT_PLAYER_SHORT_NEGATED_RESULTS: &[&[&str]] = &[
-    &["that", "player", "dont"],
-    &["that", "player", "doesnt"],
-    &["that", "player", "didnt"],
-    &["that", "player", "cant"],
-];
-const THAT_PLAYER_SPLIT_NEGATED_RESULTS: &[&[&str]] = &[
-    &["that", "player", "do", "not"],
-    &["that", "player", "does", "not"],
-    &["that", "player", "did", "not"],
-    &["that", "player", "can", "not"],
-];
+#[path = "structure/trigger_shapes.rs"]
+mod trigger_shapes;
 
 fn token_matches_dynamic_word(token: &OwnedLexToken, expected: &str) -> bool {
     token
@@ -186,45 +51,73 @@ fn structure_token_is_any(token: &OwnedLexToken, candidates: &[&str]) -> bool {
 }
 
 fn find_token_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
-    tokens
-        .iter()
-        .position(|token| structure_token_is(token, expected))
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        if structure_token_is(&tokens[idx], expected) {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
+}
+
+fn structure_token_kind_index(tokens: &[OwnedLexToken], kind: TokenKind) -> Option<usize> {
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        if tokens[idx].kind == kind {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
+}
+
+fn structure_token_kind_rindex(tokens: &[OwnedLexToken], kind: TokenKind) -> Option<usize> {
+    let mut idx = tokens.len();
+    while idx > 0 {
+        idx -= 1;
+        if tokens[idx].kind == kind {
+            return Some(idx);
+        }
+    }
+    None
 }
 
 fn structure_word_is_any(word: &str, candidates: &[&str]) -> bool {
     candidates.iter().any(|candidate| word == *candidate)
 }
 
-fn structure_words_equal(words: &[&str], expected: &[&str]) -> bool {
-    word_slice_eq(words, expected)
+fn phrase_occurs(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
+    primitives::find_prefix(tokens, || primitives::phrase(phrase)).is_some()
 }
 
-fn structure_words_equal_any(words: &[&str], expected: &[&[&str]]) -> bool {
-    word_slice_eq_any(words, expected)
+fn one_of_phrases_occurs(
+    tokens: &[OwnedLexToken],
+    phrases: &'static [&'static [&'static str]],
+) -> bool {
+    primitives::find_prefix(tokens, || primitives::any_phrase(phrases)).is_some()
 }
 
-fn structure_words_start_with(words: &[&str], prefix: &[&str]) -> bool {
-    word_slice_starts_with(words, prefix)
+fn structure_word_index_any(words: &[&str], candidates: &[&str]) -> Option<usize> {
+    let mut idx = 0usize;
+    while idx < words.len() {
+        if structure_word_is_any(words[idx], candidates) {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
 }
 
-fn structure_words_start_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
-    word_slice_starts_with_any(words, prefixes)
-}
-
-fn structure_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
-    word_slice_ends_with(words, suffix)
-}
-
-fn structure_words_end_with_any(words: &[&str], suffixes: &[&[&str]]) -> bool {
-    word_slice_ends_with_any(words, suffixes)
-}
-
-fn structure_words_contain(words: &[&str], word: &str) -> bool {
-    word_slice_contains_word(words, word)
-}
-
-fn structure_words_contain_any(words: &[&str], candidates: &[&str]) -> bool {
-    word_slice_contains_any_word(words, candidates)
+fn structure_push_unique<T: PartialEq>(items: &mut Vec<T>, value: T) {
+    let mut idx = 0usize;
+    while idx < items.len() {
+        if items[idx] == value {
+            return;
+        }
+        idx += 1;
+    }
+    items.push(value);
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -357,27 +250,6 @@ fn parse_remove_mode_only_prefix<'a>(
         .parse_next(input)
 }
 
-fn normalized_parser_word(token: &LexToken) -> Option<String> {
-    match token.kind {
-        TokenKind::Word | TokenKind::Number | TokenKind::Tilde | TokenKind::Half => Some(
-            token
-                .parser_text()
-                .chars()
-                .filter(|ch| !matches!(*ch, '\'' | '’' | '‘'))
-                .collect(),
-        ),
-        _ => None,
-    }
-}
-
-fn parser_text_non_article_words(tokens: &[LexToken]) -> Vec<String> {
-    tokens
-        .iter()
-        .filter_map(normalized_parser_word)
-        .filter(|word| !structure_word_is_any(word.as_str(), &["a", "an", "the"]))
-        .collect()
-}
-
 pub(crate) fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<MetadataLineSpec<'_>> {
     fn match_metadata_prefix<'a>(
         tokens: &'a [OwnedLexToken],
@@ -406,24 +278,58 @@ pub(crate) fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<Meta
 pub(crate) fn classify_statement_line_family_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<StatementLineFamily> {
-    if primitives::contains_phrase(
+    if (primitives::parse_prefix(tokens, primitives::phrase(&["starting", "with"])).is_some()
+        || primitives::parse_prefix(tokens, primitives::phrase(&["each", "player", "votes"]))
+            .is_some()
+        || primitives::parse_prefix(
+            tokens,
+            primitives::phrase(&["each", "player", "secretly", "votes"]),
+        )
+        .is_some())
+        && (primitives::contains_word(tokens, "vote")
+            || primitives::contains_word(tokens, "votes")
+            || primitives::contains_word(tokens, "voting"))
+    {
+        return Some(StatementLineFamily::Vote);
+    }
+
+    if super::effects::clause_dispatch_shapes::parse_copular_animation_shape(tokens).is_some() {
+        return Some(StatementLineFamily::Generic);
+    }
+
+    // Quantified object subjects can contain an arbitrary descriptor between
+    // the quantifier and the verb (for example, `Each non-Vampire creature
+    // gets ...`).  Let the typed subject/verb grammar recognize that shape
+    // instead of guessing the verb from a fixed word offset.
+    if super::effects::clause_dispatch_shapes::parse_clause_subject_verb_shape(tokens).is_some_and(
+        |shape| {
+            matches!(
+                shape.kind,
+                super::effects::chain_splitting::ChainVerbKind::Get
+            ) && !shape.subject_tokens.is_empty()
+        },
+    ) {
+        return Some(StatementLineFamily::Generic);
+    }
+
+    if phrase_occurs(
         tokens,
         &["at", "the", "beginning", "of", "your", "next", "upkeep"],
-    ) && primitives::contains_phrase(tokens, &["lose", "the", "game"])
-        && (primitives::contains_phrase(tokens, &["if", "you", "dont"])
-            || primitives::contains_phrase(tokens, &["if", "you", "don't"])
-            || primitives::contains_phrase(tokens, &["if", "you", "do", "not"]))
+    ) && phrase_occurs(tokens, &["lose", "the", "game"])
+        && (phrase_occurs(tokens, &["if", "you", "dont"])
+            || phrase_occurs(tokens, &["if", "you", "don't"])
+            || phrase_occurs(tokens, &["if", "you", "do", "not"]))
     {
         return Some(StatementLineFamily::PactNextUpkeep);
     }
 
-    if primitives::contains_any_phrase(
+    if one_of_phrases_occurs(
         tokens,
         &[
             &["during", "that", "player's", "next", "turn"],
             &["during", "that", "players", "next", "turn"],
         ],
-    ) && primitives::contains_any_phrase(
+    ) && one_of_phrases_occurs(
         tokens,
         &[
             &["can't", "cast"],
@@ -434,7 +340,7 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::NextTurnCantCast);
     }
 
-    if primitives::contains_any_phrase(
+    if one_of_phrases_occurs(
         tokens,
         &[
             &["into", "two", "piles"],
@@ -450,7 +356,7 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::Divvy);
     }
 
-    if primitives::contains_phrase(
+    if phrase_occurs(
         tokens,
         &[
             "ask", "a", "person", "outside", "the", "game", "to", "rate", "its", "new", "art",
@@ -460,8 +366,8 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::ArtRating);
     }
 
-    if primitives::contains_any_phrase(tokens, &[&["become"], &["becomes"]])
-        && primitives::contains_phrase(tokens, &["until", "end", "of", "turn"])
+    if one_of_phrases_occurs(tokens, &[&["become"], &["becomes"]])
+        && phrase_occurs(tokens, &["until", "end", "of", "turn"])
     {
         return Some(StatementLineFamily::Generic);
     }
@@ -471,8 +377,8 @@ pub(crate) fn classify_statement_line_family_lexed(
         primitives::phrase(&["after", "you", "roll", "a", "die"]),
     )
     .is_some()
-        && primitives::contains_phrase(tokens, &["you", "may", "pay"])
-        && primitives::contains_phrase(tokens, &["increase", "or", "decrease", "the", "result"])
+        && phrase_occurs(tokens, &["you", "may", "pay"])
+        && phrase_occurs(tokens, &["increase", "or", "decrease", "the", "result"])
     {
         return Some(StatementLineFamily::Generic);
     }
@@ -507,31 +413,16 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::ExilePlayCostsMore);
     }
 
-    if (primitives::parse_prefix(tokens, primitives::phrase(&["starting", "with"])).is_some()
-        || primitives::parse_prefix(tokens, primitives::phrase(&["each", "player", "votes"]))
-            .is_some()
-        || primitives::parse_prefix(
-            tokens,
-            primitives::phrase(&["each", "player", "secretly", "votes"]),
-        )
-        .is_some())
-        && (primitives::contains_word(tokens, "vote")
-            || primitives::contains_word(tokens, "votes")
-            || primitives::contains_word(tokens, "voting"))
-    {
-        return Some(StatementLineFamily::Vote);
-    }
-
     if primitives::parse_prefix(tokens, primitives::phrase(&["starting", "with", "you"])).is_some()
-        && primitives::contains_phrase(tokens, &["each", "player"])
+        && phrase_occurs(tokens, &["each", "player"])
         && primitives::contains_word(tokens, "pay")
     {
         return Some(StatementLineFamily::Generic);
     }
 
-    if primitives::contains_phrase(tokens, &["bid", "life"])
-        && primitives::contains_phrase(tokens, &["high", "bid"])
-        && primitives::contains_phrase(tokens, &["high", "bidder"])
+    if phrase_occurs(tokens, &["bid", "life"])
+        && phrase_occurs(tokens, &["high", "bid"])
+        && phrase_occurs(tokens, &["high", "bidder"])
     {
         return Some(StatementLineFamily::BidLife);
     }
@@ -614,6 +505,8 @@ fn is_statement_verb_word(word: &str) -> bool {
             | "exiles"
             | "gain"
             | "gains"
+            | "get"
+            | "gets"
             | "look"
             | "looks"
             | "lose"
@@ -646,18 +539,20 @@ fn is_statement_verb_word(word: &str) -> bool {
 }
 
 fn quoted_grant_head_looks_like_object_filter(head: &[OwnedLexToken]) -> bool {
-    if primitives::words_match_any_prefix(head, QUOTED_GRANT_EXPLICIT_HEAD_PREFIXES).is_some() {
+    if primitives::parse_prefix(
+        head,
+        primitives::any_phrase(QUOTED_GRANT_EXPLICIT_HEAD_PREFIXES),
+    )
+    .is_some()
+    {
         return true;
     }
     let words = TokenWordView::new(head).to_word_refs();
-    let Some(have_idx) = words
-        .iter()
-        .position(|word| matches!(*word, "has" | "have"))
-    else {
+    let Some(have_idx) = structure_word_index_any(&words, &["has", "have"]) else {
         return false;
     };
     words[..have_idx].iter().any(|word| {
-        QUOTED_GRANT_OBJECT_FILTER_WORDS.contains(word)
+        structure_word_is_any(word, QUOTED_GRANT_OBJECT_FILTER_WORDS)
             || parse_card_type(word).is_some()
             || parse_subtype_flexible(word).is_some()
     })
@@ -670,7 +565,7 @@ pub(crate) fn classify_static_line_family_lexed(
         return Some(StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep);
     }
 
-    if primitives::contains_any_phrase(
+    if one_of_phrases_occurs(
         tokens,
         &[
             &[
@@ -708,14 +603,13 @@ pub(crate) fn classify_static_line_family_lexed(
         return Some(StaticLineFamily::Generic);
     }
 
-    if let Some(quote_idx) = primitives::find_token_index(tokens, |token| token.is_quote()) {
+    if let Some(quote_idx) = structure_token_kind_index(tokens, TokenKind::Quote) {
         let head = trim_lexed_commas(&tokens[..quote_idx]);
         if !head.is_empty()
             && !contains_token_kind(head, TokenKind::Period)
             && quoted_grant_head_looks_like_object_filter(head)
         {
-            let words = TokenWordView::new(head);
-            if words.find_word("has").is_some() || words.find_word("have").is_some() {
+            if primitives::contains_word(head, "has") || primitives::contains_word(head, "have") {
                 return Some(StaticLineFamily::GrantedQuotedAbility);
             }
         }
@@ -734,235 +628,21 @@ pub(crate) fn classify_static_line_family_lexed(
         || primitives::contains_word(tokens, "can")
         || primitives::contains_word(tokens, "has")
         || primitives::contains_word(tokens, "have")
-        || primitives::contains_phrase(tokens, &["maximum", "hand", "size"]))
+        || phrase_occurs(tokens, &["maximum", "hand", "size"]))
     .then_some(StaticLineFamily::Generic)
 }
 
 fn contains_characteristic_equal_to_shape(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens);
-    words
-        .find_phrase_start(&["power", "is", "equal", "to"])
-        .is_some()
-        || words
-            .find_phrase_start(&["toughness", "is", "equal", "to"])
-            .is_some()
+    primitives::has_phrase(tokens, &["power", "is", "equal", "to"])
+        || primitives::has_phrase(tokens, &["toughness", "is", "equal", "to"])
 }
 
 fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     parse_predicate_with_grammar_entrypoint_lexed(tokens).ok()
 }
 
-fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
-    let is_result_verb = |word: &str| structure_word_is_any(word, RESULT_VERB_WORDS);
-    let is_unqualified_this_way_result = |subject: &str| {
-        if words.len() < 4
-            || words[0] != subject
-            || !is_result_verb(words[1])
-            || !structure_words_end_with(words, &["this", "way"])
-        {
-            return false;
-        }
-        let qualifiers = &words[2..words.len() - 2];
-        qualifiers.is_empty()
-            || structure_words_equal_any(qualifiers, UNQUALIFIED_THIS_WAY_RESULT_QUALIFIERS)
-    };
-    let is_exact_negated_result = |subject: &str| {
-        if words.first().copied() != Some(subject) {
-            return false;
-        }
-        structure_words_equal_any(&words[1..], SHORT_NEGATED_RESULT_VERBS)
-            || structure_words_equal_any(&words[1..], SPLIT_NEGATED_RESULT_VERBS)
-    };
-    let is_negated_this_way_result = |subject: &str| {
-        if words.first().copied() != Some(subject) {
-            return false;
-        }
-        let action_idx = if words.len() >= 5
-            && structure_words_equal_any(&words[1..2], SHORT_DID_NOT_RESULT_VERBS)
-        {
-            2
-        } else if words.len() >= 6
-            && structure_words_equal_any(&words[1..3], SPLIT_DID_NOT_RESULT_VERBS)
-        {
-            3
-        } else {
-            return false;
-        };
-        if !is_result_verb(words[action_idx]) || !structure_words_end_with(words, &["this", "way"])
-        {
-            return false;
-        }
-        let qualifiers = &words[action_idx + 1..words.len() - 2];
-        qualifiers.is_empty() || matches!(qualifiers, ["it"] | ["them"] | ["that"])
-    };
-    let is_searched_library_this_way = || {
-        if words.len() < 5 || !structure_words_end_with(words, &["this", "way"]) {
-            return false;
-        }
-        let subject_len = match words {
-            ["you", ..] | ["they", ..] | ["player", ..] | ["players", ..] => 1,
-            ["that", "player", ..] | ["first", "player", ..] => 2,
-            _ => return false,
-        };
-        let Some(verb) = words.get(subject_len) else {
-            return false;
-        };
-        if !structure_word_is_any(verb, SEARCH_RESULT_VERB_WORDS) {
-            return false;
-        }
-        matches!(
-            &words[subject_len + 1..words.len() - 2],
-            ["your", "library"] | ["their", "library"] | ["library"]
-        )
-    };
-
-    if structure_words_equal(words, &["you", "do"]) {
-        return Some(IfResultPredicate::Did);
-    }
-    if structure_words_equal_any(words, IT_CONNIVES_THIS_WAY_RESULTS) {
-        return Some(IfResultPredicate::Did);
-    }
-    if structure_words_start_with_any(words, YOU_WIN_RESULT_PREFIXES)
-        && (words.len() == 2 || structure_words_contain(words, "clash"))
-    {
-        return Some(IfResultPredicate::Value(
-            crate::effect::Comparison::GreaterThan(0),
-        ));
-    }
-    if words.len() == 3
-        && structure_words_start_with_any(words, RESULT_IS_VALUE_PREFIXES)
-        && let Some(value) = ironsmith_core::parse_cardinal_word(words[2])
-            .and_then(|value| i32::try_from(value).ok())
-    {
-        return Some(IfResultPredicate::Value(Comparison::Equal(value)));
-    }
-    if structure_words_start_with_any(words, YOU_WIN_RESULT_PREFIXES)
-        && structure_words_contain(words, "flip")
-    {
-        return Some(IfResultPredicate::Did);
-    }
-    if structure_words_equal(words, &["they", "do"]) {
-        return Some(IfResultPredicate::Did);
-    }
-    if structure_words_equal_any(words, PLAYER_DO_RESULTS) {
-        return Some(IfResultPredicate::Did);
-    }
-    if structure_words_equal_any(words, THAT_PLAYER_DO_RESULTS) {
-        return Some(IfResultPredicate::Did);
-    }
-    if structure_words_equal_any(words, FIRST_PLAYER_DO_RESULTS) {
-        return Some(IfResultPredicate::Did);
-    }
-    if structure_words_start_with(words, &["you", "searched"])
-        && structure_words_end_with(words, &["this", "way"])
-    {
-        return Some(IfResultPredicate::Did);
-    }
-    if is_searched_library_this_way() {
-        return Some(IfResultPredicate::SearchedLibrary);
-    }
-    if is_unqualified_this_way_result("you") {
-        return Some(IfResultPredicate::Did);
-    }
-    if is_unqualified_this_way_result("they") {
-        return Some(IfResultPredicate::Did);
-    }
-    let is_one_or_more_result = words.len() >= 6
-        && structure_words_start_with(words, &["one", "or", "more"])
-        && structure_words_end_with(words, &["this", "way"])
-        && structure_word_is_any(words[3], RESULT_OBJECT_WORDS)
-        && ((structure_word_is_any(words[4], &["is", "are"])
-            && words.len() >= 7
-            && is_result_verb(words[5]))
-            || is_result_verb(words[4]));
-    if is_one_or_more_result {
-        return Some(IfResultPredicate::Did);
-    }
-    if structure_words_equal_any(words, PLAYER_DEALT_DAMAGE_THIS_WAY_RESULTS) {
-        return Some(IfResultPredicate::Did);
-    }
-
-    if structure_words_start_with_any(words, SPELL_COUNTERED_THIS_WAY_PREFIXES)
-        && structure_words_end_with(words, &["this", "way"])
-        && structure_words_contain(words, "countered")
-    {
-        return Some(IfResultPredicate::Did);
-    }
-
-    if structure_words_start_with_any(words, OBJECT_DIES_THIS_WAY_PREFIXES) {
-        return Some(IfResultPredicate::DiesThisWay);
-    }
-    if structure_words_start_with_any(words, OBJECT_DAMAGE_WOULD_DIE_THIS_WAY_PREFIXES)
-        && words.get(8).is_some_and(|word| *word == "turn")
-    {
-        return Some(IfResultPredicate::DiesThisWay);
-    }
-
-    if matches!(
-        words,
-        ["its", "power", "becomes", _, "this", "way"]
-            | ["it", "power", "becomes", _, "this", "way"]
-    ) {
-        return Some(IfResultPredicate::Did);
-    }
-    if structure_words_start_with(words, &["excess", "damage", "was", "dealt", "to"])
-        && structure_words_end_with(words, &["this", "way"])
-        && structure_words_contain(words, "creature")
-    {
-        return Some(IfResultPredicate::ExcessDamageDealt);
-    }
-    if structure_words_equal(words, &["it", "deals", "excess", "damage", "this", "way"]) {
-        return Some(IfResultPredicate::Did);
-    }
-
-    if is_exact_negated_result("you") || is_negated_this_way_result("you") {
-        return Some(IfResultPredicate::DidNot);
-    }
-    if structure_words_start_with_any(words, YOU_LOSE_FLIP_PREFIXES)
-        && structure_words_contain(words, "flip")
-    {
-        return Some(IfResultPredicate::DidNot);
-    }
-    if is_exact_negated_result("they") || is_negated_this_way_result("they") {
-        return Some(IfResultPredicate::DidNot);
-    }
-    if structure_words_equal_any(words, NO_ONE_DOES_RESULTS) {
-        return Some(IfResultPredicate::DidNot);
-    }
-    if structure_words_equal_any(words, PLAYER_SHORT_NEGATED_RESULTS)
-        || structure_words_equal_any(words, PLAYER_SPLIT_NEGATED_RESULTS)
-    {
-        return Some(IfResultPredicate::DidNot);
-    }
-    if structure_words_equal_any(words, THAT_PLAYER_SHORT_NEGATED_RESULTS)
-        || structure_words_equal_any(words, THAT_PLAYER_SPLIT_NEGATED_RESULTS)
-    {
-        return Some(IfResultPredicate::DidNot);
-    }
-
-    None
-}
-
-fn parse_if_result_predicate_inner<'a>(
-    input: &mut LexStream<'a>,
-) -> Result<IfResultPredicate, ErrMode<ContextError>> {
-    let tokens = input.peek_finish();
-    let words = parser_text_non_article_words(tokens);
-    let word_refs: Vec<&str> = words.iter().map(String::as_str).collect();
-    let Some(predicate) = classify_if_result_predicate(&word_refs) else {
-        return Err(primitives::backtrack_err(
-            "if-result predicate",
-            "result predicate clause",
-        ));
-    };
-
-    input.finish();
-    Ok(predicate)
-}
-
 pub(crate) fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
-    primitives::parse_prefix(tokens, parse_if_result_predicate_inner)
-        .and_then(|(predicate, rest)| rest.is_empty().then_some(predicate))
+    super::modal_results::parse_if_result_predicate_lexed_tokens(tokens)
 }
 
 fn parse_sentence_segment_len<'a>(
@@ -1045,249 +725,30 @@ pub(crate) fn split_lexed_sentences<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a 
     segments
 }
 
-fn looks_like_trigger_objectish_word(word: &str) -> bool {
-    parse_card_type(word).is_some()
-        || parse_subtype_flexible(word).is_some()
-        || word.strip_suffix('s').is_some_and(|stem| {
-            parse_card_type(stem).is_some() || parse_subtype_flexible(stem).is_some()
-        })
-}
-
-fn looks_like_trigger_object_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
-    if tokens.is_empty() {
-        return false;
-    }
-    let words_view = TokenWordView::new(tokens);
-    let words = words_view.word_refs();
-    if words.is_empty() {
-        return false;
-    }
-    let starts_with_conjunction = words
-        .first()
-        .is_some_and(|word| structure_word_is_any(word, TRIGGER_LIST_CONJUNCTION_WORDS));
-    let first_candidate = if starts_with_conjunction {
-        words.get(1).copied()
-    } else {
-        words.first().copied()
-    };
-    let Some(first_word) = first_candidate else {
-        return false;
-    };
-    looks_like_trigger_objectish_word(first_word) && contains_token_kind(tokens, TokenKind::Comma)
-}
-
-fn looks_like_trigger_discard_qualifier_tail_lexed(
-    trigger_prefix_tokens: &[OwnedLexToken],
-    tail_tokens: &[OwnedLexToken],
-) -> bool {
-    if tail_tokens.is_empty() {
-        return false;
-    }
-
-    let prefix_words_view = TokenWordView::new(trigger_prefix_tokens);
-    let prefix_words = prefix_words_view.word_refs();
-    if !structure_words_contain_any(&prefix_words, &["discard", "discards"]) {
-        return false;
-    }
-
-    let tail_words_view = TokenWordView::new(tail_tokens);
-    let tail_words = tail_words_view.word_refs();
-    if tail_words.is_empty() {
-        return false;
-    }
-
-    let Some(first_word) = tail_words.first().copied() else {
-        return false;
-    };
-    let typeish = parse_card_type(first_word).is_some()
-        || structure_word_is_any(first_word, TYPEISH_WORDS)
-        || structure_word_is_any(first_word, TRIGGER_LIST_CONJUNCTION_WORDS);
-    if !typeish {
-        return false;
-    }
-
-    primitives::find_token_index(tail_tokens, |token| token.kind == TokenKind::Comma).is_some_and(
-        |comma_idx| {
-            let before_words_view = TokenWordView::new(&tail_tokens[..comma_idx]);
-            let before_words = before_words_view.word_refs();
-            structure_words_contain_any(&before_words, &["card", "cards"])
-        },
-    )
-}
-
-fn looks_like_trigger_type_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
-    if tokens.is_empty() {
-        return false;
-    }
-    let words_view = TokenWordView::new(tokens);
-    let words = words_view.word_refs();
-    if words.is_empty() {
-        return false;
-    }
-    let first_is_card_type = parse_card_type(words[0]).is_some()
-        || parse_subtype_flexible(words[0]).is_some()
-        || words[0].strip_suffix('s').is_some_and(|word| {
-            parse_card_type(word).is_some() || parse_subtype_flexible(word).is_some()
-        });
-    first_is_card_type
-        && structure_words_contain_any(&words, &["spell", "spells"])
-        && structure_words_contain(&words, "or")
-        && contains_token_kind(tokens, TokenKind::Comma)
-}
-
-fn looks_like_trigger_color_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
-    if tokens.is_empty() {
-        return false;
-    }
-    let words_view = TokenWordView::new(tokens);
-    let words = words_view.word_refs();
-    if words.is_empty() {
-        return false;
-    }
-    parse_color(words[0]).is_some()
-        && structure_words_contain(&words, "or")
-        && contains_token_kind(tokens, TokenKind::Comma)
-}
-
-fn looks_like_trigger_numeric_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
-    if tokens.is_empty() {
-        return false;
-    }
-    let words_view = TokenWordView::new(tokens);
-    let words = words_view.word_refs();
-    if words.len() < 3 || words[0].parse::<i32>().is_err() {
-        return false;
-    }
-    words.iter().skip(1).any(|word| word.parse::<i32>().is_ok())
-        && structure_words_contain(&words, "or")
-}
-
 pub(crate) fn find_trigger_effect_list_tail_split_lexed(
     trigger_prefix_tokens: &[OwnedLexToken],
     tail_tokens: &[OwnedLexToken],
 ) -> Option<usize> {
-    let looks_like_discard_qualifier_tail =
-        looks_like_trigger_discard_qualifier_tail_lexed(trigger_prefix_tokens, tail_tokens);
-    if !looks_like_trigger_type_list_tail_lexed(tail_tokens)
-        && !looks_like_trigger_color_list_tail_lexed(tail_tokens)
-        && !looks_like_trigger_object_list_tail_lexed(tail_tokens)
-        && !looks_like_trigger_numeric_list_tail_lexed(tail_tokens)
-        && !looks_like_discard_qualifier_tail
-    {
-        return None;
-    }
-
-    if looks_like_discard_qualifier_tail {
-        return find_index_with(tail_tokens, |idx, token| {
-            if token.kind != TokenKind::Comma {
-                return false;
-            }
-            let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
-            let before_words = before_words_view.word_refs();
-            structure_words_contain_any(&before_words, &["card", "cards"])
-        });
-    }
-
-    if looks_like_trigger_numeric_list_tail_lexed(tail_tokens) {
-        return rfind_index_with(tail_tokens, |_, token| token.kind == TokenKind::Comma);
-    }
-
-    find_index_with(tail_tokens, |idx, token| {
-        if token.kind != TokenKind::Comma {
-            return false;
-        }
-        let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
-        let before_words = before_words_view.word_refs();
-        structure_words_contain_any(&before_words, &["spell", "spells"])
-    })
-    .or_else(|| {
-        if looks_like_trigger_color_list_tail_lexed(tail_tokens)
-            || looks_like_trigger_object_list_tail_lexed(tail_tokens)
-        {
-            find_index_with(tail_tokens, |idx, token| {
-                if token.kind != TokenKind::Comma {
-                    return false;
-                }
-                let Some(next_word) = tail_tokens.get(idx + 1).and_then(OwnedLexToken::as_word)
-                else {
-                    return false;
-                };
-                if structure_word_is_any(next_word, TRIGGER_LIST_CONJUNCTION_WORDS) {
-                    return false;
-                }
-
-                let next_is_list_item = if looks_like_trigger_color_list_tail_lexed(tail_tokens) {
-                    parse_color(next_word).is_some()
-                } else {
-                    looks_like_trigger_objectish_word(next_word)
-                };
-                if next_is_list_item {
-                    return false;
-                }
-                true
-            })
-        } else {
-            None
-        }
-    })
+    trigger_shapes::parse_trigger_effect_list_tail_split_lexed(trigger_prefix_tokens, tail_tokens)
+        .map(|split| split.split_token_idx)
 }
 
 pub(crate) fn split_first_time_each_turn_trigger_suffix_lexed(
     trigger_tokens: &[OwnedLexToken],
 ) -> (&[OwnedLexToken], Option<u32>) {
-    let trigger_words = TokenWordView::new(trigger_tokens);
-    let words = trigger_words.word_refs();
-    if structure_words_end_with_any(&words, FIRST_TIME_EACH_TURN_SUFFIXES) {
-        let trimmed_word_len = words.len().saturating_sub(6);
-        let trimmed_token_len = trigger_words
-            .token_index_for_word_index(trimmed_word_len)
-            .unwrap_or(trigger_tokens.len());
-        return (&trigger_tokens[..trimmed_token_len], Some(1));
-    }
-    (trigger_tokens, None)
+    trigger_shapes::parse_first_time_each_turn_trigger_suffix_lexed(trigger_tokens)
+        .map(|split| (split.trigger_tokens, Some(split.limit)))
+        .unwrap_or((trigger_tokens, None))
 }
 
 pub(crate) fn rewrite_attached_controller_trigger_effect_tokens_lexed(
     trigger_tokens: &[OwnedLexToken],
     effects_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
-    let trigger_words_view = TokenWordView::new(trigger_tokens);
-    let trigger_words = trigger_words_view.word_refs();
-    let references_enchanted_controller = (0..trigger_words.len()).any(|idx| {
-        structure_words_start_with_any(&trigger_words[idx..], ENCHANTED_CONTROLLER_TRIGGER_PREFIXES)
-    });
-    if !references_enchanted_controller {
-        return effects_tokens.to_vec();
-    }
-
-    let mut rewritten = Vec::with_capacity(effects_tokens.len());
-    let mut idx = 0usize;
-    while idx < effects_tokens.len() {
-        if token_slice_starts_with_at(effects_tokens, idx, &["that", "creature"]) {
-            let mut enchanted = effects_tokens[idx].clone();
-            let _ = enchanted.replace_word("enchanted");
-            rewritten.push(enchanted);
-            rewritten.push(effects_tokens[idx + 1].clone());
-            idx += 2;
-            continue;
-        }
-        if token_slice_starts_with_at(effects_tokens, idx, &["that", "permanent"]) {
-            let mut enchanted = effects_tokens[idx].clone();
-            let _ = enchanted.replace_word("enchanted");
-            rewritten.push(enchanted);
-            rewritten.push(effects_tokens[idx + 1].clone());
-            idx += 2;
-            continue;
-        }
-        rewritten.push(effects_tokens[idx].clone());
-        idx += 1;
-    }
-
-    rewritten
+    trigger_shapes::rewrite_attached_controller_effect_tokens_lexed(trigger_tokens, effects_tokens)
 }
-
 pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFlags {
-    let mode_must_be_unchosen_this_turn = primitives::contains_any_phrase(
+    let mode_must_be_unchosen_this_turn = one_of_phrases_occurs(
         tokens,
         &[
             &["that", "hasnt", "been", "chosen", "this", "turn"],
@@ -1296,7 +757,7 @@ pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFl
         ],
     );
     let mode_must_be_unchosen = mode_must_be_unchosen_this_turn
-        || primitives::contains_any_phrase(
+        || one_of_phrases_occurs(
             tokens,
             &[
                 &["that", "hasnt", "been", "chosen"],
@@ -1313,17 +774,14 @@ pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFl
             && primitives::contains_word(tokens, "both"),
         choose_both_control_card_types,
         choose_both_exact_life_total,
-        same_mode_more_than_once: primitives::contains_phrase(
-            tokens,
-            &["same", "mode", "more", "than", "once"],
-        ),
+        same_mode_more_than_once: phrase_occurs(tokens, &["same", "mode", "more", "than", "once"]),
         mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn,
     }
 }
 
 fn scan_choose_both_control_card_types(tokens: &[OwnedLexToken]) -> Vec<crate::types::CardType> {
-    if !primitives::contains_phrase(tokens, &["you", "may", "choose", "both", "instead"]) {
+    if !phrase_occurs(tokens, &["you", "may", "choose", "both", "instead"]) {
         return Vec::new();
     }
     let Some(if_idx) = find_token_word(tokens, "if") else {
@@ -1348,35 +806,33 @@ fn scan_choose_both_control_card_types(tokens: &[OwnedLexToken]) -> Vec<crate::t
         if token.kind != TokenKind::Word {
             continue;
         }
-        if let Some(card_type) = parse_card_type(token.parser_text())
-            && !card_types.contains(&card_type)
-        {
-            card_types.push(card_type);
+        if let Some(card_type) = parse_card_type(token.parser_text()) {
+            structure_push_unique(&mut card_types, card_type);
         }
     }
     card_types
 }
 
 fn scan_choose_both_exact_life_total(tokens: &[OwnedLexToken]) -> Option<i32> {
-    if !primitives::contains_phrase(tokens, &["you", "may", "choose", "both", "instead"]) {
+    if !phrase_occurs(tokens, &["you", "may", "choose", "both", "instead"]) {
         return None;
     }
 
-    for window in tokens.windows(5) {
-        if !window[0].is_word("you")
-            || !window[1].is_word("have")
-            || !window[2].is_word("exactly")
-            || !window[4].is_word("life")
+    let mut idx = 0usize;
+    while idx + 4 < tokens.len() {
+        if tokens[idx].is_word("you")
+            && tokens[idx + 1].is_word("have")
+            && tokens[idx + 2].is_word("exactly")
+            && tokens[idx + 4].is_word("life")
         {
-            continue;
+            return match tokens[idx + 3].kind {
+                TokenKind::Number | TokenKind::Word => {
+                    super::leaf::parse_number_i32_complete(tokens[idx + 3].parser_text()).ok()
+                }
+                _ => None,
+            };
         }
-
-        return match window[3].kind {
-            TokenKind::Number => window[3].parser_text().parse::<i32>().ok(),
-            TokenKind::Word => ironsmith_core::parse_cardinal_word(window[3].parser_text())
-                .and_then(|count| i32::try_from(count).ok()),
-            _ => None,
-        };
+        idx += 1;
     }
 
     None
@@ -1407,7 +863,7 @@ pub(crate) fn split_leading_result_prefix_lexed<'a>(
         return None;
     };
 
-    let comma_idx = primitives::find_token_index(trimmed, |token| token.kind == TokenKind::Comma)?;
+    let comma_idx = structure_token_kind_index(trimmed, TokenKind::Comma)?;
     if comma_idx <= 1 || comma_idx + 1 >= trimmed.len() {
         return None;
     }
@@ -1434,9 +890,7 @@ fn split_leading_numeric_result_prefix_lexed<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(IfResultPredicate, &'a [OwnedLexToken])> {
     let first = tokens.first()?;
-    let pipe_idx = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Pipe)?;
+    let pipe_idx = structure_token_kind_index(tokens, TokenKind::Pipe)?;
     if pipe_idx != 1 && pipe_idx < 3 {
         return None;
     }
@@ -1488,30 +942,28 @@ pub(crate) fn split_if_clause_lexed(
     mut parse_effects: impl FnMut(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<IfClauseSplitSpec, CardTextError> {
     fn split_leaves_player_may_search_subject(tokens: &[OwnedLexToken], split_idx: usize) -> bool {
-        let effect_words =
-            TokenWordView::new(trim_lexed_commas(&tokens[split_idx..])).to_word_refs();
-        if !effect_words
-            .first()
-            .is_some_and(|word| matches!(*word, "search" | "searches"))
+        const PLAYER_MAY_SUFFIXES: &[&[&str]] = &[
+            &["its", "controller", "may"],
+            &["its", "controllers", "may"],
+            &["its", "owner", "may"],
+            &["its", "owners", "may"],
+            &["that", "player", "may"],
+            &["target", "player", "may"],
+            &["that", "opponent", "may"],
+            &["target", "opponent", "may"],
+        ];
+        let effect_tokens = trim_lexed_commas(&tokens[split_idx..]);
+        if primitives::parse_prefix(
+            effect_tokens,
+            alt((primitives::kw("search"), primitives::kw("searches"))).void(),
+        )
+        .is_none()
         {
             return false;
         }
 
-        let predicate_words =
-            TokenWordView::new(trim_lexed_commas(&tokens[..split_idx])).to_word_refs();
-        word_slice_ends_with_any(
-            &predicate_words,
-            &[
-                &["its", "controller", "may"],
-                &["its", "controllers", "may"],
-                &["its", "owner", "may"],
-                &["its", "owners", "may"],
-                &["that", "player", "may"],
-                &["target", "player", "may"],
-                &["that", "opponent", "may"],
-                &["target", "opponent", "may"],
-            ],
-        )
+        let predicate_tokens = trim_lexed_commas(&tokens[..split_idx]);
+        primitives::strip_lexed_suffix_phrases(predicate_tokens, PLAYER_MAY_SUFFIXES).is_some()
     }
 
     let parse_effects_with_leading_instead =
@@ -1647,9 +1099,13 @@ pub(crate) fn split_if_clause_lexed(
             }
             let comma_fragment_looks_like_effect = if comma_indices.len() > 1 {
                 let fragment_tokens = &tokens[first_comma_idx + 1..comma_indices[1]];
-                parse_effects_with_leading_instead(fragment_tokens, &mut parse_effects)
-                    .map(|effects| !effects.is_empty())
-                    .unwrap_or(false)
+                super::effects::for_each_shapes::parse_for_each_object_subject_shape(
+                    fragment_tokens,
+                )
+                .is_some()
+                    || parse_effects_with_leading_instead(fragment_tokens, &mut parse_effects)
+                        .map(|effects| !effects.is_empty())
+                        .unwrap_or(false)
             } else {
                 true
             };
@@ -1731,21 +1187,31 @@ fn parse_cards_in_hand_difference_draw_effect(
     let PredicateAst::PlayerCardsInHandOrFewer { player, count } = predicate else {
         return None;
     };
-    let predicate_words = TokenWordView::new(predicate_tokens).to_word_refs();
-    if !words_contain_phrase(&predicate_words, &["fewer", "than"])
-        && !words_contain_phrase(&predicate_words, &["less", "than"])
-    {
+    if !one_of_phrases_occurs(predicate_tokens, &[&["fewer", "than"], &["less", "than"]]) {
         return None;
     }
 
     let effect_words = TokenWordView::new(trim_lexed_commas(effect_tokens)).to_word_refs();
-    let subject = match effect_words.as_slice() {
-        ["draw", "cards", "equal", "to", "the", "difference"]
-        | ["draw", "cards", "equal", "to", "difference"] => PlayerAst::Implicit,
-        ["you", "draw", "cards", "equal", "to", "the", "difference"]
-        | ["you", "draw", "cards", "equal", "to", "difference"] => PlayerAst::You,
-        _ => return None,
-    };
+    let implicit_phrases: &[&[&str]] = &[
+        &["draw", "cards", "equal", "to", "the", "difference"],
+        &["draw", "cards", "equal", "to", "difference"],
+    ];
+    let you_phrases: &[&[&str]] = &[
+        &["you", "draw", "cards", "equal", "to", "the", "difference"],
+        &["you", "draw", "cards", "equal", "to", "difference"],
+    ];
+    let subject =
+        if implicit_phrases.iter().any(|expected| {
+            primitives::parse_word_sequence_complete(&effect_words, expected).is_some()
+        }) {
+            PlayerAst::Implicit
+        } else if you_phrases.iter().any(|expected| {
+            primitives::parse_word_sequence_complete(&effect_words, expected).is_some()
+        }) {
+            PlayerAst::You
+        } else {
+            return None;
+        };
     let hand_player = match player {
         PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
         _ => return None,
@@ -1762,10 +1228,6 @@ fn parse_cards_in_hand_difference_draw_effect(
         subject,
         SubjectVerbActionAst::Draw { count: difference },
     )])
-}
-
-fn words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    !phrase.is_empty() && words.windows(phrase.len()).any(|window| window == phrase)
 }
 
 pub(crate) fn split_trailing_unless_clause_lexed<'a>(
@@ -1990,6 +1452,20 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
         {
             continue;
         }
+        // A duration following a comma belongs to the effect clause. Reject
+        // this later split candidate so the preceding comma can preserve the
+        // duration at the head of `effects_tokens`. A predicate that itself
+        // ends in "this turn" has no separating comma and remains valid.
+        if leaf::parse_leaf_restriction_duration_suffix_tokens(predicate_tokens).is_some_and(
+            |shape| {
+                shape
+                    .rest
+                    .last()
+                    .is_some_and(|token| token.kind == TokenKind::Comma)
+            },
+        ) {
+            continue;
+        }
         if let Some(predicate) = parse_modeled_predicate(predicate_tokens) {
             return Some(TriggeredConditionalClauseSpec {
                 trigger_tokens,
@@ -2023,9 +1499,8 @@ pub(crate) fn split_state_triggered_clause_lexed<'a>(
         return None;
     }
 
-    let predicate = if let Some(comma_idx) = trigger_tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)
+    let predicate = if let Some(comma_idx) =
+        structure_token_kind_index(trigger_tokens, TokenKind::Comma)
         && trigger_tokens
             .get(comma_idx + 1)
             .is_some_and(|token| structure_token_is(token, "if"))
@@ -2050,10 +1525,9 @@ pub(crate) fn split_state_triggered_clause_lexed<'a>(
 pub(crate) fn split_trailing_modal_gate_clause<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<TrailingModalGateSpec<'a>> {
-    let sentence_start =
-        primitives::rfind_token_index(tokens, |token| token.kind == TokenKind::Period)
-            .map(|idx| idx + 1)
-            .unwrap_or(0);
+    let sentence_start = structure_token_kind_rindex(tokens, TokenKind::Period)
+        .map(|idx| idx + 1)
+        .unwrap_or(0);
     let sentence_tokens = trim_lexed_commas(&tokens[sentence_start..]);
     if sentence_tokens.is_empty() {
         return None;

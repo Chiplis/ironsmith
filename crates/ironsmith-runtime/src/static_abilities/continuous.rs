@@ -1189,6 +1189,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::OpponentLostLifeThisTurn => {
             "as long as an opponent lost life this turn".to_string()
         }
+        crate::ConditionExpr::AnyPlayerLostLifeThisTurnOrMore { count } => {
+            format!("as long as a player lost {count} or more life this turn")
+        }
         crate::ConditionExpr::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
             player,
             subtype,

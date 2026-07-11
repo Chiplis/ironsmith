@@ -1,5 +1,8 @@
 use super::*;
-use crate::runtime_backend::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
+use winnow::combinator::{alt, opt};
+use winnow::error::ModalResult as WResult;
+use winnow::prelude::*;
+use winnow::token::any;
 
 pub(super) type GrammarFilterNormalizedWords<'a> = TokenWordView<'a>;
 
@@ -7,14 +10,14 @@ pub(super) fn push_unique_filter_value<T: Copy + PartialEq>(items: &mut Vec<T>, 
     crate::slice_primitives::push_unique(items, value);
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SpellFilterComparisonAxis {
     Power,
     Toughness,
     ManaValue,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PlayerRelationVerb {
     Cast,
     Control,
@@ -27,335 +30,305 @@ pub(super) struct SegmentPhraseVariant {
     drain_start_offset: usize,
 }
 
-const RELATION_AXIS_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
-    "axis",
-    LexCaptureKind::OneOfPhrase(&[&["power"], &["toughness"], &["mana", "value"]]),
-)]);
-const RELATION_VERB_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
-    "verb",
-    LexCaptureKind::OneOf(&["cast", "casts", "control", "controls", "own", "owns"]),
-)]);
-const RELATION_SUBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::subject(
-    "player",
-    LexCaptureKind::OneOfPhrase(&[
-        &["you"],
-        &["opponent"],
-        &["opponents"],
-        &["they"],
-        &["your", "team"],
-        &["your", "opponents"],
-        &["that", "player"],
-        &["target", "player"],
-        &["target", "opponent"],
-        &["defending", "player"],
-        &["attacking", "player"],
-        &["its", "controller"],
-        &["its", "controllers"],
-        &["their", "controller"],
-        &["their", "controllers"],
-    ]),
-)]);
-const NEGATED_YOU_RELATION_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::optional(&[LexPattern::subject(
-        "player",
-        LexCaptureKind::OneOf(&["you"]),
-    )]),
-    LexPattern::action(
-        "verb",
-        LexCaptureKind::OneOfPhrase(&[
-            &["dont", "control"],
-            &["dont", "controls"],
-            &["don't", "control"],
-            &["don't", "controls"],
-            &["do", "not", "control"],
-            &["do", "not", "controls"],
-            &["dont", "own"],
-            &["dont", "owns"],
-            &["don't", "own"],
-            &["don't", "owns"],
-            &["do", "not", "own"],
-            &["do", "not", "owns"],
-        ]),
-    ),
-]);
-const CHOSEN_PLAYER_GRAVEYARD_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "zone",
-        LexCaptureKind::OneOfPhrase(&[
-            &["chosen", "player", "graveyard"],
-            &["chosen", "players", "graveyard"],
-            &["the", "chosen", "player", "graveyard"],
-            &["the", "chosen", "players", "graveyard"],
-        ]),
-    )]);
-const JOINT_OWNER_CONTROLLER_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
-    "relation",
-    LexCaptureKind::OneOfPhrase(&[
-        &["both", "own", "and", "control"],
-        &["both", "owns", "and", "control"],
-        &["both", "own", "and", "controls"],
-        &["both", "owns", "and", "controls"],
-        &["both", "control", "and", "own"],
-        &["both", "controls", "and", "own"],
-        &["both", "control", "and", "owns"],
-        &["both", "controls", "and", "owns"],
-    ]),
-)]);
-const OWNER_OR_CONTROLLER_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
-    "relation",
-    LexCaptureKind::OneOfPhrase(&[
-        &["own", "or", "control"],
-        &["owns", "or", "control"],
-        &["own", "or", "controls"],
-        &["owns", "or", "controls"],
-        &["control", "or", "own"],
-        &["controls", "or", "own"],
-        &["control", "or", "owns"],
-        &["controls", "or", "owns"],
-    ]),
-)]);
-const PUT_THERE_FROM_BATTLEFIELD_THIS_TURN_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::action(
-        "event",
-        LexCaptureKind::OneOfPhrase(&[
-            &[
-                "that",
-                "was",
-                "put",
-                "there",
-                "from",
-                "battlefield",
-                "this",
-                "turn",
-            ],
-            &[
-                "that",
-                "were",
-                "put",
-                "there",
-                "from",
-                "battlefield",
-                "this",
-                "turn",
-            ],
-        ]),
-    )]);
-const PUT_THERE_FROM_ANYWHERE_THIS_TURN_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::action(
-        "event",
-        LexCaptureKind::OneOfPhrase(&[
-            &[
-                "that", "was", "put", "there", "from", "anywhere", "this", "turn",
-            ],
-            &[
-                "that", "were", "put", "there", "from", "anywhere", "this", "turn",
-            ],
-        ]),
-    )]);
-const GRAVEYARD_FROM_BATTLEFIELD_THIS_TURN_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::action(
-        "event",
-        LexCaptureKind::OneOfPhrase(&[
-            &["graveyard", "from", "battlefield", "this", "turn"],
-            &["graveyards", "from", "battlefield", "this", "turn"],
-        ]),
-    )]);
-const ENTERED_BATTLEFIELD_THIS_TURN_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::action(
-        "event",
-        LexCaptureKind::OneOfPhrase(&[
-            &[
-                "entered",
-                "the",
-                "battlefield",
-                "under",
-                "your",
-                "control",
-                "this",
-                "turn",
-            ],
-            &[
-                "entered",
-                "battlefield",
-                "under",
-                "your",
-                "control",
-                "this",
-                "turn",
-            ],
-            &["entered", "under", "your", "control", "this", "turn"],
-            &[
-                "entered",
-                "the",
-                "battlefield",
-                "under",
-                "opponent",
-                "control",
-                "this",
-                "turn",
-            ],
-            &[
-                "entered",
-                "the",
-                "battlefield",
-                "under",
-                "opponents",
-                "control",
-                "this",
-                "turn",
-            ],
-            &[
-                "entered",
-                "battlefield",
-                "under",
-                "opponent",
-                "control",
-                "this",
-                "turn",
-            ],
-            &[
-                "entered",
-                "battlefield",
-                "under",
-                "opponents",
-                "control",
-                "this",
-                "turn",
-            ],
-            &["entered", "under", "opponent", "control", "this", "turn"],
-            &["entered", "under", "opponents", "control", "this", "turn"],
-            &["entered", "the", "battlefield", "this", "turn"],
-            &["entered", "battlefield", "this", "turn"],
-            &["entered", "this", "turn"],
-        ]),
-    )]);
-const DRAWN_THIS_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
-    "event",
-    LexCaptureKind::OneOfPhrase(&[&["drawn", "this", "turn"]]),
-)]);
 const LEADING_TAGGED_REFERENCE_WORDS: &[&str] = &["that", "those", "chosen"];
 const IT_OR_THEM_WORDS: &[&str] = &["it", "them"];
 
-fn relation_captured_prefix(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    role: LexCaptureRole,
-) -> Option<(String, usize)> {
-    let matched = pattern.match_prefix_word_refs(words)?;
-    let capture = matched.capture_by_role(role)?;
-    let captured_words = words.get(capture.word_range.clone())?;
-    Some((captured_words.join(" "), matched.word_range.end))
+fn relation_phrase<'a>(
+    expected: &'static [&'static str],
+) -> impl Parser<primitives::WordSliceInput<'a>, (), winnow::error::ErrMode<winnow::error::ContextError>>
+{
+    move |input: &mut primitives::WordSliceInput<'a>| parse_relation_phrase(input, expected)
+}
+
+fn parse_relation_axis_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<SpellFilterComparisonAxis> {
+    alt((
+        relation_phrase(&["mana", "value"]).value(SpellFilterComparisonAxis::ManaValue),
+        relation_phrase(&["power"]).value(SpellFilterComparisonAxis::Power),
+        relation_phrase(&["toughness"]).value(SpellFilterComparisonAxis::Toughness),
+    ))
+    .parse_next(input)
+}
+
+fn parse_relation_verb_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<PlayerRelationVerb> {
+    alt((
+        relation_phrase(&["cast"]).value(PlayerRelationVerb::Cast),
+        relation_phrase(&["casts"]).value(PlayerRelationVerb::Cast),
+        relation_phrase(&["control"]).value(PlayerRelationVerb::Control),
+        relation_phrase(&["controls"]).value(PlayerRelationVerb::Control),
+        relation_phrase(&["own"]).value(PlayerRelationVerb::Own),
+        relation_phrase(&["owns"]).value(PlayerRelationVerb::Own),
+    ))
+    .parse_next(input)
+}
+
+fn parse_relation_subject_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+    pronoun_player_filter: &PlayerFilter,
+) -> WResult<PlayerFilter> {
+    alt((
+        alt((
+            relation_phrase(&["your", "team"]).value(PlayerFilter::You),
+            relation_phrase(&["your", "opponents"]).value(PlayerFilter::Opponent),
+            relation_phrase(&["that", "player"]).value(PlayerFilter::IteratedPlayer),
+            relation_phrase(&["target", "player"]).map(|()| PlayerFilter::target_player()),
+            relation_phrase(&["target", "opponent"]).map(|()| PlayerFilter::target_opponent()),
+            relation_phrase(&["defending", "player"]).value(PlayerFilter::Defending),
+            relation_phrase(&["attacking", "player"]).value(PlayerFilter::Attacking),
+            relation_phrase(&["its", "controller"])
+                .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
+            relation_phrase(&["its", "controllers"])
+                .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
+        )),
+        alt((
+            relation_phrase(&["their", "controller"])
+                .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
+            relation_phrase(&["their", "controllers"])
+                .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
+            relation_phrase(&["you"]).value(PlayerFilter::You),
+            relation_phrase(&["opponent"]).value(PlayerFilter::Opponent),
+            relation_phrase(&["opponents"]).value(PlayerFilter::Opponent),
+            relation_phrase(&["they"]).map(|()| pronoun_player_filter.clone()),
+        )),
+    ))
+    .parse_next(input)
+}
+
+fn parse_negated_you_relation_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<PlayerRelationVerb> {
+    opt(primitives::word_slice_exact("you"))
+        .void()
+        .parse_next(input)?;
+    alt((
+        alt((
+            relation_phrase(&["do", "not", "control"]).value(PlayerRelationVerb::Control),
+            relation_phrase(&["do", "not", "controls"]).value(PlayerRelationVerb::Control),
+            relation_phrase(&["dont", "control"]).value(PlayerRelationVerb::Control),
+            relation_phrase(&["dont", "controls"]).value(PlayerRelationVerb::Control),
+            relation_phrase(&["don't", "control"]).value(PlayerRelationVerb::Control),
+            relation_phrase(&["don't", "controls"]).value(PlayerRelationVerb::Control),
+        )),
+        alt((
+            relation_phrase(&["do", "not", "own"]).value(PlayerRelationVerb::Own),
+            relation_phrase(&["do", "not", "owns"]).value(PlayerRelationVerb::Own),
+            relation_phrase(&["dont", "own"]).value(PlayerRelationVerb::Own),
+            relation_phrase(&["dont", "owns"]).value(PlayerRelationVerb::Own),
+            relation_phrase(&["don't", "own"]).value(PlayerRelationVerb::Own),
+            relation_phrase(&["don't", "owns"]).value(PlayerRelationVerb::Own),
+        )),
+    ))
+    .parse_next(input)
+}
+
+fn parse_chosen_player_graveyard_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<(PlayerFilter, Zone)> {
+    opt(primitives::word_slice_exact("the"))
+        .void()
+        .parse_next(input)?;
+    primitives::word_slice_exact("chosen")
+        .void()
+        .parse_next(input)?;
+    alt((
+        primitives::word_slice_exact("player"),
+        primitives::word_slice_exact("players"),
+    ))
+    .void()
+    .parse_next(input)?;
+    primitives::word_slice_exact("graveyard")
+        .void()
+        .parse_next(input)?;
+    Ok((PlayerFilter::ChosenPlayer, Zone::Graveyard))
+}
+
+fn parse_ownership_verb_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<PlayerRelationVerb> {
+    alt((
+        relation_phrase(&["own"]).value(PlayerRelationVerb::Own),
+        relation_phrase(&["owns"]).value(PlayerRelationVerb::Own),
+        relation_phrase(&["control"]).value(PlayerRelationVerb::Control),
+        relation_phrase(&["controls"]).value(PlayerRelationVerb::Control),
+    ))
+    .parse_next(input)
+}
+
+fn parse_owner_controller_pair_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+    separator: &'static str,
+    leading_both: bool,
+) -> WResult<(PlayerRelationVerb, PlayerRelationVerb)> {
+    if leading_both {
+        primitives::word_slice_exact("both")
+            .void()
+            .parse_next(input)?;
+    }
+    let first = parse_ownership_verb_word_slice(input)?;
+    primitives::word_slice_exact(separator)
+        .void()
+        .parse_next(input)?;
+    let second = parse_ownership_verb_word_slice(input)?;
+    if matches!(
+        (first, second),
+        (PlayerRelationVerb::Own, PlayerRelationVerb::Control)
+            | (PlayerRelationVerb::Control, PlayerRelationVerb::Own)
+    ) {
+        Ok((first, second))
+    } else {
+        Err(primitives::backtrack_err(
+            "owner/controller relation",
+            "one ownership and one control verb",
+        ))
+    }
+}
+
+fn parse_put_there_from_battlefield_this_turn_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<()> {
+    primitives::word_slice_exact("that")
+        .void()
+        .parse_next(input)?;
+    alt((
+        primitives::word_slice_exact("was"),
+        primitives::word_slice_exact("were"),
+    ))
+    .void()
+    .parse_next(input)?;
+    relation_phrase(&["put", "there", "from", "battlefield", "this", "turn"]).parse_next(input)
+}
+
+fn parse_put_there_from_anywhere_this_turn_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<()> {
+    primitives::word_slice_exact("that")
+        .void()
+        .parse_next(input)?;
+    alt((
+        primitives::word_slice_exact("was"),
+        primitives::word_slice_exact("were"),
+    ))
+    .void()
+    .parse_next(input)?;
+    relation_phrase(&["put", "there", "from", "anywhere", "this", "turn"]).parse_next(input)
+}
+
+fn parse_graveyard_from_battlefield_this_turn_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<()> {
+    alt((
+        primitives::word_slice_exact("graveyard"),
+        primitives::word_slice_exact("graveyards"),
+    ))
+    .void()
+    .parse_next(input)?;
+    relation_phrase(&["from", "battlefield", "this", "turn"]).parse_next(input)
+}
+
+fn parse_entered_battlefield_this_turn_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<Option<PlayerFilter>> {
+    primitives::word_slice_exact("entered")
+        .void()
+        .parse_next(input)?;
+    opt((
+        opt(primitives::word_slice_exact("the")).void(),
+        primitives::word_slice_exact("battlefield").void(),
+    ))
+    .void()
+    .parse_next(input)?;
+    let controller = opt(alt((
+        relation_phrase(&["under", "your", "control"]).value(PlayerFilter::You),
+        relation_phrase(&["under", "opponent", "control"]).value(PlayerFilter::Opponent),
+        relation_phrase(&["under", "opponents", "control"]).value(PlayerFilter::Opponent),
+    )))
+    .parse_next(input)?;
+    relation_phrase(&["this", "turn"]).parse_next(input)?;
+    Ok(controller)
+}
+
+fn parse_drawn_this_turn_word_slice(input: &mut primitives::WordSliceInput<'_>) -> WResult<()> {
+    relation_phrase(&["drawn", "this", "turn"]).parse_next(input)
 }
 
 fn parse_relation_axis_shape(words: &[&str]) -> Option<(SpellFilterComparisonAxis, usize)> {
-    let (axis, consumed) =
-        relation_captured_prefix(words, RELATION_AXIS_PATTERN, LexCaptureRole::Action)?;
-    match axis.as_str() {
-        "power" => Some((SpellFilterComparisonAxis::Power, consumed)),
-        "toughness" => Some((SpellFilterComparisonAxis::Toughness, consumed)),
-        "mana value" => Some((SpellFilterComparisonAxis::ManaValue, consumed)),
-        _ => None,
-    }
+    let mut input: primitives::WordSliceInput<'_> = words;
+    let axis = parse_relation_axis_word_slice(&mut input).ok()?;
+    Some((axis, words.len().saturating_sub(input.len())))
 }
 
 fn parse_relation_verb_shape(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
-    let (verb, consumed) =
-        relation_captured_prefix(words, RELATION_VERB_PATTERN, LexCaptureRole::Action)?;
-    match verb.as_str() {
-        "cast" | "casts" => Some((PlayerRelationVerb::Cast, consumed)),
-        "control" | "controls" => Some((PlayerRelationVerb::Control, consumed)),
-        "own" | "owns" => Some((PlayerRelationVerb::Own, consumed)),
-        _ => None,
-    }
+    let mut input: primitives::WordSliceInput<'_> = words;
+    let verb = parse_relation_verb_word_slice(&mut input).ok()?;
+    Some((verb, words.len().saturating_sub(input.len())))
 }
 
 fn parse_relation_subject_shape(
     words: &[&str],
     pronoun_player_filter: &PlayerFilter,
 ) -> Option<(PlayerFilter, usize)> {
-    let (subject, consumed) =
-        relation_captured_prefix(words, RELATION_SUBJECT_PATTERN, LexCaptureRole::Subject)?;
-    match subject.as_str() {
-        "you" | "your team" => Some((PlayerFilter::You, consumed)),
-        "opponent" | "opponents" | "your opponents" => Some((PlayerFilter::Opponent, consumed)),
-        "they" => Some((pronoun_player_filter.clone(), consumed)),
-        "that player" => Some((PlayerFilter::IteratedPlayer, consumed)),
-        "target player" => Some((PlayerFilter::target_player(), consumed)),
-        "target opponent" => Some((PlayerFilter::target_opponent(), consumed)),
-        "defending player" => Some((PlayerFilter::Defending, consumed)),
-        "attacking player" => Some((PlayerFilter::Attacking, consumed)),
-        "its controller" | "its controllers" | "their controller" | "their controllers" => Some((
-            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
-            consumed,
-        )),
-        _ => None,
-    }
+    let mut input: primitives::WordSliceInput<'_> = words;
+    let player = parse_relation_subject_word_slice(&mut input, pronoun_player_filter).ok()?;
+    Some((player, words.len().saturating_sub(input.len())))
 }
 
 fn parse_negated_you_relation_shape(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
-    let (verb, consumed) =
-        relation_captured_prefix(words, NEGATED_YOU_RELATION_PATTERN, LexCaptureRole::Action)?;
-    let verb_tail = verb.split(' ').next_back();
-    if verb_tail == Some("control") || verb_tail == Some("controls") {
-        return Some((PlayerRelationVerb::Control, consumed));
-    }
-    if verb_tail == Some("own") || verb_tail == Some("owns") {
-        return Some((PlayerRelationVerb::Own, consumed));
-    }
-    None
+    let mut input: primitives::WordSliceInput<'_> = words;
+    let verb = parse_negated_you_relation_word_slice(&mut input).ok()?;
+    Some((verb, words.len().saturating_sub(input.len())))
 }
 
-fn parse_chosen_player_graveyard_shape(words: &[&str]) -> Option<usize> {
-    relation_captured_prefix(
-        words,
-        CHOSEN_PLAYER_GRAVEYARD_PATTERN,
-        LexCaptureRole::Object,
-    )
-    .map(|(_, consumed)| consumed)
+fn parse_chosen_player_graveyard_shape(words: &[&str]) -> Option<(PlayerFilter, Zone, usize)> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    let (owner, zone) = parse_chosen_player_graveyard_word_slice(&mut input).ok()?;
+    Some((owner, zone, words.len().saturating_sub(input.len())))
 }
 
 fn parse_joint_owner_controller_shape(words: &[&str]) -> Option<usize> {
-    relation_captured_prefix(
-        words,
-        JOINT_OWNER_CONTROLLER_PATTERN,
-        LexCaptureRole::Action,
-    )
-    .map(|(_, consumed)| consumed)
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_owner_controller_pair_word_slice(&mut input, "and", true).ok()?;
+    Some(words.len().saturating_sub(input.len()))
 }
 
 fn parse_owner_or_controller_shape(words: &[&str]) -> Option<usize> {
-    relation_captured_prefix(words, OWNER_OR_CONTROLLER_PATTERN, LexCaptureRole::Action)
-        .map(|(_, consumed)| consumed)
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_owner_controller_pair_word_slice(&mut input, "or", false).ok()?;
+    Some(words.len().saturating_sub(input.len()))
 }
 
-fn parse_relation_event_shape(words: &[&str], pattern: LexPattern<'static>) -> Option<usize> {
-    relation_captured_prefix(words, pattern, LexCaptureRole::Action).map(|(_, consumed)| consumed)
+fn parse_put_there_from_battlefield_this_turn_shape(words: &[&str]) -> Option<usize> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_put_there_from_battlefield_this_turn_word_slice(&mut input).ok()?;
+    Some(words.len().saturating_sub(input.len()))
+}
+
+fn parse_put_there_from_anywhere_this_turn_shape(words: &[&str]) -> Option<usize> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_put_there_from_anywhere_this_turn_word_slice(&mut input).ok()?;
+    Some(words.len().saturating_sub(input.len()))
+}
+
+fn parse_graveyard_from_battlefield_this_turn_shape(words: &[&str]) -> Option<usize> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_graveyard_from_battlefield_this_turn_word_slice(&mut input).ok()?;
+    Some(words.len().saturating_sub(input.len()))
 }
 
 fn parse_entered_battlefield_this_turn_shape(
     words: &[&str],
 ) -> Option<(Option<PlayerFilter>, usize)> {
-    let (event, consumed) = relation_captured_prefix(
-        words,
-        ENTERED_BATTLEFIELD_THIS_TURN_PATTERN,
-        LexCaptureRole::Action,
-    )?;
-    let event_words: Vec<&str> = event.split(' ').collect();
-    let contains_phrase = |phrase: &[&str]| {
-        !phrase.is_empty()
-            && event_words
-                .windows(phrase.len())
-                .any(|window| window == phrase)
-    };
-    if contains_phrase(&["under", "your", "control"]) {
-        return Some((Some(PlayerFilter::You), consumed));
-    }
-    if contains_phrase(&["under", "opponent", "control"])
-        || contains_phrase(&["under", "opponents", "control"])
-    {
-        return Some((Some(PlayerFilter::Opponent), consumed));
-    }
-    Some((None, consumed))
+    let mut input: primitives::WordSliceInput<'_> = words;
+    let controller = parse_entered_battlefield_this_turn_word_slice(&mut input).ok()?;
+    Some((controller, words.len().saturating_sub(input.len())))
+}
+
+fn parse_drawn_this_turn_shape(words: &[&str]) -> Option<usize> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_drawn_this_turn_word_slice(&mut input).ok()?;
+    Some(words.len().saturating_sub(input.len()))
 }
 
 impl SpellFilterComparisonAxis {
@@ -445,9 +418,9 @@ pub(super) fn try_apply_chosen_player_graveyard_clause(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
-    let consumed = parse_chosen_player_graveyard_shape(words)?;
-    filter.owner = Some(PlayerFilter::ChosenPlayer);
-    filter.zone = Some(Zone::Graveyard);
+    let (owner, zone, consumed) = parse_chosen_player_graveyard_shape(words)?;
+    filter.owner = Some(owner);
+    filter.zone = Some(zone);
     Some(consumed)
 }
 
@@ -494,37 +467,70 @@ pub(super) fn drain_segment_phrase_variants(
 ) {
     let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
     let segment_words = segment_words_view.to_word_refs();
-    let segment_match = variants.iter().find_map(|variant| {
-        segment_words
-            .windows(variant.words.len())
-            .position(|window| window == variant.words)
-            .map(|seg_start| {
-                (
-                    seg_start + variant.drain_start_offset,
-                    seg_start + variant.words.len(),
-                )
-            })
-    });
+
+    let mut segment_match = None;
+    for variant in variants {
+        if let Some((first, end)) = relation_phrase_word_span(&segment_words, variant.words) {
+            segment_match = Some((first + variant.drain_start_offset, end));
+            break;
+        }
+    }
+
     if let Some((start_word_idx, end_word_idx)) = segment_match
-        && let Some(start_token_idx) = segment_words_view.token_index_for_word_index(start_word_idx)
+        && let Some(token_range) =
+            segment_words_view.token_span_for_words(start_word_idx, end_word_idx)
     {
-        let end_token_idx = segment_words_view
-            .token_index_after_words(end_word_idx)
-            .unwrap_or(segment_tokens.len());
-        segment_tokens.drain(start_token_idx..end_token_idx);
+        segment_tokens.drain(token_range);
     }
 }
 
+fn relation_phrase_word_span(words: &[&str], phrase: &[&str]) -> Option<(usize, usize)> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    let initial_len = input.len();
+    loop {
+        let first = initial_len.saturating_sub(input.len());
+        let mut candidate = input;
+        if parse_relation_phrase(&mut candidate, phrase).is_ok() {
+            let end = initial_len.saturating_sub(candidate.len());
+            return Some((first, end));
+        }
+        let consumed: WResult<&str> = any.parse_next(&mut input);
+        consumed.ok()?;
+    }
+}
+
+fn parse_relation_phrase(
+    input: &mut primitives::WordSliceInput<'_>,
+    phrase: &[&str],
+) -> WResult<()> {
+    if phrase.is_empty() {
+        return Err(primitives::backtrack_err(
+            "player-relation phrase",
+            "non-empty phrase",
+        ));
+    }
+    for expected in phrase {
+        let word: &str = any.parse_next(input)?;
+        if word != *expected {
+            return Err(primitives::backtrack_err(
+                "player-relation phrase",
+                "expected phrase word",
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn parse_put_there_from_battlefield_this_turn_words(words: &[&str]) -> Option<usize> {
-    parse_relation_event_shape(words, PUT_THERE_FROM_BATTLEFIELD_THIS_TURN_PATTERN)
+    parse_put_there_from_battlefield_this_turn_shape(words)
 }
 
 pub(super) fn parse_put_there_from_anywhere_this_turn_words(words: &[&str]) -> Option<usize> {
-    parse_relation_event_shape(words, PUT_THERE_FROM_ANYWHERE_THIS_TURN_PATTERN)
+    parse_put_there_from_anywhere_this_turn_shape(words)
 }
 
 pub(super) fn parse_graveyard_from_battlefield_this_turn_words(words: &[&str]) -> Option<usize> {
-    parse_relation_event_shape(words, GRAVEYARD_FROM_BATTLEFIELD_THIS_TURN_PATTERN)
+    parse_graveyard_from_battlefield_this_turn_shape(words)
 }
 
 pub(super) fn parse_entered_battlefield_this_turn_words(
@@ -804,7 +810,7 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
 }
 
 pub(super) fn parse_drawn_this_turn_words(words: &[&str]) -> Option<usize> {
-    parse_relation_event_shape(words, DRAWN_THIS_TURN_PATTERN)
+    parse_drawn_this_turn_shape(words)
 }
 
 pub(super) fn try_apply_drawn_this_turn_clause(
@@ -937,4 +943,221 @@ where
     }
 
     Ok((name_words.join(" "), name_end))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_comparison_axes_with_consumed_words() {
+        assert_eq!(
+            parse_spell_filter_comparison_axis_words(&["power", "greater"]),
+            Some((SpellFilterComparisonAxis::Power, 1))
+        );
+        assert_eq!(
+            parse_spell_filter_comparison_axis_words(&["toughness", "less"]),
+            Some((SpellFilterComparisonAxis::Toughness, 1))
+        );
+        assert_eq!(
+            parse_spell_filter_comparison_axis_words(&["mana", "value", "equal"]),
+            Some((SpellFilterComparisonAxis::ManaValue, 2))
+        );
+    }
+
+    #[test]
+    fn parses_player_relation_subjects_directly() {
+        let pronoun = PlayerFilter::ChosenPlayer;
+        for (words, expected, consumed) in [
+            (&["your", "team", "controls"][..], PlayerFilter::You, 2),
+            (
+                &["your", "opponents", "control"][..],
+                PlayerFilter::Opponent,
+                2,
+            ),
+            (
+                &["that", "player", "owns"][..],
+                PlayerFilter::IteratedPlayer,
+                2,
+            ),
+            (
+                &["target", "opponent", "controls"][..],
+                PlayerFilter::target_opponent(),
+                2,
+            ),
+            (
+                &["attacking", "player", "controls"][..],
+                PlayerFilter::Attacking,
+                2,
+            ),
+            (
+                &["their", "controllers", "control"][..],
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
+                2,
+            ),
+            (&["they", "control"][..], pronoun.clone(), 1),
+        ] {
+            assert_eq!(
+                parse_player_relation_subject(words, &pronoun),
+                Some((expected, consumed))
+            );
+        }
+    }
+
+    #[test]
+    fn applies_negated_you_relations() {
+        let mut control_filter = ObjectFilter::default();
+        assert_eq!(
+            try_apply_negated_you_relation_clause(
+                &mut control_filter,
+                &["you", "do", "not", "control", "creatures"]
+            ),
+            Some(4)
+        );
+        assert_eq!(control_filter.controller, Some(PlayerFilter::NotYou));
+
+        let mut owner_filter = ObjectFilter::default();
+        assert_eq!(
+            try_apply_negated_you_relation_clause(&mut owner_filter, &["don't", "owns", "cards"]),
+            Some(2)
+        );
+        assert_eq!(owner_filter.owner, Some(PlayerFilter::NotYou));
+    }
+
+    #[test]
+    fn applies_chosen_player_graveyard_fact() {
+        let mut filter = ObjectFilter::default();
+        assert_eq!(
+            try_apply_chosen_player_graveyard_clause(
+                &mut filter,
+                &["the", "chosen", "players", "graveyard", "cards"]
+            ),
+            Some(4)
+        );
+        assert_eq!(filter.owner, Some(PlayerFilter::ChosenPlayer));
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+    }
+
+    #[test]
+    fn parses_joint_and_disjunctive_owner_controller_relations() {
+        let mut filter = ObjectFilter::default();
+        assert_eq!(
+            try_apply_joint_owner_controller_clause(
+                &mut filter,
+                &["you", "both", "own", "and", "controls", "cards"],
+                &PlayerFilter::Any,
+            ),
+            Some(5)
+        );
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+
+        assert_eq!(
+            parse_owner_or_controller_disjunction_player(
+                &["opponents", "control", "or", "owns", "cards"],
+                &PlayerFilter::Any,
+            ),
+            Some((PlayerFilter::Opponent, 4))
+        );
+        assert_eq!(
+            parse_owner_or_controller_disjunction_player(
+                &["you", "own", "or", "owns", "cards"],
+                &PlayerFilter::Any,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn parses_entered_battlefield_variants() {
+        for (words, expected_controller, expected_consumed) in [
+            (
+                &[
+                    "entered",
+                    "the",
+                    "battlefield",
+                    "under",
+                    "your",
+                    "control",
+                    "this",
+                    "turn",
+                    "tail",
+                ][..],
+                Some(PlayerFilter::You),
+                8,
+            ),
+            (
+                &[
+                    "entered",
+                    "battlefield",
+                    "under",
+                    "opponent",
+                    "control",
+                    "this",
+                    "turn",
+                ][..],
+                Some(PlayerFilter::Opponent),
+                7,
+            ),
+            (
+                &["entered", "under", "opponents", "control", "this", "turn"][..],
+                Some(PlayerFilter::Opponent),
+                6,
+            ),
+            (
+                &["entered", "the", "battlefield", "this", "turn"][..],
+                None,
+                5,
+            ),
+            (&["entered", "battlefield", "this", "turn"][..], None, 4),
+            (&["entered", "this", "turn"][..], None, 3),
+        ] {
+            assert_eq!(
+                parse_entered_battlefield_this_turn_words(words),
+                Some((expected_controller, expected_consumed))
+            );
+        }
+    }
+
+    #[test]
+    fn parses_graveyard_and_drawn_turn_events() {
+        assert_eq!(
+            parse_put_there_from_battlefield_this_turn_words(&[
+                "that",
+                "were",
+                "put",
+                "there",
+                "from",
+                "battlefield",
+                "this",
+                "turn",
+                "tail",
+            ]),
+            Some(8)
+        );
+        assert_eq!(
+            parse_put_there_from_anywhere_this_turn_words(&[
+                "that", "was", "put", "there", "from", "anywhere", "this", "turn",
+            ]),
+            Some(8)
+        );
+        assert_eq!(
+            parse_graveyard_from_battlefield_this_turn_words(&[
+                "graveyards",
+                "from",
+                "battlefield",
+                "this",
+                "turn",
+            ]),
+            Some(5)
+        );
+        assert_eq!(
+            parse_drawn_this_turn_words(&["drawn", "this", "turn", "tail"]),
+            Some(3)
+        );
+        assert_eq!(
+            parse_drawn_this_turn_words(&["drawn", "last", "turn"]),
+            None
+        );
+    }
 }

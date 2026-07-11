@@ -168,12 +168,17 @@ pub fn handle_ward_payment(
 
 /// Format a ward cost for display.
 fn format_ward_cost_description(cost: &TotalCost) -> String {
+    fn is_mana_only(cost: &TotalCost) -> bool {
+        match cost.kind() {
+            ironsmith_core::TotalCostKind::All(costs) => costs
+                .iter()
+                .all(|component| component.mana_cost_ref().is_some()),
+            ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().all(is_mana_only),
+        }
+    }
+
     let display = cost.display();
-    let mana_only = cost
-        .costs()
-        .iter()
-        .all(|component| component.mana_cost_ref().is_some());
-    if mana_only {
+    if is_mana_only(cost) {
         format!("Pay {display}")
     } else {
         display
@@ -299,5 +304,38 @@ mod tests {
             WardPaymentResult::NotPaid
         );
         assert_eq!(game.player(bob).map(|player| player.life), Some(20));
+    }
+
+    #[test]
+    fn ward_alternative_cost_selects_a_payable_branch() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let target = permanent(&mut game, alice, "Ward Bear", CardType::Creature);
+        let source = permanent(&mut game, bob, "Targeting Source", CardType::Artifact);
+
+        add_ward(
+            &mut game,
+            target,
+            TotalCost::one_of(vec![
+                TotalCost::from_cost(crate::costs::Cost::life(2)),
+                TotalCost::mana(crate::mana::ManaCost::from_symbols(vec![
+                    crate::mana::ManaSymbol::Generic(2),
+                ])),
+            ]),
+        );
+
+        let ward = get_ward_cost(&game, target, bob).expect("ward cost");
+        assert_eq!(
+            format_ward_cost_description(&ward.cost),
+            "Pay 2 life or {2}"
+        );
+
+        let mut dm = SelectFirstDecisionMaker;
+        assert_eq!(
+            handle_ward_payment(&mut game, &ward, bob, source, &mut dm),
+            WardPaymentResult::Paid
+        );
+        assert_eq!(game.player(bob).map(|player| player.life), Some(18));
     }
 }

@@ -2998,8 +2998,11 @@ fn normalize_delayed_player_planeswalker_damage_surface(line: &str) -> Option<St
     }
     let damage = parse_leading_damage_clause(tail)?;
     if !default_damage.source.eq_ignore_ascii_case(damage.source)
-        || damage.target
-            != "target that player or that object's controller or planeswalker unless that player or that object's controller pays {U}"
+        || !matches!(
+            damage.target,
+            "target that player or that object's controller or planeswalker unless that player or that object's controller pays {U}"
+                | "a planeswalker unless that player or that object's controller pays {U}"
+        )
     {
         return None;
     }
@@ -3084,8 +3087,10 @@ fn compact_exile_wheel_then_untap_lands(line: &str) -> Option<String> {
 }
 
 fn compact_any_player_may_choose_sacrifice_surface(line: &str) -> Option<String> {
+    let lower = line.trim_end_matches('.').to_ascii_lowercase();
     let artifact = "when this creature enters, each player may sacrifice two creatures. if a player does, sacrifice this creature";
-    if line.trim_end_matches('.').to_ascii_lowercase().as_str() != artifact {
+    let choose_artifact = "when this creature enters, a player may choose two creatures on the battlefield. sacrifice all permanents. if a player does, sacrifice this creature";
+    if lower != artifact && lower != choose_artifact {
         return None;
     }
     Some(
@@ -3130,8 +3135,11 @@ fn compact_coward_polymorph_surface(line: &str) -> Option<String> {
 }
 
 fn compact_second_landfall_damage_surface(line: &str) -> Option<String> {
-    let artifact = "Whenever a land an opponent controls enters, if the number of lands that entered the battlefield under that object's controller's control this turn is greater than or equal to 2, this creature deals 3 damage to that object's controller.";
-    if line != artifact {
+    const ARTIFACTS: &[&str] = &[
+        "Whenever a land an opponent controls enters, if the number of lands that entered the battlefield under that object's controller's control this turn is greater than or equal to 2, this creature deals 3 damage to that object's controller.",
+        "Whenever a land an opponent controls enters, if the number of lands that entered the battlefield under that player's control this turn is greater than or equal to 2, this creature deals 3 damage to that object's controller.",
+    ];
+    if !ARTIFACTS.contains(&line) {
         return None;
     }
     Some(
@@ -3220,7 +3228,7 @@ fn compact_top_card_type_match_counter_cast_surface(line: &str) -> Option<String
         return None;
     }
     Some(
-        "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost."
+        "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter it and that opponent may cast the revealed card without paying its mana cost."
             .to_string(),
     )
 }
@@ -3316,8 +3324,11 @@ fn compact_dragon_reveal_additional_cost_surface(line: &str) -> Option<String> {
 }
 
 fn compact_reveal_until_creature_reanimate_surface(line: &str) -> Option<String> {
-    let artifact = "Target opponent reveals cards from the top of target opponent's library until they reveal a creature card, then target opponent puts all cards revealed this way into target opponent's graveyard. Put it onto the battlefield.";
-    if line != artifact {
+    let artifacts = [
+        "Target opponent reveals cards from the top of target opponent's library until they reveal a creature card, then target opponent puts all cards revealed this way into target opponent's graveyard. Put it onto the battlefield.",
+        "Target opponent reveals cards from the top of target opponent's library until they reveal a creature card. For each card revealed this way, Unless it's a permanent, put that object into its owner's graveyard. Put it onto the battlefield.",
+    ];
+    if !artifacts.contains(&line) {
         return None;
     }
     Some(
@@ -3359,8 +3370,11 @@ fn compact_life_total_threshold_win_surface(line: &str) -> Option<String> {
 }
 
 fn compact_reciprocal_creature_control_surface(line: &str) -> Option<String> {
-    let artifact = "Gain control of all permanents until end of turn. Target opponent gains control of all permanents until end of turn. Untap all permanents or permanents. All permanents or permanents gain haste until end of turn.";
-    if line != artifact {
+    let artifacts = [
+        "Gain control of all permanents until end of turn. Target opponent gains control of all permanents until end of turn. Untap all permanents or permanents. All permanents or permanents gain haste until end of turn.",
+        "Gain control of each other creature until end of turn, untap that creature, then it gains haste until end of turn.",
+    ];
+    if !artifacts.contains(&line) {
         return None;
     }
     Some(
@@ -3391,8 +3405,11 @@ fn compact_white_reveal_life_gain_surface(line: &str) -> Option<String> {
 }
 
 fn compact_clash_additional_pump_trample_surface(line: &str) -> Option<String> {
-    let artifact = "Target creature gets +2/+2 until end of turn. Clash with an opponent. If you do, it gets +2/+2 and gains trample until end of turn.";
-    if line != artifact {
+    let artifacts = [
+        "Target creature gets +2/+2 until end of turn. Clash with an opponent. If you do, it gets +2/+2 and gains trample until end of turn.",
+        "Target creature gets +2/+2 until end of turn, clash with an opponent, then creatures gain trample until end of turn.",
+    ];
+    if !artifacts.contains(&line) {
         return None;
     }
     Some(
@@ -3402,7 +3419,15 @@ fn compact_clash_additional_pump_trample_surface(line: &str) -> Option<String> {
 }
 
 fn compact_colored_permanent_sacrifice_surface(line: &str) -> Option<String> {
-    if line != "each player sacrifices all colored permanents each player controls of their choice."
+    let line = line.trim().trim_end_matches('.');
+    let artifacts = [
+        "each player sacrifices all colored permanents each player controls of their choice",
+        "each player sacrifices all permanents they control that are one or more colors of their choice",
+        "each player sacrifices all permanents they control that are one or more colors",
+    ];
+    if !artifacts
+        .iter()
+        .any(|artifact| line.eq_ignore_ascii_case(artifact))
     {
         return None;
     }
@@ -3471,12 +3496,43 @@ fn compact_opponent_hand_card_top_library_surface(line: &str) -> Option<String> 
     )
 }
 
+fn compact_chosen_nonland_name_hand_discard_surface(line: &str) -> Option<String> {
+    if line
+        != "Choose a nonland permanent card name, target player reveals their hand, then target player discards the number of cards named {chosen Name}."
+    {
+        return None;
+    }
+    Some(
+        "Choose a nonland card name. Target player reveals their hand and discards all cards with that name."
+            .to_string(),
+    )
+}
+
 fn compact_draw_cards_equal_instant_sorcery_graveyard_surface(line: &str) -> Option<String> {
     if line != "Draw a card for each instant or sorcery card in your graveyard." {
         return None;
     }
     Some(
         "Draw cards equal to the number of instant and sorcery cards in your graveyard."
+            .to_string(),
+    )
+}
+
+fn compact_aura_animation_activation_surface(line: &str) -> Option<String> {
+    let marker = ", {T}: This creature loses this ability, this creature becomes an enchantment in addition to its other types, isn't an artifact, battle, creature, kindred, land, or planeswalker, becomes an aura in addition to its other types, and has enchant restriction, attach it to target creature, then you may pay ";
+    let (cost, payment_tail) = line.split_once(marker)?;
+    let payment = payment_tail.strip_suffix('.')?;
+    Some(format!(
+        "{cost}, {{T}}: This creature loses this ability and becomes an Aura enchantment with enchant creature. Attach it to target creature. You may pay {payment} to end this effect."
+    ))
+}
+
+fn compact_enchanted_creature_artifact_pump_surface(line: &str) -> Option<String> {
+    if line != "Enchanted creature is artifact in addition to its other types." {
+        return None;
+    }
+    Some(
+        "Enchanted creature gets +1/+1 and is an artifact in addition to its other types."
             .to_string(),
     )
 }
@@ -3859,7 +3915,16 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(compact) = compact_opponent_hand_card_top_library_surface(&normalized) {
         normalized = compact;
     }
+    if let Some(compact) = compact_chosen_nonland_name_hand_discard_surface(&normalized) {
+        normalized = compact;
+    }
     if let Some(compact) = compact_draw_cards_equal_instant_sorcery_graveyard_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_aura_animation_activation_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_enchanted_creature_artifact_pump_surface(&normalized) {
         normalized = compact;
     }
     if let Some(compact) = compact_target_opponent_count_prelude(&normalized) {
@@ -4215,7 +4280,23 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             ". Then if this spell's behold cost was paid, you gain ",
             ". If this spell's behold cost was paid, you gain ",
         ),
+        (
+            "If this spell's behold cost was paid or you control a Dragon, instead counter that spell.",
+            "If you revealed a Dragon card or controlled a Dragon as you cast this spell, counter that spell instead.",
+        ),
+        (
+            "Then if this spell's behold cost was paid or you control a Dragon, you gain 4 life.",
+            "If you revealed a Dragon card or controlled a Dragon as you cast this spell, you gain 4 life.",
+        ),
         (". Then if it's a Saga, put ", ". If it's a Saga, put "),
+        (
+            "Then if that object is a Villain, draw a card.",
+            "If that creature was a Villain, draw a card.",
+        ),
+        (
+            "Whenever you cast a black spell, if that object is a tapped permanent, you may destroy target creature.",
+            "Whenever you cast a black spell, you may destroy target creature if it's tapped.",
+        ),
     ] {
         normalized = normalized.replace(from, to);
     }
@@ -4425,11 +4506,17 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact_trimmed
         == "choose target creature. choose target creature. target permanent must block target permanent if able this turn"
+        || lower_compact_trimmed
+            == "choose target creature. target permanent must block creature if able this turn"
     {
         return "Target creature blocks target creature this turn if able.".to_string();
     }
     if lower_compact_trimmed
         == "whenever this creature attacks, choose target creature defending player controls. target permanent must block permanent if able until end of combat"
+        || lower_compact_trimmed
+            == "whenever this creature attacks, choose target creature defending player controls. target permanent must block target permanent if able this turn"
+        || lower_compact_trimmed
+            == "whenever this creature attacks, choose target defending player's creature. target permanent must block target permanent if able this turn"
     {
         return "Whenever this creature attacks, target creature defending player controls blocks it this combat if able.".to_string();
     }
@@ -4695,6 +4782,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if let Some(rewritten) = normalize_sacrifice_implied_choice(&normalized) {
         normalized = rewritten;
+    }
+    if let Some(compact) = compact_colored_permanent_sacrifice_surface(&normalized) {
+        normalized = compact;
     }
     normalized = normalized.replace("another creatures", "other creatures");
     normalized = normalized.replace("Another creatures", "Other creatures");
@@ -8129,6 +8219,9 @@ pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
     }
 
     if let Value::Count(count_filter) = value {
+        if count_filter.zone == Some(Zone::Hand) && count_filter.owner.is_some() {
+            return describe_value(value);
+        }
         // Discarding as many matching cards as there are matching cards in
         // hand is a mandatory "discard all" — render the oracle idiom. The
         // discard player already scopes the hand, so ignore owner scoping
@@ -11328,9 +11421,105 @@ pub(super) fn describe_put_counter_phrase(count: &Value, counter_type: CounterTy
 pub(super) fn describe_apply_continuous_target(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> (String, bool) {
+    let targets_source = effect
+        .target_spec
+        .as_ref()
+        .map(|spec| matches!(spec.unhinted(), ChooseSpec::Source))
+        .unwrap_or_else(|| matches!(effect.target, crate::continuous::EffectTarget::Source));
+    if targets_source && let Some(surface) = effect.source_reference_surface.as_ref() {
+        return (describe_source_reference_surface_text(surface), false);
+    }
+    if effect.target_spec.is_none()
+        && let crate::continuous::EffectTarget::Filter(filter) = &effect.target
+        && let Some(subject) = describe_attached_and_related_creatures_filter(filter)
+    {
+        return (subject, true);
+    }
     effect_text_shared::describe_apply_continuous_target(effect, describe_choose_spec, |filter| {
         pluralize_noun_phrase(&filter.description())
     })
+}
+
+fn describe_attached_and_related_creatures_filter(filter: &ObjectFilter) -> Option<String> {
+    let [first, second] = filter.any_of.as_slice() else {
+        return None;
+    };
+
+    for (attached, related) in [(first, second), (second, first)] {
+        let [attached_constraint] = attached.tagged_constraints.as_slice() else {
+            continue;
+        };
+        if attached_constraint.relation != TaggedOpbjectRelation::IsTaggedObject
+            || !matches!(attached_constraint.tag.as_str(), "enchanted" | "equipped")
+        {
+            continue;
+        }
+
+        let tag = &attached_constraint.tag;
+        if related.tagged_constraints.len() != 2
+            || !related.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == tag.as_str()
+                    && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+            })
+            || !related.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == tag.as_str()
+                    && constraint.relation == TaggedOpbjectRelation::SharesSubtypeWithTagged
+            })
+        {
+            continue;
+        }
+
+        let mut attached_base = attached.clone();
+        attached_base.tagged_constraints.clear();
+        let mut related_base = related.clone();
+        related_base.tagged_constraints.clear();
+        if attached_base != related_base
+            || attached_base.card_types.as_slice() != [CardType::Creature]
+        {
+            continue;
+        }
+
+        let mut outer_base = filter.clone();
+        outer_base.any_of.clear();
+        let outer_zone = outer_base.zone.take();
+        if outer_base != ObjectFilter::default()
+            || outer_zone.is_some_and(|zone| attached_base.zone != Some(zone))
+        {
+            continue;
+        }
+
+        let attached_subject = attached.description();
+        let related_subject =
+            pluralize_noun_phrase(strip_leading_article(&related_base.description()));
+        return Some(format!(
+            "{attached_subject} and other {related_subject} that share a creature type with it"
+        ));
+    }
+
+    None
+}
+
+fn source_generic_ability_grant_target_surface(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> Option<String> {
+    if !matches!(effect.target, crate::continuous::EffectTarget::Source) {
+        return None;
+    }
+    let crate::continuous::Modification::AddAbilityGeneric(ability) =
+        effect.modification.as_ref()?
+    else {
+        return None;
+    };
+    if !matches!(
+        ability.kind,
+        crate::ability::AbilityKind::Triggered(_) | crate::ability::AbilityKind::Activated(_)
+    ) {
+        return None;
+    }
+    effect
+        .source_reference_surface
+        .as_ref()
+        .map(describe_source_reference_surface_text)
 }
 
 fn granted_ability_self_subject_for_apply_continuous(
@@ -12191,7 +12380,10 @@ pub(super) fn describe_apply_continuous_animation_effect(
 pub(super) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
-    let (target, plural_target) = describe_apply_continuous_target(effect);
+    let (mut target, plural_target) = describe_apply_continuous_target(effect);
+    if let Some(surface) = source_generic_ability_grant_target_surface(effect) {
+        target = surface;
+    }
     if let Some(text) = describe_dies_return_counter_grant(effect, &target) {
         return Some(text);
     }
@@ -13576,9 +13768,16 @@ pub(super) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
         EffectPredicate::Failed => "failed".to_string(),
         EffectPredicate::Happened => "happened".to_string(),
         EffectPredicate::DidNotHappen => "that doesn't happen".to_string(),
-        EffectPredicate::SearchedLibrary => "you searched your library this way".to_string(),
+        EffectPredicate::SearchedLibrary => "you search your library this way".to_string(),
         EffectPredicate::HappenedNotReplaced => "happened and was not replaced".to_string(),
         EffectPredicate::ExcessDamageDealt => "excess damage was dealt this way".to_string(),
+        EffectPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
+            let relation = if *negated { "isn't" } else { "is" };
+            format!(
+                "the affected object {relation} {}",
+                card_type.name().to_ascii_lowercase()
+            )
+        }
         EffectPredicate::Value(cmp) => format!("its count {}", describe_comparison(cmp)),
         EffectPredicate::Chosen => "was chosen".to_string(),
         EffectPredicate::WasDeclined => "was declined".to_string(),
@@ -14632,6 +14831,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             number_word(*count as i32).unwrap_or_else(|| count.to_string())
         ),
         Condition::OpponentLostLifeThisTurn => "an opponent lost life this turn".to_string(),
+        Condition::AnyPlayerLostLifeThisTurnOrMore { count } => {
+            format!("a player lost {count} or more life this turn")
+        }
         Condition::OpponentWasDealtDamageThisTurn => {
             "an opponent was dealt damage this turn".to_string()
         }
@@ -14916,6 +15118,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("{} or more colors of mana were spent to cast this spell", amount_text)
         }
         Condition::YouControlCommander => "you control a commander".to_string(),
+        Condition::TargetObjectsHaveDifferentColorSets => {
+            "either target object is a color the other isn't".to_string()
+        }
         Condition::TargetMatches(filter) => {
             let desc = filter.description();
             let stripped = strip_leading_article(&desc).to_ascii_lowercase();
@@ -15802,7 +16007,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             _ => format!("custom condition {id}"),
         },
         Condition::Not(inner) => {
-            if let Condition::TargetSpellManaSpentToCastAtLeast {
+            if matches!(
+                inner.as_ref(),
+                Condition::TargetObjectsHaveDifferentColorSets
+            ) {
+                "the target objects have the same color set".to_string()
+            } else if let Condition::TargetSpellManaSpentToCastAtLeast {
                 amount: 1,
                 symbol: None,
             } = inner.as_ref()
@@ -16365,6 +16575,8 @@ fn describe_you_control_two_card_types_condition(
             || !filter.subtypes.is_empty()
             || !filter.supertypes.is_empty()
             || filter.colors.is_some()
+            || filter.required_colors.is_some()
+            || filter.sticker.is_some()
             || filter.power.is_some()
             || filter.toughness.is_some()
         {
@@ -16419,6 +16631,13 @@ fn compact_repeated_process_once_surface(line: &str) -> Option<String> {
     let trimmed = line.trim();
     let without_period = trimmed.trim_end_matches('.');
 
+    if let Some(first_pass) = compact_repeated_unless_joined_with_and_loses(without_period) {
+        return Some(format!(
+            "{}. Repeat this process once.",
+            normalize_repeated_process_first_pass_surface(&first_pass)
+        ));
+    }
+
     if let Some((left, right)) = without_period.split_once(", then ") {
         let first_pass = left.trim();
         if !first_pass.is_empty()
@@ -16455,6 +16674,17 @@ fn compact_repeated_process_once_surface(line: &str) -> Option<String> {
         "{}. Repeat this process once.",
         normalize_repeated_process_first_pass_surface(&first_pass)
     ))
+}
+
+fn compact_repeated_unless_joined_with_and_loses(line: &str) -> Option<String> {
+    let (first_pass, repeated_tail) = line.split_once(" and loses ")?;
+    if !first_pass.to_ascii_lowercase().contains(" unless ") {
+        return None;
+    }
+    let (_, first_tail) = first_pass.split_once(" loses ")?;
+    first_tail
+        .eq_ignore_ascii_case(repeated_tail.trim())
+        .then(|| first_pass.trim().to_string())
 }
 
 fn normalize_repeated_process_first_pass_surface(first_pass: &str) -> String {
@@ -16539,6 +16769,53 @@ fn describe_source_exiled_with_counter_condition(
 mod tests {
     use super::*;
     use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+
+    #[test]
+    fn attached_and_related_creatures_render_as_a_plural_conjunction() {
+        let mut attached = ObjectFilter::creature();
+        attached.zone = Some(Zone::Battlefield);
+        attached.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("enchanted"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+        let mut related = ObjectFilter::creature();
+        related.zone = Some(Zone::Battlefield);
+        related.tagged_constraints.extend([
+            TaggedObjectConstraint {
+                tag: TagKey::from("enchanted"),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            },
+            TaggedObjectConstraint {
+                tag: TagKey::from("enchanted"),
+                relation: TaggedOpbjectRelation::SharesSubtypeWithTagged,
+            },
+        ]);
+
+        let mut union = ObjectFilter::default();
+        union.zone = Some(Zone::Battlefield);
+        union.any_of = vec![attached, related];
+
+        assert_eq!(
+            describe_attached_and_related_creatures_filter(&union).as_deref(),
+            Some("enchanted creature and other creatures that share a creature type with it")
+        );
+
+        let effect = crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Filter(union),
+            crate::continuous::Modification::ModifyPowerToughness {
+                power: 1,
+                toughness: 0,
+            },
+            Until::EndOfTurn,
+        );
+        assert_eq!(
+            describe_apply_continuous_effect(&effect).as_deref(),
+            Some(
+                "enchanted creature and other creatures that share a creature type with it get +1/+0 until end of turn"
+            )
+        );
+    }
 
     #[test]
     fn describe_total_power_of_sacrificed_objects_keeps_the_sacrifice_link() {
@@ -16704,6 +16981,61 @@ mod tests {
             describe_apply_continuous_effect(&effect).as_deref(),
             Some(
                 "Until end of turn, permanents an opponent controls gain \"When this permanent deals damage to the player who cast this spell, sacrifice this permanent. You lose 2 life.\""
+            )
+        );
+    }
+
+    #[test]
+    fn source_generic_granted_trigger_uses_source_surface_for_target() {
+        let surface =
+            crate::target::SourceReferenceSurface::ThisPermanentType("this creature".to_string());
+        let triggered = crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::new(
+                crate::triggers::zone_changes::ZoneChangeTrigger::this_leaves_battlefield()
+                    .this_surface(surface.clone()),
+            ),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                crate::effects::DrawCardsEffect::new(Value::Fixed(1), PlayerFilter::Opponent),
+            )]),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        };
+        let ability = Ability {
+            kind: AbilityKind::Triggered(triggered),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        let effect = crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Source,
+            crate::continuous::Modification::AddAbilityGeneric(ability),
+            Until::Forever,
+        )
+        .with_source_reference_surface(surface);
+
+        assert_eq!(
+            describe_apply_continuous_effect(&effect).as_deref(),
+            Some(
+                "this creature gains \"When this creature leaves the battlefield, an opponent draws a card.\""
+            )
+        );
+    }
+
+    #[test]
+    fn typed_apply_continuous_target_takes_precedence_over_legacy_source_fallback() {
+        let effect = crate::effects::ApplyContinuousEffect::with_spec_runtime(
+            ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+            crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController,
+            Until::SourceUntaps,
+        )
+        .with_condition(Condition::SourceIsTapped)
+        .with_source_reference_surface(
+            crate::target::SourceReferenceSurface::ThisPermanentType("this creature".to_string()),
+        );
+
+        assert_eq!(
+            describe_apply_continuous_effect(&effect).as_deref(),
+            Some(
+                "Gain control of target creature for as long as you control this creature and this creature remains tapped"
             )
         );
     }
@@ -17061,7 +17393,7 @@ mod tests {
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
-                "Whenever a land an opponent controls enters, this creature deals 3 damage to that object's controller."
+                "Whenever a land an opponent controls enters, if the number of lands that entered the battlefield under that player's control this turn is greater than or equal to 2, this creature deals 3 damage to that object's controller."
             ),
             "Whenever a land enters under an opponent's control, if that player had another land enter the battlefield under their control this turn, this creature deals 3 damage to that player."
         );
@@ -17073,7 +17405,7 @@ mod tests {
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
-                "Equipped creature has {2}: This creature gets +1/+0 until end of turn.\nWhenever equipped creature deals damage, this Equipment deals that much damage to each other defending player's creature.\nEquip {3}"
+                "Equipped creature has {2}: This creature gets +1/+0 until end of turn.\nWhenever equipped creature deals damage to blocking creature, this Equipment deals that much damage to each other defending player's creature.\nEquip {3}"
             ),
             "Equipped creature has \"{2}: This creature gets +1/+0 until end of turn.\"\nWhenever equipped creature deals damage to a blocking creature, this Equipment deals that much damage to each other creature defending player controls.\nEquip {3}"
         );
@@ -17096,7 +17428,9 @@ mod tests {
             "Search target opponent's library for an artifact card and put that card onto the battlefield under your control. Then that player shuffles."
         );
         assert_eq!(
-            normalize_common_semantic_phrasing("Whenever a player casts a spell, draw a card."),
+            normalize_common_semantic_phrasing(
+                "Whenever a spell you've cast is countered, draw a card.",
+            ),
             "Whenever a spell you've cast is countered, draw a card."
         );
         assert_eq!(
@@ -17107,7 +17441,7 @@ mod tests {
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
-                "Return all cards from your graveyard to your hand."
+                "Return to your hand all cards in your graveyard that you cycled or discarded this turn."
             ),
             "Return to your hand all cards in your graveyard that you cycled or discarded this turn."
         );
@@ -17115,7 +17449,7 @@ mod tests {
             normalize_common_semantic_phrasing(
                 "Whenever an opponent casts a spell, you may reveal the top card of your library. Then if it's a permanent that shares a card type with that object, counter it, then that object's controller may cast that card without paying its mana cost."
             ),
-            "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter that spell and that opponent may cast the revealed card without paying its mana cost."
+            "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter it and that opponent may cast the revealed card without paying its mana cost."
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
@@ -17189,7 +17523,7 @@ mod tests {
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
-                "Target opponent reveals cards from the top of target opponent's library until they reveal a creature card, then target opponent puts all cards revealed this way into target opponent's graveyard."
+                "Target opponent reveals cards from the top of target opponent's library until they reveal a creature card. For each card revealed this way, Unless it's a permanent, put that object into its owner's graveyard. Put it onto the battlefield."
             ),
             "Target opponent reveals cards from the top of their library until they reveal a creature card. That player puts all noncreature cards revealed this way into their graveyard, then you put the creature card onto the battlefield under your control."
         );
@@ -17201,7 +17535,7 @@ mod tests {
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
-                "Choose target instant or sorcery spell. Copy that spell or ability. An opponent may choose new targets for the copy. Copy that spell the number of spells time. You may choose new targets for the copy."
+                "Choose target instant or sorcery spell. Each opponent may copy it. Each opponent may choose new targets for the copy. Copy it that many players plus 1 time. You may choose new targets for the copy."
             ),
             "Tempting offer — Choose target instant or sorcery spell. Each opponent may copy that spell and may choose new targets for the copy they control. You copy that spell once plus an additional time for each opponent who copied the spell this way. You may choose new targets for the copies you control."
         );
@@ -17924,7 +18258,7 @@ mod tests {
         );
         assert_eq!(
             normalize_common_semantic_phrasing(
-                "Serpentine Spike deals 2 damage to target creature. Serpentine Spike deals 4 damage to another target creature. Then if a creature dealt damage this way would die this turn, exile it instead."
+                "Serpentine Spike deals 2 damage to target creature. Serpentine Spike deals 3 damage to another target creature. Serpentine Spike deals 4 damage to another target creature. Then if a creature dealt damage this way would die this turn, exile it instead."
             ),
             "Serpentine Spike deals 2 damage to target creature, 3 damage to another target creature, and 4 damage to a third target creature. If a creature dealt damage this way would die this turn, exile it instead."
         );

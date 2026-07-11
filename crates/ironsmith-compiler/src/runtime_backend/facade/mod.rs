@@ -86,17 +86,19 @@ impl CardTextCompiler {
             return cached;
         }
 
-        let original_builder = builder.clone();
-        let result =
-            super::parse_text_with_annotations(builder, text.clone(), policy.allow_unsupported)
-                .and_then(|(definition, annotations)| {
-                    postpasses::apply(definition, &original_builder, &text).map(|definition| {
-                        CompiledCardText {
-                            definition,
-                            annotations,
-                        }
-                    })
-                });
+        let result = super::pipeline::parse_text_with_annotations_lowered_with_facts(
+            builder,
+            text,
+            policy.allow_unsupported,
+        )
+        .and_then(|lowered| {
+            postpasses::apply(lowered.definition, &lowered.semantic_facts).map(|definition| {
+                CompiledCardText {
+                    definition,
+                    annotations: lowered.annotations,
+                }
+            })
+        });
 
         if tracing {
             match &result {

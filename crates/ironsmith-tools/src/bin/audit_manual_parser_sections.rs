@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 mod tooling_paths;
 
-const PARSER_ROOT: &str = "src/cards/builders/compiler";
+const PARSER_ROOT: &str = "crates/ironsmith-compiler/src/runtime_backend";
 
 const PHRASE_HELPER_PATTERNS: &[&str] = &[
     "words_match_prefix(",
@@ -13,6 +14,101 @@ const PHRASE_HELPER_PATTERNS: &[&str] = &[
     "words_match_suffix(",
     "contains_phrase(",
     "contains_any_phrase(",
+    // These aliases are semantically identical to the legacy helpers above.
+    // Keep them audited so vocabulary changes cannot masquerade as migration.
+    "words_have_phrase(",
+    "words_have_phrase_or_empty(",
+    "words_have_any_phrase(",
+    "words_have_any_phrase_or_empty(",
+    "words_start_with(",
+    "words_start_with_at(",
+    "words_start_with_any(",
+    "words_end_with(",
+    "words_end_with_any(",
+    "tokens_start_with(",
+    "tokens_start_with_at(",
+    "tokens_start_with_any(",
+    "tokens_end_with(",
+    "items_start_with(",
+    "items_start_with_any(",
+    "items_end_with(",
+    "items_end_with_any(",
+    "word_view_has_prefix(",
+    "word_view_has_any_prefix(",
+    // Migration-era aliases are still parser-shaped probes. Keep them
+    // audited so moving the same recognition behind a new local name does
+    // not count as typed-grammar ownership.
+    "activated_words_equal(",
+    "activated_words_equal_any(",
+    "activated_words_contain_all(",
+    "activated_words_contain_any(",
+    "activated_words_contain_phrase(",
+    "activated_words_contain_word(",
+    "activated_phrase_start(",
+    "keyword_words_match_phrase(",
+    "strip_prefix_words_ci(",
+    "strip_suffix_words_ci(",
+    "trigger_control_tail_words(",
+    "trigger_subject_control_suffix(",
+    "trigger_subject_control_phrase(",
+    "keyword_action_word_at_is(",
+    "keyword_action_word_at_is_any(",
+    "keyword_action_token_is(",
+    "PLAYERS_ARE_ATTACKED_TRIGGER_PATTERN",
+    "CRAFT_WITH_PREFIX_PATTERN",
+    "CRAFT_RED_INSTANT_SORCERY_MATERIAL_TAIL_PATTERN",
+    "PAY_LIFE_COST_PATTERN",
+    "SINGLE_GRAVEYARD_BOTTOM_LIBRARY_TAIL_PREFIX_PATTERN",
+    // Transitional parser DSLs are still manual semantic recognition when
+    // consumed outside typed grammar entrypoints. Track both direct builders
+    // and their common match APIs so module-level constants cannot hide the
+    // recognition from the function-section audit.
+    "LexPattern::",
+    ".match_clause(",
+    ".matches_clause(",
+    ".match_prefix(",
+    ".match_word_refs(",
+    ".matches_word_slice(",
+    ".matches_non_article_tokens(",
+    ".matches_first_word(",
+    ".find_exact_window_range(",
+    // LexedClause and pattern-wrapper aliases are still phrase probes when
+    // invoked by a family or sentence module. Audit the caller as well as the
+    // low-level LexPattern implementation so a wrapper cannot hide ownership.
+    ".matches_words(",
+    ".matches_any_words(",
+    ".matches_clause_first_word(",
+    ".contains_word(",
+    ".contains_any_word(",
+    ".contains_no_words(",
+    ".strip_prefix_clause(",
+    ".strip_any_prefix_clause(",
+    ".strip_suffix_clause(",
+    ".strip_any_suffix_clause(",
+    "anthem_shape_matches_words(",
+    "anthem_shape_matches_word(",
+    "anthem_shape_matches_last_word(",
+    "anthem_token_matches_shape(",
+    "anthem_find_prefix_shape_start(",
+    "keyword_static_shape_matches_words(",
+    "attached_shape_matches_words(",
+    "attached_find_prefix_shape_start(",
+    "attached_word_is_any(",
+    "attached_word_is(",
+    "attached_word_at_is(",
+    "attached_token_word_is_any(",
+    "attached_token_word_is(",
+    "activation_cost_shape_matches_words(",
+    "activation_restriction_shape_matches_words(",
+    "choice_object_shape_matches_words(",
+    "trigger_subject_shape_matches_words(",
+    "trigger_clause_shape_matches_words(",
+    "token_clause_matches_shape(",
+    "shared_util_shape_matches_words(",
+    "clause_matches_phrase(",
+    "clause_matches_any_phrase(",
+    "modal_clause_matches_pattern(",
+    "modal_clause_matches_prefix(",
 ];
 
 const SCAN_HELPER_PATTERNS: &[&str] = &[
@@ -23,10 +119,47 @@ const SCAN_HELPER_PATTERNS: &[&str] = &[
     "find_word_index(",
     "find_word_sequence_index(",
     "token_index_for_word_index(",
+    "locate_index(",
+    "locate_index_with(",
+    "locate_last_index(",
+    "locate_last_index_with(",
+    "locate_window_index(",
+    "token_start_for_word(",
+    "word_slice_find_phrase_start(",
+    "word_slice_find_any_phrase_start(",
+    "word_slice_find_any_phrase_span(",
+    "word_slice_find_word(",
+    "word_slice_find_any_word(",
+    "word_slice_find_word_where(",
+    "word_slice_rfind_word_where(",
+    // Generic closure-driven scanners preserve semantic recognition in the
+    // caller even when the cursor loop itself lives in grammar/. Require a
+    // named typed parser result instead.
+    "parse_item_boundary(",
+    "parse_item_offset(",
+    "parse_last_item_boundary(",
+    "parse_last_item_offset(",
+    "parse_window_boundary(",
+    "parse_window_offset(",
+    "parse_phrase_span_tokens(",
+    "parse_phrase_token_offsets(",
+    "parse_phrase_boundary_words(",
+    "parse_phrase_offset_words(",
+    ".find_word(",
+    ".find_word_any(",
+    ".find_phrase_start(",
+    ".find_any_phrase_start(",
+    ".find_any_phrase_span(",
+    "keyword_token_kind_index(",
+    "keyword_mana_cost_start(",
+    "find_cycling_keyword_word_index(",
+    "contains_granted_keyword_before_word(",
     ".position(",
     ".rposition(",
     ".windows(",
 ];
+
+const LEXED_SCAN_HELPER_PATTERNS: &[&str] = &[".find(", ".rfind("];
 
 const WORD_SLICE_SHAPE_PATTERNS: &[&str] = &[
     "slice_starts_with(",
@@ -35,6 +168,20 @@ const WORD_SLICE_SHAPE_PATTERNS: &[&str] = &[
     "word_slice_starts_with(",
     "word_slice_ends_with(",
     "word_slice_contains(",
+    "words_have(",
+    "words_have_any(",
+    "words_have_none(",
+    "words_have_all(",
+    "items_have(",
+    "items_have_any(",
+    "items_have_all(",
+    "word_slice_eq(",
+    "word_slice_eq_any(",
+    "word_slice_eq_at(",
+    "word_slice_eq_any_at(",
+    "token_slice_words_eq(",
+    "token_slice_words_eq_any(",
+    "iter_eq(",
     "== [",
     "!= [",
     ".as_slice() == [",
@@ -43,7 +190,6 @@ const WORD_SLICE_SHAPE_PATTERNS: &[&str] = &[
 
 const RAW_STRING_PATTERNS: &[&str] = &[
     ".split_once(",
-    ".find(",
     ".strip_prefix(",
     ".strip_suffix(",
     ".starts_with(",
@@ -51,13 +197,76 @@ const RAW_STRING_PATTERNS: &[&str] = &[
     ".contains(",
 ];
 
-const RAW_STRING_LINE_EXCLUSIONS: &[&str] = &["TokenWordView"];
-const RAW_STRING_RECEIVER_EXCLUSIONS: &[&str] = &["words"];
+const RAW_STRING_HELPER_PATTERNS: &[&str] = &[
+    "str_contains(",
+    "str_contains_char(",
+    "str_starts_with(",
+    "str_starts_with_char(",
+    "str_ends_with(",
+    "str_ends_with_char(",
+    "str_split_once(",
+    "str_split_once_char(",
+    "str_find(",
+    "str_strip_prefix(",
+    "str_strip_suffix(",
+    "str_strip_suffix_char(",
+];
 
 const CONTROL_FLOW_HELPER_PATTERNS: &[&str] = &[
     concat!("scan_", "helpers::"),
     concat!("lexed", "_words("),
     concat!("render_", "lexed_tokens("),
+];
+
+// Method names shared by `LexedClause`, `TokenWordView`, and migration-era
+// clause wrappers. The ambiguous names in these lists are classified only
+// when their receiver is visibly word/clause-shaped; this avoids treating
+// `String::starts_with`, collection `ends_with`, or typed grammar surfaces as
+// parser probes.
+const RECEIVER_PHRASE_PROBE_METHODS: &[&str] = &[
+    "starts_with",
+    "starts_with_at",
+    "starts_with_any",
+    "ends_with",
+    "ends_with_any",
+    "first_is",
+    "first_is_any",
+    "last_is",
+    "last_is_any",
+    "has_phrase",
+    "has_any_phrase",
+];
+
+const RECEIVER_WORD_SHAPE_PROBE_METHODS: &[&str] = &[
+    "at_is",
+    "at_is_any",
+    "equals_at",
+    "equals_any_at",
+    "matching_value",
+    "strip_prefix_value",
+    "strip_first_word_value",
+    "strip_suffix_value",
+];
+
+// These APIs are specific enough to be audited without receiver inference.
+// In particular, the `*_clause` variants are also exposed through
+// `SubjectVerbPrimitiveClause`, so auditing only the lexer implementation
+// would miss the compatibility wrapper and its callers.
+const UNIQUE_PHRASE_PROBE_PATTERNS: &[&str] = &[
+    ".first_is_word(",
+    ".first_is_any_word(",
+    ".strip_prefix_value_clause(",
+    ".strip_suffix_value_clause(",
+];
+
+const UNIQUE_WORD_SHAPE_PROBE_PATTERNS: &[&str] = &[".contains_all_words("];
+
+// These two wrappers intentionally present phrase-probe APIs outside grammar.
+// Their receivers are constructor calls or a generic `ctx`, so identifier
+// inference alone cannot distinguish them from typed grammar result objects.
+const COMPAT_PHRASE_PROBE_CONTEXTS: &[&str] = &[
+    "ActivationRestrictionCompatWords::new(",
+    "UnsupportedRewriteLineContext::new(",
 ];
 
 const LEXED_CONTEXT_MARKERS: &[&str] = &[
@@ -128,7 +337,14 @@ struct ActiveFunction {
     body_depth: usize,
 }
 
+#[derive(Debug, Default)]
+struct Args {
+    fail_on_findings: bool,
+    enforce_prefixes: Vec<String>,
+}
+
 fn main() {
+    let args = Args::parse();
     let repo_root = tooling_paths::repo_root()
         .unwrap_or_else(|err| panic!("failed to locate repo root: {err}"));
     let parser_root = repo_root.join(PARSER_ROOT);
@@ -137,9 +353,6 @@ fn main() {
 
     let mut findings = Vec::new();
     for path in files {
-        if path.file_name().and_then(|name| name.to_str()) == Some("migration_audit.rs") {
-            continue;
-        }
         let source = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("failed reading {}: {err}", path.display()));
         let rel = path
@@ -163,6 +376,81 @@ fn main() {
     }
 
     print_report(&findings);
+
+    let enforced_findings = enforced_findings(&findings, &args);
+    if !enforced_findings.is_empty() {
+        eprintln!("\nParser audit enforcement failed:");
+        for finding in enforced_findings {
+            let kinds = finding
+                .kinds
+                .iter()
+                .map(|kind| kind.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            eprintln!(
+                "  {}:{} {} [{}]",
+                finding.file, finding.line, finding.name, kinds
+            );
+        }
+        std::process::exit(1);
+    }
+}
+
+impl Args {
+    fn parse() -> Self {
+        let mut args = Self::default();
+        let mut raw = env::args().skip(1);
+        while let Some(arg) = raw.next() {
+            match arg.as_str() {
+                "--fail-on-findings" => args.fail_on_findings = true,
+                "--enforce-prefix" => {
+                    let Some(prefix) = raw.next() else {
+                        usage_and_exit("--enforce-prefix requires a repo-relative path");
+                    };
+                    args.enforce_prefixes.push(normalize_repo_prefix(&prefix));
+                }
+                "--help" | "-h" => usage_and_exit(""),
+                _ => usage_and_exit(&format!("unknown argument `{arg}`")),
+            }
+        }
+        args
+    }
+}
+
+fn usage_and_exit(message: &str) -> ! {
+    if !message.is_empty() {
+        eprintln!("{message}\n");
+    }
+    eprintln!(
+        "usage: audit_manual_parser_sections [--fail-on-findings] [--enforce-prefix <repo-path>...]"
+    );
+    std::process::exit(if message.is_empty() { 0 } else { 2 });
+}
+
+fn enforced_findings<'a>(findings: &'a [Finding], args: &Args) -> Vec<&'a Finding> {
+    findings
+        .iter()
+        .filter(|finding| {
+            args.fail_on_findings
+                || args
+                    .enforce_prefixes
+                    .iter()
+                    .any(|prefix| finding_matches_prefix(&finding.file, prefix))
+        })
+        .collect()
+}
+
+fn finding_matches_prefix(file: &str, prefix: &str) -> bool {
+    file == prefix
+        || file
+            .strip_prefix(prefix)
+            .is_some_and(|tail| tail.starts_with('/'))
+}
+
+fn normalize_repo_prefix(prefix: &str) -> String {
+    prefix
+        .trim_start_matches("./")
+        .replace(std::path::MAIN_SEPARATOR, "/")
 }
 
 fn print_report(findings: &[Finding]) {
@@ -309,7 +597,7 @@ fn extract_functions(file: &str, source: &str) -> Vec<FunctionSection> {
         if let Some(active) = active_function.take() {
             if brace_depth < active.body_depth {
                 if !active.is_test {
-                    let body = source_lines[active.start_line_index..=line_idx].join("\n");
+                    let body = sanitized_lines[active.start_line_index..=line_idx].join("\n");
                     functions.push(FunctionSection {
                         file: file.to_string(),
                         name: active.name,
@@ -367,6 +655,14 @@ fn sanitize_source(source: &str) -> String {
             out.push(' ');
             out.push(' ');
             i += 2;
+            continue;
+        }
+
+        if let Some(literal_len) = char_literal_len(bytes, i) {
+            for byte in &bytes[i..i + literal_len] {
+                push_sanitized_char(&mut out, *byte);
+            }
+            i += literal_len;
             continue;
         }
 
@@ -429,6 +725,82 @@ fn sanitize_source(source: &str) -> String {
 
 fn string_start(bytes: &[u8], idx: usize) -> bool {
     bytes[idx] == b'"' || (bytes[idx] == b'b' && idx + 1 < bytes.len() && bytes[idx + 1] == b'"')
+}
+
+fn char_literal_len(bytes: &[u8], idx: usize) -> Option<usize> {
+    let start = idx;
+    let mut cursor = idx;
+    if bytes.get(cursor) == Some(&b'b') {
+        cursor += 1;
+    }
+    if bytes.get(cursor) != Some(&b'\'') {
+        return None;
+    }
+    cursor += 1;
+
+    let first = *bytes.get(cursor)?;
+    if matches!(first, b'\n' | b'\r' | b'\'') {
+        return None;
+    }
+
+    if first == b'\\' {
+        cursor += 1;
+        match *bytes.get(cursor)? {
+            b'x' => {
+                let high = *bytes.get(cursor + 1)?;
+                let low = *bytes.get(cursor + 2)?;
+                if !high.is_ascii_hexdigit() || !low.is_ascii_hexdigit() {
+                    return None;
+                }
+                cursor += 3;
+            }
+            b'u' => {
+                if bytes.get(cursor + 1) != Some(&b'{') {
+                    return None;
+                }
+                cursor += 2;
+                let digits_start = cursor;
+                while bytes
+                    .get(cursor)
+                    .is_some_and(|byte| byte.is_ascii_hexdigit() || *byte == b'_')
+                {
+                    cursor += 1;
+                }
+                if cursor == digits_start || bytes.get(cursor) != Some(&b'}') {
+                    return None;
+                }
+                cursor += 1;
+            }
+            b'\n' | b'\r' => return None,
+            _ => cursor += 1,
+        }
+    } else {
+        let width = utf8_char_width(first)?;
+        let tail = bytes.get(cursor..cursor + width)?;
+        if width > 1
+            && !tail[1..]
+                .iter()
+                .all(|byte| *byte & 0b1100_0000 == 0b1000_0000)
+        {
+            return None;
+        }
+        cursor += width;
+    }
+
+    if bytes.get(cursor) != Some(&b'\'') {
+        return None;
+    }
+    Some(cursor + 1 - start)
+}
+
+fn utf8_char_width(first: u8) -> Option<usize> {
+    match first {
+        0x00..=0x7f => Some(1),
+        0xc2..=0xdf => Some(2),
+        0xe0..=0xef => Some(3),
+        0xf0..=0xf4 => Some(4),
+        _ => None,
+    }
 }
 
 fn raw_string_start(bytes: &[u8], idx: usize) -> Option<(usize, usize)> {
@@ -495,16 +867,27 @@ fn count_char(line: &str, expected: char) -> usize {
 fn classify_function(body: &str) -> BTreeSet<AuditKind> {
     let mut kinds = BTreeSet::new();
 
-    if contains_any(body, PHRASE_HELPER_PATTERNS) {
+    if contains_any(body, PHRASE_HELPER_PATTERNS)
+        || contains_any(body, UNIQUE_PHRASE_PROBE_PATTERNS)
+        || contains_receiver_probe(body, RECEIVER_PHRASE_PROBE_METHODS)
+        || contains_compat_phrase_probe(body)
+    {
         kinds.insert(AuditKind::PhraseHelpers);
     }
-    if contains_any(body, SCAN_HELPER_PATTERNS) {
+    if contains_any(body, SCAN_HELPER_PATTERNS)
+        || (contains_any(body, LEXED_CONTEXT_MARKERS)
+            && contains_any(body, LEXED_SCAN_HELPER_PATTERNS))
+    {
         kinds.insert(AuditKind::ScanHelpers);
     }
-    if contains_any(body, WORD_SLICE_SHAPE_PATTERNS) {
+    if contains_any(body, WORD_SLICE_SHAPE_PATTERNS)
+        || contains_any(body, UNIQUE_WORD_SHAPE_PROBE_PATTERNS)
+        || contains_receiver_probe(body, RECEIVER_WORD_SHAPE_PROBE_METHODS)
+        || contains_direct_word_slice_match(body)
+    {
         kinds.insert(AuditKind::WordSliceShapes);
     }
-    if contains_raw_string_after_lex(body) {
+    if contains_any(body, RAW_STRING_HELPER_PATTERNS) || contains_raw_string_after_lex(body) {
         kinds.insert(AuditKind::RawStringAfterLex);
     }
     if contains_any(body, CONTROL_FLOW_HELPER_PATTERNS) {
@@ -518,26 +901,99 @@ fn contains_any(text: &str, patterns: &[&str]) -> bool {
     patterns.iter().any(|pattern| text.contains(pattern))
 }
 
+fn contains_receiver_probe(body: &str, methods: &[&str]) -> bool {
+    let compact = body.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    methods.iter().any(|method| {
+        let marker = format!(".{method}(");
+        let mut remaining = compact.as_str();
+        while let Some(marker_idx) = remaining.find(&marker) {
+            let before = remaining[..marker_idx].trim_end();
+            if receiver_is_word_or_clause_shaped(before) {
+                return true;
+            }
+            remaining = &remaining[marker_idx + marker.len()..];
+        }
+        false
+    })
+}
+
+fn receiver_is_word_or_clause_shaped(before_method: &str) -> bool {
+    if [".words()", ".word_refs()", ".lexed()", ".as_clause()"]
+        .iter()
+        .any(|suffix| before_method.ends_with(suffix))
+    {
+        return true;
+    }
+
+    let bytes = before_method.as_bytes();
+    let mut start = bytes.len();
+    while start > 0 && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
+        start -= 1;
+    }
+    let receiver = &before_method[start..];
+    receiver == "words"
+        || receiver == "word_refs"
+        || receiver == "word_view"
+        || receiver == "clause"
+        || receiver == "lexed_clause"
+        || receiver.ends_with("_words")
+        || receiver.ends_with("_word_refs")
+        || receiver.ends_with("_word_view")
+        || receiver.ends_with("_clause")
+}
+
+fn contains_compat_phrase_probe(body: &str) -> bool {
+    contains_any(body, COMPAT_PHRASE_PROBE_CONTEXTS)
+        && (body.contains(".has_phrase(") || body.contains(".has_any_phrase("))
+}
+
+fn contains_direct_word_slice_match(body: &str) -> bool {
+    let compact = body.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    for marker in ["matches!(", "match "] {
+        let mut remaining = compact.as_str();
+        while let Some(marker_idx) = remaining.find(marker) {
+            let after_marker = remaining[marker_idx + marker.len()..].trim_start();
+            let name_len = after_marker
+                .bytes()
+                .take_while(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+                .count();
+            let name = &after_marker[..name_len];
+            let after_name = after_marker[name_len..].trim_start();
+            let direct_slice = after_name.starts_with(',') || after_name.starts_with('{');
+            let as_slice = after_name.strip_prefix(".as_slice()").is_some_and(|tail| {
+                let tail = tail.trim_start();
+                tail.starts_with(',') || tail.starts_with('{')
+            });
+
+            if is_word_slice_name(name) && (direct_slice || as_slice) {
+                return true;
+            }
+
+            remaining = &remaining[marker_idx + marker.len()..];
+        }
+    }
+
+    false
+}
+
+fn is_word_slice_name(name: &str) -> bool {
+    name == "words"
+        || name == "word_refs"
+        || name.ends_with("_words")
+        || name.ends_with("_word_refs")
+}
+
 fn contains_raw_string_after_lex(body: &str) -> bool {
     if !contains_any(body, LEXED_CONTEXT_MARKERS) {
         return false;
     }
 
     for line in body.lines() {
-        if RAW_STRING_LINE_EXCLUSIONS
-            .iter()
-            .any(|needle| line.contains(needle))
-        {
-            continue;
-        }
         for needle in RAW_STRING_PATTERNS {
-            let mut search_start = 0usize;
-            while let Some(idx) = line[search_start..].find(needle) {
-                let absolute = search_start + idx;
-                if !receiver_excluded(line, absolute) {
-                    return true;
-                }
-                search_start = absolute + needle.len();
+            if line.contains(needle) {
+                return true;
             }
         }
     }
@@ -545,9 +1001,153 @@ fn contains_raw_string_after_lex(body: &str) -> bool {
     false
 }
 
-fn receiver_excluded(line: &str, needle_idx: usize) -> bool {
-    RAW_STRING_RECEIVER_EXCLUSIONS.iter().any(|receiver| {
-        let prefix = format!("{receiver}");
-        line[..needle_idx].trim_end().ends_with(&prefix)
-    })
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_lexer_style_functions_after_char_and_raw_literals() {
+        let source = r####"
+fn normalize_parser_fragment<'a>(slice: &'a str) -> &'a str {
+    let _quote = '"';
+    let _byte_quote = b'"';
+    let _escaped_quote = '\'';
+    let _escaped_brace = '\u{7b}';
+    let _raw = r#"} fn hidden() { LexPattern::new(&[]) }"#;
+    let _raw_byte = br##"{ fn also_hidden() { LexPattern::new(&[]) }"##;
+    match slice.chars().next() {
+        Some('“' | '”') => slice,
+        _ => slice,
+    }
+}
+
+fn first_is_word() -> bool {
+    LexPattern::new(&atoms).matches_prefix(clause)
+}
+"####;
+
+        let functions = extract_functions("front_end/lexer.rs", source);
+        let names = functions
+            .iter()
+            .map(|function| function.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["normalize_parser_fragment", "first_is_word"]);
+
+        let first_is_word = functions
+            .iter()
+            .find(|function| function.name == "first_is_word")
+            .expect("function after lexer-style literals must be extracted");
+        assert!(
+            classify_function(&first_is_word.body).contains(&AuditKind::PhraseHelpers),
+            "LexPattern use after lexer-style literals must remain auditable"
+        );
+    }
+
+    #[test]
+    fn classifies_live_lexed_clause_and_word_slice_probe_families() {
+        let source = r#"
+fn probe(clause: LexedClause<'_>, clause_words: Vec<&str>) {
+    let word_view = clause.words();
+    let _ = clause.first_is_word("if");
+    let _ = clause.matches_words(&["if"]);
+    let _ = clause.matches_any_words(&[&["if"], &["unless"]]);
+    let _ = clause.contains_word("target");
+    let _ = clause.contains_all_words(&["this", "turn"]);
+    let _ = clause.strip_prefix_clause(&["if"]);
+    let _ = clause.strip_prefix_value_clause(&[(&["if"], 1)]);
+    let _ = clause.find_phrase_start(&["this", "way"]);
+    let _ = word_view.first_is("if");
+    let _ = clause_words.starts_with(&["if"]);
+    let _ = clause_words.ends_with(&["turn"]);
+    let _ = word_view.at_is(1, "you");
+    let _ = word_view.equals_at(0, &["if", "you"]);
+    if matches!(
+        clause_words.as_slice(),
+        ["if", "you", "do"] | ["when", "you", "do"]
+    ) {}
+}
+"#;
+
+        let functions = extract_functions("probe.rs", source);
+        let probe = functions.first().expect("probe function");
+        let kinds = classify_function(&probe.body);
+        assert!(kinds.contains(&AuditKind::PhraseHelpers));
+        assert!(kinds.contains(&AuditKind::ScanHelpers));
+        assert!(kinds.contains(&AuditKind::WordSliceShapes));
+    }
+
+    #[test]
+    fn receiver_probe_detection_is_word_and_clause_specific() {
+        for body in [
+            "words.starts_with(&[\"if\"])",
+            "clause_words.starts_with_at(2, &[\"number\", \"of\"])",
+            "tail_words.first_is(\"prevent\")",
+            "word_view.ends_with_any(PHRASES)",
+            "clause.words().has_phrase(&[\"this\", \"way\"])",
+        ] {
+            assert!(
+                contains_receiver_probe(body, RECEIVER_PHRASE_PROBE_METHODS),
+                "expected phrase probe in `{body}`"
+            );
+        }
+
+        for body in [
+            "word_view.at_is(0, \"basic\")",
+            "filter_words.equals_any_at(1, PHRASES)",
+            "clause_words.strip_prefix_value(PHRASES)",
+        ] {
+            assert!(
+                contains_receiver_probe(body, RECEIVER_WORD_SHAPE_PROBE_METHODS),
+                "expected word-shape probe in `{body}`"
+            );
+        }
+
+        for body in [
+            "text.starts_with(\"if\")",
+            "effects.ends_with(&tail)",
+            "prefix_surface.first_is(CreateWord::Time)",
+            "modifier_surface.has_phrase(CreatePhrase::HasteGrant)",
+        ] {
+            assert!(
+                !contains_receiver_probe(body, RECEIVER_PHRASE_PROBE_METHODS),
+                "typed/string/collection receiver must not be classified in `{body}`"
+            );
+        }
+    }
+
+    #[test]
+    fn compatibility_phrase_probe_detection_is_context_specific() {
+        assert!(contains_compat_phrase_probe(
+            "ActivationRestrictionCompatWords::new(sentence).has_phrase(PHRASE)"
+        ));
+        assert!(contains_compat_phrase_probe(
+            "let ctx = UnsupportedRewriteLineContext::new(tokens); ctx.has_phrase(PHRASE)"
+        ));
+        assert!(!contains_compat_phrase_probe(
+            "CreationWords::new(words).has_phrase(CreatePhrase::HasteGrant)"
+        ));
+    }
+
+    #[test]
+    fn direct_word_slice_match_detection_is_receiver_specific() {
+        assert!(contains_direct_word_slice_match(
+            "matches!(words.as_slice(), [])"
+        ));
+        assert!(contains_direct_word_slice_match(
+            "match filter_words.as_slice() {}"
+        ));
+        assert!(contains_direct_word_slice_match(
+            "matches!(subject_word_refs.as_slice(), [\"you\"] | [\"they\"])"
+        ));
+        assert!(contains_direct_word_slice_match(
+            "match counter_words { [\"a\"] => 1, _ => 0 }"
+        ));
+        assert!(contains_direct_word_slice_match("matches!(word_refs, [])"));
+        assert!(!contains_direct_word_slice_match(
+            "matches!(effects.as_slice(), [])"
+        ));
+        assert!(!contains_direct_word_slice_match(
+            "match targets.as_slice() {}"
+        ));
+    }
 }

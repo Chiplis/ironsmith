@@ -1,0 +1,87 @@
+#[path = "chain_splitting/recognition.rs"]
+mod recognition;
+#[path = "chain_splitting/split_rules.rs"]
+mod split_rules;
+#[path = "chain_splitting/verbs.rs"]
+mod verbs;
+
+pub(crate) use recognition::{
+    has_basic_effect_head_tokens, has_extended_effect_head_tokens,
+    is_token_creation_context_tokens, starts_with_inline_token_rules_tail_tokens,
+    starts_with_player_may_tokens, strip_leading_instead_tokens,
+};
+pub(crate) use split_rules::{
+    split_effect_chain_on_and_tokens, split_segments_on_comma_effect_head_tokens,
+    split_segments_on_comma_then_tokens,
+};
+pub(crate) use verbs::{find_chain_verb_tokens, find_chain_verb_words};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChainVerbKind {
+    Add,
+    Move,
+    Deal,
+    Draw,
+    Counter,
+    Destroy,
+    Exile,
+    Reveal,
+    Look,
+    Lose,
+    Gain,
+    Put,
+    Sacrifice,
+    Create,
+    Investigate,
+    Proliferate,
+    Tap,
+    Unattach,
+    Attach,
+    Untap,
+    Scry,
+    Discard,
+    Transform,
+    Convert,
+    Flip,
+    Roll,
+    Regenerate,
+    Mill,
+    Get,
+    Remove,
+    Return,
+    Exchange,
+    Become,
+    Switch,
+    Skip,
+    Surveil,
+    Incubate,
+    Shuffle,
+    Reorder,
+    Pay,
+    Take,
+    Detain,
+    Goad,
+    Suspect,
+    End,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChainVerbMatch {
+    pub(crate) kind: ChainVerbKind,
+    pub(crate) word_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AndPreservation {
+    ColorPair,
+    TokenRules,
+    AttachmentList,
+    SharedPlayerMay,
+    PutRemainder,
+    StepAndPhase,
+    ExchangeZones,
+    CardTypeList,
+    PowerToughnessAxis,
+    QuotedAbility,
+    SharedSubject,
+}

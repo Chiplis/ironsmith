@@ -30,6 +30,10 @@ impl TriggerMatcher for ThisAttacksTrigger {
         Some(vec![EventKind::CreatureAttacked])
     }
 
+    fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
+        event_kind == EventKind::CreatureAttacked
+    }
+
     fn display(&self) -> String {
         "Whenever this creature attacks".to_string()
     }
@@ -79,6 +83,10 @@ impl TriggerMatcher for ThisAttacksPlayerWhoControlsAtLeastTrigger {
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
         Some(vec![EventKind::CreatureAttacked])
+    }
+
+    fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
+        event_kind == EventKind::CreatureAttacked
     }
 
     fn display(&self) -> String {

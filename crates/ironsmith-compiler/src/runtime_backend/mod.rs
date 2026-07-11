@@ -45,6 +45,8 @@ pub(crate) mod grammar;
 pub(crate) mod ir;
 #[path = "families/keyword_families.rs"]
 pub(crate) mod keyword_families;
+#[path = "families/keyword_payloads.rs"]
+pub(crate) mod keyword_payloads;
 #[path = "families/keyword_registry.rs"]
 pub(crate) mod keyword_registry;
 #[path = "families/keyword_static/mod.rs"]
@@ -53,8 +55,6 @@ pub(crate) mod keyword_static;
 pub(crate) mod keyword_static_helpers;
 #[path = "front_end/leaf.rs"]
 pub(crate) mod leaf;
-#[path = "front_end/lex_patterns.rs"]
-pub(crate) mod lex_patterns;
 #[path = "front_end/lexer.rs"]
 pub(crate) mod lexer;
 #[path = "lowering/lower/mod.rs"]
@@ -89,10 +89,14 @@ pub(crate) mod rule_engine;
 pub(crate) mod search_library_support;
 #[path = "model/semantic.rs"]
 pub(crate) mod semantic;
+#[path = "front_end/semantic_line_parsing/mod.rs"]
+pub(crate) mod semantic_line_parsing;
 #[path = "model/shared_types.rs"]
 pub(crate) mod shared_types;
 #[path = "families/static_ability_helpers.rs"]
 pub(crate) mod static_ability_helpers;
+#[path = "model/token_definition.rs"]
+pub(crate) mod token_definition;
 #[path = "front_end/token_primitives.rs"]
 pub(crate) mod token_primitives;
 #[path = "front_end/shared/util.rs"]
@@ -125,7 +129,6 @@ pub(crate) use effect_sentences::{
     parse_sentence_put_multiple_counters_on_target, parse_shared_color_target_fanout_sentence,
     split_choose_list,
 };
-use front_end::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 pub(crate) use grammar::filters::parse_object_filter_with_grammar_entrypoint as parse_object_filter;
 pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint as parse_spell_filter;
 pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;
@@ -148,23 +151,16 @@ pub(crate) use leaf::{
     ActivationCostSegmentCst, lower_activation_cost_cst, parse_activation_cost_rewrite,
     parse_activation_cost_tokens_rewrite,
 };
-use lexer::LexedClause;
 pub(crate) use lexer::{OwnedLexToken, token_word_refs};
 #[cfg(test)]
 pub(crate) use lexer::{TokenWordView, lex_line, split_lexed_sentences};
-#[cfg(test)]
-pub(crate) use lower::{
-    lower_rewrite_keyword_to_chunk, lower_rewrite_statement_token_groups_to_chunks,
-    lower_rewrite_static_to_chunk, lower_rewrite_triggered_to_chunk,
-};
 pub(crate) use object_filters::{
     is_comparison_or_delimiter, merge_spell_filters, parse_object_filter_lexed,
     spell_filter_has_identity,
 };
 #[cfg(test)]
 pub(crate) use parser_support::{
-    is_at_trigger_intro, looks_like_reflexive_followup_intro_lexed,
-    looks_like_spell_resolution_followup_intro_lexed,
+    looks_like_reflexive_followup_intro_lexed, looks_like_spell_resolution_followup_intro_lexed,
 };
 pub(crate) use permission_helpers::{PermissionClauseSpec, PermissionLifetime};
 pub(crate) use pipeline::parse_text_to_semantic_document;
@@ -181,6 +177,11 @@ pub(crate) use search_library_support::{
     SearchLibraryManaConstraint, extract_search_library_mana_constraint,
     split_search_different_name_reference_filter, split_search_same_name_reference_filter,
 };
+#[cfg(test)]
+pub(crate) use semantic_line_parsing::{
+    parse_keyword_line_for_test, parse_keyword_line_with_full_tokens_for_test,
+    parse_statement_token_groups_to_chunks, parse_static_line, parse_triggered_line,
+};
 pub(crate) use shared_types::{
     CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine,
     NormalizedLine,
@@ -192,33 +193,11 @@ pub(crate) use util::{
     parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_number_or_x_value,
     parse_power_toughness, parse_scryfall_mana_cost, parse_target_phrase,
     replace_unbound_x_with_value, span_from_tokens, starts_with_activation_cost,
-    token_index_for_word_index, value_contains_unbound_x, words,
+    token_boundary_for_word, value_contains_unbound_x, words,
 };
 
 #[allow(unused_imports)]
 pub(crate) use facade::{CardTextCompiler, CompilePolicy, CompiledCardText};
-
-const FIRST_TIME_EACH_OR_THIS_TURN_PHRASES: &[&[&str]] = &[
-    &["for", "the", "first", "time", "each", "turn"],
-    &["for", "the", "first", "time", "this", "turn"],
-];
-const BECOMES_CREWED_PHRASE: &[&str] = &["becomes", "crewed"];
-const KICKED_COUNTER_SPELL_MANA_VALUE_REPLACEMENT_PHRASES: &[&[&str]] = &[
-    &["counter", "target", "spell"],
-    &["mana", "value"],
-    &["2", "or", "less"],
-    &["if", "this", "spell", "was", "kicked"],
-    &["counter", "that", "spell"],
-    &["4", "or", "less"],
-    &["instead"],
-];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TriggerFrequencyTextAst {
-    first_time_each_or_this_turn: bool,
-    becomes_crewed: bool,
-    do_this_limit_each_turn: Option<u32>,
-}
 
 pub(crate) fn compile_card_text(
     builder: CardDefinitionBuilder,
@@ -231,14 +210,7 @@ pub(crate) fn compile_card_text(
         let card_types = builder.card_builder.card_types_ref().to_vec();
         let subtypes = builder.card_builder.subtypes_ref().to_vec();
         util::with_card_source_reference_context(card_name.as_str(), &card_types, &subtypes, || {
-            let mut compiled = CardTextCompiler::compile(
-                builder,
-                text.clone(),
-                CompilePolicy { allow_unsupported },
-            )?;
-            normalize_do_this_trigger_frequency_conditions(&text, &mut compiled.definition);
-            normalize_kicked_counter_spell_mana_value_replacement(&text, &mut compiled.definition);
-            Ok(compiled)
+            CardTextCompiler::compile(builder, text, CompilePolicy { allow_unsupported })
         })
     })
 }
@@ -255,135 +227,6 @@ pub(crate) fn parse_card_text_allow_unsupported(
     text: impl Into<String>,
 ) -> Result<CardDefinition, CardTextError> {
     compile_card_text(builder, text, true).map(|compiled| compiled.definition)
-}
-
-pub(crate) fn trigger_frequency_condition(
-    text: Option<&str>,
-    max_triggers_per_turn: Option<u32>,
-) -> Option<crate::ConditionExpr> {
-    max_triggers_per_turn.map(|limit| {
-        let frequency = trigger_frequency_text_ast(text.unwrap_or_default());
-        if limit == 1 && frequency.first_time_each_or_this_turn && frequency.becomes_crewed {
-            crate::ConditionExpr::SourceFirstCrewedThisTurn
-        } else if limit == 1 && frequency.first_time_each_or_this_turn {
-            crate::ConditionExpr::FirstTimeThisTurn
-        } else if frequency.do_this_limit_each_turn.is_some() {
-            crate::ConditionExpr::DoThisMaxTimesEachTurn(limit)
-        } else {
-            crate::ConditionExpr::MaxTimesEachTurn(limit)
-        }
-    })
-}
-
-fn lex_text_tokens(text: &str) -> Vec<OwnedLexToken> {
-    text.lines()
-        .enumerate()
-        .flat_map(|(idx, line)| lexer::lex_line(line, idx).unwrap_or_default())
-        .collect()
-}
-
-fn trigger_frequency_text_ast(text: &str) -> TriggerFrequencyTextAst {
-    let tokens = lex_text_tokens(text);
-    let words = lexer::parser_token_word_refs(&tokens);
-    TriggerFrequencyTextAst {
-        first_time_each_or_this_turn: lexer::word_slice_contains_any_phrase(
-            &words,
-            FIRST_TIME_EACH_OR_THIS_TURN_PHRASES,
-        ),
-        becomes_crewed: lexer::word_slice_contains_phrase(&words, BECOMES_CREWED_PHRASE),
-        do_this_limit_each_turn: parse_do_this_only_each_turn_limit(&tokens),
-    }
-}
-
-fn parse_do_this_only_each_turn_limit(tokens: &[OwnedLexToken]) -> Option<u32> {
-    let normalized_tokens = tokens.to_vec();
-    let clause = LexedClause::new(&normalized_tokens);
-    let atoms = [
-        LexPattern::phrase(&["do", "this", "only"]),
-        LexPattern::amount("limit", LexCaptureKind::OneOf(&["once", "twice"])),
-        LexPattern::phrase(&["each", "turn"]),
-    ];
-    let matched = LexPattern::new(&atoms).find_in_clause(clause)?;
-    let limit_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-    match limit_clause.word_refs().as_slice() {
-        ["once"] => Some(1),
-        ["twice"] => Some(2),
-        _ => None,
-    }
-}
-
-fn normalize_do_this_trigger_frequency_conditions(text: &str, definition: &mut CardDefinition) {
-    let Some(limit) = trigger_frequency_text_ast(text).do_this_limit_each_turn else {
-        return;
-    };
-    for ability in &mut definition.abilities {
-        let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind else {
-            continue;
-        };
-        if triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(limit)) {
-            triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(limit));
-        }
-    }
-}
-
-fn normalize_kicked_counter_spell_mana_value_replacement(
-    text: &str,
-    definition: &mut CardDefinition,
-) {
-    let tokens = lex_text_tokens(text);
-    let words = lexer::parser_token_word_refs(&tokens);
-    if !KICKED_COUNTER_SPELL_MANA_VALUE_REPLACEMENT_PHRASES
-        .iter()
-        .all(|phrase| lexer::word_slice_contains_phrase(&words, phrase))
-    {
-        return;
-    }
-
-    let Some(spell_effect) = definition.spell_effect.as_ref() else {
-        return;
-    };
-    let [segment] = spell_effect.segments.as_slice() else {
-        return;
-    };
-    let [base_branch] = segment.self_replacements.as_slice() else {
-        return;
-    };
-    let crate::effect::Condition::TaggedObjectMatches(tag, base_filter) = &base_branch.condition
-    else {
-        return;
-    };
-    if !matches!(
-        base_filter.mana_value.as_ref(),
-        Some(crate::target::Comparison::LessThanOrEqual(value)) if *value == 2
-    ) {
-        return;
-    }
-
-    let mut kicked_filter = base_filter.clone();
-    kicked_filter.mana_value = Some(crate::target::Comparison::LessThanOrEqual(4));
-
-    let mut default_effects = segment.default_effects.clone();
-    default_effects.push(crate::effect::Effect::conditional(
-        base_branch.condition.clone(),
-        base_branch.replacement_effects.clone(),
-        Vec::new(),
-    ));
-
-    let kicked_effect = crate::effect::Effect::conditional(
-        crate::effect::Condition::TaggedObjectMatches(tag.clone(), kicked_filter),
-        base_branch.replacement_effects.clone(),
-        Vec::new(),
-    );
-    let mut program = crate::resolution::ResolutionProgram::from_effects(default_effects);
-    if let Some(segment) = program.last_segment_mut() {
-        segment
-            .self_replacements
-            .push(crate::resolution::SelfReplacementBranch::new(
-                crate::effect::Condition::ThisSpellWasKicked,
-                vec![kicked_effect],
-            ));
-        definition.spell_effect = Some(program);
-    }
 }
 
 #[cfg(test)]

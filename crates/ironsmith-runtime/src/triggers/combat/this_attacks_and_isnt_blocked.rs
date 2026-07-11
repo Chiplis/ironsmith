@@ -19,6 +19,14 @@ impl TriggerMatcher for ThisAttacksAndIsntBlockedTrigger {
         e.attacker == ctx.source_id
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttackedAndUnblocked])
+    }
+
+    fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
+        event_kind == EventKind::CreatureAttackedAndUnblocked
+    }
+
     fn display(&self) -> String {
         "Whenever this creature attacks and isn't blocked".to_string()
     }

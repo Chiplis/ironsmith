@@ -1,85 +1,51 @@
 use super::*;
 
-const MAX_SPEED_CONDITION_LABEL: &str = "__max_speed_condition";
-const CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX: &str = "__control_color_pair_permanent_";
-const CONTROL_SUBTYPE_PERMANENT_CONDITION_PREFIX: &str = "__control_subtype_permanent_";
-const STATION_THRESHOLD_CONDITION_PREFIX: &str = "__station_threshold_";
-
-pub(crate) fn condition_for_chosen_option_label(label: &str) -> crate::ConditionExpr {
-    if label == MAX_SPEED_CONDITION_LABEL {
-        return crate::ConditionExpr::ValueComparison {
+pub(crate) fn condition_for_chosen_option(context: &ChosenOptionContext) -> crate::ConditionExpr {
+    match context {
+        ChosenOptionContext::SourceOption(label) => {
+            crate::ConditionExpr::SourceChosenOption(label.clone())
+        }
+        ChosenOptionContext::MaxSpeed => crate::ConditionExpr::ValueComparison {
             left: crate::effect::Value::Speed(PlayerFilter::You),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: crate::effect::Value::Fixed(4),
-        };
-    }
-    if let Some(threshold) = station_threshold_from_chosen_option_label(label) {
-        return crate::ConditionExpr::ValueComparison {
+        },
+        ChosenOptionContext::StationThreshold(threshold) => crate::ConditionExpr::ValueComparison {
             left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            right: crate::effect::Value::Fixed(threshold),
-        };
-    }
-    if let Some(subtype_name) = label.strip_prefix(CONTROL_SUBTYPE_PERMANENT_CONDITION_PREFIX) {
-        if let Some(subtype) =
-            crate::runtime_backend::front_end::shared::util::parse_subtype_flexible(subtype_name)
-        {
+            right: crate::effect::Value::Fixed(*threshold),
+        },
+        ChosenOptionContext::ControlsSubtypePermanent(subtype) => {
             let filter = ObjectFilter::permanent()
                 .you_control()
-                .with_subtype(subtype);
-            return crate::ConditionExpr::CountComparison {
+                .with_subtype(*subtype);
+            crate::ConditionExpr::CountComparison {
                 count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
                 comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
                 display: Some(format!("you control a {subtype}")),
-            };
+            }
         }
-        return crate::ConditionExpr::SourceChosenOption(label.to_string());
-    }
-    if let Some(color_pair) = label.strip_prefix(CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX) {
-        let Some((left_name, right_name)) = color_pair.split_once('_') else {
-            return crate::ConditionExpr::SourceChosenOption(label.to_string());
-        };
-        let Some(left) = color_from_label(left_name) else {
-            return crate::ConditionExpr::SourceChosenOption(label.to_string());
-        };
-        let Some(right) = color_from_label(right_name) else {
-            return crate::ConditionExpr::SourceChosenOption(label.to_string());
-        };
-        let left_filter = ObjectFilter::permanent()
-            .you_control()
-            .with_colors(ColorSet::from_color(left));
-        let right_filter = ObjectFilter::permanent()
-            .you_control()
-            .with_colors(ColorSet::from_color(right));
-        let left_condition = crate::ConditionExpr::CountComparison {
-            count: crate::static_abilities::AnthemCountExpression::MatchingFilter(left_filter),
-            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
-            display: Some(format!("you control a {left_name} permanent")),
-        };
-        let right_condition = crate::ConditionExpr::CountComparison {
-            count: crate::static_abilities::AnthemCountExpression::MatchingFilter(right_filter),
-            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
-            display: Some(format!("you control a {right_name} permanent")),
-        };
-        return crate::ConditionExpr::Or(Box::new(left_condition), Box::new(right_condition));
-    }
-    crate::ConditionExpr::SourceChosenOption(label.to_string())
-}
-
-pub(crate) fn station_threshold_from_chosen_option_label(label: &str) -> Option<i32> {
-    label
-        .strip_prefix(STATION_THRESHOLD_CONDITION_PREFIX)
-        .and_then(|value| value.parse::<i32>().ok())
-}
-
-fn color_from_label(label: &str) -> Option<crate::Color> {
-    match label {
-        "white" => Some(crate::Color::White),
-        "blue" => Some(crate::Color::Blue),
-        "black" => Some(crate::Color::Black),
-        "red" => Some(crate::Color::Red),
-        "green" => Some(crate::Color::Green),
-        _ => None,
+        ChosenOptionContext::ControlsEitherColorPermanent { left, right } => {
+            let left_name = left.name();
+            let right_name = right.name();
+            let left_filter = ObjectFilter::permanent()
+                .you_control()
+                .with_colors(ColorSet::from_color(*left));
+            let right_filter = ObjectFilter::permanent()
+                .you_control()
+                .with_colors(ColorSet::from_color(*right));
+            let left_condition = crate::ConditionExpr::CountComparison {
+                count: crate::static_abilities::AnthemCountExpression::MatchingFilter(left_filter),
+                comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                display: Some(format!("you control a {left_name} permanent")),
+            };
+            let right_condition = crate::ConditionExpr::CountComparison {
+                count: crate::static_abilities::AnthemCountExpression::MatchingFilter(right_filter),
+                comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                display: Some(format!("you control a {right_name} permanent")),
+            };
+            crate::ConditionExpr::Or(Box::new(left_condition), Box::new(right_condition))
+        }
     }
 }
 
@@ -89,8 +55,14 @@ pub(crate) fn strip_non_keyword_label_prefix_for_lowering_lexed(
     if looks_like_numeric_result_prefix_lexed(tokens) {
         return tokens;
     }
-    while let Some((label, body_tokens)) = split_statement_label_prefix_for_lowering_lexed(tokens) {
-        if preserve_keyword_prefix_for_parse(label.as_str()) {
+    while let Some((label_tokens, body_tokens)) =
+        split_statement_label_prefix_for_lowering_lexed(tokens)
+    {
+        if crate::runtime_backend::grammar::document_shapes::parse_preserved_keyword_label_tokens(
+            label_tokens,
+        )
+        .is_some()
+        {
             break;
         }
         tokens = body_tokens;
@@ -192,17 +164,17 @@ pub(crate) fn group_statement_sentences_for_lowering_lexed(
 
 pub(crate) fn wrap_chosen_option_static_chunk(
     chunk: LineAst,
-    chosen_option_label: Option<&str>,
+    chosen_option: Option<&ChosenOptionContext>,
 ) -> Result<LineAst, CardTextError> {
-    let Some(label) = chosen_option_label else {
+    let Some(context) = chosen_option else {
         return Ok(chunk);
     };
-    let condition = condition_for_chosen_option_label(label);
+    let condition = condition_for_chosen_option(context);
     Ok(match chunk {
         LineAst::Multiple(chunks) => LineAst::Multiple(
             chunks
                 .into_iter()
-                .map(|chunk| wrap_chosen_option_static_chunk(chunk, chosen_option_label))
+                .map(|chunk| wrap_chosen_option_static_chunk(chunk, chosen_option))
                 .collect::<Result<Vec<_>, _>>()?,
         ),
         LineAst::StaticAbility(ability) => LineAst::StaticAbility(
@@ -251,10 +223,6 @@ pub(crate) fn wrap_chosen_option_static_chunk(
     })
 }
 
-pub(crate) fn effective_chosen_option_label(chosen_option_label: Option<&str>) -> Option<&str> {
-    chosen_option_label
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +231,30 @@ mod tests {
     use crate::runtime_backend::RewriteKeywordLineKind;
     use crate::runtime_backend::pipeline::parse_text_to_semantic_document;
     use crate::types::CardType;
+
+    #[test]
+    fn chosen_option_conditions_consume_typed_contexts() {
+        assert!(matches!(
+            condition_for_chosen_option(&ChosenOptionContext::source_option("khans")),
+            crate::ConditionExpr::SourceChosenOption(option) if option == "khans"
+        ));
+        assert!(matches!(
+            condition_for_chosen_option(&ChosenOptionContext::StationThreshold(5)),
+            crate::ConditionExpr::ValueComparison {
+                left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: crate::effect::Value::Fixed(5),
+            }
+        ));
+        assert!(matches!(
+            condition_for_chosen_option(&ChosenOptionContext::MaxSpeed),
+            crate::ConditionExpr::ValueComparison {
+                left: crate::effect::Value::Speed(PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: crate::effect::Value::Fixed(4),
+            }
+        ));
+    }
 
     #[test]
     fn rewrite_activated_sentence_alignment_merges_inner_quoted_periods() {
@@ -314,16 +306,18 @@ mod tests {
         let text = "you may exert champion as it attacks. when you do, he can't block this turn.";
         let tokens = lex_line(text, 0).expect("rewrite lexer should classify exert keyword line");
 
-        let parsed = lower_rewrite_keyword_to_chunk(
+        let parsed = parse_keyword_line_for_test(
             super::LineInfo {
                 line_index: 0,
                 display_line_index: 0,
                 raw_line: text.to_string(),
+                source_tokens: tokens.clone(),
                 normalized: NormalizedLine {
                     original: text.to_string(),
                     normalized: text.to_string(),
                     char_map: Vec::new(),
                 },
+                semantic_facts: Default::default(),
             },
             text,
             &tokens,
@@ -334,8 +328,7 @@ mod tests {
             LineAst::StaticAbility(ability) => {
                 let debug = format!("{ability:?}");
                 assert!(
-                    str_contains(debug.as_str(), "exert attack")
-                        || str_contains(debug.as_str(), "ExertAttack"),
+                    debug.contains("exert attack") || debug.contains("ExertAttack"),
                     "{debug}"
                 );
             }
@@ -352,16 +345,18 @@ mod tests {
         let tokens =
             lex_line(token_text, 0).expect("rewrite lexer should classify exert keyword line");
 
-        let parsed = lower_rewrite_keyword_to_chunk(
+        let parsed = parse_keyword_line_for_test(
             super::LineInfo {
                 line_index: 0,
                 display_line_index: 0,
                 raw_line: "placeholder exert text".to_string(),
+                source_tokens: tokens.clone(),
                 normalized: NormalizedLine {
                     original: "placeholder exert text".to_string(),
                     normalized: "placeholder exert text".to_string(),
                     char_map: Vec::new(),
                 },
+                semantic_facts: Default::default(),
             },
             "placeholder exert text",
             &tokens,
@@ -372,13 +367,11 @@ mod tests {
             LineAst::StaticAbility(ability) => {
                 let debug = format!("{ability:?}");
                 assert!(
-                    str_contains(debug.as_str(), "exert attack")
-                        || str_contains(debug.as_str(), "ExertAttack"),
+                    debug.contains("exert attack") || debug.contains("ExertAttack"),
                     "{debug}"
                 );
                 assert!(
-                    str_contains(debug.as_str(), "only_if_not_exerted_this_turn: true")
-                        || str_contains(debug.as_str(), "true"),
+                    debug.contains("only_if_not_exerted_this_turn: true") || debug.contains("true"),
                     "{debug}"
                 );
             }
@@ -401,16 +394,18 @@ mod tests {
         let effect_tokens = lex_line(effect_text, 0)
             .expect("rewrite lexer should classify burning rune demon effect");
 
-        let parsed = lower_rewrite_triggered_to_chunk(
+        let parsed = parse_triggered_line(
             super::LineInfo {
                 line_index: 0,
                 display_line_index: 0,
                 raw_line: full_text.to_string(),
+                source_tokens: full_tokens.clone(),
                 normalized: NormalizedLine {
                     original: full_text.to_string(),
                     normalized: full_text.to_string(),
                     char_map: Vec::new(),
                 },
+                semantic_facts: Default::default(),
             },
             full_text,
             &full_tokens,
@@ -425,10 +420,10 @@ mod tests {
         )?;
 
         let debug = format!("{parsed:?}");
-        assert!(str_contains(debug.as_str(), "Triggered"), "{debug}");
-        assert!(str_contains(debug.as_str(), "divvy_source"), "{debug}");
-        assert!(str_contains(debug.as_str(), "divvy_chosen"), "{debug}");
-        assert!(str_contains(debug.as_str(), "ShuffleLibrary"), "{debug}");
+        assert!(debug.contains("Triggered"), "{debug}");
+        assert!(debug.contains("divvy_source"), "{debug}");
+        assert!(debug.contains("divvy_chosen"), "{debug}");
+        assert!(debug.contains("ShuffleLibrary"), "{debug}");
 
         Ok(())
     }

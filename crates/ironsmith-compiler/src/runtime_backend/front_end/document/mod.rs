@@ -1,5 +1,5 @@
 use crate::PtValue;
-use crate::ability::ActivationTiming;
+use crate::ability::{ActivationTiming, PresentationLabel};
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
     ParsedLevelActivatedAbilityAst, PredicateAst, TextSpan,
@@ -31,9 +31,16 @@ use super::grammar::abilities::{
     is_opening_hand_begin_game_static_line_lexed, is_ward_or_echo_static_prefix_line_lexed,
     split_nested_combat_whenever_clause_lexed,
 };
+use super::grammar::document_shapes as document_grammar;
+use super::grammar::effects as effect_grammar;
+use super::grammar::line_families as line_family_grammar;
+use super::grammar::postpass_surfaces as postpass_surface_grammar;
 use super::grammar::primitives as grammar;
+use super::grammar::semantic_lowering as semantic_grammar;
 use super::grammar::structure::split_lexed_sentences;
-use super::ir::{RewriteSemanticDocument, RewriteSemanticItem};
+use super::ir::{
+    ChosenOptionContext, OverloadRewritePayload, RewriteSemanticDocument, RewriteSemanticItem,
+};
 use super::keyword_registry::{parse_keyword_line_cst, rewrite_keyword_dash_parse_tokens};
 use super::keyword_static::{
     parse_if_this_spell_costs_less_to_cast_line_lexed,
@@ -41,113 +48,32 @@ use super::keyword_static::{
     parse_spell_cost_increase_per_target_beyond_first_line, parse_spells_cost_modifier_line,
 };
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
-use super::lex_patterns::LexPattern;
 use super::lexer::{
-    LexStream, LexedClause, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView,
+    LexStream, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView,
     contains_token_word_sequence, find_token_kind, find_token_word, lex_line, render_token_slice,
-    token_slice_ends_with, token_slice_first_is, token_slice_last_kind, token_slice_starts_with,
-    token_slice_starts_with_any, token_slice_words_eq, token_slice_words_eq_any, token_word_refs,
-    trim_lexed_commas, word_slice_eq_any,
+    token_slice_first_is, token_slice_last_kind, token_slice_words_eq, token_slice_words_eq_any,
+    token_word_refs, tokens_end_with, tokens_start_with, tokens_start_with_any, trim_lexed_commas,
+    word_slice_eq_any,
 };
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
 };
 use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
 use super::token_primitives::{
-    clone_sentence_chunk_tokens, find_index as find_token_index, lexed_head_words,
-    lexed_tokens_contain_non_prefix_instead, remove_copy_exception_type_removal_lexed,
-    rewrite_followup_intro_to_if_lexed, split_em_dash_label_prefix_tokens, str_contains,
-    str_contains_char, str_ends_with_char, str_split_once, str_split_once_char, str_starts_with,
-    str_starts_with_char, str_strip_suffix,
+    clone_sentence_chunk_tokens, items_have, items_start_with, lexed_head_words,
+    lexed_tokens_contain_non_prefix_instead, locate_index, locate_index as locate_token_index,
+    locate_window_index, remove_copy_exception_type_removal_lexed,
+    rewrite_followup_intro_to_if_lexed, split_em_dash_label_prefix_tokens,
 };
 use super::util::{
     map_span_to_original, parse_level_header, parse_level_up_line_lexed, parse_power_toughness,
-    parse_saga_chapter_prefix, parser_trace, parser_trace_enabled,
-    preserve_keyword_prefix_for_parse, span_from_tokens,
+    parse_saga_chapter_prefix, parser_trace, parser_trace_enabled, span_from_tokens,
 };
 use std::sync::LazyLock;
 
-const TRIGGER_CAP_ONCE_SUFFIXES: &[&[&str]] = &[
-    &[
-        "this", "ability", "triggers", "only", "once", "each", "turn",
-    ],
-    &["do", "this", "only", "once", "each", "turn"],
-];
-const SOURCE_LEAVES_BATTLEFIELD_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["leaves", "the", "battlefield"])]);
-const THIS_PERMANENT_PHRASE_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["this", "permanent"])]);
-const HALF_STARTING_LIFE_PLUS_ONE_UNSUPPORTED_PHRASE: &[&str] = &[
-    "if", "your", "life", "total", "is", "less", "than", "or", "equal", "to", "half", "your",
-    "starting", "life", "total", "plus", "one",
-];
-const NAMED_REFERENCE_WORD: &str = "named";
 const TOKEN_NAME_SUFFIX_WORD: &str = "twin";
-const SOURCE_ALIAS_EFFECT_VERBS: &[&str] = &[
-    "add",
-    "attach",
-    "become",
-    "convert",
-    "counter",
-    "create",
-    "deal",
-    "destroy",
-    "detain",
-    "discard",
-    "draw",
-    "exchange",
-    "exile",
-    "get",
-    "goad",
-    "incubate",
-    "investigate",
-    "look",
-    "mill",
-    "move",
-    "pay",
-    "proliferate",
-    "regenerate",
-    "remove",
-    "return",
-    "sacrifice",
-    "scry",
-    "shuffle",
-    "skip",
-    "surveil",
-    "suspect",
-    "tap",
-    "transform",
-    "untap",
-];
-const SOURCE_ALIAS_NON_VERB_FOLLOWUPS: &[&str] = &[
-    "gets", "get", "has", "have", "is", "are", "enters", "attacks", "blocks", "becomes", "become",
-    "can't", "cant", "can", "does", "doesn't", "doesnt",
-];
-const WHEN_ONE_OR_MORE_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::any_phrase(&[
-        &["when", "one", "or", "more"],
-        &["whenever", "one", "or", "more"],
-    ])]);
-const CUMULATIVE_UPKEEP_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["cumulative", "upkeep"])]);
-const FORMER_SECTION9_CANONICAL_GAPS: &[&str] = &[
-    "destroy target creature if its white. a creature destroyed this way cant be regenerated.",
-    "create two 1/1 white kithkin soldier creature tokens if {w} was spent to cast this spell. counter up to one target creature spell if {u} was spent to cast this spell.",
-    "{t}, sacrifice x goats: add x mana of any one color. you gain x life.",
-    "shuffle your library, then exile the top four cards. you may cast any number of spells with mana value 5 or less from among them without paying their mana costs. lands you control dont untap during your next untap step.",
-    "destroy target creature unless its controller pays life equal to its toughness. a creature destroyed this way cant be regenerated.",
-    "destroy all lands or all creatures. creatures destroyed this way cant be regenerated.",
-    "destroy two target nonblack creatures unless either one is a color the other isnt. they cant be regenerated.",
-];
-const FORMER_SECTION9_CANONICAL_WITHOUT_HYPHEN_GAPS: &[&str] = &[
-    "exile target nontoken creature you own and the top two cards of your library in a facedown pile, shuffle that pile, then cloak those cards. they enter tapped.",
-];
 const LESS_THAN_ONE_MANA_REDUCTION_REMINDER: &str =
     "this effect can't reduce the mana in that cost to less than one mana.";
-
-fn trigger_cap_suffix_is_once_each_turn(words: &[&str]) -> bool {
-    word_slice_eq_any(words, TRIGGER_CAP_ONCE_SUFFIXES)
-}
 
 mod block_parsing;
 mod line_cst_parsing;
@@ -234,60 +160,11 @@ fn strip_choice_bullet_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToke
 }
 
 fn is_named_option_as_enters_choice_header(line: &PreprocessedLine) -> bool {
-    let words = token_word_refs(&line.tokens);
-    let Some(as_idx) = words.iter().position(|word| *word == "as") else {
-        return false;
-    };
-    let Some(enters_idx) = words
-        .iter()
-        .enumerate()
-        .skip(as_idx + 1)
-        .find_map(|(idx, word)| (*word == "enters").then_some(idx))
-    else {
-        return false;
-    };
-    let Some(choose_idx) = words
-        .iter()
-        .enumerate()
-        .skip(enters_idx + 1)
-        .find_map(|(idx, word)| (*word == "choose").then_some(idx))
-    else {
-        return false;
-    };
-    words.iter().skip(choose_idx + 1).any(|word| *word == "or")
+    document_grammar::parse_named_option_choice_header(&line.tokens).is_some()
 }
 
 fn starts_with_pawprint_modal_label(tokens: &[OwnedLexToken]) -> bool {
-    let mut seen_pawprint = false;
-    let mut idx = 0;
-    while tokens
-        .get(idx)
-        .and_then(pawprint_modal_label_count)
-        .is_some()
-    {
-        seen_pawprint = true;
-        idx += 1;
-    }
-    seen_pawprint
-        && tokens
-            .get(idx)
-            .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
-}
-
-fn pawprint_modal_label_count(token: &OwnedLexToken) -> Option<u32> {
-    match token.kind {
-        TokenKind::ManaGroup => {
-            let mut rest = token.parser_text();
-            let mut count = 0u32;
-            while let Some(stripped) = rest.strip_prefix("{p}") {
-                count += 1;
-                rest = stripped;
-            }
-            (count > 0 && rest.is_empty()).then_some(count)
-        }
-        TokenKind::Word if token.parser_text() == "p" => Some(1),
-        _ => None,
-    }
+    super::grammar::modal::parse_modal_point_label_tokens(tokens).is_some()
 }
 
 fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroCst> {
@@ -336,10 +213,10 @@ fn strip_trailing_trigger_cap_suffix_tokens(
     let Some((phrase, head)) = grammar::strip_lexed_suffix_phrases(tokens, &cap_suffixes) else {
         return (tokens, None);
     };
-    let count = if trigger_cap_suffix_is_once_each_turn(phrase) {
-        1
-    } else {
-        2
+    let count = match document_grammar::parse_trigger_cap(phrase) {
+        Some(document_grammar::TriggerCapSurface::Once) => 1,
+        Some(document_grammar::TriggerCapSurface::Twice) => 2,
+        None => return (tokens, None),
     };
     if !token_slice_last_kind(head, TokenKind::Period) {
         return (tokens, None);
@@ -407,9 +284,9 @@ impl TriggeredSplitCandidate {
             effect_text: self.effect_text,
             effect_parse_tokens: self.effect_parse_tokens,
             intervening_if: self.intervening_if,
-            presentation_label: trigger_presentation_label_from_preprocessed_line(line),
+            presentation: trigger_presentation_from_preprocessed_line(line),
             max_triggers_per_turn: self.max_triggers_per_turn,
-            chosen_option_label: None,
+            chosen_option: None,
         }
     }
 }
@@ -560,88 +437,16 @@ fn triggered_effect_tokens_have_trailing_static_sentences(tokens: &[OwnedLexToke
 }
 
 fn sentence_is_static_after_trigger_effect(tokens: &[OwnedLexToken]) -> bool {
-    looks_like_self_enters_with_x_counters_static_sentence(tokens)
+    semantic_grammar::parse_self_counter_entry_tokens(tokens).is_some()
         || matches!(parse_static_ability_ast_line_lexed(tokens), Ok(Some(_)))
-}
-
-fn looks_like_self_enters_with_x_counters_static_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = token_word_refs(tokens);
-    matches!(
-        words.as_slice(),
-        [
-            "this" | "it",
-            "creature" | "permanent" | "spell",
-            "enters",
-            "with",
-            "x",
-            "+1/+1",
-            "counters",
-            "on",
-            "it",
-            ..
-        ] | [
-            "it",
-            "enters",
-            "with",
-            "x",
-            "+1/+1",
-            "counters",
-            "on",
-            "it",
-            ..
-        ]
-    )
-}
-
-pub(crate) fn split_compound_buff_and_unblockable_sentence(
-    tokens: &[OwnedLexToken],
-) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
-    let words = TokenWordView::new(tokens);
-    let gets_idx = words.find_word("gets")?;
-    let and_idx = words.find_phrase_start(&["and", "cant", "be", "blocked"])?;
-    if and_idx + 4 != words.len() {
-        return None;
-    }
-
-    let subject_token_end = words.token_index_for_word_index(gets_idx)?;
-    let and_token_idx = words.token_index_for_word_index(and_idx)?;
-    let cant_token_idx = words.token_index_for_word_index(and_idx + 1)?;
-    if subject_token_end == 0
-        || subject_token_end >= and_token_idx
-        || cant_token_idx <= and_token_idx
-    {
-        return None;
-    }
-
-    let left_tokens = tokens[..and_token_idx].to_vec();
-    let mut right_tokens =
-        Vec::with_capacity(subject_token_end + tokens.len().saturating_sub(cant_token_idx));
-    right_tokens.extend_from_slice(&tokens[..subject_token_end]);
-    right_tokens.extend_from_slice(&tokens[cant_token_idx..]);
-    Some((left_tokens, right_tokens))
-}
-
-fn parse_former_section9_unsupported_line_cst(
-    line: &PreprocessedLine,
-) -> Option<UnsupportedLineCst> {
-    let normalized = line.info.normalized.normalized.as_str();
-    let canonical = normalized.replace(['\'', '’'], "");
-    let canonical_without_hyphens = canonical.replace('-', "");
-    let matches_former_section9_gap = FORMER_SECTION9_CANONICAL_GAPS.contains(&canonical.as_str())
-        || FORMER_SECTION9_CANONICAL_WITHOUT_HYPHEN_GAPS
-            .contains(&canonical_without_hyphens.as_str());
-    matches_former_section9_gap.then(|| UnsupportedLineCst {
-        info: line.info.clone(),
-        reason_code: "former-section9-line-not-yet-supported",
-    })
 }
 
 fn strip_non_keyword_label_prefix_lexed(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     if looks_like_numeric_result_prefix_lexed(tokens) {
         return tokens;
     }
-    while let Some((label, _, body_tokens)) = split_label_prefix_lexed(tokens) {
-        if preserve_keyword_prefix_for_parse(label.as_str()) {
+    while let Some((_, label_tokens, body_tokens)) = split_label_prefix_lexed(tokens) {
+        if document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_some() {
             break;
         }
         tokens = body_tokens;
@@ -672,8 +477,7 @@ fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn should_skip_keyword_action_static_probe(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_ends_with(tokens, &["cant", "be", "blocked"])
-        && !token_slice_starts_with_any(tokens, &[&["this"], &["it"]])
+    document_grammar::parse_blocked_keyword_action_surface(tokens).is_some()
 }
 
 fn should_prefer_statement_before_static_for_nonpermanent_spell(
@@ -712,46 +516,123 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
         return false;
     }
     is_nonpermanent_spell
-        && (token_slice_starts_with_any(tokens, &[&["each"], &["all"]])
-            || contains_token_word_sequence(tokens, &["until", "end", "of", "turn"])
-            || (token_slice_starts_with_any(tokens, &[&["if"]])
-                && contains_token_word_sequence(tokens, &["instead"])))
+        && document_grammar::parse_nonpermanent_statement_surface(tokens).is_some()
 }
 
 fn looks_like_leading_conditional_self_replacement(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_starts_with_any(tokens, &[&["if"]])
-        && contains_token_word_sequence(tokens, &["instead"])
+    document_grammar::parse_conditional_replacement_surface(tokens).is_some()
 }
 
 fn parse_labeled_conditional_replacement_sentence_split(
     line: &PreprocessedLine,
     idx: usize,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !looks_like_leading_conditional_self_replacement(&line.tokens) {
-        return Ok(None);
+    // Some replacement abilities are one semantic static line even though
+    // their Oracle surface contains multiple sentences (for example Eruth
+    // and Sages of the Anima). Give the typed static grammar the complete
+    // token stream before considering a sentence-by-sentence split.
+    if matches!(
+        line_family_grammar::parse_statement_static_preference(&line.tokens),
+        Some(
+            line_family_grammar::StatementStaticPreference::DrawReplacement
+                | line_family_grammar::StatementStaticPreference::DiscardOrRedirectReplacement
+        )
+    ) && let Ok(Some(static_line)) = parse_static_line_cst(line)
+    {
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Static(static_line),
+            idx + 1,
+        )));
     }
 
+    let prevention_then_trigger =
+        line_family_grammar::parse_remove_counter_prevention_then_trigger(&line.tokens);
+    let parsed_prevention = prevention_then_trigger
+        .as_ref()
+        .map(|shape| {
+            super::keyword_static::lower_remove_counter_prevention_spec(shape.prevention)
+                .map(LineAst::StaticAbility)
+        })
+        .transpose()?;
     let sentences = split_lexed_sentences(&line.tokens);
     if sentences.len() < 2 {
         return Ok(None);
     }
-
-    let Some(first_sentence_tokens) = clone_sentence_chunk_tokens(&line.tokens, &sentences[..1])
-    else {
+    if sentences.first().is_some_and(|sentence| {
+        super::grammar::effects::followup_shapes::is_skip_tapped_source_turn_replacement(sentence)
+    }) && sentences.get(1).is_some_and(|sentence| {
+        super::grammar::effects::followup_shapes::is_if_did_untap_source_followup(sentence)
+    }) {
         return Ok(None);
+    }
+    let leading_conditional_replacement = sentences
+        .first()
+        .is_some_and(|sentence| looks_like_leading_conditional_self_replacement(sentence));
+    let suffix_starts_with_trigger = prevention_then_trigger.is_some()
+        || sentences
+            .get(1)
+            .is_some_and(|sentence| line_starts_with_trigger_intro_tokens(sentence));
+
+    let first_sentence_tokens = if let Some(shape) = prevention_then_trigger.as_ref() {
+        let mut tokens = shape.prevention_tokens.to_vec();
+        tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+        tokens
+    } else {
+        let Some(tokens) = clone_sentence_chunk_tokens(&line.tokens, &sentences[..1]) else {
+            return Ok(None);
+        };
+        tokens
     };
     let first_sentence_line = rewrite_line_tokens(line, &first_sentence_tokens);
-    let Some(statement_line) = parse_statement_line_cst(&first_sentence_line)? else {
+    let first_static = if prevention_then_trigger.is_some() {
+        None
+    } else {
+        match parse_static_line_cst(&first_sentence_line) {
+            Ok(parsed) => parsed,
+            Err(err) if leading_conditional_replacement => return Err(err),
+            Err(_) => return Ok(None),
+        }
+    };
+    if !leading_conditional_replacement
+        && !(suffix_starts_with_trigger
+            && (first_static.is_some() || prevention_then_trigger.is_some()))
+    {
+        return Ok(None);
+    }
+
+    let mut lines = if prevention_then_trigger.is_some() {
+        vec![RewriteLineCst::Static(StaticLineCst {
+            info: first_sentence_line.info.clone(),
+            text: first_sentence_line.info.normalized.normalized.clone(),
+            parse_tokens: first_sentence_line.tokens.clone(),
+            chosen_option: None,
+            parsed: parsed_prevention,
+        })]
+    } else if let Some(static_line) = first_static {
+        vec![RewriteLineCst::Static(static_line)]
+    } else if let Some(statement_line) = parse_statement_line_cst(&first_sentence_line)? {
+        vec![RewriteLineCst::Statement(statement_line)]
+    } else {
         return Ok(None);
     };
-
-    let mut lines = vec![RewriteLineCst::Statement(statement_line)];
-    for sentence_tokens in sentences.iter().skip(1) {
+    for (sentence_idx, sentence_tokens) in sentences.iter().enumerate().skip(1) {
         let sentence_line = rewrite_line_tokens(line, sentence_tokens);
-        if let Some(statement_line) = parse_statement_line_cst(&sentence_line)? {
+        let is_typed_prevention_trigger = prevention_then_trigger.is_some() && sentence_idx == 1;
+        if is_typed_prevention_trigger
+            || line_starts_with_trigger_intro_tokens(&sentence_line.tokens)
+        {
+            lines.push(RewriteLineCst::Triggered(parse_triggered_line_cst(
+                &sentence_line,
+            )?));
+        } else if let Some(statement_line) = parse_statement_line_cst(&sentence_line)? {
             lines.push(RewriteLineCst::Statement(statement_line));
         } else if let Some(static_line) = parse_static_line_cst(&sentence_line)? {
             lines.push(RewriteLineCst::Static(static_line));
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "parser could not lower a sentence following a conditional replacement: '{}'",
+                render_token_slice(&sentence_line.tokens)
+            )));
         }
     }
 
@@ -791,43 +672,11 @@ fn should_parse_next_cast_trigger_line_as_spell_effect(
     });
 
     (builder_has_nonpermanent_spell_type || metadata_has_nonpermanent_spell_type)
-        && token_slice_starts_with_any(tokens, &[&["when"], &["whenever"]])
-        && contains_token_word_sequence(tokens, &["next", "cast"])
-        && contains_token_word_sequence(tokens, &["this", "turn"])
+        && document_grammar::parse_next_cast_trigger_surface(tokens).is_some()
 }
 
 fn looks_like_activation_cost_prefix(tokens: &[OwnedLexToken]) -> bool {
-    let Some(first) = tokens.first() else {
-        return false;
-    };
-    if matches!(
-        first.kind,
-        TokenKind::ManaGroup | TokenKind::Plus | TokenKind::Dash
-    ) {
-        return true;
-    }
-    let first_text = first.parser_text();
-    if str_starts_with_char(first_text, '+')
-        || str_starts_with_char(first_text, '-')
-        || str_starts_with_char(first_text, '−')
-    {
-        return true;
-    }
-    let first = first.as_word().unwrap_or(first_text).to_ascii_lowercase();
-    matches!(
-        first.as_str(),
-        "tap"
-            | "untap"
-            | "pay"
-            | "discard"
-            | "sacrifice"
-            | "exile"
-            | "mill"
-            | "remove"
-            | "put"
-            | "return"
-            | "unattach"
-    )
+    document_grammar::parse_activation_cost_head(tokens).is_some()
 }
 
 #[cfg(test)]
@@ -886,11 +735,10 @@ pub(crate) fn split_lexed_once_on_colon_outside_quotes(
 #[cfg(test)]
 fn split_label_prefix(text: &str) -> Option<(&str, &str)> {
     let trimmed = text.trim();
-    let (label, body) = str_split_once_char(trimmed, '—')?;
+    let (label, body) = trimmed.split_once('—')?;
     let label = label.trim();
     let body = body.trim();
-    (!label.is_empty() && !body.is_empty() && !str_contains_char(label, '.'))
-        .then_some((label, body))
+    (!label.is_empty() && !body.is_empty() && !label.contains('.')).then_some((label, body))
 }
 
 fn split_label_prefix_lexed(
@@ -924,52 +772,51 @@ fn render_label_prefix_tokens(tokens: &[OwnedLexToken]) -> String {
     trimmed.to_string()
 }
 
-fn trigger_presentation_label_from_line_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
+fn trigger_presentation_from_line_tokens(tokens: &[OwnedLexToken]) -> Option<PresentationLabel> {
     let (label, label_tokens, body_tokens) = split_label_prefix_lexed(tokens)?;
     if !looks_like_ability_word_label(label_tokens, false) {
         return None;
     }
-    line_starts_with_trigger_intro_tokens(body_tokens).then(|| trigger_presentation_label(&label))
+    line_starts_with_trigger_intro_tokens(body_tokens)
+        .then(|| trigger_presentation(label_tokens, &label))
 }
 
-fn trigger_presentation_label_from_preprocessed_line(line: &PreprocessedLine) -> Option<String> {
-    trigger_presentation_label_from_line_tokens(&line.tokens).or_else(|| {
-        super::lexer::lex_line(&line.info.raw_line, line.info.line_index)
-            .ok()
-            .and_then(|tokens| trigger_presentation_label_from_line_tokens(&tokens))
-    })
+fn trigger_presentation_from_preprocessed_line(
+    line: &PreprocessedLine,
+) -> Option<PresentationLabel> {
+    trigger_presentation_from_line_tokens(&line.info.source_tokens)
+        .or_else(|| trigger_presentation_from_line_tokens(&line.tokens))
 }
 
 fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {
     split_label_prefix_lexed(strip_choice_bullet_prefix_tokens(&line.tokens)).is_some_and(
-        |(label, _, _)| {
-            !preserve_keyword_prefix_for_parse(label.as_str())
+        |(label, label_tokens, _)| {
+            document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_none()
                 && !is_named_ability_label(label.as_str())
         },
     )
 }
 
-fn trigger_presentation_label(label: &str) -> String {
-    if label.trim().eq_ignore_ascii_case("solved") {
-        "__ironsmith_case_solved".to_string()
-    } else {
-        label.trim().to_string()
+fn trigger_presentation(label_tokens: &[OwnedLexToken], label: &str) -> PresentationLabel {
+    match document_grammar::parse_case_label_tokens(label_tokens) {
+        Some(document_grammar::CaseLabelKind::ToSolve) => PresentationLabel::CaseToSolve,
+        Some(document_grammar::CaseLabelKind::Solved) => PresentationLabel::CaseSolved,
+        None => PresentationLabel::from_ability_word(label.trim()),
     }
 }
 
-fn is_case_ability_label(label: &str) -> bool {
-    matches!(
-        label.trim().to_ascii_lowercase().as_str(),
-        "to solve" | "solved"
-    )
+fn is_case_ability_label(label_tokens: &[OwnedLexToken]) -> bool {
+    document_grammar::parse_case_label_tokens(label_tokens).is_some()
 }
 
 fn parse_case_to_solve_line_cst(
     line: &PreprocessedLine,
-    label: &str,
+    label_tokens: &[OwnedLexToken],
     body_tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggeredLineCst>, CardTextError> {
-    if !label.trim().eq_ignore_ascii_case("to solve") {
+    if document_grammar::parse_case_label_tokens(label_tokens)
+        != Some(document_grammar::CaseLabelKind::ToSolve)
+    {
         return Ok(None);
     }
 
@@ -990,7 +837,7 @@ fn parse_case_to_solve_line_cst(
         &format!("At the beginning of your end step, if {condition}, put a level counter on this."),
     )?;
     let mut triggered = parse_triggered_line_cst(&rewritten)?;
-    triggered.presentation_label = Some("__ironsmith_case_to_solve".to_string());
+    triggered.presentation = Some(PresentationLabel::CaseToSolve);
     Ok(Some(triggered))
 }
 
@@ -1058,10 +905,10 @@ fn normalize_trailing_keyword_activation_sentence_lexed(
     for split_idx in 1..sentences.len() {
         let prefix = clone_sentence_chunk_tokens(tokens, &sentences[..split_idx])?;
         let suffix = clone_sentence_chunk_tokens(tokens, &sentences[split_idx..])?;
-        let Some((label, _, body_tokens)) = split_label_prefix_lexed(&suffix) else {
+        let Some((_, label_tokens, body_tokens)) = split_label_prefix_lexed(&suffix) else {
             continue;
         };
-        if !preserve_keyword_prefix_for_parse(label.as_str())
+        if document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_none()
             || split_lexed_once_on_colon_outside_quotes(body_tokens).is_none()
         {
             continue;
@@ -1077,7 +924,7 @@ fn preflight_known_strict_unsupported(text: &str) -> Option<CardTextError> {
         let Ok(tokens) = lex_line(line, line_idx) else {
             continue;
         };
-        if contains_token_word_sequence(&tokens, HALF_STARTING_LIFE_PLUS_ONE_UNSUPPORTED_PHRASE) {
+        if document_grammar::parse_half_starting_life_plus_one_surface(&tokens).is_some() {
             return Some(CardTextError::ParseError(
                 "unsupported predicate".to_string(),
             ));
@@ -1093,9 +940,8 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
         };
 
         for segment in grammar::split_lexed_slices_on_commas_or_semicolons(&tokens) {
-            let segment_clause = LexedClause::new(segment);
             let (keyword, cost_start, is_echo) =
-                if CUMULATIVE_UPKEEP_PREFIX_PATTERN.matches_prefix(segment_clause) {
+                if document_grammar::parse_cumulative_upkeep_surface(segment).is_some() {
                     ("cumulative upkeep", 2, false)
                 } else if segment.first().is_some_and(|token| token.is_word("echo")) {
                     ("echo", 1, true)
@@ -1103,7 +949,7 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
                     continue;
                 };
 
-            let reminder_start = find_token_index(segment, |token| {
+            let reminder_start = locate_token_index(segment, |token| {
                 token.is_period() || token.kind == TokenKind::LParen
             })
             .or_else(|| {
@@ -1281,9 +1127,7 @@ fn trigger_head_is_source_alias_leaves_battlefield(
     let Ok(tokens) = lex_line(trigger_head.trim(), 0) else {
         return false;
     };
-    SOURCE_LEAVES_BATTLEFIELD_PATTERN
-        .find_in_clause(LexedClause::new(&tokens))
-        .is_some()
+    document_grammar::parse_source_leaves_battlefield_surface(&tokens).is_some()
         && normalized_line_mentions_source_alias(builder, trigger_head)
 }
 
@@ -1379,20 +1223,7 @@ fn normalize_named_source_trigger_head_for_builder(
 }
 
 fn source_alias_prefix_looks_like_effect_verb(alias: &str, remainder: &str) -> bool {
-    let Some(alias_words) = lexed_word_strings(alias) else {
-        return false;
-    };
-    if alias_words.len() != 1 || !is_effect_verb_word(alias_words[0].as_str()) {
-        return false;
-    }
-    lex_line(remainder.trim_start(), 0)
-        .ok()
-        .and_then(|tokens| TokenWordView::new(&tokens).first().map(str::to_string))
-        .is_some_and(|next_word| !SOURCE_ALIAS_NON_VERB_FOLLOWUPS.contains(&next_word.as_str()))
-}
-
-fn is_effect_verb_word(word: &str) -> bool {
-    SOURCE_ALIAS_EFFECT_VERBS.contains(&word)
+    document_grammar::parse_source_alias_effect_verb_surface(alias, remainder).is_some()
 }
 
 fn lexed_word_strings(text: &str) -> Option<Vec<String>> {
@@ -1402,56 +1233,19 @@ fn lexed_word_strings(text: &str) -> Option<Vec<String>> {
 }
 
 fn strip_named_source_prefix_lexed(text: &str, name: &str) -> Option<String> {
-    let text_tokens = lex_line(text.trim(), 0).ok()?;
-    let name_words = lexed_word_strings(name)?;
-    if name_words.is_empty() {
-        return None;
-    }
-    let name_word_refs = name_words.iter().map(String::as_str).collect::<Vec<_>>();
-    let text_words = TokenWordView::new(&text_tokens);
-    if !text_words.starts_with(&name_word_refs) {
-        return None;
-    }
-    let tail_token_idx = text_words.token_index_after_words(name_word_refs.len())?;
-    let tail = render_token_slice(&text_tokens[tail_token_idx..])
-        .trim_start()
-        .to_string();
-    (!tail.is_empty()).then_some(tail)
+    document_grammar::parse_named_source_prefix(text, name).map(|surface| surface.tail)
 }
 
 fn named_source_enters_tail_lexed(text: &str) -> Option<String> {
-    let tokens = lex_line(text.trim(), 0).ok()?;
-    let words = TokenWordView::new(&tokens);
-    let enters_idx = words.find_word("enters")?;
-    let tail_token_idx = words.token_index_after_words(enters_idx + 1)?;
-    if tokens
-        .get(tail_token_idx)
-        .is_some_and(|token| token.kind == TokenKind::Comma)
-    {
-        return None;
-    }
-    let tail = render_token_slice(&tokens[tail_token_idx..])
-        .trim_start()
-        .to_string();
-    (!tail.is_empty()).then_some(tail)
+    document_grammar::parse_named_source_enters_surface(text).map(|surface| surface.tail)
 }
 
 fn split_first_comma_lexed(text: &str) -> Option<(String, String)> {
-    let tokens = lex_line(text.trim(), 0).ok()?;
-    let comma_idx = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)?;
-    let head = render_token_slice(&tokens[..comma_idx]).trim().to_string();
-    let body = render_token_slice(&tokens[comma_idx + 1..])
-        .trim_start()
-        .to_string();
-    (!head.is_empty() && !body.is_empty()).then_some((head, body))
+    document_grammar::parse_first_comma(text).map(|surface| (surface.head, surface.body))
 }
 
 fn mentions_named_reference(text: &str) -> bool {
-    lex_line(text, 0)
-        .ok()
-        .is_some_and(|tokens| token_word_refs(&tokens).contains(&NAMED_REFERENCE_WORD))
+    document_grammar::parse_named_reference(text).is_some()
 }
 
 fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> String {
@@ -1463,7 +1257,12 @@ fn replace_named_source_aliases_for_trigger_normalization(
     alias: &str,
     replacement: &str,
 ) -> String {
-    replace_named_source_aliases_with_options(text, alias, replacement, alias.contains('/'))
+    replace_named_source_aliases_with_options(
+        text,
+        alias,
+        replacement,
+        document_grammar::parse_alias_face_separator(alias).is_some(),
+    )
 }
 
 fn replace_named_source_aliases_with_options(
@@ -1746,7 +1545,11 @@ fn strip_non_keyword_label_prefix(text: &str) -> &str {
         return current;
     }
     while let Some((label, body)) = split_label_prefix(current) {
-        if preserve_keyword_prefix_for_parse(label) {
+        if lex_line(label, 0)
+            .ok()
+            .and_then(|tokens| document_grammar::parse_preserved_keyword_label_tokens(&tokens))
+            .is_some()
+        {
             break;
         }
         current = body.trim();
@@ -1762,6 +1565,7 @@ fn looks_like_numeric_result_prefix_text(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::PresentationLabel;
     use crate::cards::builders::document_parser::KeywordLineKindCst;
     use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
     use crate::ids::CardId;
@@ -1789,7 +1593,7 @@ mod tests {
         split_activation_text_parts_lexed, split_label_prefix, split_label_prefix_lexed,
         split_reveal_first_draw_line_rewrite_lexed, split_trigger_sentence_chunks_rewrite_lexed,
         strip_non_keyword_label_prefix, strip_trailing_trigger_cap_suffix_tokens,
-        tokens_after_non_keyword_label_prefix, trigger_presentation_label_from_line_tokens,
+        tokens_after_non_keyword_label_prefix, trigger_presentation_from_line_tokens,
     };
 
     fn single_preprocessed_line(text: &str) -> super::PreprocessedLine {
@@ -2296,7 +2100,12 @@ mod tests {
             "Level up {1}\nLEVEL 1-2\nFlying\n3/3",
         )?;
         let cst = super::parse_document_cst(&preprocessed, false)?;
-        let semantic = super::lower_document_cst(preprocessed, cst, false)?;
+        let semantic = super::lower_document_cst(
+            preprocessed,
+            cst,
+            super::super::ir::DocumentSemanticFacts::default(),
+            false,
+        )?;
 
         let level = semantic
             .items
@@ -2328,7 +2137,12 @@ mod tests {
             "I, II — Draw a card.",
         )?;
         let cst = super::parse_document_cst(&preprocessed, false)?;
-        let semantic = super::lower_document_cst(preprocessed, cst, false)?;
+        let semantic = super::lower_document_cst(
+            preprocessed,
+            cst,
+            super::super::ir::DocumentSemanticFacts::default(),
+            false,
+        )?;
 
         let saga = semantic
             .items
@@ -2423,6 +2237,21 @@ mod tests {
     }
 
     #[test]
+    fn statement_parse_groups_keep_regeneration_followup_with_conditional_destroy() {
+        let line = single_preprocessed_line(
+            "Destroy two target nonblack creatures unless either one is a color the other isn't. They can't be regenerated.",
+        );
+
+        let groups = normalize_statement_parse_groups_lexed(&line.tokens)
+            .into_iter()
+            .map(|group| render_token_slice(&group))
+            .collect::<Vec<_>>();
+
+        assert_eq!(groups.len(), 1, "dependent followup was split: {groups:#?}");
+        assert!(groups[0].contains("they can't be regenerated"));
+    }
+
+    #[test]
     fn parse_statement_line_cst_does_not_abort_on_broken_visage_static_probe_error()
     -> Result<(), CardTextError> {
         let line = single_preprocessed_line(
@@ -2447,13 +2276,55 @@ mod tests {
                 lex_line(helper_text, 0).expect("rewrite lexer should classify vote line body");
             assert_eq!(
                 classify_statement_line_family_lexed(&tokens),
-                Some(StatementLineFamily::Vote)
+                Some(StatementLineFamily::Vote),
+                "{text}"
             );
             assert!(
                 looks_like_statement_line(text.to_ascii_lowercase().as_str()),
                 "expected vote line to classify as a statement: {text}"
             );
         }
+    }
+
+    #[test]
+    fn council_choice_label_routes_vote_sequence_as_statement() -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Council Vote Test")
+                .card_types(vec![CardType::Sorcery]),
+            "Will of the council — Starting with you, each player votes for death or torture. If death gets more votes, each opponent sacrifices a creature of their choice. If torture gets more votes or the vote is tied, each opponent loses 4 life.",
+        )?;
+        let PreprocessedItem::Line(line) = &preprocessed.items[0] else {
+            panic!("expected council vote to preprocess as one line");
+        };
+        assert_eq!(
+            render_token_slice(&line.tokens),
+            "starting with you, each player votes for death or torture. if death gets more votes, each opponent sacrifices a creature of their choice. if torture gets more votes or the vote is tied, each opponent loses 4 life."
+        );
+        assert_eq!(
+            classify_statement_line_family_lexed(&line.tokens),
+            Some(StatementLineFamily::Vote)
+        );
+        let parse_groups = normalize_statement_parse_groups_lexed(&line.tokens);
+        assert_eq!(
+            parse_groups.len(),
+            1,
+            "unexpected vote parse groups: {parse_groups:#?}"
+        );
+        let effects = super::parse_effect_sentences_lexed(&parse_groups[0])?;
+        assert!(!effects.is_empty(), "vote group parsed to no effects");
+        assert!(
+            parse_statement_line_cst(line)?.is_some(),
+            "expected council vote body to parse as a statement"
+        );
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        assert!(
+            matches!(cst.lines.as_slice(), [super::RewriteLineCst::Statement(_)]),
+            "expected labeled council vote to route as one statement, got {:#?}",
+            cst.lines
+        );
+
+        Ok(())
     }
 
     #[test]
@@ -2687,8 +2558,8 @@ mod tests {
         .expect("trigger label fixture should lex");
 
         assert_eq!(
-            trigger_presentation_label_from_line_tokens(&tokens),
-            Some("Mold Earth".to_string())
+            trigger_presentation_from_line_tokens(&tokens),
+            Some(PresentationLabel::AbilityWord("Mold Earth".to_string()))
         );
     }
 
@@ -3333,11 +3204,9 @@ fn try_parse_triggered_line_with_named_source_rewrite(
 }
 
 fn line_mentions_this_permanent_token_phrase(text: &str) -> bool {
-    lex_line(text.trim(), 0).ok().is_some_and(|tokens| {
-        THIS_PERMANENT_PHRASE_PATTERN
-            .find_in_clause(LexedClause::new(&tokens))
-            .is_some()
-    })
+    lex_line(text.trim(), 0)
+        .ok()
+        .is_some_and(|tokens| document_grammar::parse_this_permanent_surface(&tokens).is_some())
 }
 
 fn line_starts_with_lparen_token(line: &PreprocessedLine) -> bool {
@@ -3355,23 +3224,7 @@ fn is_fully_parenthetical_line(line: &PreprocessedLine) -> bool {
 }
 
 fn is_delayed_when_that_dies_this_turn_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = token_word_refs(tokens)
-        .into_iter()
-        .map(|word| word.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    if words.first().map(String::as_str) != Some("when") {
-        return false;
-    }
-    let subject_is_prior_object =
-        matches!(words.get(1).map(String::as_str), Some("that") | Some("it"));
-    if !subject_is_prior_object {
-        return false;
-    }
-    words.windows(3).any(|window| {
-        window.first().map(String::as_str) == Some("dies")
-            && window.get(1).map(String::as_str) == Some("this")
-            && window.get(2).map(String::as_str) == Some("turn")
-    })
+    document_grammar::parse_delayed_prior_object_dies_surface(tokens).is_some()
 }
 
 fn split_trigger_sentence_chunks_rewrite_lexed(
@@ -3422,9 +3275,9 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
 
 fn starts_with_when_one_or_more_this_way_clause(tokens: &[OwnedLexToken]) -> bool {
     let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-        .map(|(before, _after)| grammar::contains_phrase(before, &["this", "way"]))
+        .map(|(before, _after)| grammar::has_phrase(before, &["this", "way"]))
         .unwrap_or(false);
-    WHEN_ONE_OR_MORE_PREFIX_PATTERN.matches_prefix(LexedClause::new(tokens)) && this_way_in_prefix
+    document_grammar::parse_when_one_or_more_surface(tokens).is_some() && this_way_in_prefix
 }
 
 fn rewrite_when_one_or_more_this_way_line(line: &PreprocessedLine) -> PreprocessedLine {
@@ -3447,32 +3300,12 @@ fn split_reveal_first_draw_line_rewrite_lexed(
     }
 
     let first_tokens = *sentences.first()?;
-    let first_is_reveal_first_draw = token_slice_words_eq_any(
-        first_tokens,
-        &[
-            &[
-                "reveal", "the", "first", "card", "you", "draw", "each", "turn",
-            ],
-            &[
-                "reveal", "the", "first", "card", "you", "draw", "on", "each", "of", "your",
-                "turns",
-            ],
-            &[
-                "you", "may", "reveal", "the", "first", "card", "you", "draw", "each", "turn",
-                "as", "you", "draw", "it",
-            ],
-            &[
-                "you", "may", "reveal", "the", "first", "card", "you", "draw", "on", "each", "of",
-                "your", "turns", "as", "you", "draw", "it",
-            ],
-        ],
-    );
-    if !first_is_reveal_first_draw {
+    if document_grammar::parse_reveal_first_draw_surface(first_tokens).is_none() {
         return None;
     }
 
     let tail_tokens = clone_sentence_chunk_tokens(tokens, &sentences[1..])?;
-    if !token_slice_starts_with(&tail_tokens, &["whenever", "you", "reveal"]) {
+    if document_grammar::parse_reveal_first_draw_followup_surface(&tail_tokens).is_none() {
         return None;
     }
 
@@ -3491,7 +3324,10 @@ fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
     if split_lexed_once_on_colon_outside_quotes(&line.tokens).is_some() {
         return "activated-line-not-yet-supported";
     }
-    if token_slice_starts_with(classification_tokens, &["choose"]) {
+    if matches!(
+        document_grammar::parse_unsupported_line_head(classification_tokens),
+        Some(document_grammar::UnsupportedLineHeadSurface::ModalChoice)
+    ) {
         return "modal-header-not-yet-supported";
     }
     if matches!(
@@ -3522,11 +3358,11 @@ fn try_parse_labeled_line_dispatch(
     let is_named_label = is_named_ability_label(label.as_str());
     let preserve_as_choice_label = labeled_choice_block_has_peer(&preprocessed.items, idx)
         && labeled_choice_block_has_named_option_header(&preprocessed.items, idx);
-    if preserve_keyword_prefix_for_parse(label.as_str()) {
+    if document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_some() {
         return Ok(None);
     }
 
-    if let Some(triggered) = parse_case_to_solve_line_cst(line, &label, body_tokens)? {
+    if let Some(triggered) = parse_case_to_solve_line_cst(line, label_tokens, body_tokens)? {
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Triggered(triggered),
             idx + 1,
@@ -3550,11 +3386,12 @@ fn try_parse_labeled_line_dispatch(
 
     if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
         if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
-            if preserve_as_choice_label && !is_case_ability_label(&label) {
-                triggered.chosen_option_label = Some(label.to_ascii_lowercase());
+            if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
+                triggered.chosen_option =
+                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
-                triggered.presentation_label = Some(trigger_presentation_label(&label));
+                triggered.presentation = Some(trigger_presentation(label_tokens, &label));
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
@@ -3568,11 +3405,12 @@ fn try_parse_labeled_line_dispatch(
             line,
             body_line.info.normalized.normalized.as_str(),
         )? {
-            if preserve_as_choice_label && !is_case_ability_label(&label) {
-                triggered.chosen_option_label = Some(label.to_ascii_lowercase());
+            if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
+                triggered.chosen_option =
+                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
-                triggered.presentation_label = Some(trigger_presentation_label(&label));
+                triggered.presentation = Some(trigger_presentation(label_tokens, &label));
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
@@ -3620,8 +3458,11 @@ fn try_parse_labeled_line_dispatch(
                         effect_text,
                         effect_parse_tokens,
                         presentation_label: Some(label.trim().to_string()),
-                        chosen_option_label: preserve_as_choice_label
-                            .then(|| label.to_ascii_lowercase()),
+                        chosen_option: preserve_as_choice_label
+                            .then(|| {
+                                document_grammar::parse_chosen_option_context_tokens(label_tokens)
+                            })
+                            .flatten(),
                     }),
                     idx + 1,
                 )));
@@ -3666,7 +3507,8 @@ fn try_parse_labeled_line_dispatch(
         let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
         if let Some(mut static_line) = parse_static_line_cst(&rewritten_body_line)? {
             if preserve_as_choice_label {
-                static_line.chosen_option_label = Some(label.to_ascii_lowercase());
+                static_line.chosen_option =
+                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
             }
             return Ok(Some(LineDispatchResult::single(
                 RewriteLineCst::Static(static_line),
@@ -3677,7 +3519,8 @@ fn try_parse_labeled_line_dispatch(
 
     if let Some(mut static_line) = parse_static_line_cst(&body_line)? {
         if preserve_as_choice_label {
-            static_line.chosen_option_label = Some(label.to_ascii_lowercase());
+            static_line.chosen_option =
+                document_grammar::parse_chosen_option_context_tokens(label_tokens);
         }
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Static(static_line),
@@ -3695,7 +3538,8 @@ fn try_parse_labeled_line_dispatch(
         let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
         if let Some(mut static_line) = parse_static_line_cst(&rewritten_body_line)? {
             if preserve_as_choice_label {
-                static_line.chosen_option_label = Some(label.to_ascii_lowercase());
+                static_line.chosen_option =
+                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
             }
             return Ok(Some(LineDispatchResult::single(
                 RewriteLineCst::Static(static_line),
@@ -3720,8 +3564,11 @@ fn try_parse_labeled_line_dispatch(
                         effect_text,
                         effect_parse_tokens,
                         presentation_label: Some(label.trim().to_string()),
-                        chosen_option_label: preserve_as_choice_label
-                            .then(|| label.to_ascii_lowercase()),
+                        chosen_option: preserve_as_choice_label
+                            .then(|| {
+                                document_grammar::parse_chosen_option_context_tokens(label_tokens)
+                            })
+                            .flatten(),
                     }),
                     idx + 1,
                 )));
@@ -3909,6 +3756,7 @@ pub(crate) fn parse_text_to_semantic_document(
         return Err(err);
     }
     let preprocessed = preprocess_document(builder, text.as_str())?;
+    let semantic_facts = postpass_surface_grammar::parse_document_semantic_facts(text.as_str());
     parse_trace::event(format!(
         "preprocessed document: {} item(s)",
         preprocessed.items.len()
@@ -3954,7 +3802,7 @@ pub(crate) fn parse_text_to_semantic_document(
             cst.lines.len()
         );
     }
-    let semantic = lower_document_cst(preprocessed, cst, allow_unsupported)?;
+    let semantic = lower_document_cst(preprocessed, cst, semantic_facts, allow_unsupported)?;
     let annotations = semantic.annotations.clone();
     parse_trace::event(format!("semantic items: {}", semantic.items.len()));
     if parser_trace_enabled() {
@@ -4049,13 +3897,6 @@ pub(crate) fn parse_document_cst(
                             )));
                         }
                     }
-                    idx += 1;
-                    continue;
-                }
-                if let Some(unsupported) = parse_former_section9_unsupported_line_cst(line) {
-                    let cst = RewriteLineCst::Unsupported(unsupported);
-                    trace_cst_line(&cst);
-                    lines.push(cst);
                     idx += 1;
                     continue;
                 }
@@ -4156,7 +3997,7 @@ pub(crate) fn parse_document_cst(
                         effect_text,
                         effect_parse_tokens,
                         presentation_label: Some(label.trim().to_string()),
-                        chosen_option_label: None,
+                        chosen_option: None,
                     });
                     trace_cst_line(&cst);
                     lines.push(cst);
@@ -4229,8 +4070,27 @@ pub(crate) fn parse_document_cst(
 fn lower_document_cst(
     preprocessed: PreprocessedDocument,
     cst: RewriteDocumentCst,
+    semantic_facts: super::ir::DocumentSemanticFacts,
     allow_unsupported: bool,
 ) -> Result<RewriteSemanticDocument, CardTextError> {
+    let overload_items = semantic_facts
+        .overload_rewrite
+        .as_ref()
+        .map(|payload| {
+            let mut items = Vec::new();
+            for line in &cst.lines {
+                let Some(line) = rewrite_overload_line_cst(line, payload) else {
+                    continue;
+                };
+                items.push(lower_non_metadata_rewrite_line_cst(
+                    line,
+                    allow_unsupported,
+                )?);
+            }
+            Ok::<_, CardTextError>(items)
+        })
+        .transpose()?;
+
     let mut builder = preprocessed.builder;
     let mut items = Vec::with_capacity(cst.lines.len());
 
@@ -4251,8 +4111,79 @@ fn lower_document_cst(
         builder,
         annotations: preprocessed.annotations,
         items,
+        overload_items,
+        semantic_facts,
         allow_unsupported,
     })
+}
+
+fn rewrite_overload_target_tokens(
+    tokens: &[OwnedLexToken],
+    payload: &OverloadRewritePayload,
+) -> Vec<OwnedLexToken> {
+    tokens
+        .iter()
+        .map(|token| {
+            if payload
+                .target_spans
+                .iter()
+                .any(|target_span| target_span == &token.span)
+            {
+                OwnedLexToken::word("each", token.span)
+            } else {
+                token.clone()
+            }
+        })
+        .collect()
+}
+
+fn rewrite_overload_line_cst(
+    line: &RewriteLineCst,
+    payload: &OverloadRewritePayload,
+) -> Option<RewriteLineCst> {
+    if rewrite_line_cst_source_index(line) == Some(payload.keyword_line_index) {
+        return None;
+    }
+    match line {
+        RewriteLineCst::Metadata(_) => None,
+        RewriteLineCst::Statement(statement) => {
+            let mut statement = statement.clone();
+            statement.parse_tokens =
+                rewrite_overload_target_tokens(&statement.parse_tokens, payload);
+            statement.parse_groups = statement
+                .parse_groups
+                .iter()
+                .map(|group| rewrite_overload_target_tokens(group, payload))
+                .collect();
+            statement.text = render_token_slice(&statement.parse_tokens)
+                .trim()
+                .to_string();
+            statement.info.normalized.normalized = statement.text.clone();
+            statement.info.semantic_facts =
+                super::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(
+                    &statement.parse_tokens,
+                );
+            Some(RewriteLineCst::Statement(statement))
+        }
+        other => Some(other.clone()),
+    }
+}
+
+fn rewrite_line_cst_source_index(line: &RewriteLineCst) -> Option<usize> {
+    match line {
+        RewriteLineCst::Metadata(_) => None,
+        RewriteLineCst::Keyword(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Activated(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Triggered(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Static(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Statement(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Modal(line) => Some(line.header.display_line_index),
+        RewriteLineCst::LevelHeader(line) => {
+            line.items.first().map(|item| item.info.display_line_index)
+        }
+        RewriteLineCst::SagaChapter(line) => Some(line.info.display_line_index),
+        RewriteLineCst::Unsupported(line) => Some(line.info.display_line_index),
+    }
 }
 
 pub(crate) fn metadata_line_cst(

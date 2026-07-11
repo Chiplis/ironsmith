@@ -793,6 +793,92 @@ fn normalize_chosen_distinct_creature_types(
     normalized
 }
 
+fn aggregate_choice_value(
+    game: &GameState,
+    id: ObjectId,
+    metric: crate::effect::ChoiceAggregateMetric,
+) -> i32 {
+    let Some(object) = game.object(id) else {
+        return 0;
+    };
+    match metric {
+        crate::effect::ChoiceAggregateMetric::Power => game
+            .calculated_power(id)
+            .or_else(|| object.power())
+            .unwrap_or(0),
+        crate::effect::ChoiceAggregateMetric::Toughness => game
+            .calculated_toughness(id)
+            .or_else(|| object.toughness())
+            .unwrap_or(0),
+        crate::effect::ChoiceAggregateMetric::ManaValue => object
+            .mana_cost
+            .as_ref()
+            .map_or(0, |cost| cost.mana_value() as i32),
+    }
+}
+
+fn normalize_chosen_aggregate_constraint(
+    game: &GameState,
+    chosen: Vec<ObjectId>,
+    candidates: &[ObjectId],
+    min: usize,
+    max: usize,
+    fill_to_min: bool,
+    constraint: crate::effect::ChoiceAggregateConstraint,
+) -> Vec<ObjectId> {
+    let chosen_total: i32 = chosen
+        .iter()
+        .map(|id| aggregate_choice_value(game, *id, constraint.metric))
+        .sum();
+    if chosen_total <= constraint.maximum {
+        return chosen;
+    }
+
+    // Decision makers are expected to submit a legal aggregate selection. As
+    // with cardinality normalization above, keep malformed responses safe and
+    // deterministic. Sorting by contribution also preserves valid choices
+    // such as a positive-power creature offset by a negative-power creature.
+    let mut ranked = chosen
+        .into_iter()
+        .map(|id| (aggregate_choice_value(game, id, constraint.metric), id))
+        .collect::<Vec<_>>();
+    ranked.sort_by_key(|(value, id)| (*value, *id));
+
+    let mut total = 0i32;
+    let mut normalized = Vec::new();
+    for (value, id) in ranked {
+        if normalized.len() >= max {
+            break;
+        }
+        if total.saturating_add(value) <= constraint.maximum {
+            total = total.saturating_add(value);
+            normalized.push(id);
+        }
+    }
+
+    if fill_to_min && normalized.len() < min {
+        let mut remaining = candidates
+            .iter()
+            .copied()
+            .filter(|id| !normalized.contains(id))
+            .map(|id| (aggregate_choice_value(game, id, constraint.metric), id))
+            .collect::<Vec<_>>();
+        remaining.sort_by_key(|(value, id)| (*value, *id));
+        for (value, id) in remaining {
+            if normalized.len() >= min || normalized.len() >= max {
+                break;
+            }
+            if total.saturating_add(value) <= constraint.maximum {
+                total = total.saturating_add(value);
+                normalized.push(id);
+            }
+        }
+    }
+
+    normalized.sort();
+    normalized
+}
+
 fn public_search_candidates(game: &GameState, candidates: &[ObjectId]) -> Vec<ObjectId> {
     candidates
         .iter()
@@ -1155,6 +1241,9 @@ pub(crate) fn run_choose_objects(
         } else {
             let mut spec =
                 ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));
+            if let Some(constraint) = effect.aggregate_constraint {
+                spec = spec.with_aggregate_constraint(constraint);
+            }
             if allow_hidden_partial {
                 spec = spec.allow_partial_completion();
             }
@@ -1219,6 +1308,19 @@ pub(crate) fn run_choose_objects(
                 min,
                 max,
                 !allow_hidden_partial,
+            )
+        } else {
+            chosen
+        };
+        let chosen = if let Some(constraint) = effect.aggregate_constraint {
+            normalize_chosen_aggregate_constraint(
+                game,
+                chosen,
+                &candidates,
+                min,
+                max,
+                !allow_hidden_partial,
+                constraint,
             )
         } else {
             chosen
@@ -1462,6 +1564,19 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
 
+    fn create_battlefield_creature_with_power(
+        game: &mut GameState,
+        name: &str,
+        owner: PlayerId,
+        power: i32,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(power, 2))
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
     struct PromptCapturingDecisionMaker {
         captured: bool,
     }
@@ -1484,6 +1599,76 @@ mod tests {
                 .take(ctx.min)
                 .collect()
         }
+    }
+
+    #[test]
+    fn aggregate_choice_constraint_is_exposed_and_enforced() {
+        struct SelectAllDecisionMaker {
+            seen_constraint: Option<crate::effect::ChoiceAggregateConstraint>,
+        }
+
+        impl DecisionMaker for SelectAllDecisionMaker {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                self.seen_constraint = ctx.aggregate_constraint;
+                ctx.candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .collect()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let three = create_battlefield_creature_with_power(&mut game, "Three", alice, 3);
+        let two = create_battlefield_creature_with_power(&mut game, "Two", alice, 2);
+        let source = game.new_object_id();
+        let constraint = crate::effect::ChoiceAggregateConstraint::total_power_at_most(4);
+        let mut dm = SelectAllDecisionMaker {
+            seen_constraint: None,
+        };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let effect = ChooseObjectsEffect::new(
+            ObjectFilter::creature().controlled_by(PlayerFilter::You),
+            crate::effect::ChoiceCount::any_number(),
+            PlayerFilter::You,
+            "kept",
+        )
+        .with_aggregate_constraint(constraint);
+
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx)
+            .expect("aggregate-constrained choice should resolve");
+        let chosen = outcome.objects().expect("choice should return objects");
+        drop(ctx);
+
+        assert_eq!(dm.seen_constraint, Some(constraint));
+        assert_eq!(chosen, &[two]);
+        assert!(!chosen.contains(&three));
+    }
+
+    #[test]
+    fn aggregate_choice_constraint_counts_negative_power_in_the_total() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let five = create_battlefield_creature_with_power(&mut game, "Five", alice, 5);
+        let minus_two = create_battlefield_creature_with_power(&mut game, "Minus Two", alice, -2);
+        let chosen = vec![five, minus_two];
+
+        let normalized = normalize_chosen_aggregate_constraint(
+            &game,
+            chosen.clone(),
+            &chosen,
+            0,
+            chosen.len(),
+            true,
+            crate::effect::ChoiceAggregateConstraint::total_power_at_most(4),
+        );
+
+        assert_eq!(normalized, chosen, "5 + -2 is a legal total power of 3");
     }
 
     #[derive(Default)]

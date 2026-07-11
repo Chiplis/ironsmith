@@ -107,33 +107,9 @@ pub(crate) fn find_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) 
     None
 }
 
-pub(crate) fn find_index_with<T>(
-    items: &[T],
-    mut predicate: impl FnMut(usize, &T) -> bool,
-) -> Option<usize> {
-    for (idx, item) in items.iter().enumerate() {
-        if predicate(idx, item) {
-            return Some(idx);
-        }
-    }
-    None
-}
-
 pub(crate) fn rfind_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
     for (idx, item) in items.iter().enumerate().rev() {
         if predicate(item) {
-            return Some(idx);
-        }
-    }
-    None
-}
-
-pub(crate) fn rfind_index_with<T>(
-    items: &[T],
-    mut predicate: impl FnMut(usize, &T) -> bool,
-) -> Option<usize> {
-    for (idx, item) in items.iter().enumerate().rev() {
-        if predicate(idx, item) {
             return Some(idx);
         }
     }

@@ -40,6 +40,10 @@ impl TriggerMatcher for ThisAttacksPlayerWithMostLifeTrigger {
         Some(vec![EventKind::CreatureAttacked])
     }
 
+    fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
+        event_kind == EventKind::CreatureAttacked
+    }
+
     fn display(&self) -> String {
         "Whenever this creature attacks the player with the most life or tied for most life"
             .to_string()

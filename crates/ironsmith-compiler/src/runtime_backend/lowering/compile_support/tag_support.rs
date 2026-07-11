@@ -12,6 +12,7 @@ const REVEALED_COLLECTION_TAG_PREFIX: &str = "revealed";
 const SEARCHED_COLLECTION_TAG_PREFIX: &str = "searched";
 const EXILE_COST_TAG_PREFIX: &str = "exile_cost_";
 const EXILED_COLLECTION_TAG_PREFIX: &str = "exiled_";
+const SENTENCE_HELPER_REVEALED_TAG_PREFIX: &str = "__sentence_helper_revealed";
 const SENTENCE_HELPER_EXILED_TAG_PREFIX: &str = "__sentence_helper_exiled";
 
 fn tag_str_has_prefix(tag: &str, prefix: &str) -> bool {
@@ -20,6 +21,7 @@ fn tag_str_has_prefix(tag: &str, prefix: &str) -> bool {
 
 pub(crate) fn is_revealed_collection_tag(tag: &str) -> bool {
     tag_str_has_prefix(tag, REVEALED_COLLECTION_TAG_PREFIX)
+        || tag_str_has_prefix(tag, SENTENCE_HELPER_REVEALED_TAG_PREFIX)
 }
 
 pub(crate) fn is_searched_collection_tag(tag: &str) -> bool {
@@ -270,6 +272,7 @@ fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bo
             predicate,
             if_true,
             if_false,
+            ..
         } => {
             predicate_references_tag(predicate, tag)
                 || effects_reference_tag_in_object_position(if_true, tag)
@@ -359,6 +362,7 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
             _ => None,
         },
         EffectAst::ChooseObjects { filter, .. }
+        | EffectAst::ChooseObjectsWithAggregateConstraint { filter, .. }
         | EffectAst::ChooseObjectsAcrossZones { filter, .. }
         | EffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. } => Some(filter),
         _ => None,
@@ -390,6 +394,7 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
             predicate,
             if_true,
             if_false,
+            ..
         } => {
             predicate_references_tag(predicate, tag)
                 || effects_reference_tag(if_true, tag)
@@ -1018,11 +1023,19 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
                         value_references_event_derived_amount(power)
                             || value_references_event_derived_amount(toughness)
                     }
-                    SubjectVerbActionAst::ConsultTopOfLibrary { stop_rule, .. } => matches!(
+                    SubjectVerbActionAst::ConsultTopOfLibrary {
                         stop_rule,
-                        crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
-                            if value_references_event_derived_amount(value)
-                    ),
+                        max_exposed,
+                        ..
+                    } => {
+                        matches!(
+                            stop_rule,
+                            crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
+                                if value_references_event_derived_amount(value)
+                        ) || max_exposed
+                            .as_ref()
+                            .is_some_and(value_references_event_derived_amount)
+                    }
                     _ => false,
                 }
         }
@@ -1062,6 +1075,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
             )
         }
         EffectAst::ChooseObjects { player, .. }
+        | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
         | EffectAst::ChooseObjectsAcrossZones { player, .. } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
         }
@@ -1243,6 +1257,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             predicate,
             if_true,
             if_false,
+            ..
         } => {
             predicate_uses_implicit_it_reference(predicate)
                 || predicate_references_tag(predicate, IT_TAG)

@@ -33,6 +33,26 @@ pub fn execute_combat_damage_step(
     combat: &CombatState,
     first_strike: bool,
 ) -> Vec<CombatDamageEvent> {
+    // Combat damage is simultaneous. Refresh once, then use a single immutable
+    // characteristic view for the replacement/prevention-free common case so
+    // damage applied by an earlier attacker cannot change a later attacker's
+    // power or damage keywords within the same step.
+    if game.continuous_state_is_clean() {
+        // Damage processing historically rebuilt both trackers before every
+        // assignment. Rebuild once even from an otherwise clean state before
+        // deciding that the guarded fast path is legal, so an empty manager is
+        // authoritative rather than a stale cache observation.
+        game.update_cant_effects();
+        game.update_replacement_effects();
+    } else {
+        // A full refresh also rebuilds both trackers after regenerating static
+        // continuous effects.
+        game.refresh_continuous_state();
+    }
+    if can_use_unblocked_player_damage_fast_path(game, combat) {
+        return execute_unblocked_player_damage_fast_path(game, combat, first_strike);
+    }
+
     let mut damage_events = Vec::new();
 
     // Process each attacker
@@ -71,7 +91,7 @@ pub fn execute_combat_damage_step(
             let events =
                 deal_damage_to_blockers(game, attacker_id, combat, combat_stat as u32, controller);
             damage_events.extend(events);
-        } else if is_unblocked(combat, attacker_id) {
+        } else {
             // Unblocked attacker - deal damage to defender
             let event = deal_damage_to_defender(
                 game,
@@ -203,6 +223,220 @@ pub fn execute_combat_damage_step(
     }
 
     damage_events
+}
+
+#[derive(Debug)]
+struct PlannedUnblockedPlayerDamage {
+    source: ObjectId,
+    target: PlayerId,
+    controller: PlayerId,
+    amount: u32,
+    result: DamageResult,
+    cause: crate::events::cause::EventCause,
+}
+
+#[derive(Debug, Default)]
+struct ToughnessCombatDamageSources {
+    all_creatures: bool,
+    controllers: std::collections::HashSet<PlayerId>,
+    individual_sources: std::collections::HashSet<ObjectId>,
+}
+
+impl ToughnessCombatDamageSources {
+    fn from_view(game: &GameState, view: &crate::derived_view::DerivedGameView<'_>) -> Self {
+        let mut sources = Self::default();
+        for &source_id in &game.battlefield {
+            if game.object(source_id).is_none() {
+                continue;
+            }
+            let Some(characteristics) = view.calculated_characteristics_arc(source_id) else {
+                continue;
+            };
+            let controller = characteristics.controller;
+            for ability in &characteristics.static_abilities {
+                match ability.id() {
+                    crate::static_abilities::StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness => {
+                        sources.individual_sources.insert(source_id);
+                    }
+                    crate::static_abilities::StaticAbilityId::CreaturesAssignCombatDamageUsingToughness => {
+                        sources.all_creatures = true;
+                    }
+                    crate::static_abilities::StaticAbilityId::CreaturesYouControlAssignCombatDamageUsingToughness => {
+                        sources.controllers.insert(controller);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        sources
+    }
+
+    fn applies_to(&self, source: ObjectId, controller: PlayerId) -> bool {
+        self.all_creatures
+            || self.individual_sources.contains(&source)
+            || self.controllers.contains(&controller)
+    }
+}
+
+fn can_use_unblocked_player_damage_fast_path(game: &GameState, combat: &CombatState) -> bool {
+    game.effect_store.replacement_effects.effects().is_empty()
+        && game.effect_store.prevention_effects.shields().is_empty()
+        && game.effect_store.pending_replacement_choice.is_none()
+        && combat.blockers.values().all(Vec::is_empty)
+        && combat
+            .attackers
+            .iter()
+            .all(|attacker| matches!(attacker.target, AttackTarget::Player(_)))
+}
+
+fn execute_unblocked_player_damage_fast_path(
+    game: &mut GameState,
+    combat: &CombatState,
+    first_strike: bool,
+) -> Vec<CombatDamageEvent> {
+    let planned = {
+        let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+        view.prewarm_characteristics(&game.battlefield);
+        let toughness_sources = ToughnessCombatDamageSources::from_view(game, &view);
+        let mut planned = Vec::with_capacity(combat.attackers.len());
+
+        for attacker_info in &combat.attackers {
+            let attacker_id = attacker_info.creature;
+            let AttackTarget::Player(target) = &attacker_info.target else {
+                unreachable!("fast path only accepts attackers targeting players");
+            };
+            let target = *target;
+            let Some(attacker) = game.object(attacker_id) else {
+                continue;
+            };
+            let Some(characteristics) = view.calculated_characteristics_arc(attacker_id) else {
+                continue;
+            };
+
+            let has_first_strike = characteristics.static_abilities.iter().any(|ability| {
+                ability.id() == crate::static_abilities::StaticAbilityId::FirstStrike
+            });
+            let has_double_strike = characteristics.static_abilities.iter().any(|ability| {
+                ability.id() == crate::static_abilities::StaticAbilityId::DoubleStrike
+            });
+            let participates = if first_strike {
+                has_first_strike || has_double_strike
+            } else {
+                !has_first_strike || has_double_strike
+            };
+            if !participates {
+                continue;
+            }
+
+            let controller = characteristics.controller;
+            let combat_stat = if toughness_sources.applies_to(attacker_id, controller) {
+                characteristics.toughness.or_else(|| attacker.toughness())
+            } else {
+                characteristics.power.or_else(|| attacker.power())
+            };
+            let Some(combat_stat) = combat_stat.filter(|stat| *stat > 0) else {
+                continue;
+            };
+            let amount = combat_stat as u32;
+
+            let has_deathtouch = view.object_has_static_ability_id(
+                attacker_id,
+                crate::static_abilities::StaticAbilityId::Deathtouch,
+            );
+            let has_infect = view.object_has_static_ability_id(
+                attacker_id,
+                crate::static_abilities::StaticAbilityId::Infect,
+            );
+            let has_wither = view.object_has_static_ability_id(
+                attacker_id,
+                crate::static_abilities::StaticAbilityId::Wither,
+            );
+            let has_lifelink = view.object_has_static_ability_id(
+                attacker_id,
+                crate::static_abilities::StaticAbilityId::Lifelink,
+            );
+            let result = DamageResult {
+                damage_dealt: if has_infect { 0 } else { amount },
+                life_gained: if has_lifelink { amount } else { 0 },
+                poison_counters: if has_infect { amount } else { 0 },
+                has_deathtouch,
+                has_infect,
+                has_wither,
+                has_lifelink,
+                ..DamageResult::default()
+            };
+            planned.push(PlannedUnblockedPlayerDamage {
+                source: attacker_id,
+                target,
+                controller,
+                amount,
+                result,
+                cause: crate::events::cause::EventCause::from_combat_damage(
+                    attacker_id,
+                    controller,
+                ),
+            });
+        }
+        planned
+    };
+
+    let events = planned
+        .into_iter()
+        .map(|planned| apply_planned_unblocked_player_damage(game, planned))
+        .collect();
+
+    // Damage/life/counter application dirties derived state. The caller checks
+    // one trigger event per assignment immediately after this function returns;
+    // make those checks share one refreshed, prewarmed state instead of each
+    // falling back to dirty single-object characteristic calculation.
+    game.refresh_continuous_state();
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+    view.prewarm_characteristics(&game.battlefield);
+    events
+}
+
+fn apply_planned_unblocked_player_damage(
+    game: &mut GameState,
+    planned: PlannedUnblockedPlayerDamage,
+) -> CombatDamageEvent {
+    // The normal replacement pipeline allocates one provenance root before it
+    // discovers that no effect applies. Preserve that deterministic graph
+    // progression even though this guarded path can skip event processing.
+    let _damage_provenance = game
+        .provenance_graph_mut()
+        .alloc_root_event(crate::events::EventKind::Damage);
+    let keywords = crate::rules::damage::SourceDamageKeywords {
+        has_deathtouch: planned.result.has_deathtouch,
+        has_infect: planned.result.has_infect,
+        has_wither: planned.result.has_wither,
+        has_lifelink: planned.result.has_lifelink,
+    };
+    let applied = crate::rules::damage::apply_processed_damage_assignment(
+        game,
+        planned.source,
+        crate::events::DamageTarget::Player(planned.target),
+        planned.amount,
+        keywords,
+        planned.cause,
+    );
+    let total_damage_dealt = if applied.applied { planned.amount } else { 0 };
+    if applied.applied {
+        game.record_commander_damage(planned.target, planned.source, planned.amount);
+    }
+    apply_combat_lifelink(
+        game,
+        planned.controller,
+        &planned.result,
+        total_damage_dealt,
+    );
+
+    CombatDamageEvent {
+        source: planned.source,
+        target: DamageEventTarget::Player(planned.target),
+        amount: total_damage_dealt,
+        life_lost: applied.life_lost,
+        result: planned.result,
+    }
 }
 
 pub(super) fn static_abilities_for_object(
@@ -978,5 +1212,174 @@ mod tests {
         assert_eq!(applied.life_lost, 0);
         assert_eq!(applied.total_damage_dealt, 1);
         assert_eq!(game.player(bob).expect("player exists").poison_counters, 1);
+    }
+
+    #[test]
+    fn unblocked_combat_damage_uses_one_pre_damage_characteristic_view() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let first = create_creature(
+            &mut game,
+            "First Attacker",
+            1,
+            1,
+            alice,
+            vec![StaticAbility::first_strike(), StaticAbility::infect()],
+        );
+        game.player_mut(bob).expect("player exists").poison_counters = 2;
+        let poison_power = create_creature(
+            &mut game,
+            "Poison-Power Attacker",
+            1,
+            1,
+            alice,
+            vec![StaticAbility::first_strike()],
+        );
+        game.effect_store
+            .continuous_effects
+            .add_effect(crate::continuous::ContinuousEffect::new(
+                poison_power,
+                alice,
+                crate::continuous::EffectTarget::Specific(poison_power),
+                crate::continuous::Modification::SetPower {
+                    value: crate::effect::Value::PlayerCounters(
+                        crate::target::PlayerFilter::Specific(bob),
+                        crate::object::CounterType::Poison,
+                    ),
+                    sublayer: crate::continuous::PtSublayer::Setting,
+                },
+            ));
+
+        let combat = CombatState {
+            attackers: vec![
+                crate::combat_state::AttackerInfo {
+                    creature: first,
+                    target: AttackTarget::Player(bob),
+                },
+                crate::combat_state::AttackerInfo {
+                    creature: poison_power,
+                    target: AttackTarget::Player(bob),
+                },
+            ],
+            ..CombatState::default()
+        };
+
+        let events = execute_combat_damage_step(&mut game, &combat, true);
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].source, first);
+        assert_eq!(events[0].amount, 1);
+        assert!(events[0].result.has_infect);
+        assert_eq!(events[1].source, poison_power);
+        assert_eq!(events[1].amount, 2);
+        assert_eq!(game.player(bob).expect("player exists").life, 18);
+        assert_eq!(game.player(bob).expect("player exists").poison_counters, 3);
+    }
+
+    #[test]
+    fn unblocked_combat_damage_preserves_keywords_order_and_commander_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let lifelink_commander = create_creature(
+            &mut game,
+            "Lifelink Commander",
+            2,
+            2,
+            alice,
+            vec![
+                StaticAbility::first_strike(),
+                StaticAbility::lifelink(),
+                StaticAbility::deathtouch(),
+                StaticAbility::wither(),
+            ],
+        );
+        game.set_as_commander(lifelink_commander, alice);
+        let infector = create_creature(
+            &mut game,
+            "Infector",
+            3,
+            3,
+            alice,
+            vec![StaticAbility::first_strike(), StaticAbility::infect()],
+        );
+
+        let combat = CombatState {
+            attackers: vec![
+                crate::combat_state::AttackerInfo {
+                    creature: lifelink_commander,
+                    target: AttackTarget::Player(bob),
+                },
+                crate::combat_state::AttackerInfo {
+                    creature: infector,
+                    target: AttackTarget::Player(bob),
+                },
+            ],
+            ..CombatState::default()
+        };
+
+        let events = execute_combat_damage_step(&mut game, &combat, true);
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].source, lifelink_commander);
+        assert_eq!(events[0].amount, 2);
+        assert_eq!(events[0].life_lost, 2);
+        assert!(events[0].result.has_lifelink);
+        assert!(events[0].result.has_deathtouch);
+        assert!(events[0].result.has_wither);
+        assert_eq!(events[1].source, infector);
+        assert_eq!(events[1].amount, 3);
+        assert_eq!(events[1].life_lost, 0);
+        assert!(events[1].result.has_infect);
+        assert_eq!(game.player(alice).expect("player exists").life, 22);
+        assert_eq!(game.player(bob).expect("player exists").life, 18);
+        assert_eq!(game.player(bob).expect("player exists").poison_counters, 3);
+        assert_eq!(
+            game.player(bob)
+                .expect("player exists")
+                .commander_damage_from(lifelink_commander),
+            2
+        );
+    }
+
+    #[test]
+    fn unblocked_combat_damage_falls_back_when_prevention_is_active() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker = create_creature(
+            &mut game,
+            "Prevented Attacker",
+            3,
+            3,
+            alice,
+            vec![StaticAbility::first_strike()],
+        );
+        let shield = crate::prevention::PreventionShield::prevent_all(
+            attacker,
+            bob,
+            crate::prevention::PreventionTarget::Player(bob),
+        );
+        game.effect_store.prevention_effects.add_shield(shield);
+
+        let combat = CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            }],
+            ..CombatState::default()
+        };
+
+        let events = execute_combat_damage_step(&mut game, &combat, true);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].source, attacker);
+        assert_eq!(events[0].amount, 0);
+        assert_eq!(events[0].life_lost, 0);
+        assert_eq!(game.player(bob).expect("player exists").life, 20);
     }
 }

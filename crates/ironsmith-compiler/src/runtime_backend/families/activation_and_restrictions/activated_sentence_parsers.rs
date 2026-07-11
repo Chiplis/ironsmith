@@ -1,10 +1,10 @@
 use super::super::grammar::abilities as ability_grammar;
+use super::super::grammar::activated_lines::{
+    self as activated_line_grammar, OncePerTurnRestrictionNormalization,
+};
 use super::super::grammar::filters::spell_filters::parse_spell_filter_with_grammar_entrypoint;
-use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_cost_modifier_mana_cost;
-use super::super::lex_patterns::LexPattern;
-use super::super::lexer::{LexedClause, OwnedLexToken};
-use super::super::token_primitives::find_index;
+use super::super::lexer::OwnedLexToken;
 use super::{joined_activation_clause_text, merge_mana_activation_conditions};
 use crate::ability::ActivationTiming;
 use crate::cards::builders::{CardTextError, EffectAst, PlayerAst};
@@ -25,49 +25,6 @@ enum ActivatedSentenceModifier {
     AdditionalRestriction(String),
     TriggerOnly,
     InlineEffect(EffectAst),
-}
-
-const THIS_ABILITY_COSTS_PREFIXES: &[&[&str]] = &[&["this", "ability", "costs"]];
-const THE_NEXT_PREFIXES: &[&[&str]] = &[&["the", "next"]];
-const NEXT_SPELL_COST_REDUCTION_MARKER_WORDS: &[&str] = &["spell", "costs", "less", "cast"];
-const LESS_TO_ACTIVATE_MARKER_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["less", "to", "activate"])]);
-const NEXT_SPELL_YOU_CAST_THIS_TURN_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["spell", "you", "cast", "this", "turn"]),
-]);
-const LESS_TO_CAST_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["less", "to", "cast"])]);
-const ACTIVATE_ONLY_ONCE_EACH_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["activate", "only", "once", "each", "turn"]),
-]);
-const ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["activate", "only", "once", "each", "turn", "and"]),
-]);
-const AND_ONLY_ONCE_EACH_TURN_WORDS: &[&str] = &["and", "only", "once", "each", "turn"];
-const EXHAUST_ONCE_RESTRICTION_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["activate", "each", "exhaust", "ability", "only", "once"]),
-]);
-
-fn activated_sentence_tokens_match_pattern<'a>(
-    tokens: &[OwnedLexToken],
-    pattern: LexPattern<'a>,
-) -> bool {
-    pattern.matches(LexedClause::new(tokens))
-}
-
-fn activated_sentence_words_start_with_at(
-    words: &[String],
-    index: usize,
-    expected: &[&str],
-) -> bool {
-    words
-        .get(index..index.saturating_add(expected.len()))
-        .is_some_and(|window| {
-            window
-                .iter()
-                .zip(expected.iter())
-                .all(|(word, expected_word)| word.as_str() == *expected_word)
-        })
 }
 
 pub(super) struct ActivatedSentenceScan<'a> {
@@ -97,61 +54,17 @@ fn parse_activate_only_sentence_details_lexed(
 }
 
 fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let words = TokenWordView::new(tokens);
-    let clause_words = words.to_word_refs();
-    if grammar::words_match_prefix(tokens, &["the", "next"]).is_none() {
-        return None;
-    }
-
-    let spell_idx = find_index(&clause_words, |word| *word == "spell")?;
-    let costs_idx = find_index(&clause_words, |word| *word == "costs")?;
-    let less_idx = find_index(&clause_words, |word| *word == "less")?;
-    let clause = LexedClause::new(tokens);
-    if !clause
-        .from_word(spell_idx)
-        .is_some_and(|tail| NEXT_SPELL_YOU_CAST_THIS_TURN_TAIL_PATTERN.matches_prefix(tail))
-        || !clause
-            .from_word(less_idx)
-            .is_some_and(|tail| LESS_TO_CAST_PATTERN.matches_prefix(tail))
-        || costs_idx <= spell_idx
-    {
-        return None;
-    }
-
-    let filter_start = words.token_index_after_words(2).unwrap_or(spell_idx);
-    let spell_token_idx = words.token_index_for_word_index(spell_idx)?;
-    let costs_token_idx = words.token_index_for_word_index(costs_idx)?;
-    let less_token_idx = words.token_index_for_word_index(less_idx)?;
-    let spell_filter_tokens = super::trim_commas(&tokens[filter_start..spell_token_idx]).to_vec();
-    let reduction_tokens =
-        super::trim_commas(&tokens[costs_token_idx + 1..less_token_idx]).to_vec();
-    let filter = parse_spell_filter_with_grammar_entrypoint(&spell_filter_tokens);
-    let (reduction, consumed) = parse_cost_modifier_mana_cost(&reduction_tokens)?;
-    if consumed != reduction_tokens.len() {
-        return None;
-    }
+    let parsed = activated_line_grammar::parse_next_spell_cost_reduction_tokens(tokens)?;
 
     Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
         PlayerAst::You,
-        filter,
-        reduction,
+        parsed.spell_filter,
+        parsed.reduction,
     ))
 }
 
 fn is_inline_activated_text_modifier_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let clause = LexedClause::new(tokens);
-    if grammar::words_match_any_prefix(tokens, THIS_ABILITY_COSTS_PREFIXES).is_some()
-        && LESS_TO_ACTIVATE_MARKER_PATTERN
-            .find_in_clause(clause)
-            .is_some()
-    {
-        return true;
-    }
-
-    grammar::words_match_any_prefix(tokens, THE_NEXT_PREFIXES).is_some()
-        && NEXT_SPELL_COST_REDUCTION_MARKER_WORDS
-            .iter()
-            .all(|word| clause.contains_word(word))
+    activated_line_grammar::parse_inline_activated_sentence_kind_tokens(tokens).is_some()
 }
 
 fn parse_activated_sentence_modifier_lexed(
@@ -261,7 +174,7 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
 }
 
 pub(super) fn tokens_are_exhaust_once_restriction(tokens: &[OwnedLexToken]) -> bool {
-    EXHAUST_ONCE_RESTRICTION_PATTERN.matches(LexedClause::new(tokens))
+    activated_line_grammar::parse_exhaust_once_restriction_tokens(tokens).is_some()
 }
 
 pub(crate) fn parse_activate_only_timing_lexed(
@@ -277,35 +190,9 @@ pub(crate) fn normalize_activate_only_restriction(
     if timing != &ActivationTiming::OncePerTurn {
         return Some(crate::runtime_backend::token_word_refs(tokens).join(" "));
     }
-
-    let mut words = crate::runtime_backend::token_word_refs(tokens)
-        .into_iter()
-        .map(|word| word.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    if words.is_empty() {
-        return None;
-    }
-    if activated_sentence_tokens_match_pattern(tokens, ACTIVATE_ONLY_ONCE_EACH_TURN_PATTERN) {
-        return None;
-    }
-    if activated_sentence_tokens_match_pattern(
-        tokens,
-        ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX_PATTERN,
-    ) {
-        words.drain(0..6);
-    }
-    let mut index = 0usize;
-    while index + AND_ONLY_ONCE_EACH_TURN_WORDS.len() <= words.len() {
-        if activated_sentence_words_start_with_at(&words, index, AND_ONLY_ONCE_EACH_TURN_WORDS) {
-            words.drain(index..index + AND_ONLY_ONCE_EACH_TURN_WORDS.len());
-        } else {
-            index += 1;
-        }
-    }
-    if words.is_empty() {
-        None
-    } else {
-        Some(words.join(" "))
+    match activated_line_grammar::parse_once_per_turn_restriction_normalization_tokens(tokens) {
+        OncePerTurnRestrictionNormalization::Redundant => None,
+        OncePerTurnRestrictionNormalization::Residual(restriction) => Some(restriction),
     }
 }
 

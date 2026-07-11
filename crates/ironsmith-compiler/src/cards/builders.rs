@@ -29,7 +29,7 @@ pub(crate) use crate::runtime_backend::semantic::{
 pub(crate) use crate::runtime_backend::util::SubjectAst;
 pub(crate) use crate::runtime_backend::{
     CarryContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine,
-    NormalizedLine, TokenCopyFollowup, Verb, parse_object_filter_lexed,
+    NormalizedLine, TokenCopyFollowup, Verb,
 };
 pub(crate) use crate::runtime_backend::{
     PermissionClauseSpec, PermissionLifetime, ReferenceEnv, ReferenceImports,
@@ -71,14 +71,6 @@ impl From<KeywordAction> for GrantedAbilityAst {
     fn from(action: KeywordAction) -> Self {
         Self::KeywordAction(action)
     }
-}
-
-pub(crate) fn replace_whole_word_case_insensitive(
-    input: &str,
-    needle: &str,
-    replacement: &str,
-) -> String {
-    input.replace(needle, replacement)
 }
 
 pub(crate) use crate::runtime_backend::lexer::OwnedLexToken;
@@ -198,45 +190,6 @@ impl CardDefinitionBuilder {
     }
 
     pub fn with_ability(mut self, ability: crate::ability::Ability) -> Self {
-        if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind
-            && matches!(
-                static_ability.id(),
-                crate::static_abilities::StaticAbilityId::KeywordMarker
-            )
-        {
-            let text = static_ability.display();
-            if text.eq_ignore_ascii_case("fuse") {
-                self.has_fuse = true;
-                return self;
-            }
-            if let Some(cost) = parse_prototype_marker_cost(&text) {
-                self.alternative_casts.push(
-                    crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
-                        "Prototype",
-                        Some(cost),
-                        vec![],
-                    ),
-                );
-            }
-            if let Some(amount) = parse_standalone_bolster_marker(&text)
-                && self
-                    .card_builder
-                    .card_types_ref()
-                    .iter()
-                    .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery))
-            {
-                let effect = crate::effect::Effect::bolster(amount);
-                if let Some(existing) = &mut self.spell_effect {
-                    existing.push(effect);
-                } else {
-                    self.spell_effect =
-                        Some(crate::resolution::ResolutionProgram::from_effects(vec![
-                            effect,
-                        ]));
-                }
-                return self;
-            }
-        }
         self.abilities.push(ability);
         self
     }
@@ -268,7 +221,7 @@ impl CardDefinitionBuilder {
         self
     }
 
-    pub fn apply_keyword_action(self, action: KeywordAction) -> Self {
+    pub fn apply_keyword_action(mut self, action: KeywordAction) -> Self {
         match action {
             KeywordAction::Flying => self.flying(),
             KeywordAction::Banding => self.with_ability(crate::ability::Ability::static_ability(
@@ -444,28 +397,30 @@ impl CardDefinitionBuilder {
             KeywordAction::Annihilator(amount) => self.annihilator(amount),
             KeywordAction::ForMirrodin => self.for_mirrodin(),
             KeywordAction::LivingWeapon => self.living_weapon(),
-            KeywordAction::Marker(name) if name.eq_ignore_ascii_case("fuse") => self.has_fuse(),
-            KeywordAction::Marker(name)
-                if parse_standalone_bolster_marker(name).is_some()
-                    && self.card_builder.card_types_ref().iter().any(|card_type| {
-                        matches!(card_type, CardType::Instant | CardType::Sorcery)
-                    }) =>
+            KeywordAction::Fuse => self.has_fuse(),
+            KeywordAction::Prototype {
+                cost,
+                power_toughness,
+            } => self.alternative_cast(
+                crate::alternative_cast::AlternativeCastingMethod::prototype(cost, power_toughness),
+            ),
+            KeywordAction::Bolster(amount)
+                if self.card_builder.card_types_ref().iter().any(|card_type| {
+                    matches!(card_type, CardType::Instant | CardType::Sorcery)
+                }) =>
             {
-                self.with_ability(crate::ability::Ability::static_ability(
-                    crate::static_abilities::StaticAbility::keyword_marker(format!(
-                        "Bolster {}",
-                        parse_standalone_bolster_marker(name).unwrap()
-                    )),
-                ))
+                let effect = crate::effect::Effect::bolster(amount);
+                if let Some(existing) = &mut self.spell_effect {
+                    existing.push(effect);
+                } else {
+                    self.spell_effect =
+                        Some(crate::resolution::ResolutionProgram::from_effects(vec![
+                            effect,
+                        ]));
+                }
+                self
             }
-            KeywordAction::MarkerText(text) if text.eq_ignore_ascii_case("fuse") => self.has_fuse(),
-            KeywordAction::MarkerText(text)
-                if parse_standalone_bolster_marker(&text).is_some()
-                    && self.card_builder.card_types_ref().iter().any(|card_type| {
-                        matches!(card_type, CardType::Instant | CardType::Sorcery)
-                    }) =>
-            {
-                let amount = parse_standalone_bolster_marker(&text).unwrap();
+            KeywordAction::Bolster(amount) => {
                 self.with_ability(crate::ability::Ability::static_ability(
                     crate::static_abilities::StaticAbility::keyword_marker(format!(
                         "Bolster {amount}"
@@ -2462,27 +2417,3 @@ impl CardDefinitionBuilder {
 pub const IT_TAG: &str = crate::host::IT_TAG;
 pub const CHOSEN_OBJECTS_TAG: &str = crate::host::CHOSEN_OBJECTS_TAG;
 pub const COPIED_STACK_OBJECT_TAG: &str = crate::host::COPIED_STACK_OBJECT_TAG;
-
-fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {
-    let mut parts = text.split_whitespace();
-    matches!(parts.next(), Some(keyword) if keyword.eq_ignore_ascii_case("bolster"))
-        .then(|| parts.next().and_then(|amount| amount.parse::<u32>().ok()))
-        .flatten()
-        .filter(|_| parts.next().is_none())
-}
-
-fn parse_prototype_marker_cost(text: &str) -> Option<ManaCost> {
-    let trimmed = text.trim();
-    let rest = trimmed
-        .strip_prefix("Prototype")
-        .or_else(|| trimmed.strip_prefix("prototype"))?
-        .trim_start();
-    let cost_text = rest
-        .split(|ch| matches!(ch, '-' | '—' | '–'))
-        .next()?
-        .trim();
-    if cost_text.is_empty() {
-        return None;
-    }
-    crate::runtime_backend::parse_scryfall_mana_cost(&cost_text.to_ascii_uppercase()).ok()
-}

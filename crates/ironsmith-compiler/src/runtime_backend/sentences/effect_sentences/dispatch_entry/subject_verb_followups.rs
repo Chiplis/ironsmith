@@ -1,28 +1,8 @@
 use crate::cards::builders::SubjectVerbSubjectAst;
+use crate::runtime_backend::grammar::effects::followup_shapes;
 use crate::runtime_backend::grammar::structure::parse_trailing_if_predicate_lexed;
-use crate::runtime_backend::lexer::{
-    token_word_refs, word_slice_contains_any_word, word_slice_contains_phrase, word_slice_eq,
-    word_slice_eq_any, word_slice_starts_with,
-};
 
 use super::*;
-
-const OF_THOSE_TOKENS_PREFIX: &[&str] = &["of", "those", "tokens"];
-const CREATE_THOSE_TOKENS_TRAILING_WORDS: &[&[&str]] = &[
-    &["instead"],
-    &["onto", "the", "battlefield"],
-    &["onto", "the", "battlefield", "instead"],
-];
-const TOKEN_REMINDER_LIFECYCLE_WORDS: &[&str] = &["exile", "sacrifice"];
-const UNTIL_END_OF_TURN_PHRASE: &[&str] = &["until", "end", "of", "turn"];
-const WHEN_ONE_OR_MORE_CARDS_MILLED_THIS_WAY_PREFIX: &[&str] = &[
-    "when", "one", "or", "more", "cards", "are", "milled", "this", "way",
-];
-const IF_NO_ONE_DOES_PREFIX: &[&str] = &["if", "no", "one", "does"];
-const SKIP_TURN_WHILE_THIS_ARTIFACT_TAPPED_WORDS: &[&str] = &[
-    "if", "you", "would", "begin", "your", "turn", "while", "this", "artifact", "is", "tapped",
-    "you", "may", "skip", "that", "turn", "instead",
-];
 
 pub(super) enum PreParseFollowupResult {
     Handled {
@@ -164,7 +144,8 @@ fn build_grant_all_from_demonstrative_gain(
 fn effect_needs_followup_library_shuffle(effect: &EffectAst) -> bool {
     if matches!(
         effect,
-        EffectAst::ChooseObjectsAcrossZones { zones, .. } if slice_contains(zones, &Zone::Library)
+        EffectAst::ChooseObjectsAcrossZones { zones, .. }
+            if zones.iter().any(|zone| zone == &Zone::Library)
     ) {
         return true;
     }
@@ -210,24 +191,17 @@ fn append_library_shuffle_followup_to_latest_search(effects: &mut Vec<EffectAst>
 }
 
 fn is_if_you_search_library_this_way_shuffle_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     matches!(
-        words.as_slice(),
-        [
-            "if", "you", "search", "your", "library", "this", "way", "shuffle",
-        ] | [
-            "if", "you", "search", "your", "library", "this", "way", "shuffles"
-        ]
+        followup_shapes::parse_library_shuffle_followup_shape(tokens),
+        Some(followup_shapes::LibraryShuffleFollowupShape::IfSearchedThisWay)
     )
 }
 
 fn is_then_that_player_shuffles_sentence(tokens: &[OwnedLexToken]) -> bool {
-    LexedClause::new(tokens).matches_any_words(&[
-        &["then", "that", "player", "shuffles"],
-        &["that", "player", "shuffles"],
-        &["then", "that", "player", "shuffle"],
-        &["that", "player", "shuffle"],
-    ])
+    matches!(
+        followup_shapes::parse_library_shuffle_followup_shape(tokens),
+        Some(followup_shapes::LibraryShuffleFollowupShape::ThatPlayer)
+    )
 }
 
 fn is_if_you_do_return_source_exiled_cards_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -300,6 +274,9 @@ fn pre_followup_subject_verb_route(id: &str) -> &'static str {
         }
         "cant-be-regenerated" => {
             "subject-verb verb=Cant subject=implicit recognizer=regeneration-followup"
+        }
+        "damage-cant-be-prevented" => {
+            "subject-verb verb=Deal subject=previous recognizer=unpreventable-damage-followup"
         }
         "copy-and-cast" => "subject-verb verb=Copy subject=implicit recognizer=copy-cast-followup",
         "token-followups" => "subject-verb verb=Create subject=implicit recognizer=token-followup",
@@ -474,9 +451,8 @@ fn pre_rule_future_zone_replacement_followup(
     if !sentence_contains(sentence_tokens, WOULD_DIE_THIS_TURN_PHRASE) {
         return Ok(None);
     }
-    let sentence_text = LexedClause::new(sentence_tokens).text();
     if !matches!(
-        classify_instead_followup_text(&sentence_text),
+        classify_instead_followup_tokens(sentence_tokens),
         InsteadSemantics::FutureReplacement
     ) {
         return Ok(None);
@@ -494,25 +470,35 @@ fn pre_rule_future_zone_replacement_followup(
 
 fn pre_rule_skip_tapped_source_turn_replacement(
     _state: &mut SentenceDispatchState<'_>,
-    _sentences: &[SentenceInput],
-    _sentence_idx: usize,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    if !word_slice_eq(
-        &token_word_refs(sentence_tokens),
-        SKIP_TURN_WHILE_THIS_ARTIFACT_TAPPED_WORDS,
-    ) {
+    if !followup_shapes::is_skip_tapped_source_turn_replacement(sentence_tokens) {
         return Ok(None);
     }
+    let has_untap_followup = sentences
+        .get(sentence_idx + 1)
+        .is_some_and(|sentence| followup_shapes::is_if_did_untap_source_followup(sentence.lexed()));
+    let mut optional_skip_effects = vec![EffectAst::subject_verb_skip_turn(PlayerAst::You)];
+    if has_untap_followup {
+        optional_skip_effects.push(EffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects: vec![EffectAst::subject_verb_untap(TargetAst::Source(None))],
+        });
+    }
+    let if_true = vec![EffectAst::May {
+        effects: optional_skip_effects,
+    }];
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
         tokens: sentence_tokens.to_vec(),
         wrap_if_result: None,
         direct_effects: Some(vec![EffectAst::Conditional {
             predicate: PredicateAst::SourceIsTapped,
-            if_true: vec![EffectAst::subject_verb_skip_turn(PlayerAst::You)],
+            if_true,
             if_false: Vec::new(),
         }]),
-        consumed_sentences: 1,
+        consumed_sentences: if has_untap_followup { 2 } else { 1 },
     })))
 }
 
@@ -522,30 +508,10 @@ fn pre_rule_damage_this_way_player_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let clause = LexedClause::new(sentence_tokens);
-    if clause.matches_any_words(&[
-        &[
-            "players",
-            "dealt",
-            "damage",
-            "this",
-            "way",
-            "cant",
-            "cast",
-            "noncreature",
-            "spells",
-            "this",
-            "turn",
-        ],
-        &[
-            "players", "dealt", "damage", "this", "way", "cant", "cast", "non", "creature",
-            "spells", "this", "turn",
-        ],
-    ]) {
-        return Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
-            tokens: sentence_tokens.to_vec(),
-            wrap_if_result: None,
-            direct_effects: Some(vec![EffectAst::ForEachTaggedPlayer {
+    let direct_effects = match followup_shapes::parse_damaged_player_followup_shape(sentence_tokens)
+    {
+        Some(followup_shapes::DamagedPlayerFollowupShape::CantCastNoncreatureSpellsThisTurn) => {
+            vec![EffectAst::ForEachTaggedPlayer {
                 tag: TagKey::from("damaged_0"),
                 effects: vec![EffectAst::subject_verb_cant(
                     crate::effect::Restriction::cast_spells_matching(
@@ -555,34 +521,24 @@ fn pre_rule_damage_this_way_player_followup(
                     crate::effect::Until::EndOfTurn,
                     None,
                 )],
-            }]),
-            consumed_sentences: 1,
-        })));
-    }
-
-    if !clause.matches_any_words(&[
-        &[
-            "if", "a", "player", "is", "dealt", "damage", "this", "way", "they", "cant", "gain",
-            "life", "for", "the", "rest", "of", "the", "game",
-        ],
-        &[
-            "if", "player", "is", "dealt", "damage", "this", "way", "they", "cant", "gain", "life",
-            "for", "the", "rest", "of", "the", "game",
-        ],
-    ]) {
-        return Ok(None);
-    }
+            }]
+        }
+        Some(followup_shapes::DamagedPlayerFollowupShape::CantGainLifeRestOfGame) => {
+            vec![EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: vec![EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::gain_life(PlayerFilter::DamagedPlayer),
+                    crate::effect::Until::Forever,
+                    None,
+                )],
+            }]
+        }
+        None => return Ok(None),
+    };
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
         tokens: sentence_tokens.to_vec(),
         wrap_if_result: None,
-        direct_effects: Some(vec![EffectAst::IfResult {
-            predicate: IfResultPredicate::Did,
-            effects: vec![EffectAst::subject_verb_cant(
-                crate::effect::Restriction::gain_life(PlayerFilter::DamagedPlayer),
-                crate::effect::Until::Forever,
-                None,
-            )],
-        }]),
+        direct_effects: Some(direct_effects),
         consumed_sentences: 1,
     })))
 }
@@ -593,10 +549,7 @@ fn pre_rule_tap_damage_this_way_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    if !LexedClause::new(sentence_tokens).matches_any_words(&[
-        &["tap", "each", "creature", "dealt", "damage", "this", "way"],
-        &["tap", "all", "creatures", "dealt", "damage", "this", "way"],
-    ]) {
+    if !followup_shapes::is_tap_damaged_creatures_followup(sentence_tokens) {
         return Ok(None);
     }
 
@@ -641,16 +594,7 @@ fn pre_rule_still_lands_followup(
 }
 
 pub(super) fn is_still_lands_followup_sentence(sentence_tokens: &[OwnedLexToken]) -> bool {
-    LexedClause::new(sentence_tokens).matches_any_words(&[
-        &["theyre", "still", "land"],
-        &["theyre", "still", "lands"],
-        &["they", "re", "still", "land"],
-        &["they", "re", "still", "lands"],
-        &["its", "still", "a", "land"],
-        &["its", "still", "land"],
-        &["it", "s", "still", "a", "land"],
-        &["it", "s", "still", "land"],
-    ])
+    followup_shapes::is_still_land_followup(sentence_tokens)
 }
 
 pub(super) fn previous_sentence_is_temporary_land_animation(
@@ -661,10 +605,7 @@ pub(super) fn previous_sentence_is_temporary_land_animation(
         .checked_sub(1)
         .and_then(|idx| sentences.get(idx))
         .is_some_and(|previous_sentence| {
-            let previous_words = token_word_refs(previous_sentence.lowered());
-            word_slice_contains_any_word(&previous_words, &["become", "becomes"])
-                && word_slice_contains_any_word(&previous_words, &["creature", "creatures"])
-                && word_slice_contains_phrase(&previous_words, UNTIL_END_OF_TURN_PHRASE)
+            followup_shapes::is_temporary_land_animation_sentence(previous_sentence.lowered())
         })
 }
 
@@ -755,25 +696,30 @@ fn pre_rule_copy_and_cast_followups(
         }));
     }
 
-    // "The damage can't be prevented." — rider on the previous deal-damage
-    // effect (Flames of the Blood Hand, Skullcrack-style burn spells).
-    {
-        let words = crate::runtime_backend::front_end::shared::util::non_article_token_word_refs(
-            sentence_tokens,
-        );
-        if matches!(
-            words.as_slice(),
-            ["damage", "cant", "be", "prevented"] | ["that", "damage", "cant", "be", "prevented"]
-        ) && mark_last_deal_damage_unpreventable(state.effects)
-        {
-            return Ok(Some(PreParseFollowupResult::Handled {
-                consumed_sentences: 1,
-                route: None,
-            }));
-        }
-    }
-
     Ok(None)
+}
+
+fn pre_rule_damage_cant_be_prevented_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if effect_grammar::clause_dispatch_shapes::parse_direct_clause_shape(sentence_tokens)
+        != Some(effect_grammar::clause_dispatch_shapes::DirectClauseShape::DamageCantBePrevented)
+    {
+        return Ok(None);
+    }
+    if !mark_last_deal_damage_unpreventable(state.effects) {
+        return Err(CardTextError::ParseError(format!(
+            "unpreventable-damage rider has no preceding damage effect (clause: '{}')",
+            LexedClause::new(sentence_tokens).text()
+        )));
+    }
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: None,
+    }))
 }
 
 fn mark_last_deal_damage_unpreventable(effects: &mut [EffectAst]) -> bool {
@@ -818,6 +764,16 @@ fn pre_rule_token_followups(
     sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    // The generic dispatch path trims terminal punctuation before running the
+    // followup registry. Quoted token rules need their closing quote and the
+    // period inside that quote, so recognize and merge them from the original
+    // sentence slice while leaving every other followup on the normalized
+    // tokens supplied by the caller.
+    let reminder_tokens = sentences
+        .get(sentence_idx)
+        .map(SentenceInput::lowered)
+        .unwrap_or(sentence_tokens);
+    let reminder_facts = followup_shapes::token_reminder_followup_facts(reminder_tokens);
     if let Some(effect) = parse_create_more_of_prior_tokens(sentence_tokens, state.effects) {
         state.effects.push(effect);
         return Ok(Some(PreParseFollowupResult::Handled {
@@ -859,16 +815,11 @@ fn pre_rule_token_followups(
             route: None,
         }));
     }
-    if is_generic_token_reminder_sentence(sentence_tokens)
+    if is_generic_token_reminder_sentence(reminder_tokens)
         && state.effects.last().is_some_and(effect_creates_any_token)
     {
-        if append_token_reminder_to_last_create_effect(state.effects, sentence_tokens) {
-            let reminder_words = LexedClause::new(sentence_tokens).word_refs();
-            let route = matches!(
-                reminder_words.as_slice(),
-                ["exile", ..] | ["sacrifice", ..]
-            )
-            .then_some(
+        if append_token_reminder_to_last_create_effect(state.effects, reminder_tokens) {
+            let route = reminder_facts.lifecycle_head.then_some(
                 "subject-verb verb=Exile subject=implicit recognizer=token-copy-delayed-followup",
             );
             return Ok(Some(PreParseFollowupResult::Handled {
@@ -881,16 +832,8 @@ fn pre_rule_token_followups(
             LexedClause::new(sentence_tokens).text()
         )));
     }
-    if is_generic_token_reminder_sentence(sentence_tokens) {
-        let reminder_words = LexedClause::new(sentence_tokens).word_refs();
-        let delayed_pronoun_lifecycle = reminder_words
-            .first()
-            .is_some_and(|word| TOKEN_REMINDER_LIFECYCLE_WORDS.contains(word))
-            && (grammar::contains_word(sentence_tokens, "it")
-                || grammar::contains_word(sentence_tokens, "them"));
-        let pronoun_followup_clause =
-            grammar::words_match_any_prefix(sentence_tokens, PRONOUN_TRIGGER_PREFIXES).is_some();
-        if !delayed_pronoun_lifecycle && !pronoun_followup_clause {
+    if is_generic_token_reminder_sentence(reminder_tokens) {
+        if !reminder_facts.delayed_pronoun_lifecycle && !reminder_facts.pronoun_trigger_prefix {
             return Err(CardTextError::ParseError(format!(
                 "unsupported standalone token reminder clause (clause: '{}')",
                 LexedClause::new(sentence_tokens).text()
@@ -905,7 +848,7 @@ fn pre_rule_token_followups(
             route: None,
         }));
     }
-    if let Some(abilities) = parse_token_granted_ability_followup_sentence_lexed(sentence_tokens)? {
+    if let Some(abilities) = parse_token_granted_ability_followup_sentence_lexed(reminder_tokens)? {
         if try_apply_token_granted_ability_followup(state.effects, &abilities)? {
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
@@ -964,33 +907,17 @@ fn parse_create_more_of_prior_tokens(
     sentence_tokens: &[OwnedLexToken],
     prior_effects: &[EffectAst],
 ) -> Option<EffectAst> {
-    let create_idx =
-        crate::runtime_backend::lexer::find_token_any_word(sentence_tokens, &["create", "put"])?;
-    if create_idx == 0 {
-        return None;
-    }
-    let predicate = parse_trailing_if_predicate_lexed(&sentence_tokens[..create_idx])?;
-    let (name, player) = last_created_token_info(prior_effects)?;
-    let after_create = &sentence_tokens[create_idx + 1..];
-    let (count, used) = parse_number(after_create)?;
-    let tail_clause = LexedClause::new(&after_create[used..]);
-    let tail_words = tail_clause.word_refs();
-    if !word_slice_starts_with(&tail_words, OF_THOSE_TOKENS_PREFIX) {
-        return None;
-    }
-    let trailing_words = &tail_words[OF_THOSE_TOKENS_PREFIX.len()..];
-    let trailing_is_supported = trailing_words.is_empty()
-        || word_slice_eq_any(trailing_words, CREATE_THOSE_TOKENS_TRAILING_WORDS);
-    if !trailing_is_supported {
-        return None;
-    }
+    let shape = followup_shapes::parse_create_more_prior_tokens(sentence_tokens)?;
+    let predicate = parse_trailing_if_predicate_lexed(shape.predicate_tokens)?;
+    let (name, definition, player) = last_created_token_info(prior_effects)?;
 
     let create = EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         player,
         SubjectVerbActionAst::CreateTokenWithMods {
             name,
-            count: Value::Fixed(count as i32),
+            definition,
+            count: Value::Fixed(shape.count as i32),
             dynamic_power_toughness: None,
             player,
             attached_to: None,
@@ -1027,26 +954,26 @@ fn pre_rule_otherwise_followup(
 }
 
 fn is_if_card_put_into_exile_this_way_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let has_expected_prefix = grammar::words_match_prefix(
+    let has_expected_prefix = grammar::match_word_prefix(
         tokens,
         &[
             "if", "a", "card", "is", "put", "into", "exile", "this", "way",
         ],
     )
     .is_some()
-        || grammar::words_match_prefix(
+        || grammar::match_word_prefix(
             tokens,
             &["if", "card", "is", "put", "into", "exile", "this", "way"],
         )
         .is_some()
-        || grammar::words_match_prefix(
+        || grammar::match_word_prefix(
             tokens,
             &[
                 "if", "a", "card", "was", "put", "into", "exile", "this", "way",
             ],
         )
         .is_some()
-        || grammar::words_match_prefix(
+        || grammar::match_word_prefix(
             tokens,
             &["if", "card", "was", "put", "into", "exile", "this", "way"],
         )
@@ -1085,18 +1012,13 @@ fn pre_rule_when_milled_this_way_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    if !word_slice_starts_with(
-        &token_word_refs(sentence_tokens),
-        WHEN_ONE_OR_MORE_CARDS_MILLED_THIS_WAY_PREFIX,
-    ) {
-        return Ok(None);
-    }
-    let Some((_before, after)) =
-        grammar::split_lexed_once_on_delimiter(sentence_tokens, TokenKind::Comma)
-    else {
+    let Some(shape) = followup_shapes::parse_conditional_followup(sentence_tokens) else {
         return Ok(None);
     };
-    let mut plan = SentenceParsePlan::new(trim_commas(after).to_vec());
+    if shape.kind != followup_shapes::ConditionalFollowupKind::WhenMilledThisWay {
+        return Ok(None);
+    }
+    let mut plan = SentenceParsePlan::new(trim_commas(shape.continuation_tokens).to_vec());
     plan.wrap_if_result = Some(IfResultPredicate::Did);
     Ok(Some(PreParseFollowupResult::Plan(plan)))
 }
@@ -1107,24 +1029,19 @@ fn pre_rule_if_no_one_does_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    if !word_slice_starts_with(&token_word_refs(sentence_tokens), IF_NO_ONE_DOES_PREFIX) {
-        return Ok(None);
-    }
-    let Some((_before, after)) =
-        grammar::split_lexed_once_on_delimiter(sentence_tokens, TokenKind::Comma)
-    else {
+    let Some(shape) = followup_shapes::parse_conditional_followup(sentence_tokens) else {
         return Ok(None);
     };
-    let mut plan = SentenceParsePlan::new(trim_commas(after).to_vec());
+    if shape.kind != followup_shapes::ConditionalFollowupKind::IfNoOneDoes {
+        return Ok(None);
+    }
+    let mut plan = SentenceParsePlan::new(trim_commas(shape.continuation_tokens).to_vec());
     plan.wrap_if_result = Some(IfResultPredicate::DidNot);
     Ok(Some(PreParseFollowupResult::Plan(plan)))
 }
 
 fn is_destroy_those_creatures_sentence(tokens: &[OwnedLexToken]) -> bool {
-    LexedClause::new(tokens).matches_any_words(&[
-        &["destroy", "those", "creatures"],
-        &["then", "destroy", "those", "creatures"],
-    ])
+    followup_shapes::is_destroy_those_creatures_followup(tokens)
 }
 
 fn last_remove_abilities_all_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
@@ -1186,10 +1103,9 @@ fn post_rule_future_zone_and_self_replacement(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let sentence_text = LexedClause::new(sentence_tokens).text();
-    maybe_rewrite_future_zone_replacement_sentence(sentence_effects, &sentence_text);
+    maybe_rewrite_future_zone_replacement_sentence(sentence_effects, sentence_tokens);
     if matches!(
-        classify_instead_followup_text(&sentence_text),
+        classify_instead_followup_tokens(sentence_tokens),
         InsteadSemantics::SelfReplacement
     ) && sentence_effects.len() == 1
         && !state.effects.is_empty()
@@ -1237,6 +1153,7 @@ fn post_rule_future_zone_and_self_replacement(
                 predicate,
                 if_true,
                 if_false,
+                attach_to_previous_ability: false,
             });
             return Ok(Some(PostParseFollowupResult::Handled {
                 consumed_sentences: 1,
@@ -1361,12 +1278,22 @@ fn default_effects_for_self_replacement(
         .rev()
         .find_map(carried_player_from_effect);
 
-    if carried_player.is_none()
-        && default_effects.iter().any(effect_has_that_player_subject)
-        && let Some(anchor_idx) = prior_effects
-            .iter()
-            .rposition(|effect| carried_player_from_effect(effect).is_some())
-    {
+    let anchor_idx =
+        if carried_player.is_none() && default_effects.iter().any(effect_has_that_player_subject) {
+            let mut idx = prior_effects.len();
+            let mut found = None;
+            while idx > 0 {
+                idx -= 1;
+                if carried_player_from_effect(&prior_effects[idx]).is_some() {
+                    found = Some(idx);
+                    break;
+                }
+            }
+            found
+        } else {
+            None
+        };
+    if let Some(anchor_idx) = anchor_idx {
         carried_player = carried_player_from_effect(&prior_effects[anchor_idx]);
         let mut anchored_default_effects = prior_effects.split_off(anchor_idx);
         anchored_default_effects.append(&mut default_effects);
@@ -1478,6 +1405,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         priority: 30,
         heads: &["it", "they", "creature", "creatures", "a"],
         run: pre_rule_cant_be_regenerated_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "damage-cant-be-prevented",
+        priority: 35,
+        heads: &["the"],
+        run: pre_rule_damage_cant_be_prevented_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "copy-and-cast",

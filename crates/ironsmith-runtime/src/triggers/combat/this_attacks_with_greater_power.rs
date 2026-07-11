@@ -57,6 +57,10 @@ impl TriggerMatcher for ThisAttacksWithGreaterPowerTrigger {
         Some(vec![EventKind::CreatureAttacked])
     }
 
+    fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
+        event_kind == EventKind::CreatureAttacked
+    }
+
     fn display(&self) -> String {
         "Whenever this creature attacks with another creature with greater power".to_string()
     }

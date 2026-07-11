@@ -34,13 +34,12 @@ use super::super::keyword_static::{
 use super::super::lexer::{LexStream, TokenKind};
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
-    find_index, find_window_by, rfind_index, slice_contains, slice_ends_with, slice_starts_with,
-    str_strip_suffix,
+    find_window_by, items_end_with, items_have, items_start_with, locate_index, locate_last_index,
 };
 use super::super::util::{
     helper_tag_for_tokens, intern_counter_name, is_article, mana_pips_from_token, parse_color,
     parse_counter_type_word, parse_mana_symbol, parse_number, parse_target_phrase, parse_value,
-    parse_zone_word, parser_trace_stack, span_from_tokens, token_index_for_word_index, trim_commas,
+    parse_zone_word, parser_trace_stack, span_from_tokens, token_boundary_for_word, trim_commas,
     words,
 };
 use super::super::value_helpers::{
@@ -81,7 +80,6 @@ const THAT_PLAYER_PREFIXES: &[&[&str]] = &[
 const TARGET_PLAYER_PREFIXES: &[&[&str]] = &[&["target", "player"], &["target", "players"]];
 const TARGET_OPPONENT_PREFIXES: &[&[&str]] = &[&["target", "opponent"], &["target", "opponents"]];
 const TURN_PREFIXES: &[&[&str]] = &[&["that", "turn"], &["turn"]];
-const EMBLEM_WITH_PREFIXES: &[&[&str]] = &[&["an", "emblem", "with"], &["emblem", "with"]];
 const ADDITIONAL_PREFIXES: &[&[&str]] = &[&["an", "additional"], &["additional"]];
 const ATTACHED_REFERENCE_PREFIXES: &[&[&str]] = &[
     &["that", "creature"],
@@ -98,6 +96,8 @@ const TARGET_BLOCKED_PREFIXES: &[&[&str]] = &[&["target", "blocked"]];
 const ANY_AMOUNT_OF_PREFIXES: &[&[&str]] = &[&["any", "amount", "of"]];
 const LIFE_TOTALS_PREFIXES: &[&[&str]] = &[&["life", "totals"]];
 
+#[path = "emblem_actions.rs"]
+mod emblem_actions;
 #[path = "exile_actions.rs"]
 mod exile_actions;
 #[path = "mana_actions.rs"]
@@ -113,6 +113,7 @@ mod sacrifice_discard;
 #[path = "tap_actions.rs"]
 mod tap_actions;
 
+pub(crate) use emblem_actions::*;
 pub(crate) use exile_actions::*;
 pub(crate) use mana_actions::*;
 pub(crate) use misc_actions::*;

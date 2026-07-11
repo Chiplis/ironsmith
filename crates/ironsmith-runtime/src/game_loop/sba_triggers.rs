@@ -30,7 +30,7 @@ pub fn check_and_apply_sbas_with(
 ) -> Result<(), GameLoopError> {
     use crate::decisions::make_decision;
     use crate::rules::state_based::{
-        StateBasedActionContext, apply_legend_rule_choice,
+        StateBasedActionContext, apply_legend_rule_choice_from_group,
         apply_state_based_actions_from_actions_with, check_state_based_actions_with_context,
         legend_rule_specs_from_actions,
     };
@@ -58,13 +58,14 @@ pub fn check_and_apply_sbas_with(
         let legend_specs = legend_rule_specs_from_actions(&actions);
         let had_legend_decisions = !legend_specs.is_empty();
         for (player, spec) in legend_specs {
+            let legend_group = spec.legends.clone();
             let keep_id: ObjectId = make_decision(game, decision_maker, player, None, spec);
             if decision_maker.awaiting_choice() {
                 // The prompt was only surfaced; committing the fallback here would
                 // advance local state past a choice the replay log doesn't contain yet.
                 return Ok(());
             }
-            apply_legend_rule_choice(game, keep_id);
+            apply_legend_rule_choice_from_group(game, keep_id, &legend_group);
         }
 
         // Apply the SBAs (legend rule already handled above)

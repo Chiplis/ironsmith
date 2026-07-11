@@ -120,12 +120,10 @@ fn effect_depends_on_with_baseline_and_started_groups(
     }
 
     // Then check if applying B would change what A does to any objects it applies to.
-    if modification_can_affect_dependency_output(&a.modification, &b.modification)
-        && {
-            game.note_dependency_pair_probed();
-            effect_output_changed(a, b, baseline, objects, game)
-        }
-    {
+    if modification_can_affect_dependency_output(&a.modification, &b.modification) && {
+        game.note_dependency_pair_probed();
+        effect_output_changed(a, b, baseline, objects, game)
+    } {
         return true;
     }
 
@@ -1941,6 +1939,7 @@ fn filter_uses_type_characteristics(filter: &ObjectFilter) -> bool {
 
 fn filter_uses_color_characteristics(filter: &ObjectFilter) -> bool {
     filter.colors.is_some()
+        || filter.required_colors.is_some()
         || filter.chosen_color
         || !filter.excluded_colors.is_empty()
         || filter.colorless
@@ -1958,6 +1957,7 @@ fn filter_uses_ability_characteristics(filter: &ObjectFilter) -> bool {
         || !filter.excluded_static_abilities.is_empty()
         || !filter.ability_markers.is_empty()
         || !filter.excluded_ability_markers.is_empty()
+        || filter.sticker.is_some()
 }
 
 fn modification_can_change_type_characteristics(modification: &Modification) -> bool {

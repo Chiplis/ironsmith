@@ -113,10 +113,7 @@ impl StateBasedActionContext {
 /// This should be called whenever a player would receive priority.
 /// State-based actions happen simultaneously.
 pub fn check_state_based_actions(game: &GameState) -> Vec<StateBasedAction> {
-    let view = crate::derived_view::DerivedGameView::from_effects(
-        game,
-        crate::static_ability_processor::get_all_continuous_effects(game),
-    );
+    let view = crate::derived_view::DerivedGameView::new(game);
     check_state_based_actions_with_view(game, &view)
 }
 
@@ -292,8 +289,7 @@ fn check_permanent_sbas_with_view(
         // IMPORTANT: Use calculated_toughness to account for counters and effects!
         if view.object_has_card_type(obj_id, CardType::Creature) {
             let is_indestructible = !game.can_be_destroyed(obj_id)
-                || view.object_has_static_ability_id(obj.id, StaticAbilityId::Indestructible)
-                || game.object_has_static_ability_id(obj.id, StaticAbilityId::Indestructible);
+                || view.object_has_static_ability_id(obj.id, StaticAbilityId::Indestructible);
 
             // Use calculated toughness to include -1/-1 counters, pump effects, etc.
             if let Some(toughness) = view.calculated_toughness(obj_id)
@@ -603,6 +599,7 @@ fn check_legend_rule_with_view(
     // Groups preserve battlefield order: violation order feeds the decision-prompt
     // order, which must be identical on every peer for multiplayer replay.
     let mut legends: Vec<((PlayerId, String), Vec<ObjectId>)> = Vec::new();
+    let mut group_indexes: crate::FxMap<(PlayerId, String), usize> = crate::FxMap::default();
 
     for &obj_id in &game.battlefield {
         let Some(chars) = view.calculated_characteristics(obj_id) else {
@@ -611,9 +608,10 @@ fn check_legend_rule_with_view(
 
         if chars.supertypes.contains(&Supertype::Legendary) {
             let key = (chars.controller, chars.name.to_owned_string());
-            if let Some((_, group)) = legends.iter_mut().find(|(existing, _)| *existing == key) {
-                group.push(obj_id);
+            if let Some(&index) = group_indexes.get(&key) {
+                legends[index].1.push(obj_id);
             } else {
+                group_indexes.insert(key.clone(), legends.len());
                 legends.push((key, vec![obj_id]));
             }
         }
@@ -809,14 +807,13 @@ pub fn apply_legend_rule_choice(game: &mut GameState, keep: ObjectId) {
         return;
     };
 
-    // Find all other current legends with the same name controlled by the same player.
-    let to_remove: Vec<ObjectId> = game
+    // Preserve the canonical API for callers that only retained the chosen
+    // object. Decision-driven callers should pass the already-computed group
+    // to `apply_legend_rule_choice_from_group` and avoid rescanning the board.
+    let candidates: Vec<ObjectId> = game
         .battlefield
         .iter()
         .filter_map(|&id| {
-            if id == keep {
-                return None;
-            }
             let chars = view.calculated_characteristics(id)?;
             if chars.controller == controller
                 && chars.name == name
@@ -830,12 +827,75 @@ pub fn apply_legend_rule_choice(game: &mut GameState, keep: ObjectId) {
         .collect();
     drop(view);
 
-    // Move all others to graveyard
-    for id in to_remove {
-        game.move_object(
+    apply_legend_rule_choice_from_group(game, keep, &candidates);
+}
+
+/// Apply one already-identified legend-rule violation.
+///
+/// The candidate order comes from the SBA scan and is kept stable for replay.
+/// Every candidate is revalidated against one pre-move derived view so a stale
+/// decision cannot move an unrelated permanent.
+pub fn apply_legend_rule_choice_from_group(
+    game: &mut GameState,
+    keep: ObjectId,
+    candidates: &[ObjectId],
+) {
+    if !candidates.contains(&keep) {
+        return;
+    }
+
+    let view = crate::derived_view::DerivedGameView::new(game);
+    let Some(keep_chars) = view.calculated_characteristics(keep) else {
+        return;
+    };
+    if !keep_chars.supertypes.contains(&Supertype::Legendary) {
+        return;
+    }
+    let name = keep_chars.name;
+    let controller = keep_chars.controller;
+
+    let mut seen = HashSet::new();
+    let to_remove: Vec<(ObjectId, ObjectSnapshot)> = candidates
+        .iter()
+        .copied()
+        .filter(|&id| id != keep && seen.insert(id))
+        .filter_map(|id| {
+            let chars = view.calculated_characteristics(id)?;
+            if chars.controller != controller
+                || chars.name != name
+                || !chars.supertypes.contains(&Supertype::Legendary)
+            {
+                return None;
+            }
+            let object = game.object(id)?;
+            Some((
+                id,
+                ObjectSnapshot::from_object_with_known_characteristics(object, game, Some(&chars)),
+            ))
+        })
+        .collect();
+    if to_remove.is_empty() {
+        return;
+    }
+
+    // Legend-rule moves are simultaneous. Capture trigger-source LKI once
+    // before any source leaves, then attach the same pre-event lookback set to
+    // every member of the batch.
+    let pre_event_lookback_source_snapshots =
+        if game.may_have_triggered_abilities_for_event_kind(crate::events::EventKind::ZoneChange) {
+            game.trigger_source_lookback_snapshots()
+        } else {
+            Vec::new()
+        };
+    drop(view);
+
+    for (id, snapshot) in to_remove {
+        game.move_object_with_snapshot_and_pre_event_lookback(
             id,
             Zone::Graveyard,
             crate::events::cause::EventCause::from_legend_rule(controller),
+            Some(snapshot),
+            &pre_event_lookback_source_snapshots,
         );
     }
 }
@@ -1123,6 +1183,160 @@ mod tests {
                 })
                 .collect();
             assert_eq!(order, expected);
+        }
+    }
+
+    #[test]
+    fn legend_rule_batch_reuses_precomputed_characteristics_for_lki() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let legend = legendary_creature_definition(403, "Many Memorials");
+        let legends: Vec<_> = (0..6)
+            .map(|_| game.create_object_from_definition(&legend, alice, Zone::Battlefield))
+            .collect();
+
+        game.refresh_continuous_state();
+        game.prewarm_calculated_characteristics(&game.battlefield.clone());
+        let before = game.work_counters();
+
+        apply_legend_rule_choice(&mut game, legends[0]);
+
+        let after = game.work_counters();
+        assert_eq!(
+            after.characteristics_full_recomputes, before.characteristics_full_recomputes,
+            "all legend-rule LKI snapshots should reuse the pre-mutation characteristic batch"
+        );
+        assert_eq!(
+            game.battlefield
+                .iter()
+                .filter(|&&id| game
+                    .object(id)
+                    .is_some_and(|object| object.name == "Many Memorials"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn known_legend_group_does_not_recalculate_unrelated_battlefield_objects() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let creature = creature_card(404, "Unrelated Creature", 1, 1);
+        let unrelated: Vec<_> = (0..128)
+            .map(|_| game.create_object_from_card(&creature, alice, Zone::Battlefield))
+            .collect();
+        let legend = legendary_creature_definition(405, "Scoped Legends");
+        let legends: Vec<_> = (0..6)
+            .map(|_| game.create_object_from_definition(&legend, alice, Zone::Battlefield))
+            .collect();
+        let other_legend = game.create_object_from_definition(
+            &legendary_creature_definition(406, "Different Legend"),
+            alice,
+            Zone::Battlefield,
+        );
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                unrelated[0],
+                alice,
+                EffectTarget::AllCreatures,
+                Modification::ModifyPowerToughness {
+                    power: 1,
+                    toughness: 1,
+                },
+            ));
+        game.refresh_continuous_state();
+        let before = game.work_counters();
+        let mut supplied_group = legends.clone();
+        supplied_group.push(other_legend);
+
+        apply_legend_rule_choice_from_group(&mut game, legends[0], &supplied_group);
+
+        let after = game.work_counters();
+        assert!(
+            after
+                .characteristics_full_recomputes
+                .saturating_sub(before.characteristics_full_recomputes)
+                <= (legends.len() * 2) as u64,
+            "only the supplied same-name legend group should need layered characteristics"
+        );
+        assert!(game.battlefield.contains(&other_legend));
+        assert_eq!(
+            legends
+                .iter()
+                .filter(|id| game.battlefield.contains(id))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn sba_scan_reuses_supplied_view_for_indestructible_checks() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let creature = creature_card(408, "SBA Creature", 2, 2);
+        let creatures: Vec<_> = (0..128)
+            .map(|_| game.create_object_from_card(&creature, alice, Zone::Battlefield))
+            .collect();
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                creatures[0],
+                alice,
+                EffectTarget::AllCreatures,
+                Modification::ModifyPowerToughness {
+                    power: 1,
+                    toughness: 1,
+                },
+            ));
+        let effects = game.all_continuous_effects();
+        let view = crate::derived_view::DerivedGameView::from_effects(&game, effects);
+        view.prewarm_characteristics(&game.battlefield);
+        let before = game.work_counters();
+
+        let actions = check_state_based_actions_with_view(&game, &view);
+
+        let after = game.work_counters();
+        assert!(actions.is_empty());
+        assert_eq!(
+            after.characteristics_full_recomputes, before.characteristics_full_recomputes,
+            "the indestructible check should reuse the SBA view instead of recalculating through GameState"
+        );
+    }
+
+    #[test]
+    fn legend_rule_leavers_share_pre_event_lki_and_batch_trigger_event() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let legend = legendary_creature_definition(407, "Doomed Legends");
+        let legends: Vec<_> = (0..3)
+            .map(|_| game.create_object_from_definition(&legend, alice, Zone::Battlefield))
+            .collect();
+        for &legend_id in &legends {
+            game.object_mut(legend_id)
+                .expect("legend should exist")
+                .abilities_mut()
+                .push(crate::ability::dies_trigger(vec![
+                    crate::effect::Effect::gain_life(1),
+                ]));
+        }
+        game.refresh_continuous_state();
+
+        apply_legend_rule_choice_from_group(&mut game, legends[0], &legends);
+        let mut trigger_queue = TriggerQueue::new();
+        crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+        assert_eq!(trigger_queue.entries.len(), 2);
+        for entry in &trigger_queue.entries {
+            let zone_change = entry
+                .triggering_event
+                .downcast::<crate::events::zones::ZoneChangeEvent>()
+                .expect("dies trigger should retain its zone-change event");
+            assert_eq!(
+                zone_change.snapshots().len(),
+                2,
+                "each departing legend should see the full simultaneous legend-rule batch"
+            );
         }
     }
 

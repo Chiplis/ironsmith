@@ -5,7 +5,6 @@ use crate::effect::Effect;
 use crate::filter::ObjectFilter;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::resolution::ResolutionProgram;
-use crate::runtime_backend::token_primitives::is_static_keyword_marker_text;
 use crate::static_abilities::StaticAbility;
 use crate::target::PlayerFilter;
 use crate::triggers::Trigger;
@@ -193,20 +192,12 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         KeywordAction::Annihilator(amount) => Some(StaticAbility::keyword_marker(format!(
             "annihilator {amount}"
         ))),
-        KeywordAction::Marker(name) if supported_keyword_marker_text(name) => {
-            Some(StaticAbility::keyword_marker(name))
-        }
-        KeywordAction::MarkerText(text) if supported_keyword_marker_text(&text) => {
-            Some(StaticAbility::keyword_marker(text))
-        }
+        KeywordAction::StaticMarker(name) => Some(StaticAbility::keyword_marker(name)),
+        KeywordAction::StaticMarkerText(text) => Some(StaticAbility::keyword_marker(text)),
         KeywordAction::Marker(name) => Some(StaticAbility::keyword_fallback_text(name)),
         KeywordAction::MarkerText(text) => Some(StaticAbility::keyword_fallback_text(text)),
         _ => None,
     }
-}
-
-fn supported_keyword_marker_text(text: &str) -> bool {
-    is_static_keyword_marker_text(text)
 }
 
 fn lower_keyword_action_or_err(action: KeywordAction) -> Result<StaticAbility, CardTextError> {

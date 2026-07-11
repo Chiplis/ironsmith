@@ -5,7 +5,7 @@ use crate::runtime_backend::condition_antecedent::{
     bind_condition_counter_antecedent_in_effects, predicate_object_filter_antecedent,
     predicate_source_counter_antecedent, retarget_it_animations_to_source,
 };
-use crate::runtime_backend::front_end::lexer::{TokenKind, lex_line};
+use crate::runtime_backend::shared_types::TriggeredLineSemanticFacts;
 
 fn merge_optional_predicates(
     left: Option<PredicateAst>,
@@ -26,46 +26,11 @@ fn is_stack_object_targeting_filter(filter: &ObjectFilter) -> bool {
         || filter.target_count.is_some()
 }
 
-fn trigger_intro_surface_word(token: &OwnedLexToken) -> Option<TriggerIntroSurfaceAst> {
-    if token.is_word("when") {
-        Some(TriggerIntroSurfaceAst::When)
-    } else if token.is_word("whenever") {
-        Some(TriggerIntroSurfaceAst::Whenever)
-    } else if token.is_word("at") {
-        Some(TriggerIntroSurfaceAst::At)
-    } else {
-        None
-    }
-}
-
-fn trigger_intro_surface_from_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroSurfaceAst> {
-    if let Some(first) = tokens.first()
-        && let Some(intro) = trigger_intro_surface_word(first)
-    {
-        return Some(intro);
-    }
-
-    tokens.windows(2).find_map(|window| {
-        let [separator, intro] = window else {
-            return None;
-        };
-        if !matches!(
-            separator.kind,
-            TokenKind::Colon | TokenKind::Dash | TokenKind::EmDash
-        ) {
-            return None;
-        }
-        trigger_intro_surface_word(intro).filter(|intro| {
-            matches!(
-                intro,
-                TriggerIntroSurfaceAst::When | TriggerIntroSurfaceAst::Whenever
-            )
-        })
-    })
-}
-
-fn apply_trigger_intro_surface(trigger: TriggerSpec, full_tokens: &[OwnedLexToken]) -> TriggerSpec {
-    let Some(intro) = trigger_intro_surface_from_tokens(full_tokens) else {
+fn apply_trigger_intro_surface(
+    trigger: TriggerSpec,
+    intro: Option<TriggerIntroSurfaceAst>,
+) -> TriggerSpec {
+    let Some(intro) = intro else {
         return trigger;
     };
     match trigger {
@@ -360,6 +325,7 @@ fn normalize_rewrite_line_ast(
     info: crate::cards::builders::LineInfo,
     chunks: Vec<LineAst>,
     restrictions: ParsedRestrictions,
+    semantic_facts: crate::runtime_backend::shared_types::LineSemanticFacts,
     state: &mut RewriteNormalizationState,
 ) -> Result<NormalizedLineAst, CardTextError> {
     let mut normalized_chunks = Vec::with_capacity(chunks.len());
@@ -371,16 +337,18 @@ fn normalize_rewrite_line_ast(
         info,
         chunks: normalized_chunks,
         restrictions,
+        semantic_facts,
     })
 }
 
-pub(super) fn normalize_rewrite_line_ast_standalone(
+pub(crate) fn normalize_rewrite_line_ast_standalone(
     info: crate::cards::builders::LineInfo,
     chunks: Vec<LineAst>,
     restrictions: ParsedRestrictions,
 ) -> Result<NormalizedLineAst, CardTextError> {
     let mut state = RewriteNormalizationState::default();
-    normalize_rewrite_line_ast(info, chunks, restrictions, &mut state)
+    let semantic_facts = info.semantic_facts.clone();
+    normalize_rewrite_line_ast(info, chunks, restrictions, semantic_facts, &mut state)
 }
 
 fn normalize_rewrite_line_chunk(
@@ -543,24 +511,24 @@ fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalA
     })
 }
 
-pub(super) fn apply_chosen_option_to_triggered_chunk(
+pub(crate) fn apply_chosen_option_to_triggered_chunk(
     chunk: LineAst,
     full_text: &str,
-    full_tokens: &[OwnedLexToken],
+    facts: &TriggeredLineSemanticFacts,
     max_triggers_per_turn: Option<u32>,
-    chosen_option_label: Option<&str>,
-    presentation_label: Option<&str>,
+    chosen_option: Option<&ChosenOptionContext>,
+    presentation: Option<&PresentationLabel>,
 ) -> Result<LineAst, CardTextError> {
-    let during_your_turn_condition = tokens_mention_becomes_tapped_during_your_turn(full_tokens)
+    let during_your_turn_condition = facts
+        .becomes_tapped_during_your_turn
         .then_some(crate::ConditionExpr::YourTurn);
-    let max_condition =
-        crate::runtime_backend::trigger_frequency_condition(Some(full_text), max_triggers_per_turn);
-    let combined_condition = match (chosen_option_label, max_condition.clone()) {
+    let max_condition = trigger_frequency_condition_from_facts(facts, max_triggers_per_turn);
+    let combined_condition = match (chosen_option, max_condition.clone()) {
         (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
-            Box::new(condition_for_chosen_option_label(label)),
+            Box::new(condition_for_chosen_option(label)),
             Box::new(max),
         )),
-        (Some(label), None) => Some(condition_for_chosen_option_label(label)),
+        (Some(label), None) => Some(condition_for_chosen_option(label)),
         (None, Some(max)) => Some(max),
         (None, None) => None,
     };
@@ -571,21 +539,16 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             effects,
             max_triggers_per_turn: chunk_max_triggers_per_turn,
         } => {
-            let trigger = apply_trigger_intro_surface(trigger, full_tokens);
+            let trigger = apply_trigger_intro_surface(trigger, facts.intro_surface);
             let merged_max_condition = chunk_max_triggers_per_turn
                 .or(max_triggers_per_turn)
-                .and_then(|count| {
-                    crate::runtime_backend::trigger_frequency_condition(
-                        Some(full_text),
-                        Some(count),
-                    )
-                });
-            let merged_condition = match (chosen_option_label, merged_max_condition) {
+                .and_then(|count| trigger_frequency_condition_from_facts(facts, Some(count)));
+            let merged_condition = match (chosen_option, merged_max_condition) {
                 (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
-                    Box::new(condition_for_chosen_option_label(label)),
+                    Box::new(condition_for_chosen_option(label)),
                     Box::new(max),
                 )),
-                (Some(label), None) => Some(condition_for_chosen_option_label(label)),
+                (Some(label), None) => Some(condition_for_chosen_option(label)),
                 (None, Some(max)) => Some(max),
                 (None, None) => None,
             };
@@ -600,16 +563,19 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             Ok(LineAst::Ability(rewrite_parsed_triggered_ability(
                 trigger.clone(),
                 effects,
-                infer_rewrite_triggered_functional_zones(&trigger, full_text),
+                infer_triggered_ability_functional_zones_from_facts(
+                    &trigger,
+                    &facts.functional_zones,
+                ),
                 Some(full_text.to_string()),
                 merged_condition,
-                presentation_label,
+                presentation,
                 ReferenceImports::default(),
             )))
         }
         LineAst::Ability(mut parsed) => {
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
-                && let Some(intro) = trigger_intro_surface_from_tokens(full_tokens)
+                && let Some(intro) = facts.intro_surface
             {
                 triggered.trigger = triggered.trigger.clone().with_intro_surface(match intro {
                     TriggerIntroSurfaceAst::When => crate::triggers::TriggerIntroSurface::When,
@@ -620,7 +586,7 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
                 });
             }
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
-                rewrite_do_this_trigger_frequency_surface(full_tokens, triggered);
+                rewrite_do_this_trigger_frequency_surface(facts, triggered);
             }
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
                 && let Some(condition) = combined_condition
@@ -648,8 +614,7 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
                 && triggered.presentation_label.is_none()
             {
-                triggered.presentation_label =
-                    presentation_label.map(crate::ability::PresentationLabel::from_ability_word);
+                triggered.presentation_label = presentation.cloned();
             }
             Ok(LineAst::Ability(parsed))
         }
@@ -658,10 +623,10 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
 }
 
 fn rewrite_do_this_trigger_frequency_surface(
-    full_tokens: &[OwnedLexToken],
+    facts: &TriggeredLineSemanticFacts,
     triggered: &mut crate::ability::TriggeredAbility,
 ) {
-    let Some(surface_count) = do_this_frequency_surface_from_tokens(full_tokens) else {
+    let Some(surface_count) = facts.frequency.do_this_limit_each_turn else {
         return;
     };
     let Some(condition) = triggered.intervening_if.take() else {
@@ -675,7 +640,27 @@ fn rewrite_do_this_trigger_frequency_surface(
     });
 }
 
-pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
+fn trigger_frequency_condition_from_facts(
+    facts: &TriggeredLineSemanticFacts,
+    max_triggers_per_turn: Option<u32>,
+) -> Option<crate::ConditionExpr> {
+    max_triggers_per_turn.map(|limit| {
+        if limit == 1
+            && facts.frequency.first_time_each_or_this_turn
+            && facts.frequency.becomes_crewed
+        {
+            crate::ConditionExpr::SourceFirstCrewedThisTurn
+        } else if limit == 1 && facts.frequency.first_time_each_or_this_turn {
+            crate::ConditionExpr::FirstTimeThisTurn
+        } else if facts.frequency.do_this_limit_each_turn.is_some() {
+            crate::ConditionExpr::DoThisMaxTimesEachTurn(limit)
+        } else {
+            crate::ConditionExpr::MaxTimesEachTurn(limit)
+        }
+    })
+}
+
+pub(crate) fn apply_explicit_intervening_if_to_triggered_chunk(
     chunk: LineAst,
     explicit_intervening_if: Option<PredicateAst>,
 ) -> Result<LineAst, CardTextError> {
@@ -826,99 +811,15 @@ fn rewrite_item_to_parsed_item(
     match item {
         RewriteSemanticItem::Metadata => Ok(None),
         RewriteSemanticItem::Keyword(line) => {
-            let parsed =
-                super::super::keyword_registry::lower_keyword_line_ast(&line, &line.parse_tokens)?;
+            let parsed = super::super::keyword_registry::lower_keyword_line_ast(&line)?;
             Ok(Some(ParsedCardItem::Line(ParsedLineAst {
                 info: line.info.clone(),
                 chunks: vec![parsed],
                 restrictions: ParsedRestrictions::default(),
+                semantic_facts: line.info.semantic_facts.clone(),
             })))
         }
-        RewriteSemanticItem::Activated(line) => {
-            let lowered = lower_rewrite_activated_to_chunk(
-                line.info.clone(),
-                line.cost.clone(),
-                line.cost_parse_tokens.clone(),
-                line.effect_text.clone(),
-                line.effect_parse_tokens.clone(),
-                line.timing_hint.clone(),
-                line.is_loyalty_ability,
-                line.presentation_label.clone(),
-                line.chosen_option_label.clone(),
-            )?;
-            Ok(Some(ParsedCardItem::Line(ParsedLineAst {
-                info: line.info.clone(),
-                chunks: vec![lowered.chunk],
-                restrictions: lowered.restrictions,
-            })))
-        }
-        RewriteSemanticItem::Triggered(line) => {
-            let parsed = apply_explicit_intervening_if_to_triggered_chunk(
-                lower_rewrite_triggered_to_chunk(
-                    line.info.clone(),
-                    &line.full_text,
-                    &line.full_parse_tokens,
-                    &line.trigger_text,
-                    &line.trigger_parse_tokens,
-                    &line.effect_text,
-                    &line.effect_parse_tokens,
-                    line.intervening_if.clone(),
-                    line.presentation_label.as_deref(),
-                    line.max_triggers_per_turn,
-                    line.chosen_option_label.as_deref(),
-                )?,
-                line.intervening_if.clone(),
-            )?;
-            Ok(Some(ParsedCardItem::Line(ParsedLineAst {
-                info: line.info.clone(),
-                chunks: vec![parsed],
-                restrictions: ParsedRestrictions::default(),
-            })))
-        }
-        RewriteSemanticItem::Static(line) => {
-            let (parsed_sentences, restrictions) =
-                split_text_for_parse(&line.text, &line.text, line.info.line_index);
-            let chunks = if !restrictions.activation.is_empty() || !restrictions.trigger.is_empty()
-            {
-                if parsed_sentences.is_empty() {
-                    Vec::new()
-                } else {
-                    let parsed_text = parsed_sentences.join(". ");
-                    let parsed_tokens = lex_line(&parsed_text, line.info.line_index)?;
-                    vec![lower_rewrite_static_to_chunk(
-                        line.info.clone(),
-                        &parsed_text,
-                        &parsed_tokens,
-                        line.chosen_option_label.as_deref(),
-                    )?]
-                }
-            } else {
-                vec![lower_rewrite_static_to_chunk(
-                    line.info.clone(),
-                    &line.text,
-                    &line.parse_tokens,
-                    line.chosen_option_label.as_deref(),
-                )?]
-            };
-            Ok(Some(ParsedCardItem::Line(ParsedLineAst {
-                info: line.info.clone(),
-                chunks,
-                restrictions,
-            })))
-        }
-        RewriteSemanticItem::Statement(line) => {
-            let parsed_chunks = lower_rewrite_statement_token_groups_to_chunks(
-                line.info.clone(),
-                &line.text,
-                &line.parse_tokens,
-                &line.parse_groups,
-            )?;
-            Ok(Some(ParsedCardItem::Line(ParsedLineAst {
-                info: line.info.clone(),
-                chunks: parsed_chunks,
-                restrictions: ParsedRestrictions::default(),
-            })))
-        }
+        RewriteSemanticItem::ParsedLine(line) => Ok(Some(ParsedCardItem::Line(line))),
         RewriteSemanticItem::Unsupported(line) => Ok(Some(ParsedCardItem::Line(ParsedLineAst {
             info: line.info.clone(),
             chunks: vec![rewrite_unsupported_line_ast(
@@ -926,8 +827,9 @@ fn rewrite_item_to_parsed_item(
                 line.reason_code,
             )],
             restrictions: ParsedRestrictions::default(),
+            semantic_facts: line.info.semantic_facts.clone(),
         }))),
-        RewriteSemanticItem::Modal(modal) => Ok(Some(lower_rewrite_modal_to_item(modal)?)),
+        RewriteSemanticItem::Modal(modal) => Ok(Some(rewrite_modal_to_parsed_item(modal)?)),
         RewriteSemanticItem::LevelHeader(level) => {
             Ok(Some(ParsedCardItem::LevelAbility(ParsedLevelAbilityAst {
                 min_level: level.min_level,
@@ -944,6 +846,7 @@ fn rewrite_item_to_parsed_item(
                 max_triggers_per_turn: None,
             }],
             restrictions: ParsedRestrictions::default(),
+            semantic_facts: saga.info.semantic_facts.clone(),
         }))),
     }
 }
@@ -957,6 +860,7 @@ fn prepare_parsed_item_to_normalized_item(
             line.info,
             line.chunks,
             line.restrictions,
+            line.semantic_facts,
             state,
         )?)),
         ParsedCardItem::Modal(modal) => Ok(NormalizedCardItem::Modal(normalize_rewrite_modal_ast(
@@ -973,8 +877,23 @@ pub(crate) fn rewrite_document_to_parsed_card_ast(
         builder,
         annotations,
         items,
+        overload_items,
+        semantic_facts,
         allow_unsupported,
     } = doc;
+    let overload_branch = if let Some(items) = overload_items {
+        let mut parsed_items = Vec::new();
+        for item in items {
+            if let Some(item) = rewrite_item_to_parsed_item(item)? {
+                parsed_items.push(item);
+            }
+        }
+        Some(ParsedOverloadBranch {
+            items: parsed_items,
+        })
+    } else {
+        None
+    };
     let mut parsed_items = Vec::new();
     for item in items {
         let maybe_item = rewrite_item_to_parsed_item(item)?;
@@ -987,6 +906,8 @@ pub(crate) fn rewrite_document_to_parsed_card_ast(
         builder,
         annotations,
         items: parsed_items,
+        overload_branch,
+        semantic_facts,
         allow_unsupported,
     })
 }
@@ -998,8 +919,20 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
         builder,
         annotations,
         items,
+        overload_branch,
+        semantic_facts,
         allow_unsupported,
     } = ast;
+    let overload_branch = if let Some(branch) = overload_branch {
+        let mut state = RewriteNormalizationState::default();
+        let mut items = Vec::new();
+        for item in branch.items {
+            items.push(prepare_parsed_item_to_normalized_item(item, &mut state)?);
+        }
+        Some(NormalizedOverloadBranch { items })
+    } else {
+        None
+    };
     let mut state = RewriteNormalizationState::default();
     let mut normalized_items = Vec::new();
     for item in items {
@@ -1010,6 +943,8 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
         builder,
         annotations,
         items: normalized_items,
+        overload_branch,
+        semantic_facts,
         allow_unsupported,
     })
 }

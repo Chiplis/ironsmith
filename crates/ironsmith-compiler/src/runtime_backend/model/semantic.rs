@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::ConditionExpr;
-use crate::ability::{Ability, AbilityKind, ActivationTiming};
+use crate::ability::{Ability, AbilityKind, ActivationTiming, ManaUsageRestriction};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cost::OptionalCost;
 use crate::effect::{EffectPredicate, Value};
@@ -11,7 +11,7 @@ use crate::zone::Zone;
 use super::super::{KeywordAction, PlayerAst, SharedTypeConstraintAst, TargetAst, TotalCost};
 use super::ast::{EffectAst, StaticAbilityAst, TriggerSpec};
 use super::reference_model::ReferenceImports;
-use super::shared_types::LineInfo;
+use super::shared_types::{LineInfo, LineSemanticFacts};
 
 #[derive(Debug, Clone)]
 pub(crate) enum GiftTimingAst {
@@ -210,12 +210,46 @@ pub(crate) struct ParsedLineAst {
     pub(crate) info: LineInfo,
     pub(crate) chunks: Vec<LineAst>,
     pub(crate) restrictions: ParsedRestrictions,
+    pub(crate) semantic_facts: LineSemanticFacts,
 }
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ParsedRestrictions {
-    pub(crate) activation: Vec<String>,
-    pub(crate) trigger: Vec<String>,
+    pub(crate) activation: Vec<ParsedActivationRestriction>,
+    pub(crate) trigger: Vec<ParsedTriggerRestriction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ActivationRestrictionNormalizationFact {
+    Preserve,
+    Redundant,
+    Residual(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ParsedActivationRestriction {
+    /// Normalized Oracle surface retained only for presentation/fallback behavior.
+    pub(crate) presentation_text: String,
+    pub(crate) timing: Option<ActivationTiming>,
+    pub(crate) condition: Option<ConditionExpr>,
+    pub(crate) text_only_condition: Option<ConditionExpr>,
+    pub(crate) normalization: ActivationRestrictionNormalizationFact,
+    pub(crate) mana_usage_restriction: Option<ManaUsageRestriction>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ParsedTriggerRestriction {
+    pub(crate) presentation_text: String,
+    pub(crate) max_times_each_turn: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ParsedManaRestriction {
+    /// Normalized Oracle surface retained for diagnostics and unsupported fallback behavior.
+    pub(crate) presentation_text: String,
+    pub(crate) timing: ActivationTiming,
+    pub(crate) condition: Option<ConditionExpr>,
+    pub(crate) usage_restriction: Option<ManaUsageRestriction>,
 }
 
 #[derive(Debug, Clone)]
@@ -228,6 +262,7 @@ pub(crate) struct ParsedModalAst {
 pub(crate) struct ParsedModalHeader {
     pub(crate) min: Value,
     pub(crate) max: Option<Value>,
+    pub(crate) weighted_mode_points: bool,
     pub(crate) random: bool,
     pub(crate) same_mode_more_than_once: bool,
     pub(crate) mode_must_be_unchosen: bool,

@@ -31,6 +31,16 @@ pub struct ConditionalSpellKeywordSpec {
     pub threshold: u32,
 }
 
+/// A linked action performed after a damage-prevention replacement removes counters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CounterRemovalFollowUp {
+    /// Give every player counters for each counter the replacement actually removed.
+    EachPlayerGetsCounters {
+        counter_type: CounterType,
+        counters_per_removed: u32,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdditionalTokenKind {
     Treasure,
@@ -553,7 +563,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     Tribute(u32),
     PreventDamageToSelfRemoveCounter {
         counter_type: CounterType,
-        amount: u32,
+        amount: Value,
+        follow_up: Option<CounterRemovalFollowUp>,
     },
     PreventDamageToSelfPutCountersInstead {
         counter_type: CounterType,
@@ -643,11 +654,7 @@ where
             C: Clone,
             FC: FnMut(C) -> Result<C2, Err>,
         {
-            let mut mapped = Vec::new();
-            for cost in cost.costs().iter().cloned() {
-                mapped.push(map_cost(cost)?);
-            }
-            Ok(TotalCost::from_costs(mapped))
+            cost.try_map(map_cost)
         }
 
         fn map_triggered<T, E, T2, E2, Err, FT, FE>(
@@ -1600,9 +1607,11 @@ where
             StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
                 counter_type,
                 amount,
+                follow_up,
             } => StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
                 counter_type,
                 amount,
+                follow_up,
             },
             StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
                 counter_type,
@@ -3179,13 +3188,25 @@ impl<
             payload: StaticAbilityPayload::ControlAttachedPermanent(display),
         }
     }
-    pub fn prevent_damage_to_self_remove_counter(counter_type: CounterType, amount: u32) -> Self {
+    pub fn prevent_damage_to_self_remove_counter(
+        counter_type: CounterType,
+        amount: impl Into<Value>,
+    ) -> Self {
+        Self::prevent_damage_to_self_remove_counter_with_follow_up(counter_type, amount, None)
+    }
+
+    pub fn prevent_damage_to_self_remove_counter_with_follow_up(
+        counter_type: CounterType,
+        amount: impl Into<Value>,
+        follow_up: Option<CounterRemovalFollowUp>,
+    ) -> Self {
         Self {
             id: Some(StaticAbilityId::PreventDamageToSelfRemoveCounter),
             label: "prevent damage to self remove counter".to_string(),
             payload: StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
                 counter_type,
-                amount,
+                amount: amount.into(),
+                follow_up,
             },
         }
     }
@@ -3670,6 +3691,13 @@ impl<
         Self {
             id: Some(StaticAbilityId::PreventAllDamageDealtToCreatures),
             label: "prevent all damage dealt to creatures".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    pub fn prevent_all_damage_dealt_to_and_by_this_permanent() -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllDamageDealtToAndByThisPermanent),
+            label: "prevent all damage dealt to and dealt by this permanent".into(),
             payload: StaticAbilityPayload::None,
         }
     }
@@ -4947,5 +4975,43 @@ impl LandwalkKind {
             Self::NonbasicLand => "Nonbasic landwalk".to_string(),
             Self::ArtifactLand => "Artifact landwalk".to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Cost, ManaSymbol};
+
+    fn generic_two() -> ManaCost {
+        ManaCost::from_symbols(vec![ManaSymbol::Generic(2)])
+    }
+
+    #[test]
+    fn try_map_preserves_ward_cost_alternatives() {
+        let ward: StaticAbility<(), (), Cost<&'static str>, ()> =
+            StaticAbility::ward(TotalCost::one_of(vec![
+                TotalCost::from_cost(Cost::effect("discard")),
+                TotalCost::mana(generic_two()),
+            ]));
+
+        let mapped: StaticAbility<(), (), Cost<usize>, ()> = ward
+            .try_map(
+                |trigger| Ok::<_, ()>(trigger),
+                |effect| Ok::<_, ()>(effect),
+                |cost| cost.try_map_effect(|effect| Ok::<_, ()>(effect.len())),
+            )
+            .expect("ward alternatives should map recursively");
+
+        let StaticAbilityPayload::Ward(cost) = mapped.payload else {
+            panic!("expected mapped ward payload");
+        };
+        assert_eq!(
+            cost,
+            TotalCost::one_of(vec![
+                TotalCost::from_cost(Cost::effect(7usize)),
+                TotalCost::mana(generic_two()),
+            ])
+        );
     }
 }

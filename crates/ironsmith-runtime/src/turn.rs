@@ -730,19 +730,16 @@ pub fn apply_cleanup_discard(
 pub fn execute_cleanup_step(game: &mut GameState) {
     let active_player = game.turn.active_player;
 
-    // Empty mana pool
-    if let Some(player) = game.player_mut(active_player) {
+    // Avoid globally invalidating continuous state for an already-empty pool.
+    if game
+        .player(active_player)
+        .is_some_and(|player| player.mana_pool.total() > 0)
+        && let Some(player) = game.player_mut(active_player)
+    {
         player.mana_pool.empty();
     }
 
-    // Remove all damage marked on creatures and clear regeneration shields
-    for &id in &game.battlefield.clone() {
-        if !game.damage_persists_on(id) {
-            game.clear_damage(id);
-        }
-        game.clear_regeneration_shields(id);
-    }
-    game.clear_regenerated_this_turn();
+    game.cleanup_damage_and_regeneration_end_of_turn();
 
     // Clear one-shot replacement effects (like regeneration shields)
     // These only last "until end of turn" per MTG rules
@@ -875,6 +872,44 @@ mod tests {
         ) -> bool {
             false
         }
+    }
+
+    #[test]
+    fn cleanup_batches_sparse_damage_state_without_dirtying_an_empty_mana_pool() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let persistent = create_artifact(&mut game, "Persistent Damage", alice, vec![]);
+        let ordinary = create_artifact(&mut game, "Ordinary Damage", alice, vec![]);
+        game.refresh_continuous_state();
+        game.mark_damage(persistent, 2);
+        game.mark_damage(ordinary, 3);
+        game.keep_damage_marked(persistent);
+        game.add_regeneration_shield(ordinary, 2);
+        assert!(game.use_regeneration_shield(ordinary));
+        assert!(game.continuous_state_is_clean());
+        assert_eq!(
+            game.player(alice).expect("alice exists").mana_pool.total(),
+            0
+        );
+
+        execute_cleanup_step(&mut game);
+
+        assert_eq!(game.damage_on(persistent), 2);
+        assert_eq!(game.damage_on(ordinary), 0);
+        assert_eq!(game.regeneration_shield_count(ordinary), 0);
+        assert_eq!(game.regenerated_this_turn_count(ordinary), 0);
+        assert!(
+            game.continuous_state_is_clean(),
+            "clearing an already-empty mana pool must not invalidate continuous state"
+        );
+
+        let before_sba = game.work_counters();
+        assert!(crate::rules::state_based::check_state_based_actions(&game).is_empty());
+        let after_sba = game.work_counters();
+        assert_eq!(
+            after_sba.static_ability_regens, before_sba.static_ability_regens,
+            "a clean post-cleanup SBA check should reuse cached static effects"
+        );
     }
 
     #[test]

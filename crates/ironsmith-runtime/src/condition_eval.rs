@@ -76,6 +76,26 @@ fn tagged_object_was_cast(game: &GameState, tag: &crate::TagKey, ctx: &Execution
     false
 }
 
+fn target_objects_have_different_color_sets(game: &GameState, ctx: &ExecutionContext) -> bool {
+    let mut colors = ctx.targets.iter().filter_map(|target| {
+        let crate::effects::ResolvedTarget::Object(object_id) = target else {
+            return None;
+        };
+        game.current_colors(*object_id).or_else(|| {
+            ctx.target_snapshots
+                .get(object_id)
+                .map(|snapshot| snapshot.colors)
+        })
+    });
+    let Some(first) = colors.next() else {
+        return false;
+    };
+    let Some(second) = colors.next() else {
+        return false;
+    };
+    second != first || colors.any(|candidate| candidate != first)
+}
+
 fn mana_pool_amount(
     spent: &crate::player::ManaPool,
     symbol: Option<crate::mana::ManaSymbol>,
@@ -1311,6 +1331,16 @@ fn evaluate_condition_shared_core(
                     .player_lost_life_this_turn(*opponent)
             }))
         }
+        Condition::AnyPlayerLostLifeThisTurnOrMore { count } => {
+            Some(game.players.iter().any(|player| {
+                player.is_in_game()
+                    && game
+                        .turn_store
+                        .turn_history
+                        .total_life_lost_for_players(&[player.id])
+                        >= *count
+            }))
+        }
         Condition::OpponentWasDealtDamageThisTurn => {
             let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
             Some(filter_ctx.opponents.iter().any(|opponent| {
@@ -1550,6 +1580,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::AttackedThisTurn => {}
         Condition::AttackedWithNOrMoreCreaturesThisTurn(..) => {}
         Condition::OpponentLostLifeThisTurn => {}
+        Condition::AnyPlayerLostLifeThisTurnOrMore { .. } => {}
         Condition::OpponentWasDealtDamageThisTurn => {}
         Condition::PermanentLeftBattlefieldThisTurn => {}
         Condition::NonlandPermanentLeftBattlefieldThisTurn => {}
@@ -1608,6 +1639,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::TaggedObjectWasCast(..) => {}
         Condition::TaggedObjectIsSoulbondPaired(..) => {}
         Condition::EnchantedPermanentAttackedThisTurn => {}
+        Condition::TargetObjectsHaveDifferentColorSets => {}
         Condition::TargetMatches(..) => {}
         Condition::TargetIsSoulbondPaired => {}
         Condition::PlayerTaggedObjectMatches { .. } => {}
@@ -2508,6 +2540,7 @@ pub fn evaluate_condition_external(
         | Condition::TaggedObjectWasCast(_)
         | Condition::TaggedObjectIsSoulbondPaired(_)
         | Condition::EnchantedPermanentAttackedThisTurn
+        | Condition::TargetObjectsHaveDifferentColorSets
         | Condition::TargetIsSoulbondPaired
         | Condition::PlayerTaggedObjectMatches { .. }
         | Condition::TargetIsTapped
@@ -2536,6 +2569,7 @@ pub fn evaluate_condition_external(
         | Condition::AttackedThisTurn
         | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
+        | Condition::AnyPlayerLostLifeThisTurnOrMore { .. }
         | Condition::OpponentWasDealtDamageThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::NonlandPermanentLeftBattlefieldThisTurn
@@ -3283,6 +3317,7 @@ fn evaluate_condition_simple(
         ),
         Condition::TaggedObjectIsSoulbondPaired(_) => false,
         Condition::EnchantedPermanentAttackedThisTurn => false,
+        Condition::TargetObjectsHaveDifferentColorSets => false,
         Condition::TargetMatches(_) => false,
         Condition::TargetIsSoulbondPaired => false,
         Condition::PlayerTaggedObjectMatches { .. } => false,
@@ -3320,6 +3355,7 @@ fn evaluate_condition_simple(
         | Condition::AttackedThisTurn
         | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
+        | Condition::AnyPlayerLostLifeThisTurnOrMore { .. }
         | Condition::OpponentWasDealtDamageThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::NonlandPermanentLeftBattlefieldThisTurn
@@ -4266,6 +4302,9 @@ fn evaluate_condition(
             }
             Ok(false)
         }
+        Condition::TargetObjectsHaveDifferentColorSets => {
+            Ok(target_objects_have_different_color_sets(game, ctx))
+        }
         Condition::TargetIsSoulbondPaired => {
             let target_id = ctx.targets.iter().find_map(|target| match target {
                 crate::effects::ResolvedTarget::Object(id) => Some(*id),
@@ -4512,6 +4551,7 @@ fn evaluate_condition(
         | Condition::AttackedThisTurn
         | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
+        | Condition::AnyPlayerLostLifeThisTurnOrMore { .. }
         | Condition::OpponentWasDealtDamageThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::NonlandPermanentLeftBattlefieldThisTurn

@@ -4186,6 +4186,83 @@ mod tests {
     }
 
     #[test]
+    fn combined_to_and_from_self_prevention_stops_both_damage_directions() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let protected = create_creature(&mut game, "Lightbound Creature", alice);
+        game.object_mut(protected)
+            .expect("protected creature should exist")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                StaticAbility::prevent_all_damage_dealt_to_and_by_this_permanent(),
+            ));
+        let other = create_creature(&mut game, "Other Damage Source", bob);
+
+        let dealt_to = process_damage_assignments_with_event(
+            &mut game,
+            other,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            EventCause::effect(),
+        );
+        assert!(
+            dealt_to.assignments.is_empty() && dealt_to.replacement_prevented,
+            "preventable damage dealt to the protected permanent should be stopped: {dealt_to:?}"
+        );
+
+        let dealt_by = process_damage_assignments_with_event(
+            &mut game,
+            protected,
+            DamageTarget::Player(bob),
+            3,
+            false,
+            EventCause::effect(),
+        );
+        assert!(
+            dealt_by.assignments.is_empty() && dealt_by.replacement_prevented,
+            "preventable damage dealt by the protected permanent should be stopped: {dealt_by:?}"
+        );
+
+        let unrelated = process_damage_assignments_with_event(
+            &mut game,
+            other,
+            DamageTarget::Player(alice),
+            3,
+            false,
+            EventCause::effect(),
+        );
+        assert_eq!(
+            unrelated.assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Player(alice),
+                amount: 3,
+            }],
+            "unrelated damage must proceed"
+        );
+
+        let unpreventable = process_damage_assignments_with_event_with_source_snapshot_opts(
+            &mut game,
+            protected,
+            DamageTarget::Player(bob),
+            4,
+            false,
+            true,
+            EventCause::effect(),
+            None,
+        );
+        assert_eq!(
+            unpreventable.assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Player(bob),
+                amount: 4,
+            }],
+            "unpreventable damage dealt by the permanent must still proceed"
+        );
+    }
+
+    #[test]
     fn damage_replacement_source_filter_uses_lki_for_departed_source() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);

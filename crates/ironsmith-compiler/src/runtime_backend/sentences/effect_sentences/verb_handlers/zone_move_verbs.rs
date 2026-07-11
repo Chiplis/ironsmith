@@ -1,121 +1,14 @@
-const ZONE_MOVE_CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
-const ZONE_MOVE_GRAVEYARD_OR_GRAVEYARDS_WORDS: &[&str] = &["graveyard", "graveyards"];
-const ZONE_MOVE_WHO_WORD: &str = "who";
-const ZONE_MOVE_HALF_WORD: &str = "half";
-const DRAW_TRAILING_IF_WORD: &str = "if";
-const DRAW_TRAILING_UNLESS_WORD: &str = "unless";
-const COUNTER_MANA_WORD: &str = "mana";
-const ZONE_MOVE_MINUS_ONE_WORDS: &[&str] = &["minus", "one"];
-const ZONE_MOVE_PLUS_ONE_WORDS: &[&str] = &["plus", "one"];
-const ZONE_MOVE_FOR_EACH_PHRASE: &[&str] = &["for", "each"];
-const ZONE_MOVE_THIS_WAY_PHRASE: &[&str] = &["this", "way"];
-const ZONE_MOVE_ADDITIONAL_WORD: &str = "additional";
-const ZONE_MOVE_ROUNDED_DOWN_PREFIX: &[&str] = &["rounded", "down"];
-const DRAW_TRAILING_INSTEAD_WORDS: &[&str] = &["instead"];
-const DRAW_TRAILING_THEN_PUT_PREFIX: &[&str] = &["then", "put"];
-const DRAW_AS_MANY_CARDS_AS_PREFIXES: &[&[&str]] = &[
-    &["as", "many", "card", "as"],
-    &["as", "many", "cards", "as"],
-];
-const DRAW_EQUAL_TO_PREFIX: &[&str] = &["equal", "to"];
-const COUNTER_TARGET_SECOND_SPELL_THIS_TURN_PHRASES: &[&[&str]] = &[
-    &[
-        "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
-    ],
-    &[
-        "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this", "turn",
-    ],
-    &[
-        "counter", "target", "spell", "that's", "second", "spell", "cast", "this", "turn",
-    ],
-    &[
-        "counter", "target", "spell", "that's", "the", "second", "spell", "cast", "this",
-        "turn",
-    ],
-    &[
-        "counter", "target", "spell", "that", "s", "second", "spell", "cast", "this", "turn",
-    ],
-    &[
-        "counter", "target", "spell", "that", "s", "the", "second", "spell", "cast", "this",
-        "turn",
-    ],
-];
-const COUNTER_UNLESS_PAYS_WORD: &str = "pays";
-const COUNTER_DYNAMIC_PAYMENT_TAIL_WORDS: &[&str] = &[
-    "and",
-    "or",
-    "where",
-    "plus",
-    "additional",
-    "equal",
-    "equals",
-];
-const COUNTER_AND_WORD: &str = "and";
-const COUNTER_LIFE_WORD: &str = "life";
-const COUNTER_SAME_NAME_AS_SPELL_PHRASES: &[&[&str]] = &[
-    &["same", "name", "as", "the", "spell"],
-    &["same", "name", "as", "that", "spell"],
-];
-fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
-    token.as_word() == Some(expected)
+use super::super::grammar::effects::zone_move_shapes as zone_move_grammar;
+
+fn mana_cost_is_x_only(mana: &[ManaSymbol]) -> bool {
+    mana.len() == 1 && matches!(mana.first(), Some(ManaSymbol::X))
 }
 
-fn token_is_any_word(token: &OwnedLexToken, expected: &[&str]) -> bool {
-    token.as_word().is_some_and(|word| expected.contains(&word))
-}
-
-fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    crate::runtime_backend::token_word_refs(tokens)
-}
-
-fn zone_move_word_refs_first_is(words: &[&str], expected: &str) -> bool {
-    let expected_words = [expected];
-    let atoms = [LexPattern::modifier(
-        "head",
-        LexCaptureKind::OneOf(&expected_words),
-    )];
-    LexPattern::new(&atoms)
-        .match_prefix_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("head"))
-        .is_some()
-}
-
-fn counter_same_name_graveyard_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let graveyard_idx = words
-        .iter()
-        .position(|word| ZONE_MOVE_GRAVEYARD_OR_GRAVEYARDS_WORDS.contains(word))?;
-    let same_name_after_graveyard = COUNTER_SAME_NAME_AS_SPELL_PHRASES
-        .iter()
-        .any(|phrase| word_slice_contains_phrase(&words[graveyard_idx + 1..], phrase));
-    if !same_name_after_graveyard {
-        return None;
+fn mana_cost_single_generic(mana: &[ManaSymbol]) -> Option<u8> {
+    match mana {
+        [ManaSymbol::Generic(value)] => Some(*value),
+        _ => None,
     }
-    Some(Value::Count(
-        ObjectFilter::default()
-            .in_zone(Zone::Graveyard)
-            .match_tagged(
-                TagKey::from("triggering"),
-                crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
-            ),
-    ))
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum DrawCardCountOffset {
-    MinusOne,
-    PlusOne,
-}
-
-fn parse_draw_card_count_offset_tail(tokens: &[OwnedLexToken]) -> Option<DrawCardCountOffset> {
-    let trailing = tokens;
-    if word_slice_eq(&token_words(&trailing), ZONE_MOVE_MINUS_ONE_WORDS) {
-        return Some(DrawCardCountOffset::MinusOne);
-    }
-    if word_slice_eq(&token_words(&trailing), ZONE_MOVE_PLUS_ONE_WORDS) {
-        return Some(DrawCardCountOffset::PlusOne);
-    }
-    None
 }
 
 pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -164,105 +57,33 @@ pub(crate) fn parse_draw(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let mut parsed_that_many_minus_one = false;
-    let mut parsed_that_many_plus_one = false;
-    let mut consumed_embedded_card_keyword = false;
-    let (mut count, used) =
-        if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, EVENT_AMOUNT_PREFIXES) {
-            let mut value = Value::EventValue(EventValueSpec::Amount);
-            let consumed = prefix.len();
-            let rest = &tokens[consumed..];
-            if rest
-                .first()
-                .is_some_and(|token| token_is_any_word(token, ZONE_MOVE_CARD_OR_CARDS_WORDS))
-            {
-                let trailing = trim_commas(&rest[1..]);
-                if let Some(offset) = parse_draw_card_count_offset_tail(&trailing) {
-                    match offset {
-                        DrawCardCountOffset::MinusOne => {
-                            value = Value::EventValueOffset(EventValueSpec::Amount, -1);
-                            parsed_that_many_minus_one = true;
-                        }
-                        DrawCardCountOffset::PlusOne => {
-                            value = Value::EventValueOffset(EventValueSpec::Amount, 1);
-                            parsed_that_many_plus_one = true;
-                        }
-                    }
-                } else if !trailing.is_empty()
-                    && !word_slice_contains_phrase(&token_words(&trailing), ZONE_MOVE_FOR_EACH_PHRASE)
-                {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported trailing draw clause (clause: '{}')",
-                        clause_words.join(" ")
-                    )));
-                }
-            }
-            (value, consumed)
-        } else if let Some((value, used_words)) =
-            parse_half_rounded_down_draw_count_words(&clause_words)
-        {
-            consumed_embedded_card_keyword = true;
-            (
-                value,
-                token_index_for_word_index(tokens, used_words).unwrap_or(tokens.len()),
-            )
-        } else if let Some(value) = parse_draw_as_many_cards_value(tokens) {
-            consumed_embedded_card_keyword = true;
-            (value, tokens.len())
-        } else if token_slice_first_is(tokens, "another")
-            && token_slice_at_is_any(tokens, 1, &["card", "cards"])
-        {
-            (Value::Fixed(1), 1)
-        } else if token_slice_first_is_any(tokens, &["card", "cards"]) {
-            let tail = trim_commas(&tokens[1..]);
-            let value = parse_draw_card_prefixed_count_value(&tail)?.ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "missing draw count (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
-            consumed_embedded_card_keyword = true;
-            (value, tokens.len())
-        } else if token_slice_first_is(tokens, "up") && token_slice_at_is(tokens, 1, "to") {
-            let Some((amount, used_amount)) = parse_number(&tokens[2..]) else {
-                return Err(CardTextError::ParseError(format!(
-                    "missing draw count (clause: '{}')",
-                    clause_words.join(" ")
-                )));
-            };
-            (Value::Fixed(amount as i32), 2 + used_amount)
-        } else {
-            parse_value(tokens).ok_or_else(|| {
+    let head = zone_move_grammar::parse_draw_head_shape(tokens).map_err(|error| match error {
+        zone_move_grammar::DrawHeadShapeError::MissingCount => CardTextError::ParseError(format!(
+            "missing draw count (clause: '{}')",
+            clause_words.join(" ")
+        )),
+        zone_move_grammar::DrawHeadShapeError::MissingCardKeyword => {
+            CardTextError::ParseError("missing card keyword".to_string())
+        }
+        zone_move_grammar::DrawHeadShapeError::UnsupportedTrailingClause => {
+            CardTextError::ParseError(format!(
+                "unsupported trailing draw clause (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        }
+    })?;
+    let mut count = match head.count {
+        zone_move_grammar::DrawHeadCountShape::Resolved(value) => value,
+        zone_move_grammar::DrawHeadCountShape::CardPrefixed { count_tokens } => {
+            parse_draw_card_prefixed_count_value(count_tokens)?.ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing draw count (clause: '{}')",
                     clause_words.join(" ")
                 ))
             })?
-        };
-
-    let rest = &tokens[used..];
-    let tail = if consumed_embedded_card_keyword {
-        trim_commas(rest)
-    } else {
-        let mut card_word_idx = 0usize;
-        if rest
-            .first()
-            .is_some_and(|token| token_is_word(token, ZONE_MOVE_ADDITIONAL_WORD))
-        {
-            card_word_idx = 1;
         }
-        let Some(card_word) = rest.get(card_word_idx).and_then(OwnedLexToken::as_word) else {
-            return Err(CardTextError::ParseError(
-                "missing card keyword".to_string(),
-            ));
-        };
-        if !ZONE_MOVE_CARD_OR_CARDS_WORDS.contains(&card_word) {
-            return Err(CardTextError::ParseError(
-                "missing card keyword".to_string(),
-            ));
-        }
-        trim_commas(&rest[card_word_idx + 1..])
     };
+    let tail = head.tail_tokens;
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let mut effect = subject_verb_player_resource_effect(
         SubjectVerbRoleAst::AffectedPlayer,
@@ -272,58 +93,45 @@ pub(crate) fn parse_draw(
         },
     );
 
-    if !tail.is_empty() {
-        if !matches!(
-            (
-                parsed_that_many_minus_one,
-                parsed_that_many_plus_one,
-                parse_draw_card_count_offset_tail(&tail),
-            ),
-            (true, _, Some(DrawCardCountOffset::MinusOne))
-                | (_, true, Some(DrawCardCountOffset::PlusOne))
-        ) {
-            if let Some(parsed) = parse_draw_for_each_player_condition(&tail, effect.clone())? {
+    if !tail.is_empty() && head.parsed_offset.is_none() {
+        if let Some(parsed) = parse_draw_for_each_player_condition(&tail, effect.clone())? {
+            effect = parsed;
+        } else {
+            let has_for_each = zone_move_grammar::contains_draw_for_each_shape(tail);
+            if has_for_each {
+                let dynamic = if let Some(value) = parse_draw_for_each_object_filter_value(&tail)? {
+                    value
+                } else {
+                    parse_dynamic_cost_modifier_value(&tail)?.ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported draw for-each clause (clause: '{}')",
+                            crate::runtime_backend::token_word_refs(tokens).join(" ")
+                        ))
+                    })?
+                };
+                match count {
+                    Value::Fixed(1) => count = dynamic,
+                    _ => {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported multiplied draw count (clause: '{}')",
+                            crate::runtime_backend::token_word_refs(tokens).join(" ")
+                        )));
+                    }
+                }
+                effect = subject_verb_player_resource_effect(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    player,
+                    SubjectVerbActionAst::Draw {
+                        count: count.clone(),
+                    },
+                );
+            } else if let Some(parsed) = parse_draw_trailing_clause(&tail, effect.clone())? {
                 effect = parsed;
             } else {
-                let has_for_each = find_window_by(&tail, 2, |window: &[OwnedLexToken]| {
-                    token_slice_starts_with(window, &["for", "each"])
-                })
-                .is_some();
-                if has_for_each {
-                    let dynamic = if let Some(value) = parse_draw_for_each_object_filter_value(&tail)? {
-                        value
-                    } else {
-                        parse_dynamic_cost_modifier_value(&tail)?.ok_or_else(|| {
-                            CardTextError::ParseError(format!(
-                                "unsupported draw for-each clause (clause: '{}')",
-                                crate::runtime_backend::token_word_refs(tokens).join(" ")
-                            ))
-                        })?
-                    };
-                    match count {
-                        Value::Fixed(1) => count = dynamic,
-                        _ => {
-                            return Err(CardTextError::ParseError(format!(
-                                "unsupported multiplied draw count (clause: '{}')",
-                                crate::runtime_backend::token_word_refs(tokens).join(" ")
-                            )));
-                        }
-                    }
-                    effect = subject_verb_player_resource_effect(
-                        SubjectVerbRoleAst::AffectedPlayer,
-                        player,
-                        SubjectVerbActionAst::Draw {
-                            count: count.clone(),
-                        },
-                    );
-                } else if let Some(parsed) = parse_draw_trailing_clause(&tail, effect.clone())? {
-                    effect = parsed;
-                } else {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported trailing draw clause (clause: '{}')",
-                        clause_words.join(" ")
-                    )));
-                }
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing draw clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
             }
         }
     }
@@ -450,32 +258,10 @@ fn parse_draw_for_each_player_condition(
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let (start, opponents_only) = if let Some((prefix, _)) =
-        grammar::words_match_any_prefix(tokens, FOR_EACH_OPPONENT_WHO_PREFIXES)
-    {
-        (prefix.len() - 1, true)
-    } else if let Some((prefix, _)) =
-        grammar::words_match_any_prefix(tokens, FOR_EACH_PLAYER_WHO_PREFIXES)
-    {
-        (prefix.len() - 1, false)
-    } else if let Some((prefix, _)) =
-        grammar::words_match_any_prefix(tokens, EACH_OPPONENT_WHO_PREFIXES)
-    {
-        (prefix.len() - 1, true)
-    } else if let Some((prefix, _)) =
-        grammar::words_match_any_prefix(tokens, EACH_PLAYER_WHO_PREFIXES)
-    {
-        (prefix.len() - 1, false)
-    } else {
+    let Some(shape) = zone_move_grammar::parse_draw_player_loop_shape(tokens) else {
         return Ok(None);
     };
-
-    let inner_tokens = trim_commas(&tokens[start..]);
-    let inner_words = crate::runtime_backend::token_word_refs(&inner_tokens);
-    if !zone_move_word_refs_first_is(&inner_words, ZONE_MOVE_WHO_WORD) {
-        return Ok(None);
-    }
-
+    let inner_tokens = shape.who_tokens;
     let predicate_tail = trim_commas(&inner_tokens[1..]);
     if predicate_tail.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -509,7 +295,7 @@ fn parse_draw_for_each_player_condition(
         if_true: vec![draw_effect],
         if_false: Vec::new(),
     }];
-    Ok(Some(if opponents_only {
+    Ok(Some(if shape.opponents_only {
         EffectAst::ForEachOpponent { effects }
     } else {
         EffectAst::ForEachPlayer { effects }
@@ -517,148 +303,58 @@ fn parse_draw_for_each_player_condition(
 }
 
 pub(crate) fn parse_half_rounded_down_draw_count_words(words: &[&str]) -> Option<(Value, usize)> {
-    if !zone_move_word_refs_first_is(words, ZONE_MOVE_HALF_WORD) {
-        return None;
-    }
-
-    let mut card_idx = None;
-    for idx in 1..words.len() {
-        let rounded_tail_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(words[idx + 1..].iter().copied());
-        if words
-            .get(idx)
-            .is_some_and(|word| ZONE_MOVE_CARD_OR_CARDS_WORDS.contains(word))
-            && word_slice_starts_with(
-                &crate::runtime_backend::token_word_refs(&rounded_tail_tokens),
-                ZONE_MOVE_ROUNDED_DOWN_PREFIX,
-            )
-        {
-            card_idx = Some(idx);
-            break;
-        }
-    }
-    let card_idx = card_idx?;
-
-    let inner_words = &words[1..card_idx];
-    let (inner, used_inner) = parse_value_expr_words(inner_words)?;
-    if used_inner != inner_words.len() {
-        return None;
-    }
-
-    Some((Value::HalfRoundedDown(Box::new(inner)), card_idx + 3))
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words.iter().copied());
+    zone_move_grammar::parse_half_rounded_down_draw_shape(&tokens)
 }
 
 pub(crate) fn parse_draw_trailing_clause(
     tokens: &[OwnedLexToken],
     draw_effect: EffectAst,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let tail_words = crate::runtime_backend::token_word_refs(tokens);
-    if word_slice_eq(&tail_words, DRAW_TRAILING_INSTEAD_WORDS) {
-        return Ok(Some(draw_effect));
-    }
-
-    if let Some(timing) = parse_draw_delayed_timing_words(&tail_words) {
-        return Ok(Some(wrap_return_with_delayed_timing(
-            draw_effect,
-            Some(timing),
-        )));
-    }
-
-    if word_slice_starts_with(&tail_words, DRAW_TRAILING_THEN_PUT_PREFIX) {
-        let put_tokens = trim_commas(&tokens[2..]);
-        let put_effect = parse_put_into_hand(&put_tokens, None)?;
-        return Ok(Some(EffectAst::Sequence {
-            effects: vec![draw_effect, put_effect],
-        }));
-    }
-
-    if zone_move_word_refs_first_is(&tail_words, DRAW_TRAILING_IF_WORD) {
-        let predicate = parse_trailing_if_predicate_lexed(tokens).ok_or_else(|| {
-            CardTextError::ParseError("missing condition after trailing if clause".to_string())
-        })?;
-        return Ok(Some(EffectAst::Conditional {
-            predicate,
-            if_true: vec![draw_effect],
-            if_false: Vec::new(),
-        }));
-    }
-
-    if zone_move_word_refs_first_is(&tail_words, DRAW_TRAILING_UNLESS_WORD) {
-        return try_build_unless(
+    let Some(shape) = zone_move_grammar::parse_draw_trailing_shape(tokens) else {
+        return Ok(None);
+    };
+    match shape {
+        zone_move_grammar::DrawTrailingShape::Instead => Ok(Some(draw_effect)),
+        zone_move_grammar::DrawTrailingShape::Delayed(timing) => {
+            let timing = match timing {
+                super::super::grammar::effects::ReturnTimingShape::NextEndStep(player) => {
+                    DelayedReturnTimingAst::NextEndStep(player)
+                }
+                super::super::grammar::effects::ReturnTimingShape::NextUpkeep(player) => {
+                    DelayedReturnTimingAst::NextUpkeep(player)
+                }
+                super::super::grammar::effects::ReturnTimingShape::EndOfCombat => {
+                    DelayedReturnTimingAst::EndOfCombat
+                }
+            };
+            Ok(Some(wrap_return_with_delayed_timing(
+                draw_effect,
+                Some(timing),
+            )))
+        }
+        zone_move_grammar::DrawTrailingShape::ThenPut { put_tokens } => {
+            let put_effect = parse_put_into_hand(put_tokens, None)?;
+            Ok(Some(EffectAst::Sequence {
+                effects: vec![draw_effect, put_effect],
+            }))
+        }
+        zone_move_grammar::DrawTrailingShape::If => {
+            let predicate = parse_trailing_if_predicate_lexed(tokens).ok_or_else(|| {
+                CardTextError::ParseError("missing condition after trailing if clause".to_string())
+            })?;
+            Ok(Some(EffectAst::Conditional {
+                predicate,
+                if_true: vec![draw_effect],
+                if_false: Vec::new(),
+            }))
+        }
+        zone_move_grammar::DrawTrailingShape::Unless => try_build_unless(
             vec![draw_effect],
             SubjectVerbPrimitiveClause::new(tokens),
             0,
-        );
+        ),
     }
-
-    Ok(None)
-}
-
-pub(crate) fn parse_draw_delayed_timing_words(words: &[&str]) -> Option<DelayedReturnTimingAst> {
-    if let Some(timing) = parse_delayed_return_timing_words(words) {
-        return Some(timing);
-    }
-
-    if matches!(
-        words,
-        ["at", "beginning", "of", "next", "turns", "upkeep"]
-            | ["at", "beginning", "of", "next", "turn's", "upkeep"]
-            | ["at", "beginning", "of", "next", "turn’s", "upkeep"]
-            | ["at", "beginning", "of", "the", "next", "turns", "upkeep"]
-            | ["at", "beginning", "of", "the", "next", "turn's", "upkeep"]
-            | ["at", "beginning", "of", "the", "next", "turn’s", "upkeep"]
-            | ["at", "the", "beginning", "of", "next", "turns", "upkeep"]
-            | ["at", "the", "beginning", "of", "next", "turn's", "upkeep"]
-            | ["at", "the", "beginning", "of", "next", "turn’s", "upkeep"]
-            | [
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "next",
-                "turns",
-                "upkeep"
-            ]
-            | [
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "next",
-                "turn's",
-                "upkeep"
-            ]
-            | [
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "next",
-                "turn’s",
-                "upkeep"
-            ]
-    ) {
-        return Some(DelayedReturnTimingAst::NextUpkeep(PlayerAst::Any));
-    }
-
-    None
-}
-
-pub(crate) fn parse_draw_as_many_cards_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = token_words(tokens);
-    if !word_slice_starts_with_any(&words, DRAW_AS_MANY_CARDS_AS_PREFIXES) {
-        return None;
-    }
-
-    let references_previous_event = word_slice_contains_phrase(&words, ZONE_MOVE_THIS_WAY_PHRASE);
-    if references_previous_event {
-        return Some(Value::EventValue(EventValueSpec::Amount));
-    }
-
-    None
 }
 
 pub(crate) fn parse_draw_card_prefixed_count_value(
@@ -684,17 +380,9 @@ pub(crate) fn parse_draw_card_prefixed_count_value(
 fn parse_draw_for_each_object_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    let token_words = token_words(tokens);
-    if !word_slice_starts_with(&token_words, ZONE_MOVE_FOR_EACH_PHRASE) {
+    let Some(filter_tokens) = zone_move_grammar::strip_draw_for_each_prefix(tokens) else {
         return Ok(None);
-    }
-
-    let filter_start =
-        token_index_for_word_index(tokens, ZONE_MOVE_FOR_EACH_PHRASE.len()).unwrap_or(tokens.len());
-    let filter_tokens = trim_commas(&tokens[filter_start..]);
-    if filter_tokens.is_empty() {
-        return Ok(None);
-    }
+    };
 
     if let Some(known_value) = parse_draw_for_each_known_count_value(&filter_tokens)? {
         return Ok(Some(known_value));
@@ -714,178 +402,50 @@ fn parse_draw_for_each_object_filter_value(
         return Ok(Some(counter_value));
     }
 
-    Ok(Some(Value::Count(parse_object_filter(&filter_tokens, false)?)))
+    Ok(Some(Value::Count(parse_object_filter(
+        &filter_tokens,
+        false,
+    )?)))
 }
 
 fn parse_draw_for_each_known_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    let words = token_words(tokens);
-    if draw_for_each_kick_count_words(&words) {
-        return Ok(Some(Value::KickCount));
-    }
-    if let ["color" | "colors", "among", ..] = words.as_slice() {
-        let filter_start = token_index_for_word_index(tokens, 2).unwrap_or(tokens.len());
-        let filter_tokens = trim_commas(&tokens[filter_start..]);
-        if filter_tokens.is_empty() {
-            return Ok(None);
-        }
-        return Ok(Some(Value::ColorsAmong(parse_object_filter(
-            &filter_tokens,
-            false,
-        )?)));
-    }
-
-    Ok(match words.as_slice() {
-        ["creature" | "creatures", "that", "died", "this", "turn"] => {
-            Some(Value::CreaturesDiedThisTurn)
-        }
-        [
-            "creature" | "creatures",
-            "that",
-            "died",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn",
-        ] => Some(Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You)),
-        _ => None,
-    })
-}
-
-fn draw_for_each_kick_count_words(words: &[&str]) -> bool {
-    let Some((first, rest)) = words.split_first() else {
-        return false;
-    };
-    if !matches!(first, &"time" | &"times") {
-        return false;
-    };
-    let Some(source_words) = rest.strip_suffix(&["was", "kicked"]) else {
-        return false;
-    };
-    source_words == ["this"]
-        || source_words == ["this", "spell"]
-        || source_words == ["it"]
-        || source_reference_surface_for_words(source_words).is_some()
+    Ok(
+        match zone_move_grammar::parse_draw_known_count_shape(tokens) {
+            Some(zone_move_grammar::DrawKnownCountShape::KickCount) => Some(Value::KickCount),
+            Some(zone_move_grammar::DrawKnownCountShape::ColorsAmong { filter_tokens }) => Some(
+                Value::ColorsAmong(parse_object_filter(filter_tokens, false)?),
+            ),
+            Some(zone_move_grammar::DrawKnownCountShape::CreaturesDiedThisTurn) => {
+                Some(Value::CreaturesDiedThisTurn)
+            }
+            Some(zone_move_grammar::DrawKnownCountShape::CreaturesDiedThisTurnControlledByYou) => {
+                Some(Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You))
+            }
+            None => None,
+        },
+    )
 }
 
 fn parse_draw_for_each_this_way_metric_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = token_words(tokens);
-    if !words.ends_with(ZONE_MOVE_THIS_WAY_PHRASE) {
-        return None;
-    }
-
-    let metric = Value::PendingEffectMetric {
-        source: ironsmith_core::EffectMetricSource::Outcome,
-        metric: ironsmith_core::EffectMetric::Count,
-    };
-    if words.contains(&"discarded") {
-        return Some(metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDiscardedThisWay));
-    }
-    if words.contains(&"sacrificed")
-        && words
-            .iter()
-            .any(|word| matches!(*word, "permanent" | "permanents"))
-    {
-        return Some(
-            metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::PermanentsSacrificedThisWay),
-        );
-    }
-    if words.contains(&"exiled") {
-        return Some(metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsExiledThisWay));
-    }
-
-    Some(metric)
+    zone_move_grammar::parse_draw_this_way_metric_shape(tokens)
 }
 
 fn parse_draw_for_each_counter_reference_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = tokens
-        .iter()
-        .filter(|token| token.as_word().is_some())
-        .map(OwnedLexToken::parser_text)
-        .collect::<Vec<_>>();
-    let counter_idx = find_index(words.as_slice(), |word| {
-        *word == "counter" || *word == "counters"
-    })?;
-    if counter_idx == 0 {
-        return None;
-    }
-
-    let counter_type =
-        crate::runtime_backend::parse_counter_type_from_tokens(&tokens[..=counter_idx]);
-    if let Some(counter_type) = counter_type
-        && words
-            .get(counter_idx + 1..)
-            .is_some_and(|tail| tail == ["you", "have"] || tail == ["you", "ve"])
-    {
-        return Some(Value::PlayerCounters(PlayerFilter::You, counter_type));
-    }
-
-    if !words.get(counter_idx + 1).is_some_and(|word| *word == "on") {
-        return None;
-    }
-
-    let reference = words.get(counter_idx + 2..)?;
-    match reference {
-        ["it"]
-        | ["this"]
-        | ["this", "artifact"]
-        | ["this", "aura"]
-        | ["this", "battle"]
-        | ["this", "card"]
-        | ["this", "creature"]
-        | ["this", "enchantment"]
-        | ["this", "land"]
-        | ["this", "permanent"]
-        | ["this", "planeswalker"]
-        | ["this", "source"] => Some(match counter_type {
-            Some(counter_type) => Value::CountersOnSource(counter_type),
-            None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
-        }),
-        ["that"]
-        | ["that", "creature"]
-        | ["that", "object"]
-        | ["that", "permanent"]
-        | ["those"]
-        | ["those", "creatures"]
-        | ["those", "permanents"] => Some(Value::CountersOn(
-            Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
-            counter_type,
-        )),
-        _ => source_reference_surface_for_words(reference).map(|surface| {
-            Value::CountersOn(Box::new(source_choose_spec_for_surface(surface)), counter_type)
-        }),
-    }
+    zone_move_grammar::parse_draw_counter_reference_shape(tokens)
 }
 
 pub(crate) fn parse_draw_equal_to_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    let token_words = token_words(tokens);
-    if !word_slice_starts_with(&token_words, DRAW_EQUAL_TO_PREFIX) {
+    let Some(shape) = zone_move_grammar::parse_draw_equal_shape(tokens) else {
         return Ok(None);
-    }
-
-    if grammar::words_match_prefix(
-        tokens,
-        &[
-            "equal",
-            "to",
-            "the",
-            "greatest",
-            "number",
-            "of",
-            "cards",
-            "a",
-            "player",
-            "discarded",
-            "this",
-            "way",
-        ],
-    )
-    .is_some()
-    {
+    };
+    if matches!(
+        shape,
+        zone_move_grammar::DrawEqualShape::GreatestCardsDiscardedThisWay
+    ) {
         return Ok(Some(Value::PendingEffectMetric {
             source: ironsmith_core::EffectMetricSource::Outcome,
             metric: ironsmith_core::EffectMetric::GreatestPlayerCount,
@@ -896,32 +456,20 @@ pub(crate) fn parse_draw_equal_to_value(
         return Ok(Some(value));
     }
 
-    if word_slice_starts_with(&token_words, DRAW_EQUAL_TO_PREFIX) {
-        let value_tokens = &tokens[2..];
-        let value_words = crate::runtime_backend::token_word_refs(value_tokens);
-        let parse_stat_of_target =
-            |stat_words: &[&str], constructor: fn(Box<ChooseSpec>) -> Value| {
-                if word_slice_starts_with(&value_words, stat_words) {
-                    let target_start = token_index_for_word_index(value_tokens, stat_words.len())
-                        .unwrap_or(value_tokens.len());
-                    let target_tokens = &value_tokens[target_start..];
-                    if let Ok(target) = parse_target_phrase(target_tokens) {
-                        let spec = crate::runtime_backend::references::reference_helpers::choose_spec_for_target(&target);
-                        return Some(constructor(Box::new(spec)));
-                    }
-                }
-                None
-            };
-
-        if let Some(value) = parse_stat_of_target(&["power", "of"], Value::PowerOf)
-            .or_else(|| parse_stat_of_target(&["the", "power", "of"], Value::PowerOf))
-            .or_else(|| parse_stat_of_target(&["toughness", "of"], Value::ToughnessOf))
-            .or_else(|| parse_stat_of_target(&["the", "toughness", "of"], Value::ToughnessOf))
-            .or_else(|| parse_stat_of_target(&["mana", "value", "of"], Value::ManaValueOf))
-            .or_else(|| parse_stat_of_target(&["the", "mana", "value", "of"], Value::ManaValueOf))
-        {
-            return Ok(Some(value));
-        }
+    if let zone_move_grammar::DrawEqualShape::StatOfTarget {
+        stat,
+        target_tokens,
+    } = &shape
+        && let Ok(target) = parse_target_phrase(target_tokens)
+    {
+        let spec =
+            crate::runtime_backend::references::reference_helpers::choose_spec_for_target(&target);
+        let value = match stat {
+            zone_move_grammar::DrawEqualStat::Power => Value::PowerOf(Box::new(spec)),
+            zone_move_grammar::DrawEqualStat::Toughness => Value::ToughnessOf(Box::new(spec)),
+            zone_move_grammar::DrawEqualStat::ManaValue => Value::ManaValueOf(Box::new(spec)),
+        };
+        return Ok(Some(value));
     }
 
     if let Some(value) = parse_add_mana_equal_amount_value(tokens)
@@ -933,7 +481,12 @@ pub(crate) fn parse_draw_equal_to_value(
     {
         return Ok(Some(value));
     }
-    if word_slice_contains_phrase(&token_words, ZONE_MOVE_THIS_WAY_PHRASE) {
+    if matches!(
+        shape,
+        zone_move_grammar::DrawEqualShape::Fallback {
+            references_this_way: true
+        }
+    ) {
         return Ok(Some(Value::EventValue(EventValueSpec::Amount)));
     }
     if let Some(value) = parse_dynamic_cost_modifier_value(tokens)? {
@@ -993,57 +546,42 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if word_slice_eq_any(&clause_words, COUNTER_TARGET_SECOND_SPELL_THIS_TURN_PHRASES) {
-        return Ok(EffectAst::Conditional {
-            predicate: crate::cards::builders::PredicateAst::TargetSpellCastOrderThisTurn(2),
-            if_true: vec![EffectAst::subject_verb_counter(TargetAst::Spell(
-                span_from_tokens(&tokens[1..3]),
-            ))],
-            if_false: Vec::new(),
-        });
-    }
-
-    if word_slice_contains_word(&clause_words, DRAW_TRAILING_IF_WORD) {
-        return Err(CardTextError::ParseError(format!(
-            "missing conditional counter target or predicate (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-
-    if let Some((target_tokens, unless_tokens)) =
-        super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
-            use winnow::Parser as _;
-            super::super::grammar::primitives::kw("unless").void()
-        })
-    {
-        let target = parse_counter_target_phrase(target_tokens)?;
-        let pays_idx = find_index(unless_tokens, |token: &OwnedLexToken| {
-            token_is_word(token, COUNTER_UNLESS_PAYS_WORD)
-        })
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing pays keyword (clause: '{}')",
-                crate::runtime_backend::token_word_refs(tokens).join(" ")
-            ))
+    let shape =
+        zone_move_grammar::parse_counter_clause_shape(tokens).map_err(|error| match error {
+            zone_move_grammar::CounterClauseShapeError::MissingPays => {
+                CardTextError::ParseError(format!(
+                    "missing pays keyword (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            }
         })?;
-
-        let mut payment_clause_tokens = unless_tokens[pays_idx..].to_vec();
-        if let Some(first) = payment_clause_tokens.first_mut()
-            && token_is_word(first, COUNTER_UNLESS_PAYS_WORD)
-        {
-            first.replace_word("pay");
+    let unless_shape = match shape {
+        zone_move_grammar::CounterClauseShape::SecondSpellThisTurn { target_tokens } => {
+            return Ok(EffectAst::Conditional {
+                predicate: crate::cards::builders::PredicateAst::TargetSpellCastOrderThisTurn(2),
+                if_true: vec![EffectAst::subject_verb_counter(TargetAst::Spell(
+                    span_from_tokens(&target_tokens),
+                ))],
+                if_false: Vec::new(),
+            });
         }
-        let payment_clause_words = crate::runtime_backend::token_word_refs(&payment_clause_tokens);
-        let has_x_mana_payment = payment_clause_tokens.iter().any(|token| {
-            mana_pips_from_token(token)
-                .is_some_and(|pips| pips.iter().any(|symbol| matches!(symbol, ManaSymbol::X)))
-        });
-        let has_dynamic_payment_tail = payment_clause_words
-            .iter()
-            .any(|word| COUNTER_DYNAMIC_PAYMENT_TAIL_WORDS.contains(word))
-            || word_slice_contains_phrase(&payment_clause_words, ZONE_MOVE_FOR_EACH_PHRASE)
-            || has_x_mana_payment;
-        match crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(&payment_clause_tokens) {
+        zone_move_grammar::CounterClauseShape::MalformedConditional => {
+            return Err(CardTextError::ParseError(format!(
+                "missing conditional counter target or predicate (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        zone_move_grammar::CounterClauseShape::Plain { target_tokens } => {
+            return Ok(EffectAst::subject_verb_counter(
+                parse_counter_target_phrase(target_tokens)?,
+            ));
+        }
+        zone_move_grammar::CounterClauseShape::Unless(shape) => shape,
+    };
+    let target = parse_counter_target_phrase(unless_shape.target_tokens)?;
+    let payment_clause_tokens = &unless_shape.normalized_payment_tokens;
+    let has_dynamic_payment_tail = unless_shape.has_dynamic_payment_tail;
+    match crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(&payment_clause_tokens) {
             Ok(Some(cost)) => {
                 let should_keep_subject_verb_dynamic_path = has_dynamic_payment_tail
                     && cost.as_one_of().is_none()
@@ -1070,196 +608,124 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             }
         }
 
-        // Parse the contiguous mana payment immediately following "pays".
-        // Stop at the first non-mana word so trailing dynamic qualifiers
-        // ("for each ...", "where X is ...", "plus an additional ...") do not
-        // accidentally duplicate symbols.
-        let mut mana = Vec::new();
-        let mut trailing_start: Option<usize> = None;
-        for (offset, token) in unless_tokens[pays_idx + 1..].iter().enumerate() {
-            if let Some(group) = mana_pips_from_token(token) {
-                mana.extend(group);
-                continue;
-            }
-            if token.is_comma() || token.is_period() {
-                continue;
-            }
-            let Some(word) = token.as_word() else {
-                if !mana.is_empty() {
-                    trailing_start = Some(pays_idx + 1 + offset);
-                    break;
-                }
-                continue;
-            };
-            match parse_mana_symbol(word) {
-                Ok(symbol) => mana.push(symbol),
-                Err(_) => {
-                    trailing_start = Some(pays_idx + 1 + offset);
-                    break;
-                }
-            }
+    let mut mana = unless_shape.mana.clone();
+    let mut life = None;
+    let mut additional_generic = None;
+    let mut mana_multiplier = None;
+    let mut x_value = None;
+    let mut dynamic_display_hint = ironsmith_core::DynamicManaDisplayHint::Default;
+    if mana.is_empty() {
+        // "unless its controller pays mana equal to ..." uses a dynamic generic payment.
+        if unless_shape.starts_with_mana_word
+            && let Some(value) = parse_equal_to_aggregate_filter_value(unless_shape.payment_tokens)
+                .or_else(|| parse_equal_to_number_of_filter_value(unless_shape.payment_tokens))
+        {
+            additional_generic = Some(value);
+            dynamic_display_hint = ironsmith_core::DynamicManaDisplayHint::ManaEqualTo;
+        } else if unless_shape.has_x_mana_payment && unless_shape.twice_x_surface {
+            mana.push(ManaSymbol::X);
+            mana_multiplier = Some(Value::Fixed(2));
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "missing mana cost (clause: '{}')",
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
+            )));
         }
+    }
 
-        let mut life = None;
-        let mut additional_generic = None;
-        let mut mana_multiplier = None;
-        let mut x_value = None;
-        let mut dynamic_display_hint = ironsmith_core::DynamicManaDisplayHint::Default;
-        if mana.is_empty() {
-            let payment_tokens = trim_commas(&unless_tokens[pays_idx + 1..]);
-            let payment_words = crate::runtime_backend::token_word_refs(&payment_tokens);
-            // "unless its controller pays mana equal to ..." uses a dynamic generic payment.
-            if payment_words
-                .first()
-                .is_some_and(|word| *word == COUNTER_MANA_WORD)
-                && let Some(value) = parse_equal_to_aggregate_filter_value(&payment_tokens)
-                    .or_else(|| parse_equal_to_number_of_filter_value(&payment_tokens))
-            {
+    match &unless_shape.tail {
+        zone_move_grammar::CounterPaymentTailShape::None => {}
+        zone_move_grammar::CounterPaymentTailShape::Life(amount) => {
+            life = Some(amount.clone());
+        }
+        zone_move_grammar::CounterPaymentTailShape::Other {
+            tokens: trailing_tokens,
+            same_name_graveyard,
+            for_each,
+        } => {
+            let trailing_words = crate::runtime_backend::token_word_refs(trailing_tokens);
+            if let Some(value) = parse_counter_unless_additional_generic_value(trailing_tokens)? {
                 additional_generic = Some(value);
-                dynamic_display_hint = ironsmith_core::DynamicManaDisplayHint::ManaEqualTo;
-                trailing_start = None;
-            } else if has_x_mana_payment && payment_words.as_slice() == ["twice"] {
-                mana.push(ManaSymbol::X);
-                mana_multiplier = Some(Value::Fixed(2));
-                trailing_start = None;
-            } else {
-                return Err(CardTextError::ParseError(format!(
-                    "missing mana cost (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
-                )));
-            }
-        }
-
-        if let Some(trailing_idx) = trailing_start {
-            let trailing_tokens = trim_commas(&unless_tokens[trailing_idx..]);
-            let trailing_words = crate::runtime_backend::token_word_refs(&trailing_tokens);
-            if trailing_tokens
-                .first()
-                .is_some_and(|token| token_is_word(token, COUNTER_AND_WORD))
-            {
-                let life_tokens = trim_commas(&trailing_tokens[1..]);
-                if let Some((amount, used)) = parse_value(&life_tokens)
-                    && life_tokens
-                        .get(used)
-                        .is_some_and(|token| token_is_word(token, COUNTER_LIFE_WORD))
-                    && trim_commas(&life_tokens[used + 1..]).is_empty()
-                {
-                    life = Some(amount);
-                } else {
+            } else if *same_name_graveyard {
+                if !mana_cost_is_x_only(&mana) {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                        crate::runtime_backend::token_word_refs(tokens).join(" "),
+                        clause_words.join(" "),
                         trailing_words.join(" ")
                     )));
                 }
-            } else if let Some(value) =
-                parse_counter_unless_additional_generic_value(&trailing_tokens)?
-            {
-                additional_generic = Some(value);
-            } else if grammar::words_match_any_prefix(
-                &trailing_tokens,
-                &[&["where", "x", "is"], &["where", "x", "equals"]],
-            )
-            .is_some()
-                && word_slice_contains_any_phrase(
-                    &trailing_words,
-                    COUNTER_SAME_NAME_AS_SPELL_PHRASES,
-                )
-                && let Some(same_name_value) =
-                    counter_same_name_graveyard_count_value(&trailing_tokens)
-            {
-                if mana.as_slice() != [ManaSymbol::X] {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                        crate::runtime_backend::token_word_refs(tokens).join(" "),
-                        trailing_words.join(" ")
-                    )));
-                }
-                x_value = Some(same_name_value);
-            } else if let Some(value) = parse_value_binding_clause(&trailing_tokens) {
-                if mana.as_slice() == [ManaSymbol::X] {
+                x_value = Some(zone_move_grammar::same_name_graveyard_count_value());
+            } else if let Some(value) = parse_value_binding_clause(trailing_tokens) {
+                if mana_cost_is_x_only(&mana) {
                     x_value = Some(value);
                 } else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                        crate::runtime_backend::token_word_refs(tokens).join(" "),
+                        clause_words.join(" "),
                         trailing_words.join(" ")
                     )));
                 }
-            } else if grammar::words_match_any_prefix(&trailing_tokens, FOR_EACH_PREFIXES).is_some()
-            {
-                if let Some(dynamic) = parse_dynamic_cost_modifier_value(&trailing_tokens)? {
-                    if let [ManaSymbol::Generic(multiplier)] = mana.as_slice() {
+            } else if *for_each {
+                if let Some(dynamic) = parse_dynamic_cost_modifier_value(trailing_tokens)? {
+                    if let Some(multiplier) = mana_cost_single_generic(&mana) {
                         additional_generic =
-                            Some(scale_value_multiplier(dynamic, *multiplier as i32));
+                            Some(scale_value_multiplier(dynamic, multiplier as i32));
                         mana.clear();
                     } else {
                         return Err(CardTextError::ParseError(format!(
                             "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                            crate::runtime_backend::token_word_refs(tokens).join(" "),
+                            clause_words.join(" "),
                             trailing_words.join(" ")
                         )));
                     }
                 } else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                        crate::runtime_backend::token_word_refs(tokens).join(" "),
+                        clause_words.join(" "),
                         trailing_words.join(" ")
                     )));
                 }
-            } else if !trailing_words.is_empty() {
+            } else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" "),
+                    clause_words.join(" "),
                     trailing_words.join(" ")
                 )));
             }
         }
-
-        if mana.is_empty()
-            && life.is_none()
-            && additional_generic.is_none()
-            && mana_multiplier.is_none()
-            && x_value.is_none()
-        {
-            return Err(CardTextError::ParseError(format!(
-                "missing mana cost (clause: '{}')",
-                crate::runtime_backend::token_word_refs(tokens).join(" ")
-            )));
-        }
-
-        if x_value.is_none()
-            && mana.as_slice() == [ManaSymbol::X]
-            && let Some(where_idx) =
-                crate::runtime_backend::lexer::find_token_word(&unless_tokens, "where")
-        {
-            let where_tokens = trim_commas(&unless_tokens[where_idx..]);
-            let where_words = crate::runtime_backend::token_word_refs(&where_tokens);
-            x_value = parse_value_binding_clause(&where_tokens).or_else(|| {
-                if word_slice_contains_any_phrase(
-                        &where_words,
-                        COUNTER_SAME_NAME_AS_SPELL_PHRASES,
-                    ) {
-                    counter_same_name_graveyard_count_value(&where_tokens)
-                } else {
-                    None
-                }
-            });
-        }
-
-        return Ok(EffectAst::subject_verb_counter_unless_pays(
-            target,
-            counter_unless_payment_total_cost(
-                mana,
-                life,
-                additional_generic,
-                mana_multiplier,
-                x_value,
-                dynamic_display_hint,
-            ),
-        ));
     }
 
-    let target = parse_counter_target_phrase(tokens)?;
-    Ok(EffectAst::subject_verb_counter(target))
+    if mana.is_empty()
+        && life.is_none()
+        && additional_generic.is_none()
+        && mana_multiplier.is_none()
+        && x_value.is_none()
+    {
+        return Err(CardTextError::ParseError(format!(
+            "missing mana cost (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
+
+    if x_value.is_none()
+        && mana_cost_is_x_only(&mana)
+        && let Some(where_tokens) = unless_shape.where_tokens
+    {
+        x_value = parse_value_binding_clause(where_tokens).or_else(|| {
+            zone_move_grammar::counter_same_name_graveyard_shape(where_tokens)
+                .then(zone_move_grammar::same_name_graveyard_count_value)
+        });
+    }
+
+    return Ok(EffectAst::subject_verb_counter_unless_pays(
+        target,
+        counter_unless_payment_total_cost(
+            mana,
+            life,
+            additional_generic,
+            mana_multiplier,
+            x_value,
+            dynamic_display_hint,
+        ),
+    ));
 }

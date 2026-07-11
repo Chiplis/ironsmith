@@ -7,20 +7,31 @@ use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
+use ironsmith_core::trigger_model::DamageSourceSurface;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DealsDamageToTrigger {
     pub source_filter: ObjectFilter,
     pub target_filter: ObjectFilter,
     pub combat_only: bool,
+    pub source_surface: DamageSourceSurface,
 }
 
 impl DealsDamageToTrigger {
     pub fn new(source_filter: ObjectFilter, target_filter: ObjectFilter) -> Self {
+        Self::with_source_surface(source_filter, target_filter, DamageSourceSurface::Filter)
+    }
+
+    pub fn with_source_surface(
+        source_filter: ObjectFilter,
+        target_filter: ObjectFilter,
+        source_surface: DamageSourceSurface,
+    ) -> Self {
         Self {
             source_filter,
             target_filter,
             combat_only: false,
+            source_surface,
         }
     }
 
@@ -29,6 +40,7 @@ impl DealsDamageToTrigger {
             source_filter,
             target_filter,
             combat_only: true,
+            source_surface: DamageSourceSurface::Filter,
         }
     }
 }
@@ -65,18 +77,15 @@ impl TriggerMatcher for DealsDamageToTrigger {
 
     fn display(&self) -> String {
         let target = damage_target_description(&self.target_filter);
-        if self.combat_only {
-            format!(
-                "Whenever {} deals combat damage to {}",
-                self.source_filter.description(),
-                target
-            )
+        let source = if self.source_surface == DamageSourceSurface::Source {
+            super::deals_damage::generic_source_description(&self.source_filter)
         } else {
-            format!(
-                "Whenever {} deals damage to {}",
-                self.source_filter.description(),
-                target
-            )
+            self.source_filter.description()
+        };
+        if self.combat_only {
+            format!("Whenever {source} deals combat damage to {target}")
+        } else {
+            format!("Whenever {source} deals damage to {target}")
         }
     }
 }
@@ -152,5 +161,23 @@ mod tests {
         );
 
         assert!(!trigger.matches(&event, &ctx));
+    }
+
+    #[test]
+    fn generic_source_surface_renders_source_without_changing_filters() {
+        let source_filter = ObjectFilter::default();
+        let target_filter = ObjectFilter::creature();
+        let trigger = DealsDamageToTrigger::with_source_surface(
+            source_filter.clone(),
+            target_filter.clone(),
+            DamageSourceSurface::Source,
+        );
+
+        assert_eq!(trigger.source_filter, source_filter);
+        assert_eq!(trigger.target_filter, target_filter);
+        assert_eq!(
+            trigger.display(),
+            "Whenever a source deals damage to a creature"
+        );
     }
 }

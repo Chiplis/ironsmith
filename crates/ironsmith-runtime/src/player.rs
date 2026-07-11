@@ -748,6 +748,8 @@ pub struct Player {
     pub poison_counters: u32,
     pub energy_counters: u32,
     pub experience_counters: u32,
+    /// Player counters without dedicated rules fields (for example, rad counters).
+    pub other_counters: HashMap<crate::object::CounterType, u32>,
     pub speed: Option<u8>,
     pub ring_temptations: u32,
     pub ring_bearer: Option<ObjectId>,
@@ -795,6 +797,7 @@ impl Player {
             poison_counters: 0,
             energy_counters: 0,
             experience_counters: 0,
+            other_counters: HashMap::new(),
             speed: None,
             ring_temptations: 0,
             ring_bearer: None,
@@ -910,6 +913,86 @@ impl Player {
     pub fn add_poison(&mut self, amount: u32) -> u32 {
         self.poison_counters += amount;
         self.poison_counters
+    }
+
+    pub fn counter_count(&self, counter_type: crate::object::CounterType) -> u32 {
+        match counter_type {
+            crate::object::CounterType::Poison => self.poison_counters,
+            crate::object::CounterType::Energy => self.energy_counters,
+            crate::object::CounterType::Experience => self.experience_counters,
+            _ => self.other_counters.get(&counter_type).copied().unwrap_or(0),
+        }
+    }
+
+    pub fn counter_types_with_counters(&self) -> Vec<crate::object::CounterType> {
+        let mut counter_types = Vec::new();
+        for counter_type in [
+            crate::object::CounterType::Poison,
+            crate::object::CounterType::Energy,
+            crate::object::CounterType::Experience,
+        ] {
+            if self.counter_count(counter_type) > 0 {
+                counter_types.push(counter_type);
+            }
+        }
+        let mut other = self
+            .other_counters
+            .iter()
+            .filter_map(|(counter_type, count)| (*count > 0).then_some(*counter_type))
+            .collect::<Vec<_>>();
+        other.sort_by_key(|counter_type| counter_type.description().into_owned());
+        counter_types.extend(other);
+        counter_types
+    }
+
+    pub(crate) fn add_counters(&mut self, counter_type: crate::object::CounterType, amount: u32) {
+        match counter_type {
+            crate::object::CounterType::Poison => {
+                self.poison_counters = self.poison_counters.saturating_add(amount);
+            }
+            crate::object::CounterType::Energy => {
+                self.energy_counters = self.energy_counters.saturating_add(amount);
+            }
+            crate::object::CounterType::Experience => {
+                self.experience_counters = self.experience_counters.saturating_add(amount);
+            }
+            _ => {
+                let count = self.other_counters.entry(counter_type).or_default();
+                *count = count.saturating_add(amount);
+            }
+        }
+    }
+
+    pub(crate) fn remove_counters(
+        &mut self,
+        counter_type: crate::object::CounterType,
+        amount: u32,
+    ) -> u32 {
+        let available = self.counter_count(counter_type);
+        let removed = available.min(amount);
+        match counter_type {
+            crate::object::CounterType::Poison => {
+                self.poison_counters = self.poison_counters.saturating_sub(removed);
+            }
+            crate::object::CounterType::Energy => {
+                self.energy_counters = self.energy_counters.saturating_sub(removed);
+            }
+            crate::object::CounterType::Experience => {
+                self.experience_counters = self.experience_counters.saturating_sub(removed);
+            }
+            _ => {
+                let remove_entry = if let Some(count) = self.other_counters.get_mut(&counter_type) {
+                    *count = count.saturating_sub(removed);
+                    *count == 0
+                } else {
+                    false
+                };
+                if remove_entry {
+                    self.other_counters.remove(&counter_type);
+                }
+            }
+        }
+        removed
     }
 
     /// Draws cards from library to hand. Returns the IDs of cards drawn.

@@ -249,6 +249,18 @@ impl TriggerMatcher for KeywordActionTrigger {
         if self.action == KeywordActionKind::Vote && self.player == PlayerFilter::Any {
             return "Whenever players finish voting".to_string();
         }
+        if self.action == KeywordActionKind::UnlockDoor
+            && self
+                .source_filter
+                .as_ref()
+                .is_some_and(|filter| filter.subtypes == [crate::types::Subtype::Room])
+        {
+            return match &self.player {
+                PlayerFilter::You => "Whenever you fully unlock a Room".to_string(),
+                PlayerFilter::Opponent => "Whenever an opponent fully unlocks a Room".to_string(),
+                _ => "Whenever a player fully unlocks a Room".to_string(),
+            };
+        }
         if self.action == KeywordActionKind::NameSticker {
             return match &self.player {
                 PlayerFilter::You => "Whenever you put a name sticker on a creature".to_string(),
@@ -535,6 +547,16 @@ mod tests {
     fn keyword_action_vote_display_uses_finished_voting_phrase() {
         let trigger = KeywordActionTrigger::new(KeywordActionKind::Vote, PlayerFilter::Any);
         assert_eq!(trigger.display(), "Whenever players finish voting");
+    }
+
+    #[test]
+    fn keyword_action_fully_unlock_room_display_preserves_room_fact() {
+        let trigger = KeywordActionTrigger::matching_object(
+            KeywordActionKind::UnlockDoor,
+            PlayerFilter::You,
+            ObjectFilter::default().with_subtype(crate::types::Subtype::Room),
+        );
+        assert_eq!(trigger.display(), "Whenever you fully unlock a Room");
     }
 
     #[test]

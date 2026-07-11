@@ -59,6 +59,35 @@ pub enum SearchSelectionMode {
     AllMatching,
 }
 
+/// Aggregate value used to constrain a group of chosen objects.
+///
+/// Unlike an [`ObjectFilter`], this applies to the selection as a whole. For
+/// example, "choose any number of creatures with total power 4 or less" uses
+/// `Power` with a maximum of 4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChoiceAggregateMetric {
+    Power,
+    Toughness,
+    ManaValue,
+}
+
+/// Upper bound on an aggregate characteristic of a group of chosen objects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChoiceAggregateConstraint {
+    pub metric: ChoiceAggregateMetric,
+    pub maximum: i32,
+}
+
+impl ChoiceAggregateConstraint {
+    pub const fn at_most(metric: ChoiceAggregateMetric, maximum: i32) -> Self {
+        Self { metric, maximum }
+    }
+
+    pub const fn total_power_at_most(maximum: i32) -> Self {
+        Self::at_most(ChoiceAggregateMetric::Power, maximum)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum Until {
     #[default]
@@ -84,6 +113,7 @@ pub enum EffectPredicate {
     SearchedLibrary,
     HappenedNotReplaced,
     ExcessDamageDealt,
+    AffectedObjectMatchesCardType { card_type: CardType, negated: bool },
     Value(crate::effect_model::Comparison),
     Chosen,
     WasDeclined,
@@ -178,6 +208,10 @@ pub enum DelayedTriggerSpec {
         min_spells_this_turn: Option<u32>,
         exact_spells_this_turn: Option<u32>,
         from_not_hand: bool,
+    },
+    PlayerPlaysLand {
+        player: PlayerFilter,
+        filter: ObjectFilter,
     },
     AbilityActivated {
         activator: PlayerFilter,
@@ -1803,6 +1837,7 @@ pub struct ChooseObjectsEffect {
     pub filter: ObjectFilter,
     pub count: ChoiceCount,
     pub count_value: Option<Value>,
+    pub aggregate_constraint: Option<ChoiceAggregateConstraint>,
     pub chooser: PlayerFilter,
     pub zone: Option<crate::zone::Zone>,
     pub additional_zones: Vec<crate::zone::Zone>,
@@ -1827,6 +1862,7 @@ impl ChooseObjectsEffect {
             filter,
             count: count.into(),
             count_value: None,
+            aggregate_constraint: None,
             chooser,
             zone: None,
             additional_zones: Vec::new(),
@@ -1871,6 +1907,11 @@ impl ChooseObjectsEffect {
 
     pub fn with_count_value_opt(mut self, count_value: Option<Value>) -> Self {
         self.count_value = count_value;
+        self
+    }
+
+    pub fn with_aggregate_constraint(mut self, constraint: ChoiceAggregateConstraint) -> Self {
+        self.aggregate_constraint = Some(constraint);
         self
     }
 
@@ -6513,6 +6554,9 @@ pub struct ConsultTopOfLibraryEffect {
     pub mode: LibraryConsultMode,
     pub filter: ObjectFilter,
     pub stop_rule: ConsultTopOfLibraryStopRule,
+    /// Optional cap on the total number of exposed cards. This combines with
+    /// `FirstMatch` for "a matching card or N cards, whichever comes first."
+    pub max_exposed: Option<Value>,
     pub all_tag: TagKey,
     pub match_tag: TagKey,
 }
@@ -6531,9 +6575,15 @@ impl ConsultTopOfLibraryEffect {
             mode,
             filter,
             stop_rule,
+            max_exposed: None,
             all_tag: all_tag.into(),
             match_tag: match_tag.into(),
         }
+    }
+
+    pub fn with_max_exposed(mut self, max_exposed: impl Into<Value>) -> Self {
+        self.max_exposed = Some(max_exposed.into());
+        self
     }
 }
 

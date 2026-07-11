@@ -1,4 +1,4 @@
-use crate::{CostComponent, ManaCost, TotalCost, Zone};
+use crate::{CostComponent, ManaCost, PowerToughness, TotalCost, Zone};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TrapCondition {
@@ -88,6 +88,11 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         name: &'static str,
         total_cost: TotalCost<C>,
         condition: Option<Cond>,
+        /// Typed copiable-value override supplied by the Prototype keyword.
+        ///
+        /// Keeping this alongside the alternative cost lets runtime casting
+        /// apply Prototype without reparsing keyword display text.
+        prototype_power_toughness: Option<PowerToughness>,
     },
     FromZone {
         name: &'static str,
@@ -296,6 +301,7 @@ where
             name,
             total_cost: compose_total_cost(mana_cost, additional_costs),
             condition: None,
+            prototype_power_toughness: None,
         }
     }
 
@@ -309,6 +315,26 @@ where
             name,
             total_cost: compose_total_cost(mana_cost, additional_costs),
             condition: Some(condition),
+            prototype_power_toughness: None,
+        }
+    }
+
+    pub fn prototype(cost: ManaCost, power_toughness: PowerToughness) -> Self {
+        Self::Composed {
+            name: "Prototype",
+            total_cost: compose_total_cost(Some(cost), Vec::new()),
+            condition: None,
+            prototype_power_toughness: Some(power_toughness),
+        }
+    }
+
+    pub fn prototype_power_toughness(&self) -> Option<PowerToughness> {
+        match self {
+            Self::Composed {
+                prototype_power_toughness,
+                ..
+            } => *prototype_power_toughness,
+            _ => None,
         }
     }
 
@@ -433,11 +459,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             C: Clone,
             C2: CostComponent,
         {
-            let mut mapped = Vec::new();
-            for cost in total_cost.costs().iter().cloned() {
-                mapped.push(map_cost(cost)?);
-            }
-            Ok(TotalCost::from_costs(mapped))
+            total_cost.try_map(map_cost)
         }
 
         Ok(match self {
@@ -501,10 +523,12 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 name,
                 total_cost,
                 condition,
+                prototype_power_toughness,
             } => AlternativeCastingMethod::Composed {
                 name,
                 total_cost: map_total_cost(total_cost, &mut map_cost)?,
                 condition,
+                prototype_power_toughness,
             },
             Self::FromZone {
                 name,
@@ -532,5 +556,47 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 total_cost: map_total_cost(total_cost, &mut map_cost)?,
             },
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Cost, ManaSymbol};
+
+    fn generic_two() -> ManaCost {
+        ManaCost::from_symbols(vec![ManaSymbol::Generic(2)])
+    }
+
+    #[test]
+    fn try_map_preserves_composed_cost_alternatives() {
+        let method: AlternativeCastingMethod<(), Cost<&'static str>, ()> =
+            AlternativeCastingMethod::Composed {
+                name: "Choice cost",
+                total_cost: TotalCost::one_of(vec![
+                    TotalCost::from_cost(Cost::effect("discard")),
+                    TotalCost::mana(generic_two()),
+                ]),
+                condition: None,
+                prototype_power_toughness: None,
+            };
+
+        let mapped: AlternativeCastingMethod<(), Cost<usize>, ()> = method
+            .try_map(
+                |effect| Ok::<_, ()>(effect),
+                |cost| cost.try_map_effect(|effect| Ok::<_, ()>(effect.len())),
+            )
+            .expect("composed alternatives should map recursively");
+
+        let AlternativeCastingMethod::Composed { total_cost, .. } = mapped else {
+            panic!("expected mapped composed cost");
+        };
+        assert_eq!(
+            total_cost,
+            TotalCost::one_of(vec![
+                TotalCost::from_cost(Cost::effect(7usize)),
+                TotalCost::mana(generic_two()),
+            ])
+        );
     }
 }

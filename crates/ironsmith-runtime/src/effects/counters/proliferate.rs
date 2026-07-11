@@ -172,8 +172,7 @@ impl EffectExecutor for ProliferateEffect {
                 .players
                 .iter()
                 .filter_map(|p| {
-                    let has_counters =
-                        p.poison_counters > 0 || p.energy_counters > 0 || p.experience_counters > 0;
+                    let has_counters = !p.counter_types_with_counters().is_empty();
                     has_counters.then_some(p.id)
                 })
                 .collect();
@@ -230,19 +229,10 @@ impl EffectExecutor for ProliferateEffect {
             }
 
             for player_id in chosen_players {
-                let Some(counters) = game.player(player_id).map(|p| {
-                    let mut counters = Vec::new();
-                    if p.poison_counters > 0 {
-                        counters.push(CounterType::Poison);
-                    }
-                    if p.energy_counters > 0 {
-                        counters.push(CounterType::Energy);
-                    }
-                    if p.experience_counters > 0 {
-                        counters.push(CounterType::Experience);
-                    }
-                    counters
-                }) else {
+                let Some(counters) = game
+                    .player(player_id)
+                    .map(crate::player::Player::counter_types_with_counters)
+                else {
                     continue;
                 };
                 if counters.is_empty() {

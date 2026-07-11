@@ -131,6 +131,16 @@ pub trait TriggerMatcher:
         None
     }
 
+    /// Whether matching this event kind always requires the event's primary
+    /// object to be this trigger's source.
+    ///
+    /// Registries may use this conservative hint to index source-local
+    /// triggers. Returning `false` is always correct, just less efficient;
+    /// returning `true` must never exclude a match for another object.
+    fn source_must_match_event_object(&self, _event_kind: EventKind) -> bool {
+        false
+    }
+
     /// Human-readable display text for this trigger.
     ///
     /// Should describe what causes the trigger to fire.

@@ -550,6 +550,55 @@ impl ReplacementMatcher for DamageFromSelfMatcher {
     }
 }
 
+/// Matches preventable damage dealt to or dealt by the source of the replacement effect.
+///
+/// Used for combined prevention abilities such as "Prevent all damage that would be dealt to
+/// and dealt by this permanent."
+#[derive(Debug, Clone)]
+pub struct DamageToOrFromSelfMatcher;
+
+impl DamageToOrFromSelfMatcher {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for DamageToOrFromSelfMatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ReplacementMatcher for DamageToOrFromSelfMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+        if damage.is_unpreventable {
+            return false;
+        }
+
+        let dealt_to_source = matches!(
+            damage.target,
+            DamageTarget::Object(object_id) if ctx.source == Some(object_id)
+        );
+        let dealt_by_source = ctx.source == Some(damage.source);
+        dealt_to_source || dealt_by_source
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        "When damage would be dealt to or dealt by this permanent".to_string()
+    }
+}
+
 /// Matches preventable combat damage events dealt by the source of the replacement effect.
 #[derive(Debug, Clone)]
 pub struct DamageFromSelfCombatMatcher;

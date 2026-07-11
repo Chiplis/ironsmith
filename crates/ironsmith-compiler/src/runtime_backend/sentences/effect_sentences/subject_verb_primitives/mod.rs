@@ -8,12 +8,11 @@ use super::super::grammar::primitives::{
 };
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, token_slice_starts_with, word_slice_at_is, word_slice_at_is_any,
-    word_slice_contains_phrase, word_slice_contains_word, word_slice_ends_with,
-    word_slice_ends_with_any, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_find_word, word_slice_first_is, word_slice_first_is_any, word_slice_last_is,
-    word_slice_matching_value, word_slice_starts_with, word_slice_starts_with_any,
-    word_slice_starts_with_at,
+    LexedClause, OwnedLexToken, tokens_start_with, word_slice_at_is, word_slice_at_is_any,
+    word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start, word_slice_find_word,
+    word_slice_first_is, word_slice_first_is_any, word_slice_last_is, word_slice_matching_value,
+    words_end_with, words_end_with_any, words_have, words_have_phrase, words_start_with,
+    words_start_with_any, words_start_with_at,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::rule_engine::{
@@ -21,13 +20,13 @@ use super::super::rule_engine::{
     build_lex_rule_hint_index,
 };
 use super::super::token_primitives::{
-    find_index, iter_contains, lexed_head_words, rfind_index, slice_contains, str_strip_suffix,
+    find_window_by, items_have, iter_contains, lexed_head_words, locate_index, locate_last_index,
 };
 use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type,
     parse_choice_count_before_target_prefix, parse_choice_count_token_prefix_consumed, parse_color,
-    parse_counter_type_from_tokens, parse_subject, parse_subtype_flexible,
-    token_index_for_word_index, words,
+    parse_counter_type_from_tokens, parse_subject, parse_subtype_flexible, token_boundary_for_word,
+    words,
 };
 use super::super::util::{parse_target_phrase, parse_value, span_from_tokens};
 use super::dispatch_inner::merge_filters;
@@ -68,7 +67,6 @@ use crate::cards::builders::{
 #[allow(unused_imports)]
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::mana::ManaSymbol;
-use crate::runtime_backend::front_end::lex_patterns::{LexCaptureRole, LexPatternMatch};
 #[allow(unused_imports)]
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 #[allow(unused_imports)]
@@ -141,26 +139,12 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 pub(crate) fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some((predicate_clause, trailing_clause)) = clause.split_once_on_comma() else {
+    let Some(shape) = super::super::grammar::effects::clause_dispatch_shapes::parse_tagged_shares_card_type_condition_tokens(
+        clause.tokens(),
+    ) else {
         return Ok(None);
     };
-    let predicate_words = predicate_clause.word_refs();
-    let shares_with_triggering_spell = matches!(
-        predicate_words.as_slice(),
-        [
-            "if", "any", "of", "those", "cards", "shares", "a", "card", "type", "with", "that",
-            "spell"
-        ] | [
-            "if", "any", "of", "those", "cards", "share", "a", "card", "type", "with", "that",
-            "spell"
-        ]
-    );
-    if !shares_with_triggering_spell {
-        return Ok(None);
-    }
-
-    let trailing = trailing_clause.trim();
-    if trailing.is_empty() {
+    if shape.effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing effect after revealed-card card-type condition (clause: '{}')",
             clause.text()
@@ -172,36 +156,7 @@ pub(crate) fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
         tag: TagKey::from("triggering"),
         relation: TaggedOpbjectRelation::SharesCardType,
     });
-    let if_true = parse_effect_chain_inner(&trailing)?;
-
-    Ok(Some(vec![EffectAst::Conditional {
-        predicate: PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter),
-        if_true,
-        if_false: Vec::new(),
-    }]))
-}
-
-pub(crate) fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(trailing_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Tail) else {
-        return Ok(None);
-    };
-    let trailing = trailing_clause.trim();
-    if trailing.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing effect after revealed-card card-type condition (clause: '{}')",
-            clause.text()
-        )));
-    }
-
-    let mut filter = ObjectFilter::default();
-    filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from("triggering"),
-        relation: TaggedOpbjectRelation::SharesCardType,
-    });
-    let if_true = parse_effect_chain_inner(&trailing)?;
+    let if_true = parse_effect_chain_inner(shape.effect_tokens)?;
 
     Ok(Some(vec![EffectAst::Conditional {
         predicate: PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter),

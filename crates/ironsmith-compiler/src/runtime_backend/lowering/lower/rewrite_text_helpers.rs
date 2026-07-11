@@ -7,19 +7,26 @@ pub(crate) fn rewrite_unsupported_line_ast(
     LineAst::StaticAbility(StaticAbility::unsupported_parser_line(raw_line, reason).into())
 }
 
-pub(crate) fn lexed_tokens(
-    text: &str,
-    line_index: usize,
-) -> Result<Vec<OwnedLexToken>, CardTextError> {
-    lex_line(text, line_index)
-}
-
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RewriteLoweredCardState {
     pub(crate) haunt_linkage: Option<(Vec<crate::effect::Effect>, Vec<ChooseSpec>)>,
     pub(crate) latest_spell_exports: ReferenceExports,
     pub(crate) latest_additional_cost_exports: ReferenceExports,
-    pub(crate) latest_created_token: Option<(String, PlayerAst)>,
+    pub(crate) latest_created_token: Option<(
+        String,
+        crate::runtime_backend::token_definition::TokenDefinitionSpec,
+        PlayerAst,
+    )>,
+    pub(crate) pending_backups: Vec<PendingBackup>,
+    pub(crate) pending_cipher: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PendingBackup {
+    /// Number of already-lowered actual abilities at the source position where
+    /// the keyword appeared. Migration-only keyword actions are not abilities.
+    pub(crate) ability_boundary: usize,
+    pub(crate) amount: u32,
 }
 
 pub(crate) fn rewrite_update_last_restrictable_ability(
@@ -65,7 +72,7 @@ pub(crate) fn rewrite_lower_level_ability_ast(
             }
             ParsedLevelAbilityItemAst::ActivatedAbility(activated) => {
                 let info = activated.info.clone();
-                let mut activated = lower_rewrite_activated_to_chunk(
+                let mut activated = parse_activated_line(
                     info.clone(),
                     activated.cost,
                     activated.cost_parse_tokens,
@@ -156,10 +163,10 @@ pub(crate) fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -
 
 pub(crate) fn uses_referenced_ability_functional_zones(
     static_ability: &StaticAbility,
-    tokens: &[OwnedLexToken],
+    references_this_ability_cost: bool,
 ) -> bool {
     static_ability.id() == crate::static_abilities::StaticAbilityId::ActivatedAbilityCostReduction
-        && token_slice_starts_with(tokens, THIS_ABILITY_COSTS_PREFIX)
+        && references_this_ability_cost
 }
 
 pub(crate) fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
@@ -277,6 +284,7 @@ pub(crate) fn rewrite_apply_line_ast(
     state: &mut RewriteLoweredCardState,
     parsed: NormalizedLineChunk,
     info: &crate::cards::builders::LineInfo,
+    semantic_facts: &crate::runtime_backend::shared_types::LineSemanticFacts,
     allow_unsupported: bool,
     annotations: &mut ParseAnnotations,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
@@ -285,6 +293,7 @@ pub(crate) fn rewrite_apply_line_ast(
         state,
         parsed,
         info,
+        semantic_facts,
         allow_unsupported,
         annotations,
     )
@@ -302,6 +311,7 @@ pub(crate) fn rewrite_lower_line_ast(
         info,
         chunks,
         mut restrictions,
+        semantic_facts,
     } = line;
     let mut handled_restrictions_for_new_ability = false;
 
@@ -311,10 +321,9 @@ pub(crate) fn rewrite_lower_line_ast(
                 builder,
                 *last_restrictable_ability,
                 effects_ast,
-                &info,
-                annotations,
             )?
         {
+            collect_tag_spans_from_effects_with_context(effects_ast, annotations, &info.normalized);
             handled_restrictions_for_new_ability = true;
             continue;
         }
@@ -323,7 +332,6 @@ pub(crate) fn rewrite_lower_line_ast(
                 builder,
                 *last_restrictable_ability,
                 effects_ast,
-                &info,
             )?
         {
             handled_restrictions_for_new_ability = true;
@@ -336,6 +344,7 @@ pub(crate) fn rewrite_lower_line_ast(
             state,
             parsed,
             &info,
+            &semantic_facts,
             allow_unsupported,
             annotations,
         )?;
@@ -372,11 +381,14 @@ pub(crate) fn lower_compound_buff_and_unblockable_static_chunk(
     _line: &RewriteStaticLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
-    let Some((buff_tokens, unblockable_tokens)) =
-        split_compound_buff_and_unblockable_tokens(parse_tokens)
-    else {
+    let Some(parsed) = effect_grammar::parse_compound_buff_unblockable_tokens(parse_tokens) else {
         return Ok(None);
     };
+    let buff_tokens = parsed.buff_tokens.to_vec();
+    let mut unblockable_tokens =
+        Vec::with_capacity(parsed.subject_tokens.len() + parsed.unblockable_tail_tokens.len());
+    unblockable_tokens.extend_from_slice(parsed.subject_tokens);
+    unblockable_tokens.extend_from_slice(parsed.unblockable_tail_tokens);
 
     if let Some(abilities) = parse_static_ability_ast_line_lexed(parse_tokens)? {
         return Ok(Some(LineAst::StaticAbilities(abilities)));
@@ -391,34 +403,6 @@ pub(crate) fn lower_compound_buff_and_unblockable_static_chunk(
     };
     abilities.extend(unblockable_abilities);
     Ok(Some(LineAst::StaticAbilities(abilities)))
-}
-
-pub(crate) fn split_compound_buff_and_unblockable_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
-    let words = TokenWordView::new(tokens);
-    let gets_idx = words.find_word("gets")?;
-    let and_idx = words.find_phrase_start(&["and", "cant", "be", "blocked"])?;
-    if and_idx + 4 != words.len() {
-        return None;
-    }
-
-    let subject_token_end = words.token_index_for_word_index(gets_idx)?;
-    let and_token_idx = words.token_index_for_word_index(and_idx)?;
-    let cant_token_idx = words.token_index_for_word_index(and_idx + 1)?;
-    if subject_token_end == 0
-        || subject_token_end >= and_token_idx
-        || cant_token_idx <= and_token_idx
-    {
-        return None;
-    }
-
-    let left_tokens = tokens[..and_token_idx].to_vec();
-    let mut right_tokens =
-        Vec::with_capacity(subject_token_end + tokens.len().saturating_sub(cant_token_idx));
-    right_tokens.extend_from_slice(&tokens[..subject_token_end]);
-    right_tokens.extend_from_slice(&tokens[cant_token_idx..]);
-    Some((left_tokens, right_tokens))
 }
 
 pub(crate) fn lower_split_rewrite_static_chunk(
@@ -445,13 +429,13 @@ pub(crate) fn lower_split_rewrite_static_chunk(
 
     wrap_chosen_option_static_chunk(
         LineAst::StaticAbilities(abilities),
-        effective_chosen_option_label(line.chosen_option_label.as_deref()),
+        line.chosen_option.as_ref(),
     )
     .map(Some)
 }
 
 pub(crate) fn split_statement_label_prefix_for_lowering_lexed(
     tokens: &[OwnedLexToken],
-) -> Option<(String, &[OwnedLexToken])> {
-    split_em_dash_label_prefix(tokens)
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    split_em_dash_label_prefix_tokens(tokens)
 }

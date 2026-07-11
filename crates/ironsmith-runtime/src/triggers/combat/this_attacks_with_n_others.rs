@@ -148,6 +148,10 @@ impl TriggerMatcher for ThisAttacksWithNOthersTrigger {
         Some(vec![EventKind::CreatureAttacked])
     }
 
+    fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
+        event_kind == EventKind::CreatureAttacked
+    }
+
     fn display(&self) -> String {
         let subject = self.displayed_other_subject();
         if self.exact {

@@ -732,6 +732,11 @@ fn describe_single_self_replacement_segment(
     {
         return Some(phase_out_text);
     }
+    if let Some(gets_text) =
+        describe_rendered_gets_self_replacement(&default_text, &replacement_text, &condition_text)
+    {
+        return Some(gets_text);
+    }
     if let Some(damage_text) =
         describe_rendered_damage_self_replacement(&default_text, &replacement_text, &condition_text)
     {
@@ -1466,6 +1471,24 @@ fn describe_target_player_draw_discard_self_replacement(
     ))
 }
 
+fn describe_rendered_gets_self_replacement(
+    default_text: &str,
+    replacement_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let default_text = default_text.trim().trim_end_matches('.');
+    if !default_text.contains(" gets ") {
+        return None;
+    }
+    let replacement_text = replacement_text.trim().trim_end_matches('.');
+    let replacement = replacement_text
+        .strip_prefix("It gets ")
+        .or_else(|| replacement_text.strip_prefix("it gets "))?;
+    Some(format!(
+        "{default_text}. It gets {replacement} instead if {condition_text}"
+    ))
+}
+
 fn describe_rendered_damage_self_replacement(
     default_text: &str,
     replacement_text: &str,
@@ -1476,15 +1499,8 @@ fn describe_rendered_damage_self_replacement(
     if base_target != replacement_target {
         return None;
     }
-    let base_target_lower = base_target.to_ascii_lowercase();
-    let replacement_recipient =
-        if base_target_lower.contains("target") && base_target_lower.contains("creature") {
-            " to it"
-        } else {
-            ""
-        };
     Some(format!(
-        "Deal {base_amount} damage to {base_target}. If {condition_text}, deal {replacement_amount} damage{replacement_recipient} instead"
+        "Deal {base_amount} damage to {base_target}. It deals {replacement_amount} damage instead if {condition_text}"
     ))
 }
 
@@ -1641,6 +1657,8 @@ pub(super) fn substitute_legendary_source_reference(
     _subject: &str,
     oracle_short_name: Option<&str>,
 ) -> String {
+    let line = collapse_duplicate_source_type_subject(line);
+    let line = line.as_str();
     if card.name.contains(" // ") {
         return line.to_string();
     }
@@ -1733,6 +1751,31 @@ pub(super) fn substitute_legendary_source_reference(
     } else {
         substituted
     }
+}
+
+fn collapse_duplicate_source_type_subject(line: &str) -> String {
+    let mut collapsed = line.to_string();
+    for noun in [
+        "artifact",
+        "battle",
+        "card",
+        "creature",
+        "enchantment",
+        "land",
+        "permanent",
+        "planeswalker",
+        "source",
+        "spell",
+    ] {
+        let upper_from = format!("This {noun} {noun} ");
+        let upper_to = format!("This {noun} ");
+        collapsed = collapsed.replace(&upper_from, &upper_to);
+
+        let lower_from = format!("this {noun} {noun} ");
+        let lower_to = format!("this {noun} ");
+        collapsed = collapsed.replace(&lower_from, &lower_to);
+    }
+    collapsed
 }
 
 /// The shortened self-name the card's oracle text uses for itself, if any —
@@ -2940,6 +2983,17 @@ pub(super) fn describe_alternative_cast_line(
             let mana_cost = method.mana_cost();
             let costs = method.non_mana_costs();
             let cast_condition = method.cast_condition();
+            if name.eq_ignore_ascii_case("Prototype")
+                && let (Some(cost), Some(power_toughness)) =
+                    (mana_cost, method.prototype_power_toughness())
+            {
+                return format!(
+                    "Prototype {} {}/{}",
+                    cost.to_oracle(),
+                    power_toughness.power,
+                    power_toughness.toughness
+                );
+            }
             // Named keyword costs keep their oracle keyword surface
             // ("Evoke {2}{U}"), like the dedicated variants above.
             if !name.is_empty()
@@ -3374,8 +3428,9 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let additional_costs = def.additional_non_mana_costs();
     if !additional_costs.is_empty() {
         let additional_cost_text = describe_additional_costs(&additional_costs);
-        let additional_cost_text = if additional_cost_text == "you may blight 1"
-            || additional_cost_text.contains("put a -1/-1 counter on a creature you control")
+        let additional_cost_lower = additional_cost_text.to_ascii_lowercase();
+        let additional_cost_text = if additional_cost_lower == "you may blight 1"
+            || additional_cost_lower.contains("put a -1/-1 counter on a creature you control")
         {
             "you may blight 1 by putting a -1/-1 counter on a creature you control".to_string()
         } else {

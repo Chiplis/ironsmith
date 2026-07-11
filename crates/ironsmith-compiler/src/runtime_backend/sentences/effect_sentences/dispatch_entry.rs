@@ -17,15 +17,16 @@ use super::super::activation_and_restrictions::{
 use super::super::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
 };
+use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_leading_result_prefix_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, contains_token_word_sequence, lex_line,
-    split_lexed_sentences, token_slice_at_is, word_slice_contains_any_phrase,
-    word_slice_contains_phrase, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_first_is, word_slice_starts_with_any,
+    split_lexed_sentences, token_slice_at_is, word_slice_eq, word_slice_eq_any,
+    word_slice_find_phrase_start, word_slice_first_is, words_have_any_phrase, words_have_phrase,
+    words_start_with_any,
 };
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
@@ -35,17 +36,16 @@ use super::super::permission_helpers::{
     parse_until_your_next_turn_may_play_tagged_clause,
 };
 use super::super::token_primitives::{
-    LeadingMayActor, TurnDurationPhrase, find_index, find_window_by,
-    parse_leading_may_action_lexed, parse_turn_duration_prefix, parse_value_comparison_tokens,
-    slice_contains, slice_ends_with, slice_starts_with, strip_leading_if_you_do_lexed,
-    word_view_has_any_prefix, word_view_has_prefix,
+    LeadingMayActor, TurnDurationPhrase, find_window_by, items_end_with, items_have,
+    items_start_with, locate_index, parse_leading_may_action_lexed, parse_turn_duration_prefix,
+    parse_value_comparison_tokens, strip_leading_if_you_do_lexed, word_view_has_any_prefix,
+    word_view_has_prefix,
 };
 use super::super::util::{
     helper_tag_for_tokens, is_article, mana_pips_from_token, parse_color, parse_counter_type_words,
     parse_number, parse_number_word_refs, parse_subject, parse_target_phrase, span_from_tokens,
-    token_index_for_word_index, trim_commas, words,
+    token_boundary_for_word, trim_commas, words,
 };
-use super::super::value_helpers::parse_value_from_lexed;
 use super::bundle_rules::{
     parse_exact_card_effect_bundle_lexed, parse_same_sentence_copy_and_may_cast_copy,
 };
@@ -84,21 +84,6 @@ use std::cell::OnceCell;
 
 mod subject_verb_followups;
 
-const THAT_OBJECT_POWER_DAMAGE_PHRASES: &[&[&str]] = &[
-    &[
-        "that", "creature", "deals", "damage", "equal", "to", "its", "power",
-    ],
-    &[
-        "that",
-        "permanent",
-        "deals",
-        "damage",
-        "equal",
-        "to",
-        "its",
-        "power",
-    ],
-];
 const COUNTERED_THIS_WAY_PHRASE: &[&str] = &["countered", "this", "way"];
 const INSTEAD_OF_PHRASE: &[&str] = &["instead", "of"];
 const GRAVEYARD_PHRASE: &[&str] = &["graveyard"];
@@ -141,44 +126,6 @@ const WOULD_ENTER_BATTLEFIELD_UNDER_OPPONENT_PHRASE: &[&str] = &[
 ];
 const ENTERS_UNDER_YOUR_CONTROL_INSTEAD_PHRASE: &[&str] =
     &["enters", "under", "your", "control", "instead"];
-const THIS_OBJECT_DAMAGE_TARGET_PHRASES: &[&[&str]] =
-    &[&["to", "this", "creature"], &["to", "this", "permanent"]];
-const TO_THAT_PLAYER_PHRASE: &[&str] = &["to", "that", "player"];
-const WITH_WORD: &str = "with";
-const LEARN_WORDS: &[&str] = &["learn"];
-const TIME_TRAVEL_WORDS: &[&str] = &["time", "travel"];
-const OUTSIDE_GAME_ART_RATING_PHRASES: &[&[&str]] = &[
-    &["ask", "a", "person", "outside", "the", "game", "to", "rate"],
-    &["when", "they", "rate", "the", "art"],
-];
-const DESTROYED_THIS_WAY_SUBJECT_PREFIXES: &[&[&str]] = &[
-    &["creature", "destroyed", "this", "way"],
-    &["creatures", "destroyed", "this", "way"],
-    &["a", "creature", "destroyed", "this", "way"],
-];
-
-fn split_leading_unless_payment_search_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if !words.first().is_some_and(|word| *word == "unless") {
-        return None;
-    }
-    let pay_idx = words
-        .iter()
-        .position(|word| matches!(*word, "pay" | "pays"))?;
-    let effect_word_idx = words
-        .iter()
-        .enumerate()
-        .skip(pay_idx + 1)
-        .find_map(|(idx, word)| (*word == "search").then_some(idx))?;
-    let effect_token_idx = token_index_for_word_index(tokens, effect_word_idx)?;
-    Some((
-        trim_edge_punctuation(&tokens[..effect_token_idx]),
-        trim_edge_punctuation(&tokens[effect_token_idx..]),
-    ))
-}
-
 fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration: &Until) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
@@ -273,12 +220,14 @@ fn should_apply_leading_duration_become_shortcut(tokens: &[OwnedLexToken]) -> bo
     if words.iter().any(|word| *word == "if") {
         return false;
     }
-    if words.windows(2).any(|window| {
+    if find_window_by(&words, 2, |window| {
         matches!(
             window,
             ["and", "become" | "becomes"] | ["and", "attacks" | "blocks"]
         )
-    }) {
+    })
+    .is_some()
+    {
         return false;
     }
     words
@@ -286,96 +235,7 @@ fn should_apply_leading_duration_become_shortcut(tokens: &[OwnedLexToken]) -> bo
         .any(|word| matches!(*word, "become" | "becomes"))
 }
 
-const BE_REGENERATED_SUFFIX: &[&str] = &["be", "regenerated"];
-const CANT_BE_REGENERATED_SPLIT_PHRASE: &[&str] = &["can", "t", "be", "regenerated"];
-const DEAL_X_DAMAGE_PHRASES: &[&[&str]] = &[&["deal", "x", "damage"], &["deals", "x", "damage"]];
-const X_LIFE_CHANGE_PHRASES: &[&[&str]] = &[
-    &["gain", "x", "life"],
-    &["gains", "x", "life"],
-    &["lose", "x", "life"],
-    &["loses", "x", "life"],
-];
 const OTHERWISE_WORD: &str = "otherwise";
-const REFERENTIAL_THAT_WORD: &str = "that";
-const REFERENTIAL_NOUN_WORDS: &[&str] = &["creature", "permanent"];
-const GET_GAIN_WORDS: &[&str] = &["get", "gets", "gain", "gains"];
-const NONSEMANTIC_X_CANT_BE_ZERO_PHRASES: &[&[&str]] =
-    &[&["x", "cant", "be", "0"], &["x", "can't", "be", "0"]];
-const COUNTER_OR_COUNTERS_WORDS: &[&str] = &["counter", "counters"];
-const OR_OR_MORE_WORDS: &[&str] = &["or", "more"];
-const CANT_WORDS: &[&str] = &["cant", "can't", "cannot"];
-const ON_WORD: &str = "on";
-const IT_OR_THEM_WORDS: &[&str] = &["it", "them"];
-const NO_WORD: &str = "no";
-const X_WORD: &str = "x";
-const WHERE_X_IS_WORDS: &[&str] = &["where", "x", "is"];
-const SIMPLE_CANT_BE_REGENERATED_PHRASES: &[&[&str]] = &[
-    &["it", "cant", "be", "regenerated"],
-    &["it", "cant", "be", "regenerated", "this", "turn"],
-    &["they", "cant", "be", "regenerated"],
-    &["they", "cant", "be", "regenerated", "this", "turn"],
-    &[
-        "creature",
-        "destroyed",
-        "this",
-        "way",
-        "cant",
-        "be",
-        "regenerated",
-    ],
-    &[
-        "creature",
-        "destroyed",
-        "this",
-        "way",
-        "can't",
-        "be",
-        "regenerated",
-    ],
-    &[
-        "creatures",
-        "destroyed",
-        "this",
-        "way",
-        "cant",
-        "be",
-        "regenerated",
-    ],
-    &[
-        "creatures",
-        "destroyed",
-        "this",
-        "way",
-        "can't",
-        "be",
-        "regenerated",
-    ],
-    &[
-        "a",
-        "creature",
-        "destroyed",
-        "this",
-        "way",
-        "cant",
-        "be",
-        "regenerated",
-    ],
-    &[
-        "a",
-        "creature",
-        "destroyed",
-        "this",
-        "way",
-        "can't",
-        "be",
-        "regenerated",
-    ],
-];
-const CANT_BE_REGENERATED_THIS_TURN_PHRASES: &[&[&str]] = &[
-    &["it", "cant", "be", "regenerated", "this", "turn"],
-    &["they", "cant", "be", "regenerated", "this", "turn"],
-];
-
 fn summarize_effects(effects: &[EffectAst]) -> String {
     effects
         .iter()
@@ -396,11 +256,8 @@ fn repair_that_object_power_damage_subject(
     tokens: &[OwnedLexToken],
     previous_damage_target: Option<TargetAst>,
 ) {
-    let token_words = crate::runtime_backend::token_word_refs(tokens);
-    let looks_like_that_object_power_damage =
-        word_slice_contains_any_phrase(&token_words, THAT_OBJECT_POWER_DAMAGE_PHRASES)
-            && word_slice_contains_any_phrase(&token_words, THIS_OBJECT_DAMAGE_TARGET_PHRASES);
-    if !looks_like_that_object_power_damage {
+    if !effect_grammar::dispatch_entry_shapes::is_that_object_power_damage_to_source_tokens(tokens)
+    {
         return;
     }
     let source_target = previous_damage_target
@@ -443,10 +300,7 @@ fn repair_target_controlled_source_damage_to_that_player(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
 ) {
-    if !word_slice_contains_phrase(
-        &crate::runtime_backend::token_word_refs(tokens),
-        TO_THAT_PLAYER_PHRASE,
-    ) {
+    if !effect_grammar::dispatch_entry_shapes::has_to_that_player_damage_target_tokens(tokens) {
         return;
     }
 
@@ -484,54 +338,11 @@ fn apply_trailing_counter_constraint_to_destroy_all(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
 ) {
-    let token_words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(counter_idx) = token_words
-        .iter()
-        .position(|word| COUNTER_OR_COUNTERS_WORDS.contains(word))
+    let Some(counter_constraint) =
+        effect_grammar::dispatch_entry_shapes::parse_trailing_counter_constraint_tokens(tokens)
     else {
         return;
     };
-    if token_words.get(counter_idx + 1) != Some(&ON_WORD)
-        || !token_words
-            .get(counter_idx + 2)
-            .is_some_and(|word| IT_OR_THEM_WORDS.contains(word))
-    {
-        return;
-    }
-    let descriptor_start = token_words[..counter_idx]
-        .iter()
-        .rposition(|word| *word == WITH_WORD)
-        .map(|idx| idx + 1)
-        .unwrap_or(0);
-    let descriptor_words = token_words[descriptor_start..counter_idx]
-        .iter()
-        .copied()
-        .filter(|word| {
-            !OR_OR_MORE_WORDS.contains(word) && ironsmith_core::parse_cardinal_word(word).is_none()
-        })
-        .collect::<Vec<_>>();
-    if word_slice_first_is(&descriptor_words, NO_WORD) {
-        return;
-    }
-    let counter_constraint = if descriptor_words.is_empty() {
-        crate::filter::CounterConstraint::Any
-    } else {
-        let descriptor_words = descriptor_words
-            .iter()
-            .copied()
-            .chain(std::iter::once("counter"))
-            .collect::<Vec<_>>();
-        let Some(counter_type) = parse_counter_type_words(&descriptor_words) else {
-            return;
-        };
-        crate::filter::CounterConstraint::Typed(counter_type)
-    };
-    if !token_words[..counter_idx]
-        .iter()
-        .any(|word| *word == WITH_WORD)
-    {
-        return;
-    }
 
     for effect in effects {
         match effect {
@@ -608,13 +419,6 @@ fn attach_copy_cost_reduction_to_effects(
     false
 }
 
-const PRONOUN_TRIGGER_PREFIXES: &[&[&str]] = &[
-    &["when", "it"],
-    &["whenever", "it"],
-    &["when", "they"],
-    &["whenever", "they"],
-];
-
 fn normalize_parser_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut normalized = tokens.to_vec();
     for token in &mut normalized {
@@ -665,58 +469,18 @@ pub(super) struct ConsultCastManaValueCondition {
     pub(super) right: Value,
 }
 
-pub(super) fn parse_prefixed_top_of_your_library_count<T: Copy>(
+pub(super) fn parse_top_of_your_library_count(
     tokens: &[OwnedLexToken],
-    prefixes: &[(&[&str], T)],
-) -> Option<(T, u32)> {
-    let tokens = trim_commas(tokens);
-    let word_view = TokenWordView::new(&tokens);
-    let (count_word_idx, marker) = prefixes.iter().find_map(|(prefix, marker)| {
-        word_view_has_prefix(&word_view, prefix).then_some((prefix.len(), *marker))
-    })?;
-    let count_start = word_view.token_index_for_word_index(count_word_idx)?;
-    let count_tokens = &tokens[count_start..];
-    let (count, used) = parse_number(count_tokens)?;
-    let tail_word_view = TokenWordView::new(&count_tokens[used..]);
-    let tail_words = tail_word_view.word_refs();
-    matches!(
-        tail_words.as_slice(),
-        ["card", "of", "your", "library"] | ["cards", "of", "your", "library"]
-    )
-    .then_some((marker, count))
-}
-
-pub(super) fn find_from_among_looked_cards_phrase(
-    word_view: &TokenWordView<'_>,
-) -> Option<(usize, usize)> {
-    word_view
-        .find_phrase_start(&["from", "among", "those", "cards"])
-        .map(|idx| (idx, 4usize))
-        .or_else(|| {
-            word_view
-                .find_phrase_start(&["from", "among", "the", "cards", "milled", "this", "way"])
-                .map(|idx| (idx, 7usize))
-        })
-        .or_else(|| {
-            word_view
-                .find_phrase_start(&["from", "among", "the", "milled", "cards"])
-                .map(|idx| (idx, 5usize))
-        })
-        .or_else(|| {
-            word_view
-                .find_phrase_start(&["from", "among", "them"])
-                .map(|idx| (idx, 3usize))
-        })
+    expected_action: effect_grammar::dispatch_entry_shapes::TopLibraryAction,
+) -> Option<u32> {
+    let shape = effect_grammar::dispatch_entry_shapes::parse_top_library_count_tokens(tokens)?;
+    (shape.action == expected_action).then_some(shape.count)
 }
 
 pub(super) fn parse_consult_traversal_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ConsultSentenceParts>, CardTextError> {
     consult_family::parse_consult_traversal_sentence(tokens)
-}
-
-pub(super) fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBottomOrderAst> {
-    consult_family::parse_consult_remainder_order(words)
 }
 
 pub(super) fn consult_stop_rule_is_single_match(stop_rule: &LibraryConsultStopRuleAst) -> bool {
@@ -841,49 +605,11 @@ fn reflected_prevent_next_damage_from_tokens(tokens: &[OwnedLexToken]) -> Option
     None
 }
 
-fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<EffectAst> {
-    let tokens = lex_line(sentence_text, 0).ok()?;
-    future_zone_replacement_from_sentence_tokens(&tokens)
-}
-
 fn future_zone_replacement_counters(
     tokens: &[OwnedLexToken],
 ) -> Vec<(crate::object::CounterType, u32)> {
-    let token_words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(counter_word_idx) = token_words
-        .iter()
-        .position(|word| COUNTER_OR_COUNTERS_WORDS.contains(word))
-    else {
-        return Vec::new();
-    };
-    if token_words.get(counter_word_idx + 1) != Some(&ON_WORD)
-        || token_words.get(counter_word_idx + 2) != Some(&"it")
-    {
-        return Vec::new();
-    }
-    let Some(with_word_idx) = token_words[..counter_word_idx]
-        .iter()
-        .rposition(|word| *word == WITH_WORD)
-    else {
-        return Vec::new();
-    };
-    let count_word_idx = with_word_idx + 1;
-    let Some((count, consumed_words)) = parse_number_word_refs(&token_words[count_word_idx..])
-    else {
-        return Vec::new();
-    };
-    let descriptor_start_word_idx = count_word_idx + consumed_words;
-    if descriptor_start_word_idx >= counter_word_idx {
-        return Vec::new();
-    }
-
-    let descriptor_words = token_words[descriptor_start_word_idx..counter_word_idx]
-        .iter()
-        .copied()
-        .chain(std::iter::once("counter"))
-        .collect::<Vec<_>>();
-    parse_counter_type_words(&descriptor_words)
-        .map(|counter_type| vec![(counter_type, count)])
+    effect_grammar::dispatch_entry_shapes::parse_future_zone_counter_tokens(tokens)
+        .map(|shape| vec![(shape.counter_type, shape.count)])
         .unwrap_or_default()
 }
 
@@ -1039,16 +765,16 @@ fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Opt
 
 fn maybe_rewrite_future_zone_replacement_sentence(
     sentence_effects: &mut Vec<EffectAst>,
-    sentence_text: &str,
+    sentence_tokens: &[OwnedLexToken],
 ) {
     if !matches!(
-        classify_instead_followup_text(sentence_text),
+        classify_instead_followup_tokens(sentence_tokens),
         InsteadSemantics::FutureReplacement
     ) {
         return;
     }
 
-    let Some(replacement) = future_zone_replacement_from_sentence_text(sentence_text) else {
+    let Some(replacement) = future_zone_replacement_from_sentence_tokens(sentence_tokens) else {
         return;
     };
 
@@ -1156,7 +882,7 @@ fn maybe_append_trailing_that_much_life_loss(
     sentence_effects: &mut Vec<EffectAst>,
     sentence_tokens: &[OwnedLexToken],
 ) {
-    if !grammar::contains_phrase(sentence_tokens, &["then", "lose", "that", "much", "life"]) {
+    if !grammar::has_phrase(sentence_tokens, &["then", "lose", "that", "much", "life"]) {
         return;
     }
 
@@ -1192,8 +918,8 @@ fn maybe_repair_that_player_gain_control_if_do_rewards(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
-    if !grammar::contains_phrase(tokens, &["that", "player", "gains", "control", "of"])
-        || !grammar::contains_phrase(tokens, &["if", "they", "do"])
+    if !grammar::has_phrase(tokens, &["that", "player", "gains", "control", "of"])
+        || !grammar::has_phrase(tokens, &["if", "they", "do"])
         || effects.is_empty()
         || effects.iter().any(|effect| {
             matches!(
@@ -1331,120 +1057,50 @@ fn parse_effect_sentences_from_sentence_inputs(
     sentences: Vec<SentenceInput>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
     fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
-        let word_view = TokenWordView::new(tokens);
-        let words = word_view.word_refs();
-        let where_idx = word_slice_find_phrase_start(&words, WHERE_X_IS_WORDS)?;
-        let where_token_idx = token_index_for_word_index(tokens, where_idx)?;
-        parse_value_binding_clause(&tokens[where_token_idx..])
+        let shape =
+            effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)?;
+        parse_value_binding_clause(shape.binding_tokens)
             .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
     }
 
     fn parse_leading_flip_result_sentence(
         tokens: &[OwnedLexToken],
     ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-        let word_view = TokenWordView::new(tokens);
-        let words = word_view.word_refs();
-        let (predicate, consumed_words) = if words
-            .get(..5)
-            .is_some_and(|prefix| prefix == ["if", "you", "win", "the", "flip"])
-        {
-            (IfResultPredicate::Did, 5)
-        } else if words
-            .get(..5)
-            .is_some_and(|prefix| prefix == ["if", "you", "lose", "the", "flip"])
-        {
-            (IfResultPredicate::DidNot, 5)
-        } else {
+        let Some((predicate, rest_tokens)) =
+            effect_grammar::dispatch_entry_shapes::parse_flip_result_shape_tokens(tokens)
+        else {
             return Ok(None);
         };
-
-        let Some(rest_token_idx) = token_index_for_word_index(tokens, consumed_words) else {
-            return Ok(None);
-        };
-        let rest_tokens = trim_commas(&tokens[rest_token_idx..]);
-        if rest_tokens.is_empty() {
-            return Ok(None);
-        }
-        let effects = parse_effect_sentences_lexed(&rest_tokens)?;
+        let effects = parse_effect_sentences_lexed(rest_tokens)?;
         Ok(Some(vec![EffectAst::IfResult { predicate, effects }]))
     }
 
     fn parse_tagged_characteristics_and_keyword_sentence(
         tokens: &[OwnedLexToken],
     ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-        let word_view = TokenWordView::new(tokens);
-        let words = word_view.word_refs();
-        let consumed_prefix_words = if words
-            .first()
-            .is_some_and(|word| matches!(*word, "they're" | "they’re" | "theyre"))
-        {
-            1
-        } else if words
-            .get(..2)
-            .is_some_and(|prefix| prefix == ["they", "are"])
-        {
-            2
-        } else {
-            return Ok(None);
-        };
-        let words = &words[consumed_prefix_words..];
-        let Some(gain_idx) = words
-            .windows(3)
-            .position(|window| window == ["and", "they", "gain"])
+        let Some(shape) =
+            effect_grammar::dispatch_entry_shapes::parse_tagged_characteristics_shape_tokens(
+                tokens,
+            )
         else {
             return Ok(None);
         };
-        let descriptor_words = &words[..gain_idx];
-        let ability_words = &words[gain_idx + 3..];
-        let [ability_word] = ability_words else {
+        let Some(keyword) = parse_single_word_keyword_action(shape.ability_word) else {
             return Ok(None);
         };
-        let Some(keyword) = parse_single_word_keyword_action(ability_word) else {
-            return Ok(None);
-        };
-
-        let descriptor_end = descriptor_words
-            .windows(3)
-            .position(|window| window == ["in", "addition", "to"])
-            .unwrap_or(descriptor_words.len());
-        let descriptor_words = &descriptor_words[..descriptor_end];
-        if descriptor_words.is_empty() {
-            return Ok(None);
-        }
-
-        let mut colors = ColorSet::new();
-        let mut subtypes = Vec::new();
-        for word in descriptor_words {
-            if matches!(*word, "and" | "or") {
-                continue;
-            }
-            if let Some(color) = parse_color(word) {
-                colors = colors.union(color);
-                continue;
-            }
-            let subtype = parse_subtype_word(word)
-                .or_else(|| word.strip_suffix('s').and_then(parse_subtype_word));
-            let Some(subtype) = subtype else {
-                return Ok(None);
-            };
-            if !subtypes.contains(&subtype) {
-                subtypes.push(subtype);
-            }
-        }
-
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
         let mut effects = Vec::new();
-        if !colors.is_empty() {
+        if !shape.colors.is_empty() {
             effects.push(EffectAst::subject_verb_add_colors(
                 target.clone(),
-                colors,
+                shape.colors,
                 Until::Forever,
             ));
         }
-        if !subtypes.is_empty() {
+        if !shape.subtypes.is_empty() {
             effects.push(EffectAst::subject_verb_add_subtypes(
                 target.clone(),
-                subtypes,
+                shape.subtypes,
                 Until::Forever,
             ));
         }
@@ -1480,21 +1136,12 @@ fn parse_effect_sentences_from_sentence_inputs(
         let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
 
         let leading_unless_tokens = trim_edge_punctuation(sentence);
-        if leading_unless_tokens
-            .first()
-            .is_some_and(|token| token.is_word("unless"))
+        if let Some(split) =
+            effect_grammar::parse_leading_unless_clause_split_tokens(&leading_unless_tokens)
         {
-            let clause = SubjectVerbPrimitiveClause::new(&leading_unless_tokens);
-            let split_tokens = clause
-                .split_once_on_comma()
-                .map(|(unless_clause, effect_clause)| {
-                    (
-                        unless_clause.tokens().to_vec(),
-                        effect_clause.tokens().to_vec(),
-                    )
-                })
-                .or_else(|| split_leading_unless_payment_search_tokens(&leading_unless_tokens));
-            if let Some((unless_tokens, effect_tokens)) = split_tokens {
+            let unless_tokens = trim_edge_punctuation(&leading_unless_tokens[split.condition]);
+            let effect_tokens = trim_edge_punctuation(&leading_unless_tokens[split.effect]);
+            if !unless_tokens.is_empty() && !effect_tokens.is_empty() {
                 let unless_clause = SubjectVerbPrimitiveClause::new(&unless_tokens);
                 let inner_effects = parse_effect_sentences_lexed(&effect_tokens)?;
                 if !inner_effects.is_empty()
@@ -1526,29 +1173,9 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
 
         let direct_for_each_tokens = trim_edge_punctuation(sentence);
-        let direct_for_each_words =
-            crate::runtime_backend::token_word_refs(&direct_for_each_tokens);
-        let direct_for_each_who = direct_for_each_words.get(..3).is_some_and(|prefix| {
-            matches!(
-                prefix,
-                [
-                    "each",
-                    "opponent" | "opponents" | "player" | "players",
-                    "who"
-                ]
-            )
-        }) || direct_for_each_words.get(..4).is_some_and(|prefix| {
-            matches!(
-                prefix,
-                [
-                    "for",
-                    "each",
-                    "opponent" | "opponents" | "player" | "players",
-                    "who"
-                ]
-            )
-        });
-        if direct_for_each_who {
+        if effect_grammar::dispatch_entry_shapes::is_direct_for_each_who_tokens(
+            &direct_for_each_tokens,
+        ) {
             if let Some(effect) = parse_for_each_opponent_clause(&direct_for_each_tokens)? {
                 effects.push(effect);
                 carried_context = None;
@@ -1622,21 +1249,19 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
         sentence_tokens = rewrite_when_one_or_more_this_way_clause_prefix(&sentence_tokens);
 
-        if word_slice_eq(
-            &crate::runtime_backend::token_word_refs(&sentence_tokens),
-            LEARN_WORDS,
-        ) {
-            effects.push(EffectAst::subject_verb_learn(PlayerAst::You));
-            carried_context = None;
-            sentence_idx += 1;
-            continue;
-        }
-
-        if word_slice_eq(
-            &crate::runtime_backend::token_word_refs(&sentence_tokens),
-            TIME_TRAVEL_WORDS,
-        ) {
-            effects.push(time_travel_effect_ast());
+        if let Some(action) =
+            effect_grammar::dispatch_entry_shapes::parse_direct_atomic_action_tokens(
+                &sentence_tokens,
+            )
+        {
+            effects.push(match action {
+                effect_grammar::dispatch_entry_shapes::DirectAtomicActionShape::Learn => {
+                    EffectAst::subject_verb_learn(PlayerAst::You)
+                }
+                effect_grammar::dispatch_entry_shapes::DirectAtomicActionShape::TimeTravel => {
+                    time_travel_effect_ast()
+                }
+            });
             carried_context = None;
             sentence_idx += 1;
             continue;
@@ -1871,17 +1496,29 @@ fn parse_effect_sentences_from_sentence_inputs(
 }
 
 fn is_outside_game_art_rating_sentence(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_contains_any_phrase(
-        &crate::runtime_backend::token_word_refs(tokens),
-        OUTSIDE_GAME_ART_RATING_PHRASES,
-    )
+    effect_grammar::dispatch_entry_shapes::is_outside_game_art_rating_tokens(tokens)
 }
 
 pub(crate) fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
-        parse_effect_sentences_lexed_inner(tokens)
+        let mut effects = parse_effect_sentences_lexed_inner(tokens)?;
+        let instead_shape = effect_grammar::parse_instead_followup_shape_tokens(tokens);
+        if instead_shape.conditional_intro
+            && instead_shape.semantics == InsteadSemantics::SelfReplacement
+        {
+            for effect in &mut effects {
+                if let EffectAst::SelfReplacement {
+                    attach_to_previous_ability,
+                    ..
+                } = effect
+                {
+                    *attach_to_previous_ability = true;
+                }
+            }
+        }
+        Ok(effects)
     })
 }
 
@@ -1962,6 +1599,16 @@ fn parse_effect_sentences_lexed_inner(
         return Ok(vec![effect]);
     }
 
+    // Quoted emblem abilities may contain their own sentence boundaries and
+    // activated-ability colons. Consume the typed whole-sentence shape before
+    // generic sentence and subject/verb splitting sees those nested tokens.
+    if effect_grammar::emblem_shapes::parse_emblem_payload_tokens(tokens)
+        .is_some_and(|shape| shape.requires_whole_sentence_dispatch)
+        && let Some(effect) = super::zone_handlers::parse_emblem_action(tokens, None)
+    {
+        return Ok(vec![effect]);
+    }
+
     if let Some(mut effects) = parse_exact_card_effect_bundle_lexed(tokens) {
         apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
         maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
@@ -2032,23 +1679,25 @@ fn is_may_cast_copy_effect(effect: &EffectAst) -> bool {
 }
 
 fn group_this_way_copy_cast_followups(tokens: &[OwnedLexToken], effects: &mut Vec<EffectAst>) {
-    if !(grammar::contains_phrase(tokens, &["one", "or", "more"])
-        && grammar::contains_phrase(tokens, &["this", "way"]))
-    {
+    if !effect_grammar::dispatch_entry_shapes::is_one_or_more_this_way_tokens(tokens) {
         return;
     }
 
-    let Some(if_idx) = effects.iter().position(|effect| {
-        matches!(
+    let mut if_idx = 0usize;
+    while effects.get(if_idx).is_some_and(|effect| {
+        !matches!(
             effect,
             EffectAst::IfResult {
                 predicate: IfResultPredicate::Did,
                 ..
             }
         )
-    }) else {
+    }) {
+        if_idx += 1;
+    }
+    if if_idx >= effects.len() {
         return;
-    };
+    }
 
     let mut followups = Vec::new();
     while effects
@@ -2070,24 +1719,12 @@ fn group_this_way_copy_cast_followups(tokens: &[OwnedLexToken], effects: &mut Ve
 }
 
 pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words_storage = normalize_cant_words(tokens);
-    let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    let destroyed_this_way_subject =
-        word_slice_starts_with_any(&words, DESTROYED_THIS_WAY_SUBJECT_PREFIXES);
-    if destroyed_this_way_subject
-        && words.ends_with(BE_REGENERATED_SUFFIX)
-        && (words.iter().any(|word| CANT_WORDS.contains(word))
-            || word_slice_contains_phrase(&words, CANT_BE_REGENERATED_SPLIT_PHRASE))
-    {
-        return true;
-    }
-    word_slice_eq_any(&words, SIMPLE_CANT_BE_REGENERATED_PHRASES)
+    effect_grammar::followup_shapes::parse_cant_be_regenerated_followup(tokens).is_some()
 }
 
 pub(crate) fn is_cant_be_regenerated_this_turn_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words_storage = normalize_cant_words(tokens);
-    let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    word_slice_eq_any(&words, CANT_BE_REGENERATED_THIS_TURN_PHRASES)
+    effect_grammar::followup_shapes::parse_cant_be_regenerated_followup(tokens)
+        .is_some_and(|shape| shape.this_turn)
 }
 
 pub(crate) fn apply_cant_be_regenerated_to_last_destroy_effect(
@@ -2576,6 +2213,39 @@ mod tests {
     }
 
     #[test]
+    fn each_chosen_player_search_put_top_routes_before_generic_put() {
+        let tokens = lex_line(
+            "Choose two target players. Each of them searches their library for a card, then shuffles and puts that card on top.",
+            0,
+        )
+        .expect("rewrite lexer should classify chosen-player search sequence");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("typed chosen-player search sequence should parse");
+
+        let Some(crate::cards::builders::EffectAst::ForEachPlayersFiltered { filter, effects }) =
+            parsed.iter().find(|effect| {
+                matches!(
+                    effect,
+                    crate::cards::builders::EffectAst::ForEachPlayersFiltered { .. }
+                )
+            })
+        else {
+            panic!("expected filtered player iteration, got {parsed:#?}");
+        };
+        assert_eq!(filter, &PlayerFilter::target_player());
+        assert!(matches!(
+            effects.as_slice(),
+            [crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::SearchLibrary { .. },
+                    ..
+                }
+            )]
+        ));
+    }
+
+    #[test]
     fn if_you_dont_clause_reports_missing_comma_after_matched_prefix() {
         let tokens = lex_line("If you don't draw a card", 0)
             .expect("rewrite lexer should classify if-you-don't clause");
@@ -3061,11 +2731,17 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                 replace_value(count, replacement, clause)?;
             }
             SubjectVerbActionAst::ConsultTopOfLibrary {
-                filter, stop_rule, ..
+                filter,
+                stop_rule,
+                max_exposed,
+                ..
             } => {
                 replace_in_filter(filter, replacement, clause)?;
                 if let LibraryConsultStopRuleAst::MatchCount(count) = stop_rule {
                     replace_value(count, replacement, clause)?;
+                }
+                if let Some(max_exposed) = max_exposed {
+                    replace_value(max_exposed, replacement, clause)?;
                 }
             }
             SubjectVerbActionAst::DealDamageEqualToPower { .. }
@@ -3323,29 +2999,24 @@ pub(crate) fn apply_where_x_to_damage_amounts(
     tokens: &[OwnedLexToken],
     effects: &mut [EffectAst],
 ) -> Result<(), CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let has_deal_x = word_slice_contains_any_phrase(&clause_words, DEAL_X_DAMAGE_PHRASES);
-    let has_x_life = word_slice_contains_any_phrase(&clause_words, X_LIFE_CHANGE_PHRASES);
-    let Some(where_idx) = word_slice_find_phrase_start(&clause_words, WHERE_X_IS_WORDS) else {
+    let Some(shape) =
+        effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)
+    else {
         return Ok(());
     };
-    let has_unbound_x_before_where = clause_words[..where_idx].iter().any(|word| *word == X_WORD);
-    if !has_deal_x && !has_x_life && !has_unbound_x_before_where {
-        return Ok(());
-    }
-    let Some(where_token_idx) = token_index_for_word_index(tokens, where_idx) else {
-        return Ok(());
-    };
-    let where_tokens = &tokens[where_token_idx..];
-    let Some(where_value) = parse_value_binding_clause(where_tokens)
+    let Some(where_value) = parse_value_binding_clause(shape.binding_tokens)
         .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
     else {
         return Ok(());
     };
-    if has_deal_x || has_x_life {
-        replace_unbound_x_in_damage_effects(effects, &where_value, &clause_words.join(" "))
-    } else {
-        replace_unbound_x_in_effects_anywhere(effects, &where_value, &clause_words.join(" "))
+    let clause_text = LexedClause::new(tokens).text();
+    match shape.scope {
+        effect_grammar::dispatch_entry_shapes::WhereXReplacementScope::DamageOrLife => {
+            replace_unbound_x_in_damage_effects(effects, &where_value, &clause_text)
+        }
+        effect_grammar::dispatch_entry_shapes::WhereXReplacementScope::AnyEffect => {
+            replace_unbound_x_in_effects_anywhere(effects, &where_value, &clause_text)
+        }
     }
 }
 
@@ -3607,7 +3278,7 @@ pub(crate) fn target_references_it(target: &TargetAst) -> bool {
 }
 
 pub(crate) fn is_that_turn_end_step_sentence(tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_match_prefix(
+    grammar::match_word_prefix(
         tokens,
         &[
             "at",
@@ -3621,7 +3292,7 @@ pub(crate) fn is_that_turn_end_step_sentence(tokens: &[OwnedLexToken]) -> bool {
         ],
     )
     .is_some()
-        || grammar::words_match_prefix(
+        || grammar::match_word_prefix(
             tokens,
             &[
                 "at",
@@ -3656,7 +3327,7 @@ pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(
     // Generic "When one or more ... this way, ..." follow-ups are semantically
     // "If you do, ..." against the immediately previous effect result.
     let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-        .map(|(before, _after)| grammar::contains_phrase(before, &["this", "way"]))
+        .map(|(before, _after)| grammar::has_phrase(before, &["this", "way"]))
         .unwrap_or(false);
     let action_result_followup = grammar::strip_lexed_prefix_phrase(tokens, &["when", "you"])
         .or_else(|| grammar::strip_lexed_prefix_phrase(tokens, &["whenever", "you"]))
@@ -3754,12 +3425,7 @@ pub(crate) fn strip_otherwise_sentence_prefix(
 pub(crate) fn rewrite_otherwise_referential_subject(
     tokens: Vec<OwnedLexToken>,
 ) -> Vec<OwnedLexToken> {
-    let clause_words = crate::runtime_backend::token_word_refs(&tokens);
-    let is_referential_get = clause_words.len() >= 3
-        && clause_words[0] == REFERENTIAL_THAT_WORD
-        && REFERENTIAL_NOUN_WORDS.contains(&clause_words[1])
-        && GET_GAIN_WORDS.contains(&clause_words[2]);
-    if !is_referential_get {
+    if !effect_grammar::dispatch_entry_shapes::has_otherwise_referential_subject_tokens(&tokens) {
         return tokens;
     }
 
@@ -3773,10 +3439,7 @@ pub(crate) fn rewrite_otherwise_referential_subject(
 pub(crate) fn is_nonsemantic_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
     is_activate_only_restriction_sentence(tokens)
         || is_trigger_only_restriction_sentence(tokens)
-        || word_slice_eq_any(
-            &crate::runtime_backend::token_word_refs(tokens),
-            NONSEMANTIC_X_CANT_BE_ZERO_PHRASES,
-        )
+        || effect_grammar::dispatch_entry_shapes::is_x_cant_be_zero_tokens(tokens)
 }
 
 fn token_copy_followup_container_effects_mut(
@@ -3966,46 +3629,14 @@ pub(crate) fn parse_token_copy_followup_sentence_lexed(
 pub(crate) fn parse_token_granted_ability_followup_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
-    let words = TokenWordView::new(tokens);
-    let prefix_len = if word_view_has_prefix(&words, &["it", "has"])
-        || word_view_has_prefix(&words, &["it", "gains"])
-        || word_view_has_prefix(&words, &["that", "token", "has"])
-        || word_view_has_prefix(&words, &["that", "token", "gains"])
-        || word_view_has_prefix(&words, &["the", "token", "has"])
-        || word_view_has_prefix(&words, &["the", "token", "gains"])
-    {
-        if word_view_has_prefix(&words, &["it", "has"]) {
-            2
-        } else if word_view_has_prefix(&words, &["it", "gains"]) {
-            2
-        } else {
-            3
-        }
-    } else if word_view_has_prefix(&words, &["they", "have"])
-        || word_view_has_prefix(&words, &["they", "gain"])
-        || word_view_has_prefix(&words, &["those", "tokens", "have"])
-        || word_view_has_prefix(&words, &["those", "tokens", "gain"])
-        || word_view_has_prefix(&words, &["the", "tokens", "have"])
-        || word_view_has_prefix(&words, &["the", "tokens", "gain"])
-    {
-        if word_view_has_prefix(&words, &["they", "have"]) {
-            2
-        } else if word_view_has_prefix(&words, &["they", "gain"]) {
-            2
-        } else {
-            3
-        }
-    } else {
+    let Some(ability_tokens) =
+        effect_grammar::dispatch_entry_shapes::parse_token_granted_ability_tokens(tokens)
+    else {
         return Ok(None);
     };
-
-    let Some(ability_start) = words.token_index_after_words(prefix_len) else {
-        return Ok(None);
-    };
-    let ability_tokens = trim_edge_punctuation(&tokens[ability_start..]);
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let (abilities, is_choice) =
-        super::parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)?;
+        super::parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?;
     if is_choice || abilities.is_empty() {
         return Ok(None);
     }

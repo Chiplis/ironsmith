@@ -573,6 +573,35 @@ impl TriggerMatcher for OrTrigger {
             .unwrap_or(0)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<crate::events::EventKind>> {
+        let mut kinds = Vec::new();
+        for trigger in &self.triggers {
+            for kind in trigger.subscribed_kinds()? {
+                if !kinds.contains(&kind) {
+                    kinds.push(kind);
+                }
+            }
+        }
+        Some(kinds)
+    }
+
+    fn source_must_match_event_object(&self, event_kind: crate::events::EventKind) -> bool {
+        let mut has_relevant_trigger = false;
+        for trigger in &self.triggers {
+            let Some(kinds) = trigger.subscribed_kinds() else {
+                return false;
+            };
+            if !kinds.contains(&event_kind) {
+                continue;
+            }
+            has_relevant_trigger = true;
+            if !trigger.source_must_match_event_object(event_kind) {
+                return false;
+            }
+        }
+        has_relevant_trigger
+    }
+
     fn display(&self) -> String {
         if self.triggers.is_empty() {
             return "never".to_string();

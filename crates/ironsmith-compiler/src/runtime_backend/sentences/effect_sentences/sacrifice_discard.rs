@@ -1,101 +1,15 @@
 use super::*;
 use crate::runtime_backend::effect_sentences::parse_artifact_enchantment_or_token_filter;
-use crate::runtime_backend::lexer::{
-    word_slice_contains_any_phrase, word_slice_eq, word_slice_eq_any,
-};
-use crate::runtime_backend::sentences::effect_sentences::lex_chain_helpers::{
-    find_verb_lexed, has_effect_head_without_verb_lexed,
-};
+use crate::runtime_backend::grammar::effects::sacrifice_discard_shapes as sacrifice_discard_grammar;
 use crate::runtime_backend::sentences::effect_sentences::subject_verb_primitives::{
     SubjectVerbPrimitiveClause, rewrite_unless_cost_source_values_to_it_tag, try_build_unless,
 };
 
-const DISCARD_SAME_MANA_VALUE_FILTER_PHRASES: &[&[&str]] = &[
-    &["with", "that", "spells", "mana", "value"],
-    &["with", "that", "spell's", "mana", "value"],
-    &[
-        "with", "the", "same", "mana", "value", "as", "that", "spell",
-    ],
-    &["with", "same", "mana", "value", "as", "that", "spell"],
-];
-const SACRIFICE_OR_WORD: &str = "or";
-const SACRIFICE_VERB_WORDS: &[&str] = &["sacrifice", "sacrifices"];
-const SACRIFICE_UNLESS_WORD: &str = "unless";
-const SACRIFICE_UNLESS_ESCAPED_WORDS: &[&str] = &["unless", "it", "escaped"];
-const SACRIFICE_UNLESS_OPPONENT_DAMAGED_WORDS: &[&str] =
-    &["an", "opponent", "was", "dealt", "damage", "this", "turn"];
-const MANA_SPENT_TO_CAST_SELF_PHRASES: &[&[&str]] = &[
-    &["was", "spent", "to", "cast", "it"],
-    &["was", "spent", "to", "cast", "this", "spell"],
-];
-const SACRIFICE_ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
-const SACRIFICE_OTHER_OR_ANOTHER_WORDS: &[&str] = &["other", "another"];
-const SACRIFICE_ANOTHER_WORD: &str = "another";
-const GREATEST_MANA_VALUE_AMONG_WORDS: &[&str] =
-    &["with", "the", "greatest", "mana", "value", "among"];
-const GREATEST_POWER_AMONG_WORDS: &[&str] = &["with", "the", "greatest", "power", "among"];
-const CHOICE_SUFFIX_THREE_WORD_PATTERNS: &[&[&str]] = &[
-    &["of", "their", "choice"],
-    &["of", "your", "choice"],
-    &["of", "its", "choice"],
-];
-const CHOICE_SUFFIX_FIVE_WORDS: &[&str] = &["of", "his", "or", "her", "choice"];
-const TAGGED_IT_OR_CARD_PHRASES: &[&[&str]] = &[&["it"], &["that", "card"], &["that", "token"]];
-const TAGGED_TOKEN_WORDS: &[&str] = &["that", "token"];
-const ATTACHED_OBJECT_EXCLUSION_PHRASES: &[&[&str]] = &[
-    &["than", "enchanted", "creature"],
-    &["than", "enchanted", "permanent"],
-    &["than", "equipped", "creature"],
-    &["than", "equipped", "permanent"],
-];
-const DISCARD_HAND_PHRASES: &[&[&str]] = &[
-    &["hand"],
-    &["your", "hand"],
-    &["their", "hand"],
-    &["that", "players", "hand"],
-];
-const DISCARD_THOSE_CARDS_WORDS: &[&str] = &["those", "cards"];
-const DISCARD_ALL_WORD: &str = "all";
-const DISCARD_CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
-const DISCARD_THE_QUALIFIER_WORDS: &[&str] = &["the"];
-const DISCARD_AT_RANDOM_WORDS: &[&str] = &["at", "random"];
-const DISCARD_WITH_THAT_NAME_WORDS: &[&str] = &["with", "that", "name"];
-const DISCARD_COLOR_OR_WORD: &str = "or";
-const DISCARD_CHOSEN_COLOR_PHRASES: &[&[&str]] = &[
-    &["of", "that", "color"],
-    &["that", "color"],
-    &["of", "the", "chosen", "color"],
-    &["the", "chosen", "color"],
-];
-
-fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
-    token.as_word() == Some(expected)
-}
-
-fn token_is_any_word(token: &OwnedLexToken, expected: &[&str]) -> bool {
-    token.as_word().is_some_and(|word| expected.contains(&word))
-}
-
 fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    for (idx, token) in tokens.iter().enumerate() {
-        if !token_is_word(token, SACRIFICE_OR_WORD) {
-            continue;
-        }
-
-        let alternative_tokens = trim_commas(&tokens[idx + 1..]);
-        if alternative_tokens.is_empty() {
-            continue;
-        }
-
-        let starts_new_action = find_verb_lexed(&alternative_tokens)
-            .is_some_and(|(_, verb_idx)| verb_idx == 0)
-            || has_effect_head_without_verb_lexed(&alternative_tokens);
-        if starts_new_action {
-            return trim_commas(&tokens[..idx]);
-        }
-    }
-
-    trim_commas(tokens)
+    let discard_tokens = sacrifice_discard_grammar::parse_discard_alternative_shape(tokens)
+        .map(|shape| shape.discard_tokens)
+        .unwrap_or(tokens);
+    trim_commas(discard_tokens)
 }
 
 fn parse_trailing_discard_unless_predicate(
@@ -105,26 +19,18 @@ fn parse_trailing_discard_unless_predicate(
     any_number: bool,
     discard_filter: Option<ObjectFilter>,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let trailing_tokens =
-        crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(
-            trailing_tokens,
-        );
-    let Some((first, predicate_tokens)) = trailing_tokens.split_first() else {
-        return Ok(None);
-    };
-    if !token_is_word(first, SACRIFICE_UNLESS_WORD) {
-        return Ok(None);
-    }
-
     let predicate_tokens =
-        crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(
-            predicate_tokens,
-        );
-    if predicate_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "missing predicate after trailing discard unless".to_string(),
-        ));
-    }
+        match sacrifice_discard_grammar::parse_discard_unless_shape(trailing_tokens) {
+            sacrifice_discard_grammar::DiscardUnlessShape::None => return Ok(None),
+            sacrifice_discard_grammar::DiscardUnlessShape::MissingPredicate => {
+                return Err(CardTextError::ParseError(
+                    "missing predicate after trailing discard unless".to_string(),
+                ));
+            }
+            sacrifice_discard_grammar::DiscardUnlessShape::Predicate(predicate_tokens) => {
+                predicate_tokens
+            }
+        };
     let predicate =
         crate::runtime_backend::front_end::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
             predicate_tokens,
@@ -139,45 +45,6 @@ fn parse_trailing_discard_unless_predicate(
     }))
 }
 
-fn discard_value_from_choice_count(count: crate::effect::ChoiceCount) -> Option<(Value, bool)> {
-    if count.is_any_number() {
-        return Some((Value::Fixed(0), true));
-    }
-    if count.is_dynamic_x() {
-        return Some((Value::X, false));
-    }
-    if count.min == 0
-        && let Some(max) = count.max
-    {
-        return Some((Value::Fixed(max as i32), false));
-    }
-    if count.min == count.max? {
-        return Some((Value::Fixed(count.min as i32), false));
-    }
-    None
-}
-
-fn parse_discard_count_prefix(tokens: &[OwnedLexToken]) -> Option<(Value, bool, usize)> {
-    let (choice_count, used) =
-        crate::runtime_backend::util::parse_choice_count_token_prefix_consumed(tokens)?;
-    let (value, any_number) = discard_value_from_choice_count(choice_count)?;
-    Some((value, any_number, used))
-}
-
-fn parse_discard_number_of_cards_equal_count(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let prefix_len = [
-        &["a", "number", "of", "cards", "equal", "to"][..],
-        &["the", "number", "of", "cards", "equal", "to"],
-        &["number", "of", "cards", "equal", "to"],
-    ]
-    .iter()
-    .find_map(|prefix| words.starts_with(prefix).then_some(prefix.len()))?;
-    let value_token_idx = token_index_for_word_index(tokens, prefix_len)?;
-    let (value, used_value_tokens) = parse_value(&tokens[value_token_idx..])?;
-    Some((value, value_token_idx + used_value_tokens))
-}
-
 fn wrap_unless_escaped(effect: EffectAst, unless_escaped: bool) -> EffectAst {
     if unless_escaped {
         EffectAst::Conditional {
@@ -190,14 +57,7 @@ fn wrap_unless_escaped(effect: EffectAst, unless_escaped: bool) -> EffectAst {
     }
 }
 
-fn parse_trailing_discard_same_mana_value_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    if !word_slice_eq_any(
-        &crate::runtime_backend::token_word_refs(tokens),
-        DISCARD_SAME_MANA_VALUE_FILTER_PHRASES,
-    ) {
-        return None;
-    }
-
+fn triggering_same_mana_value_filter() -> ObjectFilter {
     let mut filter = ObjectFilter::default();
     filter
         .tagged_constraints
@@ -205,58 +65,7 @@ fn parse_trailing_discard_same_mana_value_filter(tokens: &[OwnedLexToken]) -> Op
             tag: crate::TagKey::from("triggering"),
             relation: crate::target::TaggedOpbjectRelation::SameManaValueAsTagged,
         });
-    Some(filter)
-}
-
-fn parse_unless_mana_spent_to_cast_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let [mana_token, rest @ ..] = tokens else {
-        return None;
-    };
-    if mana_token.kind != crate::runtime_backend::lexer::TokenKind::ManaGroup {
-        return None;
-    }
-    if !word_slice_eq_any(
-        &crate::runtime_backend::token_word_refs(rest),
-        MANA_SPENT_TO_CAST_SELF_PHRASES,
-    ) {
-        return None;
-    }
-    let symbols = parse_mana_symbol_group(mana_token.slice.as_str()).ok()?;
-    let [symbol] = symbols.as_slice() else {
-        return None;
-    };
-    Some(PredicateAst::ManaSpentToCastThisSpellAtLeast {
-        amount: 1,
-        symbol: Some(*symbol),
-    })
-}
-
-fn split_greatest_mana_value_among_clause(
-    tokens: &[OwnedLexToken],
-) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    split_aggregate_among_clause(tokens, GREATEST_MANA_VALUE_AMONG_WORDS)
-}
-
-fn split_greatest_power_among_clause(
-    tokens: &[OwnedLexToken],
-) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    split_aggregate_among_clause(tokens, GREATEST_POWER_AMONG_WORDS)
-}
-
-fn split_aggregate_among_clause<'a>(
-    tokens: &'a [OwnedLexToken],
-    marker_words: &[&str],
-) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if marker_words.len() > words.len() {
-        return None;
-    }
-    let marker_start = (0..=words.len().saturating_sub(marker_words.len()))
-        .find(|idx| word_slice_eq(&words[*idx..*idx + marker_words.len()], marker_words))?;
-    let marker_end = marker_start + marker_words.len();
-    let before_idx = token_index_for_word_index(tokens, marker_start)?;
-    let after_idx = token_index_for_word_index(tokens, marker_end)?;
-    Some((&tokens[..before_idx], &tokens[after_idx..]))
+    filter
 }
 
 pub(crate) fn parse_sacrifice(
@@ -264,81 +73,70 @@ pub(crate) fn parse_sacrifice(
     subject: Option<SubjectAst>,
     target: Option<TargetAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let mut tokens = tokens;
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let mut normalized_words = clause_words.as_slice();
-    if tokens
-        .first()
-        .is_some_and(|token| token_is_any_word(token, SACRIFICE_VERB_WORDS))
-    {
-        tokens = &tokens[1..];
-        normalized_words = &normalized_words[1..];
-    }
-    let mut unless_escaped = false;
-    if let Some(unless_idx) = find_index(&normalized_words, |word| *word == SACRIFICE_UNLESS_WORD) {
-        if SubjectVerbPrimitiveClause::new(tokens)
-            .from_word(unless_idx)
-            .is_some_and(|tail| word_slice_eq(&tail.word_refs(), SACRIFICE_UNLESS_ESCAPED_WORDS))
-        {
-            unless_escaped = true;
-            let cut_idx = token_index_for_word_index(tokens, unless_idx).unwrap_or(tokens.len());
-            tokens = &tokens[..cut_idx];
-            normalized_words = &normalized_words[..unless_idx];
-        } else {
-            let Some(unless_token_idx) = find_index(tokens, |token: &OwnedLexToken| {
-                token_is_word(token, SACRIFICE_UNLESS_WORD)
-            }) else {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported sacrifice-unless clause (clause: '{}')",
-                    clause_words.join(" ")
-                )));
-            };
-            let sacrifice_tokens = trim_commas(&tokens[..unless_token_idx]);
-            let sacrifice_refs_it = word_slice_eq_any(
-                &crate::runtime_backend::token_word_refs(&sacrifice_tokens),
-                TAGGED_IT_OR_CARD_PHRASES,
-            );
-            let base = parse_sacrifice(&sacrifice_tokens, subject.clone(), target.clone())?;
-            if let Some(predicate) =
-                parse_unless_mana_spent_to_cast_predicate(&tokens[unless_token_idx + 1..])
-            {
+    let clause_shape = sacrifice_discard_grammar::parse_sacrifice_clause_shape(tokens);
+    let tokens = clause_shape.body_tokens;
+    let normalized_words = crate::runtime_backend::token_word_refs(tokens);
+    let unless_escaped = matches!(
+        clause_shape.unless_kind,
+        sacrifice_discard_grammar::SacrificeUnlessKind::Escaped
+    );
+    if !matches!(
+        clause_shape.unless_kind,
+        sacrifice_discard_grammar::SacrificeUnlessKind::None
+            | sacrifice_discard_grammar::SacrificeUnlessKind::Escaped
+    ) {
+        let sacrifice_tokens = trim_commas(clause_shape.body_tokens);
+        let base = parse_sacrifice(&sacrifice_tokens, subject.clone(), target.clone())?;
+        match clause_shape.unless_kind {
+            sacrifice_discard_grammar::SacrificeUnlessKind::ManaSpent(symbol) => {
                 return Ok(EffectAst::Conditional {
-                    predicate,
+                    predicate: PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                        amount: 1,
+                        symbol: Some(symbol),
+                    },
                     if_true: Vec::new(),
                     if_false: vec![base],
                 });
             }
-            if word_slice_eq(
-                &crate::runtime_backend::token_word_refs(&tokens[unless_token_idx + 1..]),
-                SACRIFICE_UNLESS_OPPONENT_DAMAGED_WORDS,
-            ) {
+            sacrifice_discard_grammar::SacrificeUnlessKind::OpponentDamagedThisTurn => {
                 return Ok(EffectAst::Conditional {
                     predicate: PredicateAst::OpponentWasDealtDamageThisTurn,
                     if_true: Vec::new(),
                     if_false: vec![base],
                 });
             }
-            if let Some(mut unless_effect) = try_build_unless(
-                vec![base],
-                SubjectVerbPrimitiveClause::new(tokens),
-                unless_token_idx,
-            )? {
-                if sacrifice_refs_it {
-                    rewrite_unless_cost_source_values_to_it_tag(&mut unless_effect);
+            sacrifice_discard_grammar::SacrificeUnlessKind::General => {
+                let Some(unless_token_offset) = clause_shape.unless_token_offset else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported sacrifice-unless clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                };
+                if let Some(mut unless_effect) = try_build_unless(
+                    vec![base],
+                    SubjectVerbPrimitiveClause::new(clause_shape.full_body_tokens),
+                    unless_token_offset,
+                )? {
+                    if clause_shape.sacrifice_references_it {
+                        rewrite_unless_cost_source_values_to_it_tag(&mut unless_effect);
+                    }
+                    return Ok(unless_effect);
                 }
-                return Ok(unless_effect);
             }
+            _ => unreachable!(),
+        }
+        if matches!(
+            clause_shape.unless_kind,
+            sacrifice_discard_grammar::SacrificeUnlessKind::General
+        ) {
             return Err(CardTextError::ParseError(format!(
                 "unsupported sacrifice-unless clause (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
     }
-    let has_for_each_graveyard_history = grammar::contains_word(tokens, "for")
-        && grammar::contains_word(tokens, "each")
-        && grammar::contains_word(tokens, "graveyard")
-        && grammar::contains_word(tokens, "turn");
-    if has_for_each_graveyard_history {
+    if clause_shape.has_graveyard_history {
         return Err(CardTextError::ParseError(format!(
             "unsupported graveyard-history sacrifice clause (clause: '{}')",
             normalized_words.join(" ")
@@ -380,114 +178,88 @@ pub(crate) fn parse_sacrifice(
         ));
     }
 
-    if normalized_words.starts_with(&["that", "many"]) {
-        let Some(filter_token_idx) = token_index_for_word_index(tokens, 2) else {
-            return Err(CardTextError::ParseError(format!(
-                "missing sacrifice object after that many (clause: '{}')",
-                normalized_words.join(" ")
-            )));
-        };
-        let filter_tokens = &tokens[filter_token_idx..];
-        if filter_tokens.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing sacrifice object after that many (clause: '{}')",
-                normalized_words.join(" ")
-            )));
-        }
-        let filter = parse_object_filter_lexed(filter_tokens, false)?;
-        let tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
-            tokens,
-            "sacrificed",
-        );
-        return Ok(wrap_unless_escaped(
-            EffectAst::Sequence {
-                effects: vec![
-                    EffectAst::ChooseObjects {
-                        filter,
-                        count: crate::effect::ChoiceCount::dynamic_x(),
-                        count_value: Some(Value::EventValue(EventValueSpec::Amount)),
-                        player,
-                        tag: tag.clone(),
+    if let Some(quantity) = sacrifice_discard_grammar::parse_sacrifice_quantity_shape(tokens) {
+        match quantity {
+            sacrifice_discard_grammar::SacrificeQuantityShape::ThatMany { filter_tokens } => {
+                if filter_tokens.is_empty() {
+                    return Err(CardTextError::ParseError(format!(
+                        "missing sacrifice object after that many (clause: '{}')",
+                        normalized_words.join(" ")
+                    )));
+                }
+                let filter = parse_object_filter_lexed(filter_tokens, false)?;
+                let tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                    tokens,
+                    "sacrificed",
+                );
+                return Ok(wrap_unless_escaped(
+                    EffectAst::Sequence {
+                        effects: vec![
+                            EffectAst::ChooseObjects {
+                                filter,
+                                count: crate::effect::ChoiceCount::dynamic_x(),
+                                count_value: Some(Value::EventValue(EventValueSpec::Amount)),
+                                player,
+                                tag: tag.clone(),
+                            },
+                            EffectAst::subject_verb_sacrifice_all(
+                                player,
+                                ObjectFilter::tagged(tag),
+                            ),
+                        ],
                     },
-                    EffectAst::subject_verb_sacrifice_all(player, ObjectFilter::tagged(tag)),
-                ],
-            },
-            unless_escaped,
-        ));
+                    unless_escaped,
+                ));
+            }
+            sacrifice_discard_grammar::SacrificeQuantityShape::AllOrEach {
+                filter_tokens,
+                other,
+            } => {
+                let mut filter = parse_object_filter_lexed(filter_tokens, other)?;
+                if other {
+                    filter.other = true;
+                }
+                return Ok(wrap_unless_escaped(
+                    EffectAst::subject_verb_sacrifice_all(player, filter),
+                    unless_escaped,
+                ));
+            }
+        }
     }
 
-    if tokens
-        .first()
-        .is_some_and(|token| token_is_any_word(token, SACRIFICE_ALL_OR_EACH_WORDS))
-    {
-        let mut idx = 1usize;
-        let mut other = false;
-        if tokens
-            .get(idx)
-            .is_some_and(|token| token_is_any_word(token, SACRIFICE_OTHER_OR_ANOTHER_WORDS))
-        {
-            other = true;
-            idx += 1;
-        }
-        let mut filter = parse_object_filter_lexed(&tokens[idx..], other)?;
-        if other {
-            filter.other = true;
-        }
-        return Ok(wrap_unless_escaped(
-            EffectAst::subject_verb_sacrifice_all(player, filter),
-            unless_escaped,
-        ));
-    }
-
-    let mut idx = 0;
-    let mut count = 1u32;
-    let mut other = false;
-    if let Some((value, used)) = parse_number(&tokens[idx..]) {
-        count = value;
-        idx += used;
-    }
-    if tokens
-        .get(idx)
-        .is_some_and(|token| token_is_word(token, SACRIFICE_ANOTHER_WORD))
-    {
-        other = true;
-        idx += 1;
-    }
-    if count == 1
-        && let Some((value, used)) = parse_number(&tokens[idx..])
-    {
-        count = value;
-        idx += used;
-    }
+    let count_shape = sacrifice_discard_grammar::parse_sacrifice_count_shape(tokens);
+    let count = count_shape.count;
+    let other = count_shape.other;
 
     // Split off a trailing "for each ..." suffix before parsing the filter.
-    let remaining_tokens = &tokens[idx..];
+    let remaining_tokens = count_shape.filter_tokens;
     let mut greatest_mana_value_reference_filter = None;
     let mut greatest_power_reference_filter = None;
-    let object_clause_tokens = if let Some((base_object_tokens, among_tokens)) =
-        split_greatest_mana_value_among_clause(remaining_tokens)
+    let object_clause_tokens = if let Some(aggregate) =
+        sacrifice_discard_grammar::parse_sacrifice_aggregate_shape(remaining_tokens)
     {
-        if among_tokens.is_empty() {
+        if aggregate.among_tokens.is_empty() {
+            let axis = match aggregate.kind {
+                sacrifice_discard_grammar::SacrificeAggregateKind::GreatestManaValue => {
+                    "mana value"
+                }
+                sacrifice_discard_grammar::SacrificeAggregateKind::GreatestPower => "power",
+            };
             return Err(CardTextError::ParseError(format!(
-                "missing object set after greatest mana value among (clause: '{}')",
+                "missing object set after greatest {axis} among (clause: '{}')",
                 normalized_words.join(" ")
             )));
         }
-        let among_filter = parse_object_filter_lexed(among_tokens, false)?;
-        greatest_mana_value_reference_filter = Some(among_filter);
-        base_object_tokens
-    } else if let Some((base_object_tokens, among_tokens)) =
-        split_greatest_power_among_clause(remaining_tokens)
-    {
-        if among_tokens.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing object set after greatest power among (clause: '{}')",
-                normalized_words.join(" ")
-            )));
+        let among_filter = parse_object_filter_lexed(aggregate.among_tokens, false)?;
+        match aggregate.kind {
+            sacrifice_discard_grammar::SacrificeAggregateKind::GreatestManaValue => {
+                greatest_mana_value_reference_filter = Some(among_filter);
+            }
+            sacrifice_discard_grammar::SacrificeAggregateKind::GreatestPower => {
+                greatest_power_reference_filter = Some(among_filter);
+            }
         }
-        let among_filter = parse_object_filter_lexed(among_tokens, false)?;
-        greatest_power_reference_filter = Some(among_filter);
-        base_object_tokens
+        aggregate.object_tokens
     } else {
         remaining_tokens
     };
@@ -510,40 +282,18 @@ pub(crate) fn parse_sacrifice(
         (object_clause_tokens, None)
     };
 
-    let filter_words = ZoneHandlerNormalizedWords::new(object_tokens);
-    let suffix_word_count = if CHOICE_SUFFIX_THREE_WORD_PATTERNS
-        .iter()
-        .any(|suffix| grammar::words_match_suffix(object_tokens, suffix).is_some())
-    {
-        3usize
-    } else if grammar::words_match_suffix(object_tokens, CHOICE_SUFFIX_FIVE_WORDS).is_some() {
-        5usize
-    } else {
-        0usize
-    };
-    let filter_tokens = if suffix_word_count == 0 {
-        object_tokens
-    } else {
-        let keep_words = filter_words
-            .to_word_refs()
-            .len()
-            .saturating_sub(suffix_word_count);
-        let cut_idx = filter_words
-            .token_index_for_word_index(keep_words)
-            .unwrap_or(object_tokens.len());
-        &object_tokens[..cut_idx]
-    };
+    let object_shape = sacrifice_discard_grammar::parse_sacrifice_object_shape(object_tokens);
+    let filter_tokens = object_shape.filter_tokens;
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing sacrifice object after chooser suffix (clause: '{}')",
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
-    let filter_token_words = crate::runtime_backend::token_word_refs(filter_tokens);
-    let mut filter = if word_slice_eq_any(&filter_token_words, TAGGED_IT_OR_CARD_PHRASES) {
+    let mut filter = if let Some(tagged_reference) = object_shape.tagged_reference {
         let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
         tagged_filter.zone = Some(Zone::Battlefield);
-        if word_slice_eq(&filter_token_words, TAGGED_TOKEN_WORDS) {
+        if tagged_reference == sacrifice_discard_grammar::SacrificeTaggedReferenceKind::Token {
             tagged_filter.token = true;
         }
         tagged_filter
@@ -571,10 +321,8 @@ pub(crate) fn parse_sacrifice(
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
-    let excludes_attached_object = word_slice_contains_any_phrase(
-        &crate::runtime_backend::token_word_refs(tokens),
-        ATTACHED_OBJECT_EXCLUSION_PHRASES,
-    );
+    let excludes_attached_object =
+        sacrifice_discard_grammar::parse_sacrifice_attached_exclusion(tokens);
     if excludes_attached_object
         && filter.controller.is_none()
         && let Some(controller) = controller_filter_for_token_player(player)
@@ -604,99 +352,96 @@ pub(crate) fn parse_discard(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if word_slice_eq_any(&clause_words, DISCARD_HAND_PHRASES) {
-        return Ok(EffectAst::subject_verb_discard_hand(player));
-    }
-
-    if word_slice_eq_any(&clause_words, TAGGED_IT_OR_CARD_PHRASES) {
-        let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
-        tagged_filter.zone = Some(Zone::Hand);
-        return Ok(EffectAst::subject_verb_discard(
-            player,
-            Value::Fixed(1),
-            false,
-            false,
-            Some(tagged_filter),
-            None,
-        ));
-    }
-
-    if word_slice_eq(&clause_words, DISCARD_THOSE_CARDS_WORDS) {
-        let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
-        tagged_filter.zone = Some(Zone::Hand);
-        return Ok(EffectAst::subject_verb_discard(
-            player,
-            Value::Count(tagged_filter.clone()),
-            false,
-            false,
-            Some(tagged_filter),
-            None,
-        ));
-    }
-
-    if let Some((count, used)) = parse_discard_number_of_cards_equal_count(tokens) {
-        let trailing_tokens = trim_commas(&tokens[used..]);
-        let trailing_words = crate::runtime_backend::token_word_refs(&trailing_tokens);
-        let random = word_slice_eq(&trailing_words, DISCARD_AT_RANDOM_WORDS);
-        if !trailing_words.is_empty() && !random {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing discard clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
+    let clause_shape = sacrifice_discard_grammar::parse_discard_clause_shape(tokens).map_err(
+        |error| match error {
+            sacrifice_discard_grammar::DiscardShapeError::MissingCount => {
+                CardTextError::ParseError(format!(
+                    "missing discard count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            }
+            sacrifice_discard_grammar::DiscardShapeError::MissingCardKeyword => {
+                CardTextError::ParseError("missing card keyword".to_string())
+            }
+        },
+    )?;
+    let cards_shape = match clause_shape {
+        sacrifice_discard_grammar::DiscardClauseShape::Hand => {
+            return Ok(EffectAst::subject_verb_discard_hand(player));
         }
-        return Ok(EffectAst::subject_verb_discard(
-            player, count, random, false, None, None,
-        ));
-    }
-
-    let uses_all_count = tokens
-        .first()
-        .is_some_and(|token| token_is_word(token, DISCARD_ALL_WORD));
-    let (mut count, any_number, used) = if uses_all_count {
-        (Value::Fixed(0), false, 1)
-    } else if let Some((count, any_number, used)) = parse_discard_count_prefix(tokens) {
-        (count, any_number, used)
-    } else {
-        let (count, used) = parse_value(tokens).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing discard count (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?;
-        (count, false, used)
+        sacrifice_discard_grammar::DiscardClauseShape::TaggedOne => {
+            let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+            tagged_filter.zone = Some(Zone::Hand);
+            return Ok(EffectAst::subject_verb_discard(
+                player,
+                Value::Fixed(1),
+                false,
+                false,
+                Some(tagged_filter),
+                None,
+            ));
+        }
+        sacrifice_discard_grammar::DiscardClauseShape::TaggedAll => {
+            let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+            tagged_filter.zone = Some(Zone::Hand);
+            return Ok(EffectAst::subject_verb_discard(
+                player,
+                Value::Count(tagged_filter.clone()),
+                false,
+                false,
+                Some(tagged_filter),
+                None,
+            ));
+        }
+        sacrifice_discard_grammar::DiscardClauseShape::EqualCount {
+            count,
+            trailing_tokens,
+        } => {
+            let trailing_tokens = trim_commas(trailing_tokens);
+            let trailing_shape =
+                sacrifice_discard_grammar::parse_discard_trailing_shape(&trailing_tokens);
+            let random = trailing_shape == sacrifice_discard_grammar::DiscardTrailingShape::Random;
+            if trailing_shape != sacrifice_discard_grammar::DiscardTrailingShape::Empty && !random {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing discard clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            return Ok(EffectAst::subject_verb_discard(
+                player, count, random, false, None, None,
+            ));
+        }
+        sacrifice_discard_grammar::DiscardClauseShape::Cards(cards) => cards,
     };
-
-    let rest = &tokens[used..];
-    let rest_words = crate::runtime_backend::token_word_refs(rest);
-    let Some(card_word_idx) = find_index(&rest_words, |word| {
-        DISCARD_CARD_OR_CARDS_WORDS.contains(word)
-    }) else {
-        return Err(CardTextError::ParseError(
-            "missing card keyword".to_string(),
-        ));
-    };
-
-    let card_token_idx = token_index_for_word_index(rest, card_word_idx).unwrap_or(rest.len());
-    let qualifier_tokens = trim_commas(&rest[..card_token_idx]);
+    let uses_all_count = cards_shape.uses_all_count;
+    let mut count = cards_shape.count;
+    let any_number = cards_shape.any_number;
+    let qualifier_tokens = trim_commas(cards_shape.qualifier_tokens);
+    let qualifier_shape =
+        sacrifice_discard_grammar::parse_discard_qualifier_shape(&qualifier_tokens);
     let mut discard_filter = None;
-    if !qualifier_tokens.is_empty()
-        && !word_slice_eq(
-            &crate::runtime_backend::token_word_refs(&qualifier_tokens),
-            DISCARD_THE_QUALIFIER_WORDS,
-        )
-    {
+    if qualifier_shape != sacrifice_discard_grammar::DiscardQualifierShape::EmptyOrThe {
         let mut filter = if let Ok(filter) = parse_object_filter(&qualifier_tokens, false) {
             filter
-        } else if let Some(filter) = parse_discard_chosen_color_qualifier_filter(&qualifier_tokens)
-        {
-            filter
-        } else if let Some(filter) = parse_discard_color_qualifier_filter(&qualifier_tokens) {
-            filter
         } else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported discard card qualifier (clause: '{}')",
-                clause_words.join(" ")
-            )));
+            match qualifier_shape {
+                sacrifice_discard_grammar::DiscardQualifierShape::ChosenColor => {
+                    let mut filter = ObjectFilter::default();
+                    filter.chosen_color = true;
+                    filter
+                }
+                sacrifice_discard_grammar::DiscardQualifierShape::Colors(colors) => {
+                    let mut filter = ObjectFilter::default();
+                    filter.colors = Some(colors);
+                    filter
+                }
+                _ => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported discard card qualifier (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
+            }
         };
         filter.zone = Some(Zone::Hand);
         if uses_all_count
@@ -708,13 +453,8 @@ pub(crate) fn parse_discard(
         discard_filter = Some(filter);
     }
 
-    let trailing_tokens_storage = if card_word_idx + 1 < rest_words.len() {
-        let trailing_token_idx =
-            token_index_for_word_index(rest, card_word_idx + 1).unwrap_or(rest.len());
-        trim_trailing_discard_alternative_action(&rest[trailing_token_idx..])
-    } else {
-        Vec::new()
-    };
+    let trailing_tokens_storage =
+        trim_trailing_discard_alternative_action(cards_shape.trailing_tokens);
     let trailing_tokens = trailing_tokens_storage.as_slice();
     if let Some(dynamic_count) = parse_get_for_each_count_value(trailing_tokens)? {
         count = dynamic_count;
@@ -727,7 +467,6 @@ pub(crate) fn parse_discard(
             None,
         ));
     }
-    let trailing_words = crate::runtime_backend::token_word_refs(trailing_tokens);
     if let Some(effect) = parse_trailing_discard_unless_predicate(
         trailing_tokens,
         player,
@@ -737,23 +476,33 @@ pub(crate) fn parse_discard(
     )? {
         return Ok(effect);
     }
-    let random = word_slice_eq(&trailing_words, DISCARD_AT_RANDOM_WORDS);
-    if !trailing_tokens.is_empty() && !random {
+    let trailing_shape = sacrifice_discard_grammar::parse_discard_trailing_shape(trailing_tokens);
+    let random = trailing_shape == sacrifice_discard_grammar::DiscardTrailingShape::Random;
+    if trailing_shape != sacrifice_discard_grammar::DiscardTrailingShape::Empty && !random {
         let trailing_filter = if let Ok(filter) = parse_object_filter(trailing_tokens, false) {
             Some(filter)
-        } else if word_slice_eq(&trailing_words, DISCARD_WITH_THAT_NAME_WORDS) {
-            let mut filter = ObjectFilter::default();
-            filter.name = Some("{chosen name}".to_string());
-            Some(filter)
-        } else if let Some(filter) = parse_discard_chosen_color_qualifier_filter(trailing_tokens) {
-            Some(filter)
-        } else if let Some(filter) = parse_trailing_discard_same_mana_value_filter(trailing_tokens)
-        {
-            Some(filter)
-        } else if let Some(filter) = parse_discard_color_qualifier_filter(trailing_tokens) {
-            Some(filter)
         } else {
-            None
+            match trailing_shape {
+                sacrifice_discard_grammar::DiscardTrailingShape::ChosenName => {
+                    let mut filter = ObjectFilter::default();
+                    filter.name = Some("{chosen name}".to_string());
+                    Some(filter)
+                }
+                sacrifice_discard_grammar::DiscardTrailingShape::ChosenColor => {
+                    let mut filter = ObjectFilter::default();
+                    filter.chosen_color = true;
+                    Some(filter)
+                }
+                sacrifice_discard_grammar::DiscardTrailingShape::SameManaValueAsTriggering => {
+                    Some(triggering_same_mana_value_filter())
+                }
+                sacrifice_discard_grammar::DiscardTrailingShape::Colors(colors) => {
+                    let mut filter = ObjectFilter::default();
+                    filter.colors = Some(colors);
+                    Some(filter)
+                }
+                _ => None,
+            }
         };
 
         if let Some(mut filter) = trailing_filter {
@@ -794,47 +543,6 @@ pub(crate) fn parse_discard(
         discard_filter,
         None,
     ))
-}
-
-pub(crate) fn parse_discard_color_qualifier_filter(
-    tokens: &[OwnedLexToken],
-) -> Option<ObjectFilter> {
-    let qualifier_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
-    if qualifier_words.is_empty() {
-        return None;
-    }
-
-    let mut colors = crate::color::ColorSet::new();
-    let mut saw_color = false;
-    for word in qualifier_words {
-        if word == DISCARD_COLOR_OR_WORD {
-            continue;
-        }
-        let color = parse_color(word)?;
-        colors = colors.union(color);
-        saw_color = true;
-    }
-
-    if !saw_color {
-        return None;
-    }
-
-    let mut filter = ObjectFilter::default();
-    filter.colors = Some(colors);
-    Some(filter)
-}
-
-pub(crate) fn parse_discard_chosen_color_qualifier_filter(
-    tokens: &[OwnedLexToken],
-) -> Option<ObjectFilter> {
-    let qualifier_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
-    if !word_slice_eq_any(qualifier_words.as_slice(), DISCARD_CHOSEN_COLOR_PHRASES) {
-        return None;
-    }
-
-    let mut filter = ObjectFilter::default();
-    filter.chosen_color = true;
-    Some(filter)
 }
 
 pub(crate) fn discard_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {

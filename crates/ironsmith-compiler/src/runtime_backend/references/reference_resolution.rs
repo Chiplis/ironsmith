@@ -19,7 +19,8 @@ use crate::types::Subtype;
 use super::compile_support::{
     effect_references_event_derived_amount, effects_reference_it_tag,
     effects_reference_its_controller, effects_reference_tag,
-    effects_reference_tag_in_object_position, value_references_event_derived_amount,
+    effects_reference_tag_in_object_position, is_sentence_helper_exiled_collection_tag,
+    value_references_event_derived_amount,
 };
 #[cfg(test)]
 use super::effect_ast_traversal::for_each_nested_effects_mut;
@@ -75,6 +76,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
             | TriggerSpec::ThisDealsDamage
             | TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::DealsDamage(_)
+            | TriggerSpec::DealsDamageTo { .. }
             | TriggerSpec::ThisDealsDamageToPlayer { .. }
             | TriggerSpec::DealsDamageToPlayer { .. }
             | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
@@ -377,10 +379,11 @@ fn advance_effects_in_iterated_player_context(
 ) -> Result<(), CardTextError> {
     let saved = frame.clone();
     let mut nested = saved.clone();
-    nested.iterated_player = true;
     nested.last_effect_id = None;
     if let Some(tag) = tagged_object {
         nested.last_object_tag = Some(tag);
+    } else {
+        nested.iterated_player = true;
     }
     advance_reference_frames(effects, id_gen, &mut nested)?;
     if saved.last_object_tag != nested.last_object_tag {
@@ -485,6 +488,9 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "untapped")?;
                 }
                 SubjectVerbActionAst::TapAll { filter } => {
+                    if frame.auto_tag_object_targets {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "tapped"));
+                    }
                     track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::UntapAll { filter } => {
@@ -543,14 +549,24 @@ fn advance_reference_frame_for_effect(
                         frame.source_object_antecedent = true;
                     }
                     if frame.auto_tag_object_targets {
-                        if spec.is_target() {
-                            if let Some(tag) =
-                                propagated_or_generated_object_tag(&spec, id_gen, "exiled")
+                        if choose_spec_targets_object(&spec) {
+                            if let ChooseSpec::Tagged(tag) = spec.base()
+                                && is_sentence_helper_exiled_collection_tag(tag.as_str())
                             {
-                                frame.last_object_tag = Some(tag);
+                                frame.last_object_tag = Some(tag.as_str().to_string());
+                            } else if spec.is_target() {
+                                if let Some(tag) =
+                                    propagated_or_generated_object_tag(&spec, id_gen, "exiled")
+                                {
+                                    frame.last_object_tag = Some(tag);
+                                }
+                            } else {
+                                // Runtime zone moves record the source/exiled
+                                // relationship, so a non-target exile keeps the
+                                // canonical source-exiled identity.
+                                frame.last_object_tag =
+                                    Some(crate::tag::SOURCE_EXILED_TAG.to_string());
                             }
-                        } else if choose_spec_targets_object(&spec) {
-                            frame.last_object_tag = Some(crate::tag::SOURCE_EXILED_TAG.to_string());
                         }
                     }
                     track_target_player(target, frame);
@@ -1054,6 +1070,12 @@ fn advance_reference_frame_for_effect(
             }
         }
         EffectAst::ChooseObjects {
+            filter,
+            tag,
+            player,
+            ..
+        }
+        | EffectAst::ChooseObjectsWithAggregateConstraint {
             filter,
             tag,
             player,
@@ -1612,8 +1634,11 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::RevealCardsFromHand { .. }
                 | SubjectVerbActionAst::LookAtTopCards { .. }
                 | SubjectVerbActionAst::Draw { .. }
+                | SubjectVerbActionAst::SkipTurn
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
                 | SubjectVerbActionAst::PayAnyLife { .. }
+                | SubjectVerbActionAst::CopySpell { .. }
+                | SubjectVerbActionAst::CopySpellForEachTarget { .. }
         ),
         EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayersFiltered { effects, .. }
@@ -1887,9 +1912,18 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             }
         }
         SubjectVerbActionAst::ConsultTopOfLibrary {
-            stop_rule: crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value),
+            stop_rule,
+            max_exposed,
             ..
-        } => visit(value),
+        } => {
+            if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) = stop_rule
+            {
+                visit(value);
+            }
+            if let Some(max_exposed) = max_exposed {
+                visit(max_exposed);
+            }
+        }
         _ => {}
     }
 }
@@ -2423,11 +2457,18 @@ fn resolve_effect_result_values_in_fields(
             } => {
                 resolve_effect_result_value(count, state)?;
             }
-            SubjectVerbActionAst::ConsultTopOfLibrary { stop_rule, .. } => {
+            SubjectVerbActionAst::ConsultTopOfLibrary {
+                stop_rule,
+                max_exposed,
+                ..
+            } => {
                 if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) =
                     stop_rule
                 {
                     resolve_effect_result_value(value, state)?;
+                }
+                if let Some(max_exposed) = max_exposed {
+                    resolve_effect_result_value(max_exposed, state)?;
                 }
             }
             SubjectVerbActionAst::SearchLibrary {
@@ -3316,6 +3357,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::ConsultTopOfLibrary {
                 filter,
                 stop_rule,
+                max_exposed,
                 all_tag,
                 match_tag,
                 ..
@@ -3327,6 +3369,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     stop_rule
                 {
                     replacements += bind_unresolved_it_in_value(value, seed_tag);
+                }
+                if let Some(max_exposed) = max_exposed {
+                    replacements += bind_unresolved_it_in_value(max_exposed, seed_tag);
                 }
                 replacements
             }
@@ -3393,6 +3438,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     .as_mut()
                     .map(|value| bind_unresolved_it_in_value(value, seed_tag))
                     .unwrap_or(0)
+                + bind_unresolved_it_in_tag(tag, seed_tag)
+        }
+        EffectAst::ChooseObjectsWithAggregateConstraint { filter, tag, .. } => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
                 + bind_unresolved_it_in_tag(tag, seed_tag)
         }
         EffectAst::ChooseObjectsAcrossZones {
@@ -3776,6 +3825,31 @@ mod tests {
     }
 
     #[test]
+    fn resolves_if_result_after_optional_turn_skip() {
+        let effects = vec![EffectAst::Conditional {
+            predicate: PredicateAst::SourceIsTapped,
+            if_true: vec![EffectAst::May {
+                effects: vec![
+                    EffectAst::subject_verb_skip_turn(PlayerAst::You),
+                    EffectAst::IfResult {
+                        predicate: IfResultPredicate::Did,
+                        effects: vec![EffectAst::subject_verb_untap(TargetAst::Source(None))],
+                    },
+                ],
+            }],
+            if_false: Vec::new(),
+        }];
+
+        annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("optional turn skip should supply the if-result condition");
+    }
+
+    #[test]
     fn annotate_effect_sequence_tracks_player_from_same_controller_filter() {
         let mut filter = ObjectFilter::creature();
         filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -3918,6 +3992,10 @@ mod tests {
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "Thopter".to_string(),
+                    definition: crate::runtime_backend::grammar::token_definitions::parse_token_definition_shape_text(
+                        "1/1 colorless Thopter artifact creature token with flying",
+                    )
+                    .expect("test Thopter token definition should parse"),
                     count: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
                     dynamic_power_toughness: None,
                     player: PlayerAst::Implicit,
@@ -4135,6 +4213,10 @@ mod tests {
                 PlayerAst::You,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "0/0 green and blue creature".to_string(),
+                    definition: crate::runtime_backend::grammar::token_definitions::parse_token_definition_shape_text(
+                        "0/0 green and blue creature token",
+                    )
+                    .expect("test dynamic creature token definition should parse"),
                     count: Value::Fixed(1),
                     dynamic_power_toughness: None,
                     player: PlayerAst::You,
@@ -4298,6 +4380,10 @@ mod tests {
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "Knight".to_string(),
+                    definition: crate::runtime_backend::grammar::token_definitions::parse_token_definition_shape_text(
+                        "2/2 white Knight creature token",
+                    )
+                    .expect("test Knight token definition should parse"),
                     count: Value::PendingEffectMetric {
                         source: EffectMetricSource::Outcome,
                         metric: EffectMetric::OtherNumber,

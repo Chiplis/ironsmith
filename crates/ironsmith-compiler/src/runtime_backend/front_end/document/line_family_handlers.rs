@@ -1,28 +1,21 @@
-use super::super::lex_patterns::LexPattern;
-use super::super::lexer::LexedClause;
-use super::super::token_primitives::str_ends_with_any_char;
+use super::super::grammar::keyword_special_lines;
+use super::super::grammar::line_families as line_grammar;
+use super::super::grammar::line_family_rewrites as line_rewrite_grammar;
+use super::super::token_primitives::{
+    items_have, items_start_with, locate_index, locate_window_index,
+};
 use super::line_dispatch::{LineDispatchContext, LineDispatchResult};
 use super::*;
 
-const MAX_SPEED_CONDITION_LABEL: &str = "__max_speed_condition";
-const CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX: &str = "__control_color_pair_permanent_";
-const STATION_THRESHOLD_CONDITION_PREFIX: &str = "__station_threshold_";
 const DRAFT_RULE_LINE: &[&str] = &["draft", "this", "card", "face", "up"];
-const DRAFT_RULE_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::any_phrase(&[
-        &["reveal", "this", "card", "as", "you", "draft", "it"],
-        &["as", "you", "draft"],
-        &["during", "the", "draft"],
-        &["immediately", "after", "the", "draft"],
-    ])]);
+const DRAFT_RULE_PREFIXES: &[&[&str]] = &[
+    &["reveal", "this", "card", "as", "you", "draft", "it"],
+    &["as", "you", "draft"],
+    &["during", "the", "draft"],
+    &["immediately", "after", "the", "draft"],
+];
 const DRAFT_BOOSTER_PASS_PREFIX: &[&str] = &["each", "player", "passes"];
 const BOOSTER_PACK_PHRASE: &[&str] = &["booster", "pack"];
-const CAN_BLOCK_ADDITIONAL_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["this", "creature", "can", "block"])]);
-const BLOCK_DURATION_TAILS: &[&[&str]] = &[&["each", "combat"], &["this", "turn"]];
-const TOKEN_CREATION_REPLACEMENT_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["if", "you", "would", "create", "one", "or", "more"]),
-]);
 const FIRST_EQUIP_COST_ALTERNATIVE_PREFIX: &[&str] = &["you", "may", "pay"];
 const FIRST_EQUIP_COST_ALTERNATIVE_PHRASE: &[&str] = &[
     "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip", "ability",
@@ -45,57 +38,11 @@ const LINKED_CHOOSE_TWO_SHUFFLE_REST_BATTLEFIELD_PHRASES: &[&[&str]] = &[
 ];
 const START_YOUR_ENGINES_LINE: &[&str] = &["start", "your", "engines"];
 const LEARN_LINE: &[&str] = &["learn"];
-const STATION_LINE_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["station"])]);
-const ARTIFACT_CREATURE_AT_PREFIX: &[&str] = &["artifact", "creature", "at"];
+const STATION_LINE_PREFIX: &[&str] = &["station"];
 const CHAMPIONED_WITH_THIS_PHRASE: &[&str] = &["is", "championed", "with", "this"];
 const MAX_SPEED_PREFIX: &[&str] = &["max", "speed"];
-const GRAVEYARD_CAST_CONTROL_PREFIX: &[&str] = &[
-    "you",
-    "may",
-    "cast",
-    "this",
-    "card",
-    "from",
-    "your",
-    "graveyard",
-    "as",
-    "long",
-    "as",
-    "you",
-    "control",
-    "a",
-];
-const GRAVEYARD_OR_EXILE_CAST_LINE: &[&str] = &[
-    "you",
-    "may",
-    "cast",
-    "this",
-    "card",
-    "from",
-    "your",
-    "graveyard",
-    "or",
-    "from",
-    "exile",
-];
 const CHAMPION_PREFIX: &[&str] = &["champion"];
-const PARTNER_PREFIX: &[&str] = &["partner"];
-const PARTNER_WITH_PREFIX: &[&str] = &["partner", "with"];
 const ESCAPES_WITH_PHRASE: &[&str] = &["escapes", "with"];
-const CREATURES_YOU_CONTROL_GET_PREFIX: &[&str] = &["creatures", "you", "control", "get"];
-const CHARACTER_SELECT_PREFIX: &[&str] = &["character", "select"];
-const NON_TURN_UNTAP_SUFFIX: &[&str] = &[
-    "if",
-    "it's",
-    "not",
-    "your",
-    "turn",
-    "untap",
-    "those",
-    "creatures",
-];
-const NON_TURN_UNTAP_SUFFIX_PATTERN: &[&[&str]] = &[NON_TURN_UNTAP_SUFFIX];
 const SPLIT_TOP_AND_FACE_DOWN_LOOK_LINE: &[&str] = &[
     "you",
     "may",
@@ -117,116 +64,36 @@ const SPLIT_TOP_AND_FACE_DOWN_LOOK_LINE: &[&str] = &[
     "any",
     "time",
 ];
-const SPLIT_TOP_LOOK_AND_TOP_LAND_PLAY_LINE: &[&str] = &[
-    "you", "may", "look", "at", "the", "top", "card", "of", "your", "library", "any", "time",
-    "and", "you", "may", "play", "lands", "from", "the", "top", "of", "your", "library",
-];
-const ASSIGN_DAMAGE_AS_UNBLOCKED_ENCHANTED_LINE: &[&str] = &[
-    "enchanted",
-    "creatures",
-    "controller",
-    "may",
-    "have",
-    "it",
-    "assign",
-    "its",
-    "combat",
-    "damage",
-    "as",
-    "though",
-    "it",
-    "werent",
-    "blocked",
-];
-const ADDITIONAL_COMBAT_AFTER_THIS_PHASE_PHRASE: &[&str] = &[
-    "there",
-    "is",
-    "an",
-    "additional",
-    "combat",
-    "phase",
-    "after",
-    "this",
-    "phase",
-    "followed",
-    "by",
-    "an",
-    "additional",
-    "main",
-    "phase",
-];
-const ADDITIONAL_COMBAT_AFTER_THIS_MAIN_PHASE_LINE: &[&str] = &[
-    "after",
-    "this",
-    "main",
-    "phase",
-    "there",
-    "is",
-    "an",
-    "additional",
-    "combat",
-    "phase",
-    "followed",
-    "by",
-    "an",
-    "additional",
-    "main",
-    "phase",
-];
 
-fn line_family_words_start_with_pattern<'a>(words: &[&str], pattern: LexPattern<'a>) -> bool {
-    pattern.match_prefix_word_refs(words).is_some()
+fn line_surface_has_prefix(words: &[&str], phrase: &[&str]) -> bool {
+    line_grammar::parse_prefix(words, &[phrase]).is_some()
 }
 
-fn line_family_words_start_with_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    words.starts_with(phrase)
+fn line_surface_has_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    line_grammar::find_phrase(words, &[phrase]).is_some()
 }
 
-fn line_family_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    !phrase.is_empty() && words.windows(phrase.len()).any(|window| window == phrase)
+fn line_surface_has_all(words: &[&str], phrases: &[&[&str]]) -> bool {
+    line_grammar::find_all_phrases(words, phrases).is_some()
 }
 
-fn line_family_words_contain_all_phrases(words: &[&str], phrases: &[&[&str]]) -> bool {
-    phrases
-        .iter()
-        .all(|phrase| line_family_words_contain_phrase(words, phrase))
+fn line_surface_has_suffix(words: &[&str], phrases: &[&[&str]]) -> bool {
+    line_grammar::parse_suffix(words, phrases).is_some()
 }
 
-fn line_family_words_end_with_any(words: &[&str], phrases: &[&[&str]]) -> bool {
-    phrases.iter().any(|phrase| words.ends_with(phrase))
+fn line_has_prefix(line: &PreprocessedLine, words: &[&str]) -> bool {
+    line_grammar::parse_prefix(&TokenWordView::new(&line.tokens).word_refs(), &[words]).is_some()
 }
 
-fn line_starts_with_words(line: &PreprocessedLine, words: &[&str]) -> bool {
-    let atoms = [LexPattern::phrase(words)];
-    LexPattern::new(&atoms).matches_prefix(LexedClause::new(&line.tokens))
-}
-
-fn line_contains_words(line: &PreprocessedLine, words: &[&str]) -> bool {
-    let atoms = [LexPattern::phrase(words)];
-    LexPattern::new(&atoms)
-        .find_in_clause(LexedClause::new(&line.tokens))
-        .is_some()
-}
-
-fn line_ends_with_words(line: &PreprocessedLine, words: &[&str]) -> bool {
-    LexedClause::new(&line.tokens).ends_with(words)
+fn line_has_phrase(line: &PreprocessedLine, words: &[&str]) -> bool {
+    line_grammar::find_phrase(&TokenWordView::new(&line.tokens).word_refs(), &[words]).is_some()
 }
 
 fn keyword_body_tokens_before_reminder<'a>(
     line: &'a PreprocessedLine,
     prefix: &[&str],
 ) -> Option<&'a [OwnedLexToken]> {
-    let atoms = [LexPattern::phrase(prefix)];
-    if !LexPattern::new(&atoms).matches_prefix(LexedClause::new(&line.tokens)) {
-        return None;
-    }
-    let body_start = prefix.len();
-    let body_end = line.tokens[body_start..]
-        .iter()
-        .position(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
-        .map(|offset| body_start + offset)
-        .unwrap_or(line.tokens.len());
-    Some(trim_lexed_commas(&line.tokens[body_start..body_end]))
+    line_grammar::parse_keyword_body(&line.tokens, prefix).map(|shape| shape.body_tokens)
 }
 
 fn strip_indefinite_article_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -241,31 +108,49 @@ fn strip_indefinite_article_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken]
     }
 }
 
-fn render_keyword_cost_tokens(tokens: &[OwnedLexToken]) -> String {
-    let rendered = render_token_slice(tokens);
-    let mut out = String::with_capacity(rendered.len());
-    let mut in_mana_group = false;
-    for ch in rendered.chars() {
-        match ch {
-            '{' => {
-                in_mana_group = true;
-                out.push(ch);
-            }
-            '}' => {
-                in_mana_group = false;
-                out.push(ch);
-            }
-            _ if in_mana_group => out.push(ch.to_ascii_uppercase()),
-            _ => out.push(ch),
-        }
-    }
-    out
+fn line_starts_with_trigger_intro(line: &PreprocessedLine) -> bool {
+    super::super::grammar::trigger_surface::parse_trigger_intro_surface_tokens(&line.tokens)
+        .is_some()
 }
 
-fn line_starts_with_trigger_intro(line: &PreprocessedLine) -> bool {
-    crate::runtime_backend::token_word_refs(&line.tokens)
-        .first()
-        .is_some_and(|word| matches!(*word, "when" | "whenever" | "at"))
+fn push_synthetic_words(tokens: &mut Vec<OwnedLexToken>, words: &[&str]) {
+    let mut cursor = tokens
+        .iter()
+        .map(|token| token.span.end)
+        .max()
+        .unwrap_or_default()
+        .saturating_add(1);
+    for word in words {
+        let end = cursor.saturating_add(word.len());
+        tokens.push(OwnedLexToken::word(
+            *word,
+            TextSpan {
+                line: 0,
+                start: cursor,
+                end,
+            },
+        ));
+        cursor = end.saturating_add(1);
+    }
+}
+
+fn synthetic_word_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
+    let mut tokens = Vec::with_capacity(words.len());
+    push_synthetic_words(&mut tokens, words);
+    tokens
+}
+
+fn synthetic_sentence_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
+    let mut tokens = synthetic_word_tokens(words);
+    tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    tokens
+}
+
+fn parse_static_line_from_tokens(
+    line: &PreprocessedLine,
+    parse_tokens: Vec<OwnedLexToken>,
+) -> Result<Option<StaticLineCst>, CardTextError> {
+    parse_static_line_cst(&rewrite_line_tokens(line, &parse_tokens))
 }
 
 pub(super) fn run_trailing_keyword_activation_line_family(
@@ -292,7 +177,8 @@ fn sticker_sheet_ticket_marker_static_line(ctx: &LineDispatchContext<'_>) -> Sta
         info: ctx.line.info.clone(),
         text: ctx.line.info.normalized.normalized.clone(),
         parse_tokens: ctx.line.tokens.clone(),
-        chosen_option_label: None,
+        chosen_option: None,
+        parsed: None,
     }
 }
 
@@ -311,23 +197,7 @@ fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {
     if !is_sticker_sheet {
         return false;
     }
-
-    let Some(dash_idx) = ctx
-        .line
-        .tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::EmDash)
-    else {
-        return false;
-    };
-    let cost_tokens = &ctx.line.tokens[..dash_idx];
-    let body_tokens = &ctx.line.tokens[dash_idx + 1..];
-    let saw_ticket_symbol = !cost_tokens.is_empty()
-        && cost_tokens.iter().all(|token| {
-            token.kind == TokenKind::ManaGroup && token.slice.eq_ignore_ascii_case("{tk}")
-        });
-
-    saw_ticket_symbol && !TokenWordView::new(body_tokens).is_empty()
+    line_grammar::parse_sticker_ticket_marker(&ctx.line.tokens).is_some()
 }
 
 pub(super) fn run_triggered_line_family(
@@ -339,19 +209,18 @@ pub(super) fn run_triggered_line_family(
 pub(super) fn run_championed_with_this_trigger_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_starts_with_words(ctx.line, &["when"])
-        || !line_contains_words(ctx.line, CHAMPIONED_WITH_THIS_PHRASE)
+    if !line_has_prefix(ctx.line, &["when"])
+        || !line_has_phrase(ctx.line, CHAMPIONED_WITH_THIS_PHRASE)
     {
         return Ok(None);
     }
     let Some((_, effect_tokens)) = split_once_on_comma_tokens(&ctx.line.tokens) else {
         return Ok(None);
     };
-    let effect_text = render_token_slice(tokens_without_terminal_period(effect_tokens))
-        .trim()
-        .to_string();
-    let triggered_text = format!("When this creature enters, {}", effect_text);
-    let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
+    let mut triggered_tokens = synthetic_word_tokens(&["When", "this", "creature", "enters"]);
+    triggered_tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
+    triggered_tokens.extend_from_slice(tokens_without_terminal_period(effect_tokens));
+    let triggered_line = rewrite_line_tokens(ctx.line, &triggered_tokens);
     let triggered = parse_triggered_line_cst(&triggered_line)?;
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Triggered(triggered),
@@ -362,32 +231,30 @@ pub(super) fn run_championed_with_this_trigger_line_family(
 fn split_once_on_comma_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    let comma_idx = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)?;
-    Some((&tokens[..comma_idx], tokens.get(comma_idx + 1..)?))
+    line_grammar::parse_comma_split(tokens).map(|shape| (shape.before, shape.after))
 }
 
 pub(super) fn run_max_speed_labeled_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_starts_with_words(ctx.line, MAX_SPEED_PREFIX) {
+    if !line_has_prefix(ctx.line, MAX_SPEED_PREFIX) {
         return Ok(None);
     };
 
-    let body_text = max_speed_body_text_from_tokens(ctx.line)
-        .unwrap_or_else(|| ctx.line.info.normalized.normalized.trim().to_string());
-    if body_text.is_empty() {
+    let body_tokens = line_grammar::parse_max_speed_body(&ctx.line.tokens)
+        .map(|shape| shape.body_tokens)
+        .unwrap_or(ctx.line.tokens.as_slice());
+    if TokenWordView::new(body_tokens).is_empty() {
         return Err(CardTextError::ParseError(format!(
             "max-speed label missing ability body: '{}'",
             ctx.line.info.raw_line
         )));
     }
 
-    let body_line = rewrite_line_normalized(ctx.line, body_text.as_str())?;
+    let body_line = rewrite_line_tokens(ctx.line, body_tokens);
     if line_starts_with_trigger_intro(&body_line) {
-        let triggered_text = max_speed_intervening_if_text(&body_line.tokens);
-        let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
+        let triggered_tokens = max_speed_intervening_if_tokens(&body_line.tokens);
+        let triggered_line = rewrite_line_tokens(ctx.line, &triggered_tokens);
         let triggered = parse_triggered_line_cst(&triggered_line)?;
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Triggered(triggered),
@@ -395,11 +262,14 @@ pub(super) fn run_max_speed_labeled_line_family(
         )));
     }
 
-    let activation_text = format!(
-        "{}. Activate only if you have max speed.",
-        render_tokens_without_terminal_period(&body_line.tokens)
+    let mut activation_tokens = tokens_without_terminal_period(&body_line.tokens).to_vec();
+    activation_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    push_synthetic_words(
+        &mut activation_tokens,
+        &["activate", "only", "if", "you", "have", "max", "speed"],
     );
-    let activation_line = rewrite_line_normalized(ctx.line, activation_text.as_str())?;
+    activation_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    let activation_line = rewrite_line_tokens(ctx.line, &activation_tokens);
     if let Some((cost_tokens, effect_parse_tokens)) =
         split_activation_text_tokens_lexed(&activation_line.tokens)
     {
@@ -419,7 +289,7 @@ pub(super) fn run_max_speed_labeled_line_family(
                         effect_text,
                         effect_parse_tokens,
                         presentation_label: None,
-                        chosen_option_label: None,
+                        chosen_option: None,
                     }),
                     ctx.idx + 1,
                 )));
@@ -439,23 +309,11 @@ pub(super) fn run_max_speed_labeled_line_family(
     };
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Static(StaticLineCst {
-            chosen_option_label: Some(MAX_SPEED_CONDITION_LABEL.to_string()),
+            chosen_option: Some(ChosenOptionContext::MaxSpeed),
             ..static_cst
         }),
         ctx.idx + 1,
     )))
-}
-
-fn max_speed_body_text_from_tokens(line: &PreprocessedLine) -> Option<String> {
-    let dash_idx = line.tokens.iter().position(|token| {
-        matches!(
-            token.kind,
-            TokenKind::Dash | TokenKind::EmDash | TokenKind::Colon
-        )
-    })?;
-    let body_tokens = line.tokens.get(dash_idx + 1..)?;
-    let body_text = render_token_slice(body_tokens).trim().to_string();
-    (!body_text.is_empty()).then_some(body_text)
 }
 
 fn tokens_without_terminal_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -470,33 +328,20 @@ fn tokens_without_terminal_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] 
 }
 
 fn tokens_before_reminder_or_terminal_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let tokens = tokens_without_terminal_period(tokens);
-    let end = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::LParen)
-        .unwrap_or(tokens.len());
-    tokens_without_terminal_period(&tokens[..end])
+    line_grammar::parse_visible_line_tokens(tokens)
 }
 
-fn render_tokens_without_terminal_period(tokens: &[OwnedLexToken]) -> String {
-    render_token_slice(tokens_without_terminal_period(tokens))
-        .trim()
-        .to_string()
-}
-
-fn max_speed_intervening_if_text(body_tokens: &[OwnedLexToken]) -> String {
-    let tokens = tokens_without_terminal_period(body_tokens);
-    let Some(comma_idx) = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)
-    else {
-        return render_token_slice(tokens).trim().to_string();
+fn max_speed_intervening_if_tokens(body_tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let visible = line_grammar::parse_visible_max_speed_tokens(body_tokens);
+    let Some(shape) = line_grammar::parse_max_speed_trigger_split(body_tokens) else {
+        return visible.to_vec();
     };
-    let trigger = render_token_slice(&tokens[..comma_idx]).trim().to_string();
-    let effects = render_token_slice(&tokens[comma_idx + 1..])
-        .trim_start()
-        .to_string();
-    format!("{trigger}, if you have max speed,{effects}")
+    let mut tokens = shape.before.to_vec();
+    tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
+    push_synthetic_words(&mut tokens, &["if", "you", "have", "max", "speed"]);
+    tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
+    tokens.extend_from_slice(shape.after);
+    tokens
 }
 
 pub(super) fn run_start_your_engines_line_family(
@@ -507,8 +352,8 @@ pub(super) fn run_start_your_engines_line_family(
         return Ok(None);
     }
 
-    let start_line = rewrite_line_normalized(ctx.line, "start your engines")?;
-    let Some(start_static) = parse_static_line_cst(&start_line)? else {
+    let start_tokens = synthetic_word_tokens(START_YOUR_ENGINES_LINE);
+    let Some(start_static) = parse_static_line_from_tokens(ctx.line, start_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower start-your-engines keyword line: '{}'",
             ctx.line.info.raw_line
@@ -533,7 +378,8 @@ pub(super) fn run_draft_rule_line_family(
             info: ctx.line.info.clone(),
             text: ctx.line.info.normalized.normalized.clone(),
             parse_tokens: ctx.line.tokens.clone(),
-            chosen_option_label: None,
+            chosen_option: None,
+            parsed: None,
         }),
         ctx.idx + 1,
     )))
@@ -542,9 +388,9 @@ pub(super) fn run_draft_rule_line_family(
 fn is_draft_rule_line(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     words.as_slice() == DRAFT_RULE_LINE
-        || line_family_words_start_with_pattern(&words, DRAFT_RULE_PREFIX_PATTERN)
-        || (line_family_words_start_with_phrase(&words, DRAFT_BOOSTER_PASS_PREFIX)
-            && line_family_words_contain_phrase(&words, BOOSTER_PACK_PHRASE))
+        || line_grammar::parse_prefix(&words, DRAFT_RULE_PREFIXES).is_some()
+        || (line_surface_has_prefix(&words, DRAFT_BOOSTER_PASS_PREFIX)
+            && line_surface_has_phrase(&words, BOOSTER_PACK_PHRASE))
 }
 
 pub(super) fn run_learn_line_family(
@@ -555,13 +401,13 @@ pub(super) fn run_learn_line_family(
         return Ok(None);
     }
 
-    let learn_line = rewrite_line_normalized(ctx.line, "learn")?;
+    let learn_tokens = tokens_without_terminal_period(&ctx.line.tokens).to_vec();
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Statement(StatementLineCst {
-            info: learn_line.info,
+            info: ctx.line.info.clone(),
             text: "learn".to_string(),
-            parse_tokens: learn_line.tokens.clone(),
-            parse_groups: vec![learn_line.tokens],
+            parse_tokens: learn_tokens.clone(),
+            parse_groups: vec![learn_tokens],
         }),
         ctx.idx + 1,
     )))
@@ -576,22 +422,30 @@ pub(super) fn run_split_top_and_face_down_look_line_family(
         return Ok(None);
     }
 
-    let top_card_line = rewrite_line_normalized(
-        ctx.line,
-        "You may look at the top card of your library any time.",
-    )?;
-    let face_down_line = rewrite_line_normalized(
-        ctx.line,
-        "You may look at face-down creatures you don't control any time.",
-    )?;
+    let top_card_tokens = synthetic_sentence_tokens(&[
+        "you", "may", "look", "at", "the", "top", "card", "of", "your", "library", "any", "time",
+    ]);
+    let face_down_tokens = synthetic_sentence_tokens(&[
+        "you",
+        "may",
+        "look",
+        "at",
+        "face-down",
+        "creatures",
+        "you",
+        "don't",
+        "control",
+        "any",
+        "time",
+    ]);
 
-    let Some(top_card_static) = parse_static_line_cst(&top_card_line)? else {
+    let Some(top_card_static) = parse_static_line_from_tokens(ctx.line, top_card_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower split top-card line: '{}'",
             ctx.line.info.raw_line
         )));
     };
-    let Some(face_down_static) = parse_static_line_cst(&face_down_line)? else {
+    let Some(face_down_static) = parse_static_line_from_tokens(ctx.line, face_down_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower split face-down line: '{}'",
             ctx.line.info.raw_line
@@ -610,24 +464,27 @@ pub(super) fn run_split_top_and_face_down_look_line_family(
 pub(super) fn run_split_top_look_and_top_land_play_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !token_slice_words_eq(&ctx.line.tokens, SPLIT_TOP_LOOK_AND_TOP_LAND_PLAY_LINE) {
+    if line_grammar::parse_special_line(&ctx.line.tokens)
+        != Some(line_grammar::SpecialLineShape::SplitTopLookAndLandPlay)
+    {
         return Ok(None);
     }
 
-    let top_card_line = rewrite_line_normalized(
-        ctx.line,
-        "You may look at the top card of your library any time.",
-    )?;
-    let play_lands_line =
-        rewrite_line_normalized(ctx.line, "You may play lands from the top of your library.")?;
+    let top_card_tokens = synthetic_sentence_tokens(&[
+        "you", "may", "look", "at", "the", "top", "card", "of", "your", "library", "any", "time",
+    ]);
+    let play_lands_tokens = synthetic_sentence_tokens(&[
+        "you", "may", "play", "lands", "from", "the", "top", "of", "your", "library",
+    ]);
 
-    let Some(top_card_static) = parse_static_line_cst(&top_card_line)? else {
+    let Some(top_card_static) = parse_static_line_from_tokens(ctx.line, top_card_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower split top-card look line: '{}'",
             ctx.line.info.raw_line
         )));
     };
-    let Some(play_lands_static) = parse_static_line_cst(&play_lands_line)? else {
+    let Some(play_lands_static) = parse_static_line_from_tokens(ctx.line, play_lands_tokens)?
+    else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower split top-library land-play line: '{}'",
             ctx.line.info.raw_line
@@ -646,13 +503,25 @@ pub(super) fn run_split_top_look_and_top_land_play_line_family(
 pub(super) fn run_assign_damage_as_unblocked_enchanted_creature_controller_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !token_slice_words_eq(&ctx.line.tokens, ASSIGN_DAMAGE_AS_UNBLOCKED_ENCHANTED_LINE) {
+    if line_grammar::parse_special_line(&ctx.line.tokens)
+        != Some(line_grammar::SpecialLineShape::AssignDamageAsUnblockedEnchanted)
+    {
         return Ok(None);
     }
 
-    let rewritten = "Enchanted creature has \"You may have this creature assign its combat damage as though it weren't blocked.\".";
-    let rewritten_line = rewrite_line_normalized(ctx.line, rewritten)?;
-    let Some(static_cst) = parse_static_line_cst(&rewritten_line)? else {
+    let mut rewritten_tokens = synthetic_word_tokens(&["enchanted", "creature", "has"]);
+    rewritten_tokens.push(OwnedLexToken::quote(TextSpan::synthetic()));
+    push_synthetic_words(
+        &mut rewritten_tokens,
+        &[
+            "you", "may", "have", "this", "creature", "assign", "its", "combat", "damage", "as",
+            "though", "it", "weren't", "blocked",
+        ],
+    );
+    rewritten_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    rewritten_tokens.push(OwnedLexToken::quote(TextSpan::synthetic()));
+    rewritten_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    let Some(static_cst) = parse_static_line_from_tokens(ctx.line, rewritten_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower enchanted-creature assign-damage-as-unblocked line: '{}'",
             ctx.line.info.raw_line
@@ -668,65 +537,36 @@ pub(super) fn run_assign_damage_as_unblocked_enchanted_creature_controller_line_
 pub(super) fn run_graveyard_cast_control_condition_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_starts_with_words(ctx.line, GRAVEYARD_CAST_CONTROL_PREFIX) {
-        return Ok(None);
-    }
-
-    let words = TokenWordView::new(&ctx.line.tokens);
-    let prefix_len = GRAVEYARD_CAST_CONTROL_PREFIX.len();
-
-    // "...as long as you control a Zombie." (Gravecrawler)
-    if words.len() == prefix_len + 1 {
-        let subtype_word = words.get(prefix_len).unwrap_or_default();
-        if crate::runtime_backend::front_end::shared::util::parse_subtype_flexible(&subtype_word)
-            .is_none()
-        {
-            return Ok(None);
-        }
-        let permission_line =
-            rewrite_line_normalized(ctx.line, "You may cast this card from your graveyard.")?;
-        let Some(mut static_cst) = parse_static_line_cst(&permission_line)? else {
-            return Err(CardTextError::ParseError(format!(
-                "parser could not lower graveyard-cast control condition line: '{}'",
-                ctx.line.info.raw_line
-            )));
-        };
-        static_cst.chosen_option_label = Some(format!(
-            "__control_subtype_permanent_{}",
-            subtype_word.to_ascii_lowercase()
-        ));
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Static(static_cst),
-            ctx.idx + 1,
-        )));
-    }
-
-    if !line_ends_with_words(ctx.line, &["permanent"])
-        || words.len() != prefix_len + 4
-        || !words.at_is(prefix_len + 1, "or")
-        || !words.at_is(prefix_len + 3, "permanent")
-    {
+    let Some(condition) =
+        line_rewrite_grammar::parse_graveyard_cast_control_condition_tokens(&ctx.line.tokens)
+    else {
         return Ok(None);
     };
-    let left = words.get(prefix_len).unwrap_or_default();
-    let right = words.get(prefix_len + 2).unwrap_or_default();
-    if left.is_empty() || right.is_empty() {
-        return Ok(None);
-    }
 
-    let permission_line =
-        rewrite_line_normalized(ctx.line, "You may cast this card from your graveyard.")?;
-    let Some(mut static_cst) = parse_static_line_cst(&permission_line)? else {
+    let permission_tokens = synthetic_sentence_tokens(&[
+        "you",
+        "may",
+        "cast",
+        "this",
+        "card",
+        "from",
+        "your",
+        "graveyard",
+    ]);
+    let Some(mut static_cst) = parse_static_line_from_tokens(ctx.line, permission_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower graveyard-cast control condition line: '{}'",
             ctx.line.info.raw_line
         )));
     };
-    static_cst.chosen_option_label = Some(format!(
-        "{CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX}{}_{}",
-        left.to_ascii_lowercase(),
-        right.to_ascii_lowercase()
-    ));
+    static_cst.chosen_option = Some(match condition {
+        line_rewrite_grammar::GraveyardCastControlCondition::Subtype(subtype) => {
+            ChosenOptionContext::ControlsSubtypePermanent(subtype)
+        }
+        line_rewrite_grammar::GraveyardCastControlCondition::ColorPair(left, right) => {
+            ChosenOptionContext::ControlsEitherColorPermanent { left, right }
+        }
+    });
 
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Static(static_cst),
@@ -737,21 +577,32 @@ pub(super) fn run_graveyard_cast_control_condition_line_family(
 pub(super) fn run_graveyard_or_exile_cast_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !token_slice_words_eq(&ctx.line.tokens, GRAVEYARD_OR_EXILE_CAST_LINE) {
+    if line_grammar::parse_special_line(&ctx.line.tokens)
+        != Some(line_grammar::SpecialLineShape::GraveyardOrExileCast)
+    {
         return Ok(None);
     }
 
-    let graveyard_line =
-        rewrite_line_normalized(ctx.line, "You may cast this card from your graveyard.")?;
-    let exile_line = rewrite_line_normalized(ctx.line, "You may cast this card from exile.")?;
+    let graveyard_tokens = synthetic_sentence_tokens(&[
+        "you",
+        "may",
+        "cast",
+        "this",
+        "card",
+        "from",
+        "your",
+        "graveyard",
+    ]);
+    let exile_tokens =
+        synthetic_sentence_tokens(&["you", "may", "cast", "this", "card", "from", "exile"]);
 
-    let Some(graveyard_static) = parse_static_line_cst(&graveyard_line)? else {
+    let Some(graveyard_static) = parse_static_line_from_tokens(ctx.line, graveyard_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower graveyard-or-exile cast line graveyard half: '{}'",
             ctx.line.info.raw_line
         )));
     };
-    let Some(exile_static) = parse_static_line_cst(&exile_line)? else {
+    let Some(exile_static) = parse_static_line_from_tokens(ctx.line, exile_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower graveyard-or-exile cast line exile half: '{}'",
             ctx.line.info.raw_line
@@ -773,20 +624,36 @@ pub(super) fn run_champion_line_family(
     let Some(filter_tokens) = keyword_body_tokens_before_reminder(ctx.line, CHAMPION_PREFIX) else {
         return Ok(None);
     };
-    let filter_text = render_token_slice(strip_indefinite_article_tokens(filter_tokens))
-        .trim()
-        .to_string();
-    if filter_text.is_empty() {
+    let filter_tokens = strip_indefinite_article_tokens(filter_tokens);
+    if TokenWordView::new(filter_tokens).is_empty() {
         return Err(CardTextError::ParseError(format!(
             "champion keyword missing object filter: '{}'",
             ctx.line.info.raw_line
         )));
     }
 
-    let triggered_text = format!(
-        "When this permanent enters, sacrifice it unless you exile another {filter_text} you control until this permanent leaves the battlefield."
+    let mut triggered_tokens = synthetic_word_tokens(&["When", "this", "permanent", "enters"]);
+    triggered_tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
+    push_synthetic_words(
+        &mut triggered_tokens,
+        &["sacrifice", "it", "unless", "you", "exile", "another"],
     );
-    let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
+    triggered_tokens.extend_from_slice(filter_tokens);
+    push_synthetic_words(
+        &mut triggered_tokens,
+        &[
+            "you",
+            "control",
+            "until",
+            "this",
+            "permanent",
+            "leaves",
+            "the",
+            "battlefield",
+        ],
+    );
+    triggered_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    let triggered_line = rewrite_line_tokens(ctx.line, &triggered_tokens);
     let triggered = parse_triggered_line_cst(&triggered_line)?;
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Triggered(triggered),
@@ -798,12 +665,31 @@ pub(super) fn run_station_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let words = crate::runtime_backend::lexer::parser_token_word_refs(&ctx.line.tokens);
-    if !line_family_words_start_with_pattern(&words, STATION_LINE_PATTERN) {
+    if line_grammar::parse_prefix(&words, &[STATION_LINE_PREFIX]).is_none() {
         return Ok(None);
     }
 
-    let activation_text = "Tap another untapped creature you control: Put X charge counters on this artifact, where X is the power of the creature tapped this way. Activate only as a sorcery.";
-    let activation_line = rewrite_line_normalized(ctx.line, activation_text)?;
+    let mut activation_tokens =
+        synthetic_word_tokens(&["tap", "another", "untapped", "creature", "you", "control"]);
+    activation_tokens.push(OwnedLexToken::colon(TextSpan::synthetic()));
+    push_synthetic_words(
+        &mut activation_tokens,
+        &["put", "x", "charge", "counters", "on", "this", "artifact"],
+    );
+    activation_tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
+    push_synthetic_words(
+        &mut activation_tokens,
+        &[
+            "where", "x", "is", "the", "power", "of", "the", "creature", "tapped", "this", "way",
+        ],
+    );
+    activation_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    push_synthetic_words(
+        &mut activation_tokens,
+        &["activate", "only", "as", "a", "sorcery"],
+    );
+    activation_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    let activation_line = rewrite_line_tokens(ctx.line, &activation_tokens);
     let Some((cost_tokens, effect_parse_tokens)) =
         split_activation_text_tokens_lexed(&activation_line.tokens)
     else {
@@ -827,7 +713,7 @@ pub(super) fn run_station_line_family(
         effect_text,
         effect_parse_tokens,
         presentation_label: None,
-        chosen_option_label: None,
+        chosen_option: None,
     })];
 
     let has_explicit_station_threshold_rows = ctx
@@ -843,22 +729,18 @@ pub(super) fn run_station_line_family(
         && let Some(threshold) = parse_station_keyword_creature_threshold_for_line(ctx.line)
         && let Some(pt) = ctx.preprocessed.builder.card_builder.power_toughness_ref()
     {
-        let label = station_threshold_condition_label(threshold);
+        let chosen_option = ChosenOptionContext::StationThreshold(threshold);
         let power = pt.power.base_value();
         let toughness = pt.toughness.base_value();
-        for static_text in [
-            "This artifact is a creature in addition to its other types.".to_string(),
-            format!("This artifact has base power and toughness {power}/{toughness}."),
-        ] {
-            let static_line = rewrite_line_normalized(ctx.line, static_text.as_str())?;
-            let Some(static_cst) = parse_static_line_cst(&static_line)? else {
+        for parse_tokens in station_creature_support_parse_tokens(power, toughness) {
+            let Some(static_cst) = parse_static_line_from_tokens(ctx.line, parse_tokens)? else {
                 return Err(CardTextError::ParseError(format!(
                     "parser could not lower station reminder threshold support: '{}'",
                     ctx.line.info.raw_line
                 )));
             };
             lines.push(RewriteLineCst::Static(StaticLineCst {
-                chosen_option_label: Some(label.clone()),
+                chosen_option: Some(chosen_option.clone()),
                 ..static_cst
             }));
         }
@@ -873,60 +755,44 @@ pub(super) fn run_station_line_family(
 pub(super) fn run_station_threshold_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some((threshold, mut body_text)) = parse_station_threshold_line(ctx.line) else {
+    let Some((threshold, body_tokens)) = parse_station_threshold_line(ctx.line) else {
         return Ok(None);
     };
-    if let Some(rewritten) =
-        normalize_named_source_sentence_for_builder(&ctx.preprocessed.builder, body_text.as_str())
-    {
-        body_text = rewritten;
-    } else {
-        let source_name = ctx.preprocessed.builder.card_builder.name_ref();
-        if !source_name.is_empty() {
-            let source_name_lower = source_name.to_ascii_lowercase();
-            let rewritten = replace_named_source_aliases(
-                &body_text,
-                source_name_lower.as_str(),
-                "this artifact",
-            );
-            if rewritten != body_text {
-                body_text = rewritten;
-            }
-        }
-    }
-    if !str_ends_with_any_char(body_text.as_str(), &['.', '!', '?']) {
-        body_text.push('.');
+    let mut body_tokens = body_tokens;
+    if !body_tokens.last().is_some_and(|token| {
+        matches!(
+            token.kind,
+            TokenKind::Period | TokenKind::Bang | TokenKind::Question
+        )
+    }) {
+        body_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
     }
 
-    let label = station_threshold_condition_label(threshold);
+    let chosen_option = ChosenOptionContext::StationThreshold(threshold);
     let mut lines = Vec::new();
     if station_threshold_is_creature_pt_threshold(ctx, threshold)
         && let Some(pt) = ctx.preprocessed.builder.card_builder.power_toughness_ref()
     {
         let power = pt.power.base_value();
         let toughness = pt.toughness.base_value();
-        for static_text in [
-            "This artifact is a creature in addition to its other types.".to_string(),
-            format!("This artifact has base power and toughness {power}/{toughness}."),
-        ] {
-            let static_line = rewrite_line_normalized(ctx.line, static_text.as_str())?;
-            let Some(static_cst) = parse_static_line_cst(&static_line)? else {
+        for parse_tokens in station_creature_support_parse_tokens(power, toughness) {
+            let Some(static_cst) = parse_static_line_from_tokens(ctx.line, parse_tokens)? else {
                 return Err(CardTextError::ParseError(format!(
                     "parser could not lower station creature threshold support: '{}'",
                     ctx.line.info.raw_line
                 )));
             };
             lines.push(RewriteLineCst::Static(StaticLineCst {
-                chosen_option_label: Some(label.clone()),
+                chosen_option: Some(chosen_option.clone()),
                 ..static_cst
             }));
         }
     }
 
-    let body_line = rewrite_line_normalized(ctx.line, body_text.as_str())?;
+    let body_line = rewrite_line_tokens(ctx.line, &body_tokens);
     if line_starts_with_trigger_intro(&body_line) {
         let mut triggered = parse_triggered_line_cst(&body_line)?;
-        triggered.chosen_option_label = Some(label);
+        triggered.chosen_option = Some(chosen_option);
         lines.push(RewriteLineCst::Triggered(triggered));
         return Ok(Some(LineDispatchResult {
             lines,
@@ -951,7 +817,7 @@ pub(super) fn run_station_threshold_line_family(
             effect_text,
             effect_parse_tokens,
             presentation_label: None,
-            chosen_option_label: Some(label),
+            chosen_option: Some(chosen_option),
         }));
         return Ok(Some(LineDispatchResult {
             lines,
@@ -966,7 +832,7 @@ pub(super) fn run_station_threshold_line_family(
         )));
     };
     lines.push(RewriteLineCst::Static(StaticLineCst {
-        chosen_option_label: Some(label),
+        chosen_option: Some(chosen_option),
         ..static_cst
     }));
     Ok(Some(LineDispatchResult {
@@ -975,62 +841,40 @@ pub(super) fn run_station_threshold_line_family(
     }))
 }
 
-fn parse_station_threshold_line(line: &PreprocessedLine) -> Option<(i32, String)> {
-    let tokens = &line.tokens;
-    let pipe_idx = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Pipe)?;
-    let [threshold_token, plus_token] = tokens.get(..pipe_idx)? else {
-        return None;
-    };
-    if !matches!(threshold_token.kind, TokenKind::Number | TokenKind::Word)
-        || plus_token.kind != TokenKind::Plus
-    {
-        return None;
-    }
+fn parse_station_threshold_line(line: &PreprocessedLine) -> Option<(i32, Vec<OwnedLexToken>)> {
+    let shape = line_grammar::parse_station_threshold(&line.tokens)?;
+    (!TokenWordView::new(shape.body_tokens).is_empty())
+        .then(|| (shape.threshold, shape.body_tokens.to_vec()))
+}
 
-    let threshold = threshold_token.parser_text.parse::<i32>().ok()?;
-    let body_tokens = trim_lexed_commas(tokens.get(pipe_idx + 1..)?);
-    let body = render_original_text_for_token_slice(line, body_tokens)
-        .unwrap_or_else(|| render_token_slice(body_tokens))
-        .trim()
-        .to_string();
-    (!body.is_empty()).then(|| (threshold, body.to_string()))
+fn station_creature_support_parse_tokens(power: i32, toughness: i32) -> [Vec<OwnedLexToken>; 2] {
+    let type_line = synthetic_sentence_tokens(&[
+        "this", "artifact", "is", "a", "creature", "in", "addition", "to", "its", "other", "types",
+    ]);
+    let mut pt_line = synthetic_word_tokens(&[
+        "this",
+        "artifact",
+        "has",
+        "base",
+        "power",
+        "and",
+        "toughness",
+    ]);
+    pt_line.push(OwnedLexToken::word(
+        format!("{power}/{toughness}"),
+        TextSpan::synthetic(),
+    ));
+    pt_line.push(OwnedLexToken::period(TextSpan::synthetic()));
+    [type_line, pt_line]
 }
 
 fn parse_station_keyword_creature_threshold(tokens: &[OwnedLexToken]) -> Option<i32> {
-    let word_positions = crate::runtime_backend::lexer::parser_token_word_positions(tokens);
-    for (word_idx, window) in word_positions.windows(4).enumerate() {
-        if !window
-            .iter()
-            .take(3)
-            .map(|(_, word)| *word)
-            .eq(ARTIFACT_CREATURE_AT_PREFIX.iter().copied())
-        {
-            continue;
-        }
-        let (threshold_token_idx, threshold_word) = word_positions[word_idx + 3];
-        let threshold = threshold_word.parse::<i32>().ok()?;
-        if tokens
-            .get(threshold_token_idx + 1)
-            .is_some_and(|token| token.kind == TokenKind::Plus)
-        {
-            return Some(threshold);
-        }
-    }
-    None
+    line_grammar::parse_station_creature_threshold(tokens)
 }
 
 fn parse_station_keyword_creature_threshold_for_line(line: &PreprocessedLine) -> Option<i32> {
-    parse_station_keyword_creature_threshold(&line.tokens).or_else(|| {
-        crate::runtime_backend::lexer::lex_line(&line.info.raw_line, line.info.line_index)
-            .ok()
-            .and_then(|tokens| parse_station_keyword_creature_threshold(&tokens))
-    })
-}
-
-fn station_threshold_condition_label(threshold: i32) -> String {
-    format!("{STATION_THRESHOLD_CONDITION_PREFIX}{threshold}")
+    parse_station_keyword_creature_threshold(&line.tokens)
+        .or_else(|| parse_station_keyword_creature_threshold(&line.info.source_tokens))
 }
 
 fn station_threshold_is_creature_pt_threshold(
@@ -1062,12 +906,12 @@ pub(super) fn run_partner_with_keyword_line_family(
     };
 
     let partner_static_text = format!("partner with {partner_name}");
-    let partner_static_line = rewrite_line_normalized(ctx.line, partner_static_text.as_str())?;
     let partner_static = StaticLineCst {
-        info: partner_static_line.info.clone(),
-        text: partner_static_line.info.normalized.normalized.clone(),
-        parse_tokens: partner_static_line.tokens.clone(),
-        chosen_option_label: None,
+        info: ctx.line.info.clone(),
+        text: partner_static_text,
+        parse_tokens: tokens_before_reminder_or_terminal_period(&ctx.line.tokens).to_vec(),
+        chosen_option: None,
+        parsed: None,
     };
 
     Ok(Some(LineDispatchResult::single(
@@ -1084,77 +928,28 @@ pub(super) fn run_partner_variant_keyword_line_family(
         return Ok(None);
     }
 
-    let visible_label = source_before_reminder_or_period(raw, &ctx.line.tokens)
-        .unwrap_or(raw)
-        .trim()
-        .to_string();
-    let partner_line = rewrite_line_normalized(ctx.line, "Partner")?;
-    if let Some(mut keyword_line) = parse_keyword_line_cst(&partner_line)? {
-        keyword_line.text = visible_label;
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Keyword(keyword_line),
-            ctx.idx + 1,
-        )));
-    }
-
+    let visible_label =
+        source_before_reminder_or_period(raw, &ctx.line.tokens).unwrap_or_else(|| raw.to_string());
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Static(StaticLineCst {
             info: ctx.line.info.clone(),
             text: visible_label,
             parse_tokens: ctx.line.tokens.clone(),
-            chosen_option_label: None,
+            chosen_option: None,
+            parsed: None,
         }),
         ctx.idx + 1,
     )))
 }
 
 fn tokens_start_with_partner_variant_separator(tokens: &[OwnedLexToken]) -> bool {
-    if tokens.first().is_some_and(first_token_is_partner_variant) {
-        return true;
-    }
-    let words = TokenWordView::new(tokens);
-    if words.starts_with(CHARACTER_SELECT_PREFIX) {
-        return true;
-    }
-    if !words.starts_with(PARTNER_PREFIX) {
-        return false;
-    }
-    if words.len() > PARTNER_PREFIX.len()
-        && words.get(PARTNER_PREFIX.len()) != Some("with")
-        && words.token_index_for_word_index(0) == words.token_index_for_word_index(1)
-    {
-        return true;
-    }
-    let Some(separator_start_idx) = words.token_index_after_words(PARTNER_PREFIX.len()) else {
-        return false;
-    };
-    let Some(next_word_idx) = words.token_index_for_word_index(PARTNER_PREFIX.len()) else {
-        return false;
-    };
-    tokens
-        .get(separator_start_idx..next_word_idx)
-        .is_some_and(|between| {
-            between
-                .iter()
-                .any(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
-        })
-}
-
-fn first_token_is_partner_variant(token: &OwnedLexToken) -> bool {
-    let text = token.parser_text().to_ascii_lowercase();
-    if text == "partnercharacter" || text == "partnercharacterselect" {
-        return true;
-    }
-    ["-", "\u{2013}", "\u{2014}"].iter().any(|separator| {
-        text.split_once(separator)
-            .is_some_and(|(head, tail)| head == "partner" && !tail.trim().is_empty())
-    })
+    line_grammar::parse_partner_variant(tokens).is_some()
 }
 
 pub(super) fn run_escape_enters_with_counter_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_contains_words(ctx.line, ESCAPES_WITH_PHRASE) {
+    if !line_has_phrase(ctx.line, ESCAPES_WITH_PHRASE) {
         return Ok(None);
     }
     Ok(parse_static_line_cst(ctx.line)?.map(|static_cst| {
@@ -1168,18 +963,18 @@ pub(super) fn run_surge_line_family(
     let Some(cost_tokens) = keyword_body_tokens_before_reminder(ctx.line, &["surge"]) else {
         return Ok(None);
     };
-    let cost_text = render_keyword_cost_tokens(cost_tokens).trim().to_string();
-    if cost_text.is_empty() {
+    if cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "surge keyword missing cost: '{}'",
             ctx.line.info.raw_line
         )));
     }
 
-    let rewritten = format!(
-        "If you've cast another spell this turn, you may pay {cost_text} rather than pay this spell's mana cost."
+    let parse_tokens = alternative_cost_parse_tokens(
+        &["If", "you've", "cast", "another", "spell", "this", "turn"],
+        cost_tokens,
     );
-    let alternative_line = rewrite_line_normalized(ctx.line, rewritten.as_str())?;
+    let alternative_line = rewrite_line_tokens(ctx.line, &parse_tokens);
     let Some(mut keyword) = parse_keyword_line_cst(&alternative_line)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower surge keyword line: '{}'",
@@ -1200,18 +995,34 @@ pub(super) fn run_freerunning_line_family(
     let Some(cost_tokens) = keyword_body_tokens_before_reminder(ctx.line, &["freerunning"]) else {
         return Ok(None);
     };
-    let cost_text = render_keyword_cost_tokens(cost_tokens).trim().to_string();
-    if cost_text.is_empty() {
+    if cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "freerunning keyword missing cost: '{}'",
             ctx.line.info.raw_line
         )));
     }
 
-    let rewritten = format!(
-        "If you dealt combat damage to a player this turn with an Assassin or commander, you may pay {cost_text} rather than pay this spell's mana cost."
+    let parse_tokens = alternative_cost_parse_tokens(
+        &[
+            "If",
+            "you",
+            "dealt",
+            "combat",
+            "damage",
+            "to",
+            "a",
+            "player",
+            "this",
+            "turn",
+            "with",
+            "an",
+            "Assassin",
+            "or",
+            "commander",
+        ],
+        cost_tokens,
     );
-    let alternative_line = rewrite_line_normalized(ctx.line, rewritten.as_str())?;
+    let alternative_line = rewrite_line_tokens(ctx.line, &parse_tokens);
     let Some(mut keyword) = parse_keyword_line_cst(&alternative_line)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower freerunning keyword line: '{}'",
@@ -1226,6 +1037,28 @@ pub(super) fn run_freerunning_line_family(
     )))
 }
 
+fn alternative_cost_parse_tokens(
+    condition_words: &[&str],
+    cost_tokens: &[OwnedLexToken],
+) -> Vec<OwnedLexToken> {
+    let mut tokens = synthetic_word_tokens(condition_words);
+    tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
+    push_synthetic_words(&mut tokens, &["you", "may", "pay"]);
+    tokens.extend(cost_tokens.iter().map(|token| {
+        if token.kind == TokenKind::ManaGroup {
+            OwnedLexToken::new(token.kind, token.slice.to_ascii_uppercase(), token.span)
+        } else {
+            token.clone()
+        }
+    }));
+    push_synthetic_words(
+        &mut tokens,
+        &["rather", "than", "pay", "this", "spell's", "mana", "cost"],
+    );
+    tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    tokens
+}
+
 pub(super) fn run_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
@@ -1238,7 +1071,8 @@ pub(super) fn run_keyword_line_family(
                 info: ctx.line.info.clone(),
                 text: ctx.line.info.normalized.normalized.clone(),
                 parse_tokens: ctx.line.tokens.clone(),
-                chosen_option_label: None,
+                chosen_option: None,
+                parsed: None,
             }),
             ctx.idx + 1,
         )));
@@ -1258,41 +1092,11 @@ pub(super) fn run_keyword_line_family(
 fn split_same_line_and_or_kicker_keywords(
     line: &PreprocessedLine,
 ) -> Result<Option<Vec<RewriteLineCst>>, CardTextError> {
-    if !token_slice_first_is(&line.tokens, "kicker") {
-        return Ok(None);
-    }
-
-    let mut tail = line.tokens.get(1..).unwrap_or_default();
-    if matches!(
-        tail.first().map(|token| token.kind),
-        Some(TokenKind::Dash | TokenKind::EmDash)
-    ) {
-        tail = tail.get(1..).unwrap_or_default();
-    }
-
-    let reminder_start = tail
-        .windows(3)
-        .position(|window| token_slice_starts_with(window, &["you", "may", "pay"]))
-        .or_else(|| {
-            tail.windows(2)
-                .position(|window| token_slice_starts_with(window, &["you", "may"]))
-        })
-        .unwrap_or(tail.len());
-    let sentence_end = find_token_kind(tail, TokenKind::Period).unwrap_or(tail.len());
-    let paren_start = find_token_kind(tail, TokenKind::LParen).unwrap_or(tail.len());
-    let end = reminder_start.min(sentence_end).min(paren_start);
-    let cost_tokens = trim_lexed_commas(&tail[..end]);
-    let Some(and_or_idx) = cost_tokens.iter().position(|token| token.is_word("and/or")) else {
+    let Some(shape) = line_grammar::parse_kicker_branches(&line.tokens) else {
         return Ok(None);
     };
 
-    let branches = [
-        trim_lexed_commas(&cost_tokens[..and_or_idx]),
-        trim_lexed_commas(&cost_tokens[and_or_idx + 1..]),
-    ];
-    if branches.iter().any(|branch| branch.is_empty()) {
-        return Ok(None);
-    }
+    let branches = [shape.first_cost, shape.second_cost];
 
     let mut lines = Vec::new();
     for branch in branches {
@@ -1304,14 +1108,19 @@ fn split_same_line_and_or_kicker_keywords(
             .unwrap_or_else(|| lowered_cost.display());
         let label = format!("Kicker {cost_text}");
         let raw = label.clone();
-        let tokens = lex_line(&raw, line.info.line_index)?;
+        let mut tokens = Vec::with_capacity(branch.len() + 1);
+        tokens.push(OwnedLexToken::word("kicker", TextSpan::synthetic()));
+        tokens.extend_from_slice(branch);
         let rewritten = rewrite_line_tokens(line, &tokens);
         let mut keyword = parse_keyword_line_cst(&rewritten)?.ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "parser could not split same-line kicker cost '{raw}'"
             ))
         })?;
-        keyword.text = format!("__split_kicker_label:{label}");
+        keyword
+            .payload
+            .set_kicker_label(label)
+            .map_err(CardTextError::InvariantViolation)?;
         lines.push(RewriteLineCst::Keyword(keyword));
     }
 
@@ -1321,30 +1130,42 @@ fn split_same_line_and_or_kicker_keywords(
 pub(super) fn run_additional_combat_after_this_phase_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
-    if !line_contains_words(ctx.line, ADDITIONAL_COMBAT_AFTER_THIS_PHASE_PHRASE)
-        && !token_slice_words_eq(
-            &ctx.line.tokens,
-            ADDITIONAL_COMBAT_AFTER_THIS_MAIN_PHASE_LINE,
-        )
-    {
+    let Some(shape) =
+        line_rewrite_grammar::parse_additional_combat_rewrite_tokens(&ctx.line.tokens)
+    else {
         return Ok(None);
-    }
-
-    let rewritten = raw
-        .replace(
-            "If it's your main phase, there is an additional combat phase after this phase, followed by an additional main phase",
-            "After this main phase, there is an additional combat phase followed by an additional main phase",
-        )
-        .replace(
-            "if it's your main phase, there is an additional combat phase after this phase, followed by an additional main phase",
-            "after this main phase, there is an additional combat phase followed by an additional main phase",
-        )
-        .replace(
-            "there is an additional combat phase after this phase, followed by an additional main phase",
-            "after this main phase, there is an additional combat phase followed by an additional main phase",
-        );
-    let rewritten_line = rewrite_line_normalized(ctx.line, rewritten.as_str())?;
+    };
+    let rewritten_tokens = match shape.kind {
+        line_rewrite_grammar::AdditionalCombatRewriteKind::AlreadyCanonical => {
+            ctx.line.tokens.clone()
+        }
+        line_rewrite_grammar::AdditionalCombatRewriteKind::ConditionalAfterThisPhase
+        | line_rewrite_grammar::AdditionalCombatRewriteKind::AfterThisPhase => {
+            let mut tokens = shape.before_tokens.to_vec();
+            push_synthetic_words(&mut tokens, &["After", "this", "main", "phase"]);
+            tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
+            push_synthetic_words(
+                &mut tokens,
+                &[
+                    "there",
+                    "is",
+                    "an",
+                    "additional",
+                    "combat",
+                    "phase",
+                    "followed",
+                    "by",
+                    "an",
+                    "additional",
+                    "main",
+                    "phase",
+                ],
+            );
+            tokens.extend_from_slice(shape.after_tokens);
+            tokens
+        }
+    };
+    let rewritten_line = rewrite_line_tokens(ctx.line, &rewritten_tokens);
     let Some(statement_line) = parse_statement_line_cst(&rewritten_line)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower additional-combat-after-this-phase line: '{}'",
@@ -1368,7 +1189,8 @@ pub(super) fn run_ward_or_echo_static_prefix_line_family(
                     info: ctx.line.info.clone(),
                     text: normalized.to_string(),
                     parse_tokens: rewrite_keyword_dash_parse_tokens(&ctx.line.tokens),
-                    chosen_option_label: None,
+                    chosen_option: None,
+                    parsed: None,
                 }),
                 ctx.idx + 1,
             )
@@ -1415,7 +1237,7 @@ pub(super) fn run_activation_line_family(
                     effect_text,
                     effect_parse_tokens,
                     presentation_label,
-                    chosen_option_label: None,
+                    chosen_option: None,
                 };
                 let (activated, next_idx) = extend_activated_line_with_result_followups(
                     &ctx.preprocessed.items,
@@ -1442,9 +1264,7 @@ fn original_activation_presentation_label(
     cost_tokens: &[OwnedLexToken],
     effect_tokens: &[OwnedLexToken],
 ) -> Option<String> {
-    let original_tokens =
-        lex_line(line.info.normalized.original.as_str(), line.info.line_index).ok()?;
-    let (label, _, body_tokens) = split_label_prefix_lexed(&original_tokens)?;
+    let (label, _, body_tokens) = split_label_prefix_lexed(&line.info.source_tokens)?;
     if !is_named_ability_label(label.as_str()) {
         return None;
     }
@@ -1516,7 +1336,8 @@ mod tests {
         let partner_variant_line = "Partner - Friends forever (You can have two commanders.)";
         let partner_variant_tokens = lex_line(partner_variant_line, 0).expect("line should lex");
         assert_eq!(
-            source_before_reminder_or_period(partner_variant_line, &partner_variant_tokens),
+            source_before_reminder_or_period(partner_variant_line, &partner_variant_tokens)
+                .as_deref(),
             Some("Partner - Friends forever")
         );
     }
@@ -1540,60 +1361,171 @@ mod tests {
         }
 
         let station_line = line("6+ | This artifact is a creature in addition to its other types.");
+        let (threshold, body_tokens) =
+            parse_station_threshold_line(&station_line).expect("station threshold shape");
+        assert_eq!(threshold, 6);
         assert_eq!(
-            parse_station_threshold_line(&station_line),
-            Some((
-                6,
-                "This artifact is a creature in addition to its other types.".to_string()
-            ))
+            render_token_slice(&body_tokens),
+            "this artifact is a creature in addition to its other types."
         );
 
         let missing_plus = line("6 | This artifact is a creature.");
         assert_eq!(parse_station_threshold_line(&missing_plus), None);
     }
+
+    #[test]
+    fn max_speed_trigger_inserts_intervening_condition_without_relexing() {
+        let tokens = lex_line("Whenever you attack, draw a card.", 0).expect("lex");
+        let rewritten = max_speed_intervening_if_tokens(&tokens);
+        assert_eq!(
+            render_token_slice(&rewritten),
+            "Whenever you attack, if you have max speed, draw a card"
+        );
+        assert!(
+            rewritten
+                .iter()
+                .any(|token| token.span.line == 0 && token.span.start < 100),
+            "the trigger and effect token slices should be carried from the source"
+        );
+    }
+
+    #[test]
+    fn max_speed_trigger_keeps_followup_sentences() {
+        let tokens = lex_line(
+            "At the beginning of your upkeep, exile the top card of your library. You may play that card this turn.",
+            0,
+        )
+        .expect("lex");
+        let rewritten = max_speed_intervening_if_tokens(&tokens);
+        assert_eq!(
+            render_token_slice(&rewritten),
+            "At the beginning of your upkeep, if you have max speed, exile the top card of your library. You may play that card this turn."
+        );
+    }
+
+    #[test]
+    fn alternative_cost_plan_carries_mana_tokens() {
+        let cost_tokens = lex_line("{2}{R}", 0).expect("lex");
+        let rewritten = alternative_cost_parse_tokens(
+            &[
+                "If", "you", "dealt", "combat", "damage", "to", "a", "player", "this", "turn",
+            ],
+            &cost_tokens,
+        );
+        assert_eq!(
+            render_token_slice(&rewritten),
+            "If you dealt combat damage to a player this turn, you may pay {2}{R} rather than pay this spell's mana cost."
+        );
+        assert_eq!(
+            rewritten
+                .iter()
+                .filter(|token| token.kind == TokenKind::ManaGroup)
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn non_turn_untap_split_returns_both_source_token_slices() {
+        let source =
+            "Creatures you control get +1/+1. If it's not your turn, untap those creatures.";
+        let line = preprocess_document(
+            CardDefinitionBuilder::new(crate::CardId::new(), "Untap Split Test"),
+            source,
+        )
+        .expect("line should preprocess")
+        .items
+        .into_iter()
+        .find_map(|item| match item {
+            PreprocessedItem::Line(line) => Some(line),
+            PreprocessedItem::Metadata(_) => None,
+        })
+        .expect("expected a preprocessed line");
+        let shape = line_rewrite_grammar::parse_non_turn_conditional_untap_tokens(&line.tokens)
+            .expect("split sentences");
+        assert_eq!(
+            render_token_slice(shape.first_sentence_tokens),
+            "creatures you control get +1/+1"
+        );
+        assert_eq!(
+            render_token_slice(shape.untap_sentence_tokens),
+            "if it's not your turn, untap those creatures."
+        );
+    }
+
+    #[test]
+    fn graveyard_cast_conditions_carry_typed_labels_into_cst() {
+        let subtype_document = preprocess_document(
+            CardDefinitionBuilder::new(crate::CardId::new(), "Gravecrawler Test")
+                .card_types(vec![crate::types::CardType::Creature]),
+            "You may cast this card from your graveyard as long as you control a Zombie.",
+        )
+        .expect("subtype condition should preprocess");
+        let subtype_cst = parse_document_cst(&subtype_document, false).expect("subtype cst");
+        let [RewriteLineCst::Static(subtype_line)] = subtype_cst.lines.as_slice() else {
+            panic!("expected one static subtype-permission line");
+        };
+        assert_eq!(
+            subtype_line.chosen_option,
+            Some(ChosenOptionContext::ControlsSubtypePermanent(
+                crate::types::Subtype::Zombie
+            ))
+        );
+
+        let color_document = preprocess_document(
+            CardDefinitionBuilder::new(crate::CardId::new(), "Color Pair Test")
+                .card_types(vec![crate::types::CardType::Creature]),
+            "You may cast this card from your graveyard as long as you control a black or red permanent.",
+        )
+        .expect("color condition should preprocess");
+        let color_cst = parse_document_cst(&color_document, false).expect("color cst");
+        let [RewriteLineCst::Static(color_line)] = color_cst.lines.as_slice() else {
+            panic!("expected one static color-permission line");
+        };
+        assert_eq!(
+            color_line.chosen_option,
+            Some(ChosenOptionContext::ControlsEitherColorPermanent {
+                left: crate::Color::Black,
+                right: crate::Color::Red,
+            })
+        );
+    }
+
+    #[test]
+    fn additional_combat_rewrite_splices_typed_token_span() {
+        let document = preprocess_document(
+            CardDefinitionBuilder::new(crate::CardId::new(), "Additional Combat Test")
+                .card_types(vec![crate::types::CardType::Sorcery]),
+            "If it's your main phase, there is an additional combat phase after this phase, followed by an additional main phase.",
+        )
+        .expect("additional-combat line should preprocess");
+        let cst = parse_document_cst(&document, false).expect("additional-combat cst");
+        let [RewriteLineCst::Statement(line)] = cst.lines.as_slice() else {
+            panic!("expected one additional-combat statement");
+        };
+        assert_eq!(
+            render_token_slice(&line.parse_tokens),
+            "After this main phase, there is an additional combat phase followed by an additional main phase."
+        );
+    }
 }
 
 fn partner_with_name_from_line(line: &PreprocessedLine) -> Option<String> {
-    let tokens = &line.tokens;
-    if !line_family_words_start_with_phrase(
-        &crate::runtime_backend::token_word_refs(tokens),
-        PARTNER_WITH_PREFIX,
-    ) {
-        return None;
-    }
-
-    let words = TokenWordView::new(tokens);
-    let name_start_idx = words.token_index_for_word_index(PARTNER_WITH_PREFIX.len())?;
-    let name_end_idx = tokens[name_start_idx..]
-        .iter()
-        .position(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
-        .map(|idx| name_start_idx + idx)
-        .unwrap_or(tokens.len());
-    let name_tokens = tokens.get(name_start_idx..name_end_idx)?;
-    let name = render_original_text_for_token_slice(line, name_tokens)
-        .unwrap_or_else(|| render_token_slice(name_tokens))
+    let shape = keyword_special_lines::parse_partner_with_name_shape_tokens(&line.tokens)?;
+    let name = render_original_text_for_token_slice(line, shape.name_tokens)
+        .unwrap_or_else(|| render_token_slice(shape.name_tokens))
         .trim()
         .replace('"', "");
-    (!name.is_empty()).then(|| name.to_string())
+    (!name.is_empty()).then_some(name)
 }
 
-fn source_before_reminder_or_period<'a>(
-    raw_line: &'a str,
-    tokens: &[OwnedLexToken],
-) -> Option<&'a str> {
-    let end = tokens
-        .iter()
-        .find(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
-        .map(|token| token.span.start)
-        .unwrap_or(raw_line.len());
-    let display = raw_line.get(..end)?.trim();
-    (!display.is_empty()).then_some(display)
+fn source_before_reminder_or_period(_raw_line: &str, tokens: &[OwnedLexToken]) -> Option<String> {
+    keyword_special_lines::parse_partner_visible_label_tokens(tokens)
 }
 
 pub(super) fn run_combined_static_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let normalized = ctx.line.info.normalized.normalized.as_str();
     let Some(PreprocessedItem::Line(next_line)) = ctx.preprocessed.items.get(ctx.idx + 1) else {
         return Ok(None);
     };
@@ -1601,12 +1533,10 @@ pub(super) fn run_combined_static_line_family(
         return Ok(None);
     }
 
-    let combined_text = format!(
-        "{}. {}",
-        normalized.trim_end_matches('.'),
-        next_line.info.normalized.normalized.trim_end_matches('.')
-    );
-    let combined_line = rewrite_line_normalized(ctx.line, combined_text.as_str())?;
+    let mut combined_tokens = tokens_without_terminal_period(&ctx.line.tokens).to_vec();
+    combined_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    combined_tokens.extend_from_slice(tokens_without_terminal_period(&next_line.tokens));
+    let combined_line = rewrite_line_tokens(ctx.line, &combined_tokens);
     Ok(parse_static_line_cst(&combined_line)?.map(|static_line| {
         LineDispatchResult::single(RewriteLineCst::Static(static_line), ctx.idx + 2)
     }))
@@ -1615,28 +1545,17 @@ pub(super) fn run_combined_static_line_family(
 pub(super) fn run_non_turn_conditional_untap_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some(first_sentence_tokens) = non_turn_conditional_untap_first_sentence_tokens(ctx.line)
+    let Some(shape) =
+        line_rewrite_grammar::parse_non_turn_conditional_untap_tokens(&ctx.line.tokens)
     else {
         return Ok(None);
     };
-    if !line_family_words_start_with_phrase(
-        &crate::runtime_backend::token_word_refs(first_sentence_tokens),
-        CREATURES_YOU_CONTROL_GET_PREFIX,
-    ) {
-        return Ok(None);
-    }
-    let first_sentence = render_original_text_for_token_slice(ctx.line, first_sentence_tokens)
-        .unwrap_or_else(|| render_tokens_without_terminal_period(first_sentence_tokens))
-        .trim()
-        .to_string();
-
-    let first_line = rewrite_line_normalized(ctx.line, first_sentence.as_str())?;
+    let first_line = rewrite_line_tokens(ctx.line, shape.first_sentence_tokens);
     let Some(first_statement) = parse_statement_line_cst(&first_line)? else {
         return Ok(None);
     };
 
-    let second_line =
-        rewrite_line_normalized(ctx.line, "If it's not your turn, untap those creatures")?;
+    let second_line = rewrite_line_tokens(ctx.line, shape.untap_sentence_tokens);
     let Some(second_statement) = parse_statement_line_cst(&second_line)? else {
         return Ok(None);
     };
@@ -1650,32 +1569,10 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
     }))
 }
 
-fn non_turn_conditional_untap_first_sentence_tokens(
-    line: &PreprocessedLine,
-) -> Option<&[OwnedLexToken]> {
-    let words = TokenWordView::new(&line.tokens);
-    if !NON_TURN_UNTAP_SUFFIX_PATTERN
-        .iter()
-        .any(|suffix| crate::runtime_backend::token_word_refs(&line.tokens).ends_with(suffix))
-    {
-        return None;
-    }
-    let suffix_word_idx = words.len().checked_sub(NON_TURN_UNTAP_SUFFIX.len())?;
-    let suffix_token_idx = words.token_index_for_word_index(suffix_word_idx)?;
-    let prefix_tokens = line.tokens.get(..suffix_token_idx)?;
-    prefix_tokens
-        .last()
-        .is_some_and(|token| token.kind == TokenKind::Period)
-        .then_some(tokens_without_terminal_period(prefix_tokens))
-        .filter(|tokens| !tokens.is_empty())
-}
-
 fn statement_probe_shape_prefers_statement(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    line_family_words_contain_all_phrases(
-        &words,
-        LINKED_CHOOSE_TWO_SHUFFLE_REST_BATTLEFIELD_PHRASES,
-    ) || line_family_words_contain_all_phrases(&words, LINKED_EXILED_CARD_COST_MORE_PHRASES)
+    line_surface_has_all(&words, LINKED_CHOOSE_TWO_SHUFFLE_REST_BATTLEFIELD_PHRASES)
+        || line_surface_has_all(&words, LINKED_EXILED_CARD_COST_MORE_PHRASES)
 }
 
 fn is_keyword_action_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
@@ -1704,10 +1601,7 @@ pub(super) fn run_statement_probe_line_family(
     {
         return Ok(None);
     }
-    if should_prefer_statement_before_static_for_nonpermanent_spell(
-        ctx.preprocessed,
-        &ctx.line.tokens,
-    ) && let Some(split_result) =
+    if let Some(split_result) =
         parse_labeled_conditional_replacement_sentence_split(ctx.line, ctx.idx)?
     {
         return Ok(Some(split_result));
@@ -1731,6 +1625,7 @@ pub(super) fn run_statement_probe_line_family(
         && !is_can_block_additional_creatures_static_line(&ctx.line.tokens)
         && !is_draw_replacement_static_line(&ctx.line.tokens)
         && !is_token_creation_replacement_static_line(&ctx.line.tokens)
+        && !is_discard_or_redirect_replacement_static_line(&ctx.line.tokens)
         && !is_first_equip_cost_alternative_static_line(&ctx.line.tokens)
         && !is_conditional_keyword_type_addition_static_line(&ctx.line.tokens)
         && !is_keyword_action_replacement_static_line(&ctx.line.tokens)
@@ -1750,50 +1645,45 @@ pub(super) fn run_statement_probe_line_family(
 }
 
 fn is_draw_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    words.starts_with(&["if", "you", "would", "draw", "a", "card"]) && words.contains(&"instead")
+    matches!(
+        line_grammar::parse_statement_static_preference(tokens),
+        Some(line_grammar::StatementStaticPreference::DrawReplacement)
+    )
 }
 
 fn is_token_creation_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    line_family_words_start_with_pattern(&words, TOKEN_CREATION_REPLACEMENT_PREFIX_PATTERN)
-        && words.contains(&"additional")
-        && words.iter().any(|word| matches!(*word, "token" | "tokens"))
-        && words.contains(&"instead")
+    matches!(
+        line_grammar::parse_statement_static_preference(tokens),
+        Some(line_grammar::StatementStaticPreference::TokenCreationReplacement)
+    )
+}
+
+fn is_discard_or_redirect_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
+    matches!(
+        line_grammar::parse_statement_static_preference(tokens),
+        Some(line_grammar::StatementStaticPreference::DiscardOrRedirectReplacement)
+    )
 }
 
 fn is_first_equip_cost_alternative_static_line(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    line_family_words_start_with_phrase(&words, FIRST_EQUIP_COST_ALTERNATIVE_PREFIX)
-        && line_family_words_contain_phrase(&words, FIRST_EQUIP_COST_ALTERNATIVE_PHRASE)
-        && line_family_words_end_with_any(&words, FIRST_EQUIP_COST_ALTERNATIVE_SUFFIXES)
+    line_surface_has_prefix(&words, FIRST_EQUIP_COST_ALTERNATIVE_PREFIX)
+        && line_surface_has_phrase(&words, FIRST_EQUIP_COST_ALTERNATIVE_PHRASE)
+        && line_surface_has_suffix(&words, FIRST_EQUIP_COST_ALTERNATIVE_SUFFIXES)
 }
 
 fn is_conditional_keyword_type_addition_static_line(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    line_family_words_start_with_phrase(&words, &["as", "long", "as"])
-        && words.iter().any(|word| matches!(*word, "has" | "have"))
-        && words
-            .windows(2)
-            .any(|window| matches!(window, ["and", "is"] | ["and", "are"]))
-        && line_family_words_contain_phrase(&words, &["in", "addition", "to"])
+    matches!(
+        line_grammar::parse_statement_static_preference(tokens),
+        Some(line_grammar::StatementStaticPreference::ConditionalKeywordTypeAddition)
+    )
 }
 
 fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if !line_family_words_start_with_pattern(&words, CAN_BLOCK_ADDITIONAL_PREFIX_PATTERN) {
-        return false;
-    }
-
-    let has_additional = words.contains(&"additional");
-    let has_creature_noun = words
-        .iter()
-        .any(|word| matches!(*word, "creature" | "creatures"));
-    if !has_additional || !has_creature_noun {
-        return false;
-    }
-
-    line_family_words_end_with_any(&words, BLOCK_DURATION_TAILS)
+    matches!(
+        line_grammar::parse_statement_static_preference(tokens),
+        Some(line_grammar::StatementStaticPreference::BlocksAdditionalCreatures)
+    )
 }
 
 pub(super) fn run_static_line_family(
@@ -1803,7 +1693,13 @@ pub(super) fn run_static_line_family(
         Ok(static_line) => Ok(static_line.map(|static_line| {
             LineDispatchResult::single(RewriteLineCst::Static(static_line), ctx.idx + 1)
         })),
-        Err(err) if looks_like_statement_line_lexed(ctx.line) => {
+        Err(err)
+            if looks_like_statement_line_lexed(ctx.line)
+                && !super::super::grammar::anthem_grants::parse_anthem_modifier_head(
+                    &ctx.line.tokens,
+                )
+                .is_some_and(|head| !head.has_target && !head.temporary) =>
+        {
             crate::parse_trace::event(format!(
                 "line-family: static-line yielded to statement-like line after error: {err:?}"
             ));
@@ -1829,7 +1725,7 @@ pub(super) fn run_statement_line_family(
 pub(super) fn run_leading_unless_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_starts_with_words(ctx.line, &["unless"]) {
+    if !line_has_prefix(ctx.line, &["unless"]) {
         return Ok(None);
     }
     let Some((unless_tokens, effect_tokens)) = split_once_on_comma_tokens(&ctx.line.tokens) else {
@@ -1943,7 +1839,7 @@ fn try_parse_trailing_keyword_activation_dispatch(
         effect_text,
         effect_parse_tokens,
         presentation_label: Some(label.trim().to_string()),
-        chosen_option_label: None,
+        chosen_option: None,
     });
 
     Ok(Some(LineDispatchResult {
@@ -1953,7 +1849,7 @@ fn try_parse_trailing_keyword_activation_dispatch(
 }
 
 fn parse_keyword_activation_prefix_static_or_rewrite(
-    builder: &CardDefinitionBuilder,
+    _builder: &CardDefinitionBuilder,
     line: &PreprocessedLine,
     prefix_line: &PreprocessedLine,
     statement_error: Option<CardTextError>,
@@ -1963,19 +1859,6 @@ fn parse_keyword_activation_prefix_static_or_rewrite(
         Ok(None) => None,
         Err(err) => Some(err),
     };
-
-    if let Some(rewritten_prefix) = normalize_named_source_sentence_for_builder(
-        builder,
-        prefix_line.info.normalized.normalized.as_str(),
-    ) {
-        let rewritten_prefix_line = rewrite_line_normalized(line, rewritten_prefix.as_str())?;
-        if let Some(statement_line) = parse_statement_line_cst(&rewritten_prefix_line)? {
-            return Ok(RewriteLineCst::Statement(statement_line));
-        }
-        if let Some(static_line) = parse_static_line_cst(&rewritten_prefix_line)? {
-            return Ok(RewriteLineCst::Static(static_line));
-        }
-    }
 
     if let Some(err) = statement_error {
         return Err(err);

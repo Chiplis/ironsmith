@@ -1,0 +1,171 @@
+use crate::cards::builders::{IT_TAG, TagKey};
+use crate::effect::Value;
+use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken, parser_token_word_refs};
+use crate::runtime_backend::token_definition::{CreatureTokenRulesShape, TokenKeywordShape};
+use crate::target::{ChooseSpec, PlayerFilter};
+use winnow::combinator::alt;
+use winnow::error::ModalResult as WResult;
+use winnow::prelude::*;
+
+use super::super::effects;
+use super::super::primitives;
+use super::super::shared_util::value_expr;
+use super::{common, equipment, rules, surface};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TokenReminderSentenceKind {
+    GrantedAbility,
+    PronounTrigger,
+    PowerToughness,
+    DelayedLifecycle,
+    ExplicitTokenReference,
+}
+
+const DELAYED_LIFECYCLE_TIMING_PHRASES: &[&[&str]] = &[
+    &["beginning", "of", "your", "next", "end", "step"],
+    &["beginning", "of", "the", "end", "step"],
+    &["beginning", "of", "next", "end", "step"],
+    &["beginning", "of", "the", "next", "end", "step"],
+    &["end", "of", "combat"],
+];
+
+fn token_reminder_sentence_head<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<TokenReminderSentenceKind> {
+    alt((
+        alt((
+            primitives::phrase(&["it", "has"]),
+            primitives::phrase(&["they", "have"]),
+        ))
+        .value(TokenReminderSentenceKind::GrantedAbility),
+        alt((
+            primitives::phrase(&["when", "it"]),
+            primitives::phrase(&["whenever", "it"]),
+            primitives::phrase(&["when", "they"]),
+            primitives::phrase(&["whenever", "they"]),
+        ))
+        .value(TokenReminderSentenceKind::PronounTrigger),
+        alt((
+            primitives::phrase(&["its", "power"]),
+            primitives::phrase(&["its", "toughness"]),
+        ))
+        .value(TokenReminderSentenceKind::PowerToughness),
+        alt((primitives::kw("exile"), primitives::kw("sacrifice")))
+            .value(TokenReminderSentenceKind::DelayedLifecycle),
+        alt((
+            primitives::phrase(&["when", "this", "token"]),
+            primitives::phrase(&["whenever", "this", "token"]),
+            primitives::phrase(&["this", "token"]),
+            primitives::phrase(&["those", "tokens"]),
+        ))
+        .value(TokenReminderSentenceKind::ExplicitTokenReference),
+    ))
+    .parse_next(input)
+}
+
+fn contains_reminder_reference(tokens: &[OwnedLexToken]) -> bool {
+    primitives::find_prefix(tokens, || {
+        alt((
+            primitives::kw("token"),
+            primitives::kw("tokens"),
+            primitives::kw("it"),
+            primitives::kw("them"),
+        ))
+    })
+    .is_some()
+}
+
+fn contains_delayed_lifecycle_timing(tokens: &[OwnedLexToken]) -> bool {
+    DELAYED_LIFECYCLE_TIMING_PHRASES
+        .iter()
+        .copied()
+        .any(|phrase| primitives::find_prefix(tokens, || primitives::phrase(phrase)).is_some())
+}
+
+pub(crate) fn parse_token_reminder_sentence_kind_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<TokenReminderSentenceKind> {
+    let (kind, _) = primitives::parse_prefix(tokens, token_reminder_sentence_head)?;
+    if kind == TokenReminderSentenceKind::DelayedLifecycle
+        && (!contains_delayed_lifecycle_timing(tokens) || !contains_reminder_reference(tokens))
+    {
+        return None;
+    }
+    Some(kind)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TokenReminderFacts {
+    pub(crate) dynamic_power_toughness: Option<(Value, Value)>,
+    pub(crate) has_haste: bool,
+    pub(crate) exile_at_end_of_combat: bool,
+    pub(crate) sacrifice_at_end_of_combat: bool,
+    pub(crate) sacrifice_at_next_end_step: bool,
+    pub(crate) exile_at_next_end_step: bool,
+    pub(crate) next_end_step_player: PlayerFilter,
+    pub(super) definition: TokenDefinitionReminderFacts,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(super) struct TokenDefinitionReminderFacts {
+    pub(super) keywords: Vec<TokenKeywordShape>,
+    pub(super) creature_rules: CreatureTokenRulesShape,
+    pub(super) equipment_rules:
+        Option<crate::runtime_backend::token_definition::EquipmentRulesShape>,
+    pub(super) artifact_leaves_damage_any_target: Option<i32>,
+    pub(super) vehicle_flying: bool,
+    pub(super) vehicle_crew_amount: Option<u32>,
+}
+
+#[path = "reminder/dynamic_power_toughness.rs"]
+mod dynamic_power_toughness;
+pub(crate) use dynamic_power_toughness::parse_token_dynamic_power_toughness_tokens;
+use dynamic_power_toughness::{normalized_reminder_words, parse_dynamic_power_toughness};
+
+pub(crate) fn parse_token_reminder_facts_tokens(tokens: &[OwnedLexToken]) -> TokenReminderFacts {
+    let raw_words = parser_token_word_refs(tokens);
+    let words = normalized_reminder_words(&raw_words);
+    let delay = effects::parse_next_end_step_delay_words(&words);
+    let end_of_combat = common::phrase_present(&words, &["end", "of", "combat"]);
+    let exile_at_end_of_combat = end_of_combat && common::word_present(&words, "exile");
+    let sacrifice_at_end_of_combat = end_of_combat && common::word_present(&words, "sacrifice");
+    let artifact_leaves_damage_any_target = common::all_words_present(
+        &words,
+        &[
+            "when",
+            "token",
+            "leaves",
+            "battlefield",
+            "deals",
+            "damage",
+            "target",
+        ],
+    )
+    .then(|| rules::damage_amount(&words))
+    .flatten();
+    let definition = TokenDefinitionReminderFacts {
+        keywords: surface::token_keywords(&words),
+        creature_rules: surface::creature_rules(tokens, &words, None),
+        equipment_rules: equipment::parse_equipment_rules_tokens(tokens),
+        artifact_leaves_damage_any_target,
+        vehicle_flying: common::word_present(&words, "flying"),
+        vehicle_crew_amount: rules::parse_token_crew_shape_words(&words).map(|shape| shape.amount),
+    };
+
+    TokenReminderFacts {
+        dynamic_power_toughness: parse_dynamic_power_toughness(&words),
+        has_haste: common::phrase_exact(&words, &["haste"]),
+        exile_at_end_of_combat,
+        sacrifice_at_end_of_combat,
+        sacrifice_at_next_end_step: delay
+            .as_ref()
+            .is_some_and(|facts| facts.sacrifice_reference),
+        exile_at_next_end_step: delay.as_ref().is_some_and(|facts| facts.exile_reference),
+        next_end_step_player: delay.map(|facts| facts.player).unwrap_or(PlayerFilter::Any),
+        definition,
+    }
+}
+
+#[cfg(test)]
+#[path = "reminder/tests.rs"]
+mod tests;

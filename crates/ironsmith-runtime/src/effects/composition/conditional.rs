@@ -132,7 +132,7 @@ fn evaluate_condition(
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::effect::Condition;
+    use crate::effect::{ChoiceCount, Condition};
     use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -145,8 +145,18 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_creature_card(card_id: u32, name: &str, symbol: ManaSymbol) -> crate::card::Card {
+        make_creature_card_with_symbols(card_id, name, &[symbol])
+    }
+
+    fn make_creature_card_with_symbols(
+        card_id: u32,
+        name: &str,
+        symbols: &[ManaSymbol],
+    ) -> crate::card::Card {
         CardBuilder::new(CardId::from_raw(card_id), name)
-            .mana_cost(ManaCost::from_pips(vec![vec![symbol]]))
+            .mana_cost(ManaCost::from_pips(
+                symbols.iter().copied().map(|symbol| vec![symbol]).collect(),
+            ))
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build()
@@ -160,6 +170,19 @@ mod tests {
     ) -> crate::ids::ObjectId {
         let id = game.new_object_id();
         let card = make_creature_card(id.0 as u32, name, symbol);
+        let obj = crate::object::Object::from_card(id, &card, controller, Zone::Battlefield);
+        game.add_object(obj);
+        id
+    }
+
+    fn create_creature_with_symbols(
+        game: &mut crate::game_state::GameState,
+        name: &str,
+        controller: PlayerId,
+        symbols: &[ManaSymbol],
+    ) -> crate::ids::ObjectId {
+        let id = game.new_object_id();
+        let card = make_creature_card_with_symbols(id.0 as u32, name, symbols);
         let obj = crate::object::Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
         id
@@ -287,6 +310,96 @@ mod tests {
                 .shields()
                 .is_empty(),
             "expected no shield for nonmatching target"
+        );
+    }
+
+    #[test]
+    fn conditional_target_color_sets_destroy_only_when_sets_are_equal() {
+        let mut same_game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let same_first = create_creature_with_symbols(
+            &mut same_game,
+            "First Blue-Red Creature",
+            bob,
+            &[ManaSymbol::Blue, ManaSymbol::Red],
+        );
+        let same_second = create_creature_with_symbols(
+            &mut same_game,
+            "Second Blue-Red Creature",
+            bob,
+            &[ManaSymbol::Red, ManaSymbol::Blue],
+        );
+        let same_spec =
+            ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2));
+        let same_effect = Effect::new(ConditionalEffect::if_only(
+            Condition::Not(Box::new(Condition::TargetObjectsHaveDifferentColorSets)),
+            vec![Effect::new(crate::effects::DestroyEffect::with_spec(
+                same_spec.clone(),
+            ))],
+        ));
+        let mut same_ctx = ExecutionContext::new_default(same_game.new_object_id(), alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(same_first),
+                ResolvedTarget::Object(same_second),
+            ])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: same_spec,
+                range: 0..2,
+            }]);
+
+        execute_effect(&mut same_game, &same_effect, &mut same_ctx)
+            .expect("equal target color sets should resolve");
+        assert!(
+            [same_first, same_second].into_iter().all(|id| same_game
+                .object(id)
+                .is_none_or(|object| object.zone != Zone::Battlefield)),
+            "both equal-color-set targets should be destroyed"
+        );
+
+        let mut different_game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let different_first = create_creature_with_symbols(
+            &mut different_game,
+            "Blue-Red Creature",
+            bob,
+            &[ManaSymbol::Blue, ManaSymbol::Red],
+        );
+        let different_second = create_creature_with_symbols(
+            &mut different_game,
+            "Red Creature",
+            bob,
+            &[ManaSymbol::Red],
+        );
+        let different_spec =
+            ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2));
+        let different_effect = Effect::new(ConditionalEffect::if_only(
+            Condition::Not(Box::new(Condition::TargetObjectsHaveDifferentColorSets)),
+            vec![Effect::new(crate::effects::DestroyEffect::with_spec(
+                different_spec.clone(),
+            ))],
+        ));
+        let mut different_ctx =
+            ExecutionContext::new_default(different_game.new_object_id(), alice)
+                .with_targets(vec![
+                    ResolvedTarget::Object(different_first),
+                    ResolvedTarget::Object(different_second),
+                ])
+                .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                    spec: different_spec,
+                    range: 0..2,
+                }]);
+
+        execute_effect(&mut different_game, &different_effect, &mut different_ctx)
+            .expect("different target color sets should resolve");
+        assert!(
+            [different_first, different_second]
+                .into_iter()
+                .all(|id| different_game
+                    .object(id)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)),
+            "overlapping but unequal color sets must prevent destruction"
         );
     }
 }

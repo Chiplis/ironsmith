@@ -105,6 +105,42 @@ pub(super) fn queue_triggers_for_events(
     }
 }
 
+/// Queue trigger matches for events produced by one simultaneous game action.
+///
+/// Every event is recorded before matching, then trigger checks share a single
+/// derived view and registry for the stable post-action state.
+pub(super) fn queue_triggers_for_simultaneous_events(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    events: Vec<TriggerEvent>,
+) {
+    let events = events
+        .into_iter()
+        .map(|event| game.ensure_trigger_event_provenance(event))
+        .collect::<Vec<_>>();
+    for event in &events {
+        game.record_turn_history_event(event);
+    }
+
+    let trigger_groups = check_triggers_batch(game, &events);
+    let mut speed_controllers = std::collections::HashSet::new();
+    for (event, triggers) in events.iter().zip(trigger_groups) {
+        for trigger in triggers {
+            if crate::triggers::check::is_speed_rule_trigger(&trigger) {
+                if !speed_controllers.insert(trigger.controller) {
+                    continue;
+                }
+                game.mark_speed_increase_triggered_this_turn(trigger.controller);
+            }
+            trigger_queue.add(trigger);
+        }
+
+        if let Some(cast) = event.downcast::<crate::events::spells::SpellCastEvent>() {
+            game.consume_temporary_spell_ability_grants_for_spell(cast.spell, cast.caster);
+        }
+    }
+}
+
 pub(super) fn target_events_from_targets(
     targets: &[Target],
     source: ObjectId,
@@ -384,7 +420,7 @@ pub(super) fn apply_keyword_payment_tags_for_resolution(
 }
 
 /// Drain pending death and custom trigger events and enqueue all matches.
-fn simultaneous_sba_ltb_batch_events(pending_events: &[TriggerEvent]) -> Vec<TriggerEvent> {
+fn simultaneous_rule_ltb_batch_events(pending_events: &[TriggerEvent]) -> Vec<TriggerEvent> {
     use crate::events::cause::CauseType;
     use crate::events::zones::ZoneChangeEvent;
 
@@ -396,7 +432,10 @@ fn simultaneous_sba_ltb_batch_events(pending_events: &[TriggerEvent]) -> Vec<Tri
         };
         if zone_change.from != crate::zone::Zone::Battlefield
             || zone_change.to == crate::zone::Zone::Battlefield
-            || zone_change.cause.cause_type != CauseType::StateBasedAction
+            || !matches!(
+                zone_change.cause.cause_type,
+                CauseType::StateBasedAction | CauseType::LegendRule
+            )
         {
             continue;
         }
@@ -490,7 +529,7 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
         if pending_events.is_empty() {
             break;
         }
-        let batch_lki_events = simultaneous_sba_ltb_batch_events(&pending_events);
+        let batch_lki_events = simultaneous_rule_ltb_batch_events(&pending_events);
         for event in pending_events {
             let source_leave = event
                 .downcast::<crate::events::zones::ZoneChangeEvent>()

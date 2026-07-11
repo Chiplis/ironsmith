@@ -136,13 +136,29 @@ fn reconcile_may_decider_scoped_search_effect(
         ));
     }
 
-    if force_search_scope
-        && !matches!(decider, PlayerFilter::You)
+    if !matches!(decider, PlayerFilter::You)
+        && let Some(shuffle) =
+            effect.downcast_ref::<crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect>()
+        && shuffle.player == PlayerFilter::You
+    {
+        return Effect::shuffle_hand_and_graveyard_into_library_player(decider.clone());
+    }
+
+    if !matches!(decider, PlayerFilter::You)
+        && let Some(shuffle) =
+            effect.downcast_ref::<crate::effects::ShuffleGraveyardIntoLibraryEffect>()
+        && shuffle.player == PlayerFilter::You
+    {
+        return Effect::shuffle_graveyard_into_library_player(decider.clone());
+    }
+
+    if !matches!(decider, PlayerFilter::You)
         && let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
         && choose.is_search
         && choose.zone == Some(Zone::Library)
-        && choose.chooser == PlayerFilter::You
         && choose.filter.owner == Some(PlayerFilter::You)
+        && (&choose.chooser == decider
+            || (force_search_scope && choose.chooser == PlayerFilter::You))
     {
         let mut choose = choose.clone();
         choose.chooser = decider.clone();
@@ -249,7 +265,17 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             if compiled_effects_are_play_permissions(&inner_effects) {
                 return Ok(Some((inner_effects, inner_choices)));
             }
-            let effect = Effect::may(inner_effects);
+            let effect = if ctx.iterated_player
+                && ctx.last_player_filter.as_ref() == Some(&PlayerFilter::IteratedPlayer)
+            {
+                let inner_effects = reconcile_may_decider_scoped_search_effects(
+                    inner_effects,
+                    &PlayerFilter::IteratedPlayer,
+                );
+                Effect::may_player(PlayerFilter::IteratedPlayer, inner_effects)
+            } else {
+                Effect::may(inner_effects)
+            };
             (vec![effect], inner_choices)
         }
         EffectAst::MayByPlayer { player, effects } => {
@@ -458,6 +484,39 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             (vec![effect], inner_choices)
         }
         EffectAst::ForEachPlayer { effects } => {
+            if let [
+                EffectAst::May {
+                    effects: may_effects,
+                },
+            ] = effects.as_slice()
+                && let Some((followup, antecedent_may_effects)) = may_effects.split_last()
+                && !antecedent_may_effects.is_empty()
+                && matches!(followup, EffectAst::ForEachOpponentDoesNot { .. })
+            {
+                let antecedent = EffectAst::ForEachPlayer {
+                    effects: vec![EffectAst::May {
+                        effects: antecedent_may_effects.to_vec(),
+                    }],
+                };
+                if let Some((effects, choices)) =
+                    compile_if_do_with_opponent_doesnt(&antecedent, followup, ctx)?
+                {
+                    return Ok(Some((effects, choices)));
+                }
+            }
+            if let Some((followup, antecedent_effects)) = effects.split_last()
+                && !antecedent_effects.is_empty()
+                && matches!(followup, EffectAst::ForEachOpponentDoesNot { .. })
+            {
+                let antecedent = EffectAst::ForEachPlayer {
+                    effects: antecedent_effects.to_vec(),
+                };
+                if let Some((effects, choices)) =
+                    compile_if_do_with_opponent_doesnt(&antecedent, followup, ctx)?
+                {
+                    return Ok(Some((effects, choices)));
+                }
+            }
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
             let effect =

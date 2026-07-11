@@ -1,0 +1,88 @@
+use winnow::combinator::alt;
+use winnow::prelude::*;
+
+use crate::runtime_backend::front_end::grammar::primitives;
+use crate::runtime_backend::front_end::lexer::{OwnedLexToken, TokenWordView};
+
+use super::common::{
+    first_choice_damage_word_is, has_all_or_each_at, has_choice_damage_condition_boundary,
+    has_if_or_unless_shape, is_up_to_one_target_shape,
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DestroyMultiTargetShape {
+    pub(crate) target_start_word: usize,
+    pub(crate) repeated_target_words: bool,
+    pub(crate) has_followup_tail: bool,
+}
+
+pub(crate) fn up_to_one_target_word_starts(words: &[&str]) -> Vec<usize> {
+    let mut starts = Vec::new();
+    let mut offset = 0usize;
+    while offset + 4 <= words.len() {
+        if is_up_to_one_target_shape(&words[offset..offset + 4]) {
+            starts.push(offset);
+        }
+        offset += 1;
+    }
+    starts
+}
+
+fn has_target_separator(tokens: &[OwnedLexToken]) -> bool {
+    primitives::find_prefix(tokens, || {
+        alt((primitives::comma().void(), primitives::kw("and").void()))
+    })
+    .is_some()
+}
+
+pub(crate) fn parse_destroy_multi_target_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<DestroyMultiTargetShape> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    if !first_choice_damage_word_is(&words, "destroy")
+        || has_all_or_each_at(&words, 1)
+        || has_if_or_unless_shape(&words)
+        || words.len() <= 1
+    {
+        return None;
+    }
+    let target_words = &words[1..];
+    let repeated_up_to_one = up_to_one_target_word_starts(target_words).len() >= 2;
+    if !has_target_separator(tokens) && !repeated_up_to_one {
+        return None;
+    }
+    let mut target_count = 0usize;
+    let mut offset = 0usize;
+    while offset < target_words.len() {
+        if target_words.get(offset).copied() == Some("target") {
+            target_count += 1;
+        }
+        offset += 1;
+    }
+    Some(DestroyMultiTargetShape {
+        target_start_word: 1,
+        repeated_target_words: target_count > 1,
+        has_followup_tail: has_choice_damage_condition_boundary(target_words),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn identifies_destroy_fanout_and_repeated_target_starts() {
+        let tokens = lex_line(
+            "Destroy up to one target artifact and up to one target enchantment.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_destroy_multi_target_shape(&tokens).unwrap();
+        assert!(shape.repeated_target_words);
+        assert_eq!(
+            up_to_one_target_word_starts(&TokenWordView::new(&tokens).to_word_refs()),
+            [1, 7]
+        );
+    }
+}

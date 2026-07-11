@@ -109,6 +109,7 @@ function instrumentWasmGameClass(WasmGame) {
 export function packageBase(pkg = "root") {
   if (pkg === "root") return "../pkg";
   if (pkg === "demo") return "../web/wasm_demo/pkg";
+  if (pkg === "bench") return "../target/bench-wasm-pkg";
   throw new Error(`unknown wasm package: ${pkg}`);
 }
 

@@ -1,223 +1,35 @@
-use super::super::grammar::structure;
-use super::super::lex_patterns::LexPattern;
-use super::super::util::{parse_card_type, parse_color, parse_subtype_flexible};
+use super::super::grammar::{
+    keyword_static_lines, line_families, line_family_rewrites, semantic_lowering, structure,
+};
 use super::*;
 use crate::parse_trace;
 
-const ADDITIONAL_LAND_PLAY_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["you", "may", "play"])]);
-const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&[
-        "a", "deck", "can", "have", "any", "number", "of", "cards", "named",
-    ])]);
-const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN: usize = 9;
-const FIRST_EQUIP_COST_ALTERNATIVE_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["you", "may", "pay"])]);
-const CAN_BLOCK_ADDITIONAL_CREATURES_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["this", "creature", "can", "block", "an", "additional"]),
-]);
-
 fn line_starts_with_effect_statement_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let sentences = structure::split_lexed_sentences(tokens)
-        .into_iter()
-        .filter(|sentence| !sentence.is_empty())
-        .collect::<Vec<_>>();
-    if sentences.len() <= 1 {
-        return false;
-    }
-    let Some(first_sentence) = sentences.first() else {
-        return false;
-    };
-    if structure::classify_statement_line_family_lexed(first_sentence).is_some() {
-        return true;
-    }
-    let first_words = first_sentence
-        .iter()
-        .filter_map(OwnedLexToken::as_word)
-        .collect::<Vec<_>>();
-    if matches!(
-        first_words.as_slice(),
-        ["any", "player" | "opponent", "may", "have", ..]
-    ) && first_words
-        .iter()
-        .any(|word| matches!(*word, "deal" | "deals"))
-    {
-        return true;
-    }
-    first_sentence.first().is_some_and(|token| {
-        token.is_word("add")
-            || token.is_word("choose")
-            || token.is_word("counter")
-            || token.is_word("create")
-            || token.is_word("deal")
-            || token.is_word("destroy")
-            || token.is_word("discard")
-            || token.is_word("draw")
-            || token.is_word("exchange")
-            || token.is_word("exile")
-            || token.is_word("gain")
-            || token.is_word("look")
-            || token.is_word("mill")
-            || token.is_word("put")
-            || token.is_word("return")
-            || token.is_word("reveal")
-            || token.is_word("sacrifice")
-            || token.is_word("search")
-            || token.is_word("shuffle")
-            || token.is_word("surveil")
-            || token.is_word("tap")
-            || token.is_word("untap")
-    })
-}
-
-fn token_word_is_effect_head(word: &str) -> bool {
-    matches!(
-        word,
-        "add"
-            | "choose"
-            | "counter"
-            | "create"
-            | "deal"
-            | "destroy"
-            | "discard"
-            | "draw"
-            | "exchange"
-            | "exile"
-            | "gain"
-            | "look"
-            | "mill"
-            | "put"
-            | "return"
-            | "reveal"
-            | "sacrifice"
-            | "search"
-            | "shuffle"
-            | "surveil"
-            | "tap"
-            | "untap"
-    )
-}
-
-fn token_word_is_filter_list_atom(word: &str) -> bool {
-    parse_color(word).is_some()
-        || parse_card_type(word).is_some()
-        || parse_subtype_flexible(word).is_some()
+    line_families::parse_multi_sentence_effect_head(tokens).is_some()
 }
 
 fn comma_split_tail_starts_with_filter_list_continuation(tokens: &[OwnedLexToken]) -> bool {
-    let mut saw_filter_atom = false;
-    let mut saw_list_separator = false;
-
-    for token in tokens {
-        if token.kind == TokenKind::Period {
-            break;
-        }
-        if token.kind == TokenKind::Comma {
-            if saw_filter_atom {
-                saw_list_separator = true;
-            }
-            continue;
-        }
-
-        if token.as_word().is_none() {
-            continue;
-        }
-        let word = token.parser_text();
-
-        if token_word_is_effect_head(word) || word == "if" {
-            break;
-        }
-
-        if matches!(word, "and" | "or") {
-            saw_list_separator = true;
-            continue;
-        }
-
-        if matches!(
-            word,
-            "a" | "an"
-                | "the"
-                | "of"
-                | "on"
-                | "in"
-                | "with"
-                | "that"
-                | "thats"
-                | "that's"
-                | "is"
-                | "are"
-                | "battlefield"
-        ) {
-            continue;
-        }
-
-        if token_word_is_filter_list_atom(word) {
-            saw_filter_atom = true;
-            continue;
-        }
-
-        break;
-    }
-
-    saw_filter_atom && saw_list_separator
-}
-
-fn strip_terminal_period_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    if tokens
-        .last()
-        .is_some_and(|token| token.kind == TokenKind::Period)
-    {
-        &tokens[..tokens.len().saturating_sub(1)]
-    } else {
-        tokens
-    }
+    line_families::parse_filter_list_continuation(tokens).is_some()
 }
 
 fn rewrite_count_that_number_life_total_trigger_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
-    let (trigger_tokens, effect_tokens) = grammar::split_lexed_once_on_comma(tokens)?;
-    let sentences = structure::split_lexed_sentences(effect_tokens)
-        .into_iter()
-        .filter(|sentence| !sentence.is_empty())
-        .collect::<Vec<_>>();
-    if sentences.len() != 2 {
-        return None;
-    }
+    let parsed = line_family_rewrites::parse_count_that_number_life_total_rewrite_tokens(tokens)?;
 
-    let count_sentence = strip_terminal_period_tokens(sentences[0]);
-    if !token_slice_first_is(count_sentence, "count") {
-        return None;
-    }
-    let count_value_tokens = count_sentence.get(1..)?;
-    let count_value_words = token_word_refs(count_value_tokens);
-    if !matches!(
-        count_value_words.as_slice(),
-        ["the", "number", "of", ..] | ["number", "of", ..]
-    ) {
-        return None;
-    }
-
-    let life_sentence = strip_terminal_period_tokens(sentences[1]);
-    let becomes_idx = find_token_word(life_sentence, "becomes")?;
-    let subject_tokens = &life_sentence[..becomes_idx];
-    let amount_tokens = &life_sentence[becomes_idx + 1..];
-    let amount_words = token_word_refs(amount_tokens);
-    if !matches!(amount_words.as_slice(), ["that", "number"]) {
-        return None;
-    }
-    let subject_words = token_word_refs(subject_tokens);
-    if !matches!(subject_words.as_slice(), [.., "life", "total"]) {
-        return None;
-    }
-
-    let rewritten = format!(
-        "{}, {} becomes {}.",
-        render_token_slice(trigger_tokens).trim(),
-        render_token_slice(subject_tokens).trim(),
-        render_token_slice(count_value_tokens).trim()
+    let mut rewritten = Vec::with_capacity(
+        parsed.trigger_tokens.len()
+            + parsed.subject_tokens.len()
+            + parsed.count_value_tokens.len()
+            + 3,
     );
-    lex_line(rewritten.as_str(), 0).ok()
+    rewritten.extend_from_slice(parsed.trigger_tokens);
+    rewritten.push(OwnedLexToken::comma(TextSpan::synthetic()));
+    rewritten.extend_from_slice(parsed.subject_tokens);
+    rewritten.push(OwnedLexToken::word("becomes", TextSpan::synthetic()));
+    rewritten.extend_from_slice(parsed.count_value_tokens);
+    rewritten.push(OwnedLexToken::period(TextSpan::synthetic()));
+    Some(rewritten)
 }
 
 pub(super) fn parse_triggered_line_cst(
@@ -446,8 +258,8 @@ pub(super) fn parse_triggered_line_cst(
                 effect_parse_tokens: Vec::new(),
                 max_triggers_per_turn: trailing_cap,
                 intervening_if: None,
-                presentation_label: None,
-                chosen_option_label: None,
+                presentation: None,
+                chosen_option: None,
             })
         }
         Err(err) => Err(best_probe_error.unwrap_or(err)),
@@ -462,11 +274,12 @@ pub(super) fn parse_static_line_cst(
     if line_starts_with_effect_statement_sentence(&parse_tokens) {
         return Ok(None);
     }
-    let make_static = |chosen_option_label: Option<String>| StaticLineCst {
+    let make_static = |chosen_option: Option<ChosenOptionContext>| StaticLineCst {
         info: line.info.clone(),
         text: normalized.to_string(),
         parse_tokens: parse_tokens.clone(),
-        chosen_option_label,
+        chosen_option,
+        parsed: None,
     };
     let lexed = &parse_tokens;
     if super::super::families::keyword_static::parse_double_counters_replacement_line(lexed)?
@@ -483,9 +296,8 @@ pub(super) fn parse_static_line_cst(
             | "players can't pay life or sacrifice nonland permanents to cast spells or activate abilities."
             | "creatures you control can boast twice during each of your turns rather than once."
             | "you may activate equip abilities any time you could cast an instant."
-            | "while voting, you may vote an additional time."
-            | "while voting, you get an additional vote."
-    ) || is_first_equip_cost_alternative_line(lexed)
+    ) || keyword_static_lines::parse_additional_vote_tokens(lexed).is_some()
+        || is_first_equip_cost_alternative_line(lexed)
         || is_additional_land_play_static_line(lexed)
         || is_can_block_additional_creatures_static_line(lexed)
         || is_any_number_named_deck_construction_line(lexed)
@@ -527,7 +339,7 @@ pub(super) fn parse_static_line_cst(
         return Ok(Some(make_static(None)));
     }
 
-    if split_compound_buff_and_unblockable_sentence(&lexed).is_some() {
+    if effect_grammar::parse_compound_buff_unblockable_tokens(&lexed).is_some() {
         return Ok(Some(make_static(None)));
     }
 
@@ -557,55 +369,27 @@ pub(super) fn parse_static_line_cst(
 }
 
 fn is_any_number_named_deck_construction_line(tokens: &[OwnedLexToken]) -> bool {
-    let words = token_word_refs(tokens);
-    ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN.matches_prefix(LexedClause::new(tokens))
-        && words.len() > ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN
+    matches!(
+        semantic_lowering::parse_static_special_line_tokens(tokens),
+        Some(semantic_lowering::StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
+    )
 }
 
 /// Recognizes "you may pay {COST} rather than pay the equip cost of the first
 /// equip ability you activate each turn." and the variant "during each of your turns."
 fn is_first_equip_cost_alternative_line(tokens: &[OwnedLexToken]) -> bool {
-    let clause = LexedClause::new(tokens);
-    FIRST_EQUIP_COST_ALTERNATIVE_PREFIX_PATTERN.matches_prefix(clause)
-        && contains_token_word_sequence(
-            tokens,
-            &[
-                "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip",
-                "ability", "you", "activate",
-            ],
-        )
-        && clause.ends_with_any(&[
-            &["each", "turn"],
-            &["during", "each", "of", "your", "turns"],
-        ])
-}
-
-fn is_additional_land_play_static_line(tokens: &[OwnedLexToken]) -> bool {
-    let words = token_word_refs(tokens);
-    if !ADDITIONAL_LAND_PLAY_PREFIX_PATTERN.matches_prefix(LexedClause::new(tokens)) {
-        return false;
-    }
-    let Some((_, used)) = ironsmith_core::parse_cardinal_words(&words[3..]) else {
-        return false;
-    };
     matches!(
-        words.get(3 + used..),
-        Some([
-            "additional",
-            "land" | "lands",
-            "on",
-            "each",
-            "of",
-            "your",
-            "turns"
-        ])
+        semantic_lowering::parse_static_special_line_tokens(tokens),
+        Some(semantic_lowering::StaticSpecialLineShape::FirstEquipCostAlternative)
     )
 }
 
+fn is_additional_land_play_static_line(tokens: &[OwnedLexToken]) -> bool {
+    semantic_lowering::parse_additional_land_play_count_tokens(tokens).is_some()
+}
+
 fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
-    let clause = LexedClause::new(tokens);
-    CAN_BLOCK_ADDITIONAL_CREATURES_PREFIX_PATTERN.matches_prefix(clause)
-        && clause.ends_with_any(&[&["each", "combat"], &["this", "turn"]])
+    keyword_static_lines::parse_can_block_additional_creature_tokens(tokens).is_some()
 }
 
 fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usize>, CardTextError> {
@@ -653,7 +437,7 @@ pub(super) fn strict_unsupported_triggered_line_error(
 ) -> CardTextError {
     match err {
         Some(CardTextError::ParseError(message))
-            if str_contains(message.as_str(), "unsupported trigger clause") =>
+            if message.contains("unsupported trigger clause") =>
         {
             CardTextError::ParseError(format!("unsupported triggered line: '{raw_line}'"))
         }
@@ -738,41 +522,7 @@ pub(super) fn parse_modal_mode_cst(line: &PreprocessedLine) -> Result<ModalModeC
 }
 
 fn leading_modal_point_cost_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
-    let mut count = 0u32;
-    let mut idx = 0usize;
-    if tokens
-        .get(idx)
-        .is_some_and(|token| matches!(token.kind, TokenKind::Bullet | TokenKind::Dash))
-    {
-        idx += 1;
-    }
-    while let Some(point_count) = tokens.get(idx).and_then(pawprint_modal_label_count) {
-        count += point_count;
-        idx += 1;
-    }
-    if count == 0 {
-        return None;
-    }
-    tokens
-        .get(idx)
-        .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
-        .then_some(count)
-}
-
-fn pawprint_modal_label_count(token: &OwnedLexToken) -> Option<u32> {
-    match token.kind {
-        TokenKind::ManaGroup => {
-            let mut rest = token.parser_text();
-            let mut count = 0u32;
-            while let Some(stripped) = rest.strip_prefix("{p}") {
-                count += 1;
-                rest = stripped;
-            }
-            (count > 0 && rest.is_empty()).then_some(count)
-        }
-        TokenKind::Word if token.parser_text() == "p" => Some(1),
-        _ => None,
-    }
+    super::super::grammar::modal::parse_modal_point_label_tokens(tokens).map(|shape| shape.count)
 }
 
 fn strip_modal_bullet_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {

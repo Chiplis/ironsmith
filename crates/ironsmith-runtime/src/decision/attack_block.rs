@@ -35,26 +35,41 @@ fn static_abilities_for_attack_preview(
         })
 }
 
-fn defending_player_for_attack_target(game: &GameState, target: &AttackTarget) -> Option<PlayerId> {
-    match target {
-        AttackTarget::Player(player) => Some(*player),
-        AttackTarget::Planeswalker(planeswalker) => game
-            .object(*planeswalker)
-            .map(|object| game.controller_of(object)),
-    }
-}
-
 fn required_attack_players_for_attack_preview(
     game: &GameState,
     attacker: &crate::object::Object,
-    view: &DerivedGameView<'_>,
+    abilities: &[crate::static_abilities::StaticAbility],
 ) -> Vec<PlayerId> {
-    static_abilities_for_attack_preview(view, attacker)
-        .into_iter()
+    abilities
+        .iter()
         .filter_map(|ability| {
             ability.required_attack_player(game, attacker.id, game.controller_of(attacker))
         })
         .collect()
+}
+
+fn active_goaders_for_attack_preview(
+    game: &GameState,
+    attacker: &crate::object::Object,
+    abilities: &[crate::static_abilities::StaticAbility],
+) -> std::collections::HashSet<PlayerId> {
+    let current_turn = game.turn.turn_number;
+    let mut goaders = game
+        .effect_store
+        .goad_effects
+        .iter()
+        .filter(|effect| effect.creature == attacker.id && effect.is_active(game, current_turn))
+        .map(|effect| effect.goaded_by)
+        .collect::<std::collections::HashSet<_>>();
+
+    let controller = game.controller_of(attacker);
+    for ability in abilities {
+        if let Some(player) = ability.goaded_by_player(game, attacker.id, controller) {
+            goaders.insert(player);
+        }
+    }
+
+    goaders
 }
 
 fn generic_attack_tax_preview(
@@ -103,12 +118,11 @@ fn generic_attack_tax_preview(
 fn can_declare_attack_target_preview(
     game: &GameState,
     attacker: &crate::object::Object,
-    target: &AttackTarget,
+    defending_player: PlayerId,
+    generic_attack_tax: u32,
+    abilities: &[crate::static_abilities::StaticAbility],
     view: &DerivedGameView<'_>,
 ) -> bool {
-    let Some(defending_player) = defending_player_for_attack_target(game, target) else {
-        return false;
-    };
     if !crate::rules::combat::can_attack_defending_player_with_view(
         attacker,
         defending_player,
@@ -118,7 +132,6 @@ fn can_declare_attack_target_preview(
         return false;
     }
 
-    let abilities = static_abilities_for_attack_preview(view, attacker);
     if abilities.iter().any(|ability| {
         ability
             .can_pay_attack_cost(game, attacker.id, game.controller_of(attacker))
@@ -127,20 +140,17 @@ fn can_declare_attack_target_preview(
         return false;
     }
 
-    let total_generic_cost = abilities.iter().fold(
-        generic_attack_tax_preview(game, defending_player, view),
-        |acc, ability| {
-            acc.saturating_add(
-                ability
-                    .generic_attack_mana_cost_for_source(
-                        game,
-                        attacker.id,
-                        game.controller_of(attacker),
-                    )
-                    .unwrap_or(0),
-            )
-        },
-    );
+    let total_generic_cost = abilities.iter().fold(generic_attack_tax, |acc, ability| {
+        acc.saturating_add(
+            ability
+                .generic_attack_mana_cost_for_source(
+                    game,
+                    attacker.id,
+                    game.controller_of(attacker),
+                )
+                .unwrap_or(0),
+        )
+    });
 
     total_generic_cost == 0
         || game.can_pay_mana_cost(
@@ -153,10 +163,50 @@ fn can_declare_attack_target_preview(
 
 /// Compute legal attackers for the active player.
 pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<AttackerOption> {
+    let view = DerivedGameView::new(game);
+    compute_legal_attackers_with_view(game, _combat, &view)
+}
+
+pub(crate) fn compute_legal_attackers_with_view(
+    game: &GameState,
+    _combat: &CombatState,
+    view: &DerivedGameView<'_>,
+) -> Vec<AttackerOption> {
+    use crate::FxMap;
+
     let mut options = Vec::new();
     let active_player = game.turn.active_player;
     let mut attack_capable = Vec::new();
-    let view = DerivedGameView::new(game);
+
+    // Attack targets and defender-wide taxes are independent of the attacking
+    // creature. Build them once instead of rescanning the battlefield for each
+    // candidate attacker.
+    let mut attack_targets = Vec::new();
+    for opponent in &game.players {
+        if opponent.id != active_player && opponent.is_in_game() {
+            attack_targets.push((AttackTarget::Player(opponent.id), opponent.id));
+        }
+    }
+    for &other_perm_id in &game.battlefield {
+        let Some(other_perm) = game.object(other_perm_id) else {
+            continue;
+        };
+        if game.controller_of(other_perm) != active_player
+            && view.object_has_card_type(other_perm_id, crate::types::CardType::Planeswalker)
+        {
+            attack_targets.push((
+                AttackTarget::Planeswalker(other_perm_id),
+                game.controller_of(other_perm),
+            ));
+        }
+    }
+
+    let mut generic_attack_taxes = FxMap::default();
+    for &(_, defending_player) in &attack_targets {
+        generic_attack_taxes
+            .entry(defending_player)
+            .or_insert_with(|| generic_attack_tax_preview(game, defending_player, view));
+    }
 
     for &perm_id in &game.battlefield {
         let Some(perm) = game.object(perm_id) else {
@@ -168,7 +218,7 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
         if !view.object_has_card_type(perm_id, crate::types::CardType::Creature) {
             continue;
         }
-        if crate::rules::combat::can_attack_with_view(perm, game, &view) {
+        if crate::rules::combat::can_attack_with_view(perm, game, view) {
             attack_capable.push(perm_id);
         }
     }
@@ -183,7 +233,8 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
             continue;
         }
 
-        let goaded_by = game.active_goaders_for(perm.id);
+        let abilities = static_abilities_for_attack_preview(view, perm);
+        let goaded_by = active_goaders_for_attack_preview(game, perm, &abilities);
 
         // Determine valid attack targets
         let mut legal_targets = Vec::new();
@@ -192,39 +243,30 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
         let mut goad_targets = Vec::new();
         let mut nongoad_targets = Vec::new();
 
-        for opponent in &game.players {
-            if opponent.id != active_player && opponent.is_in_game() {
-                let target = AttackTarget::Player(opponent.id);
-                if can_declare_attack_target_preview(game, perm, &target, &view) {
-                    legal_targets.push(target.clone());
-                    if goaded_by.contains(&opponent.id) {
-                        goad_targets.push(target);
-                    } else {
-                        nongoad_targets.push(target);
-                    }
+        for (target, defending_player) in &attack_targets {
+            let generic_attack_tax = generic_attack_taxes
+                .get(defending_player)
+                .copied()
+                .unwrap_or(0);
+            if can_declare_attack_target_preview(
+                game,
+                perm,
+                *defending_player,
+                generic_attack_tax,
+                &abilities,
+                view,
+            ) {
+                legal_targets.push(target.clone());
+                if goaded_by.contains(defending_player) {
+                    goad_targets.push(target.clone());
+                } else {
+                    nongoad_targets.push(target.clone());
                 }
             }
         }
 
-        // Can attack planeswalkers controlled by opponents
-        for &other_perm_id in &game.battlefield {
-            if let Some(other_perm) = game.object(other_perm_id)
-                && game.controller_of(other_perm) != active_player
-                && view.object_has_card_type(other_perm_id, crate::types::CardType::Planeswalker)
-            {
-                let target = AttackTarget::Planeswalker(other_perm_id);
-                if can_declare_attack_target_preview(game, perm, &target, &view) {
-                    legal_targets.push(target.clone());
-                    if goaded_by.contains(&game.controller_of(other_perm)) {
-                        goad_targets.push(target);
-                    } else {
-                        nongoad_targets.push(target);
-                    }
-                }
-            }
-        }
-
-        let required_attack_players = required_attack_players_for_attack_preview(game, perm, &view);
+        let required_attack_players =
+            required_attack_players_for_attack_preview(game, perm, &abilities);
         let required_player_targets = legal_targets
             .iter()
             .filter(|target| match target {
@@ -248,7 +290,10 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
                 AttackTarget::Player(player) => required_attack_players.contains(player),
                 AttackTarget::Planeswalker(_) => false,
             });
-        let must_attack = crate::rules::combat::must_attack_with_view(perm, game, &view)
+        let must_attack = abilities
+            .iter()
+            .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::MustAttack)
+            || !goaded_by.is_empty()
             || has_required_attack_target;
 
         if !valid_targets.is_empty() {

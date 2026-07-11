@@ -1,7 +1,6 @@
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
-use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::CardDefinition;
-use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
+use crate::cards::builders::CardTextError;
 use crate::continuous::{EffectTarget, Modification};
 use crate::cost::OptionalCostKind;
 use crate::effect::{
@@ -15,150 +14,10 @@ use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::{Trigger, TriggerKind};
 use crate::types::CardType;
 use crate::zone::Zone;
-use ironsmith_core::{EffectMetric, EffectMetricSource};
 
-use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
-use super::lexer::{
-    LexedClause, lex_line, parser_token_word_refs, token_word_refs, word_slice_contains_any_phrase,
-    word_slice_contains_phrase,
-};
+use super::ir::{DelayedScheduleSurface, DocumentSemanticFacts};
 
-const BACKUP_PLACEHOLDER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::word("backup"),
-    LexPattern::amount("amount", LexCaptureKind::WordCount(1)),
-]);
-
-fn line_starts_with_keyword(line: &str, keyword: &str) -> bool {
-    lex_line(line.trim_start(), 0).ok().is_some_and(|tokens| {
-        parser_token_word_refs(&tokens)
-            .first()
-            .is_some_and(|word| *word == keyword)
-    })
-}
-
-fn overload_rewritten_text(text: &str) -> Option<String> {
-    let mut rewritten_lines = Vec::new();
-    let mut saw_overload = false;
-
-    for line in text.lines() {
-        if line_starts_with_keyword(line, "overload") {
-            saw_overload = true;
-            continue;
-        }
-        rewritten_lines.push(crate::cards::builders::replace_whole_word_case_insensitive(
-            line, "target", "each",
-        ));
-    }
-
-    saw_overload.then(|| rewritten_lines.join("\n"))
-}
-
-fn finalize_overload_definitions(
-    mut definition: CardDefinition,
-    original_builder: &CardDefinitionBuilder,
-    original_text: &str,
-) -> Result<CardDefinition, CardTextError> {
-    let Some(rewritten_text) = overload_rewritten_text(original_text) else {
-        return Ok(definition);
-    };
-
-    if !definition
-        .alternative_casts
-        .iter()
-        .any(|method| matches!(method, AlternativeCastingMethod::Overload { .. }))
-    {
-        return Ok(definition);
-    }
-
-    let overload_builder = original_builder.clone();
-    let (overloaded_definition, _) =
-        super::parse_text_with_annotations(overload_builder, rewritten_text, false)?;
-    let overloaded_effects = overloaded_definition.spell_effect.unwrap_or_default();
-
-    for method in &mut definition.alternative_casts {
-        if let AlternativeCastingMethod::Overload { effects, .. } = method {
-            *effects = overloaded_effects.to_vec();
-        }
-    }
-
-    Ok(definition)
-}
-
-fn parse_backup_placeholder_amount(ability: &Ability) -> Option<u32> {
-    let AbilityKind::Static(static_ability) = &ability.kind else {
-        return None;
-    };
-
-    let text = static_ability.display();
-    let tokens = lex_line(text.trim(), 0).ok()?;
-    let clause = LexedClause::new(&tokens);
-    let matched = BACKUP_PLACEHOLDER_PATTERN.match_prefix(clause)?;
-    let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-    amount_clause.word_refs().first()?.parse::<u32>().ok()
-}
-
-fn backup_granted_abilities_from_slice(abilities: &[Ability]) -> Vec<Ability> {
-    abilities
-        .iter()
-        .filter(|ability| parse_backup_placeholder_amount(ability).is_none())
-        .cloned()
-        .collect()
-}
-
-fn is_cipher_placeholder(ability: &Ability) -> bool {
-    let AbilityKind::Static(static_ability) = &ability.kind else {
-        return false;
-    };
-
-    static_ability
-        .display()
-        .trim()
-        .eq_ignore_ascii_case("Cipher")
-}
-
-pub(crate) fn finalize_backup_abilities(mut definition: CardDefinition) -> CardDefinition {
-    if !definition
-        .abilities
-        .iter()
-        .any(|ability| parse_backup_placeholder_amount(ability).is_some())
-    {
-        return definition;
-    }
-
-    let original_abilities = definition.abilities.clone();
-    definition.abilities = original_abilities
-        .iter()
-        .enumerate()
-        .map(|(idx, ability)| {
-            let Some(amount) = parse_backup_placeholder_amount(ability) else {
-                return ability.clone();
-            };
-
-            let granted_abilities =
-                backup_granted_abilities_from_slice(&original_abilities[idx + 1..]);
-            Ability::triggered(
-                Trigger::this_enters_battlefield(),
-                vec![Effect::backup(amount, granted_abilities)],
-            )
-        })
-        .collect();
-    definition
-}
-
-pub(crate) fn finalize_cipher_effects(mut definition: CardDefinition) -> CardDefinition {
-    if !definition.abilities.iter().any(is_cipher_placeholder) {
-        return definition;
-    }
-
-    definition
-        .abilities
-        .retain(|ability| !is_cipher_placeholder(ability));
-    definition
-        .spell_effect
-        .get_or_insert_with(ResolutionProgram::default)
-        .push(Effect::cipher());
-    definition
-}
+mod kicked_counter;
 
 fn finalize_squad_abilities(mut definition: CardDefinition) -> CardDefinition {
     if !definition
@@ -211,26 +70,6 @@ fn finalize_offspring_abilities(mut definition: CardDefinition) -> CardDefinitio
     definition
 }
 
-const NEXT_UPKEEP_PHRASE: &[&str] = &["next", "upkeep"];
-const NEXT_TURNS_UPKEEP_PHRASE: &[&str] = &["next", "turns", "upkeep"];
-const NEXT_UPKEEP_PHRASES: &[&[&str]] = &[NEXT_UPKEEP_PHRASE, NEXT_TURNS_UPKEEP_PHRASE];
-const THAT_TURNS_END_STEP_PHRASE: &[&str] = &["that", "turns", "end", "step"];
-const THAT_PLAYERS_NEXT_UPKEEP_PHRASE: &[&str] = &["that", "players", "next", "upkeep"];
-const THAT_PLAYERS_NEXT_END_STEP_PHRASE: &[&str] = &["that", "players", "next", "end", "step"];
-const END_STEP_OF_THAT_PLAYERS_NEXT_TURN_PHRASE: &[&str] =
-    &["end", "step", "of", "that", "players", "next", "turn"];
-const THAT_TURN_DELAYED_STEP_PHRASES: &[&[&str]] = &[
-    THAT_TURNS_END_STEP_PHRASE,
-    THAT_PLAYERS_NEXT_UPKEEP_PHRASE,
-    THAT_PLAYERS_NEXT_END_STEP_PHRASE,
-    END_STEP_OF_THAT_PLAYERS_NEXT_TURN_PHRASE,
-];
-const NEXT_END_STEP_PHRASE: &[&str] = &["next", "end", "step"];
-const NEXT_TURNS_END_STEP_PHRASE: &[&str] = &["next", "turns", "end", "step"];
-const NEXT_END_STEP_PHRASES: &[&[&str]] = &[NEXT_END_STEP_PHRASE, NEXT_TURNS_END_STEP_PHRASE];
-const YOUR_NEXT_UPKEEP_PHRASE: &[&str] = &["your", "next", "upkeep"];
-const YOUR_NEXT_DRAW_STEP_PHRASE: &[&str] = &["your", "next", "draw", "step"];
-
 fn is_upkeep_or_end_step_trigger(trigger: &Trigger) -> bool {
     matches!(
         trigger.kind,
@@ -238,35 +77,13 @@ fn is_upkeep_or_end_step_trigger(trigger: &Trigger) -> bool {
     )
 }
 
-fn spell_battlefield_trigger_text_implies_delayed_schedule(
-    ability_text: &str,
-    trigger: &Trigger,
-) -> Option<bool> {
-    if !is_upkeep_or_end_step_trigger(trigger) {
-        return None;
-    }
-
-    let tokens = lex_line(ability_text, 0).ok()?;
-    let words = token_word_refs(&tokens);
-
-    if word_slice_contains_any_phrase(&words, NEXT_UPKEEP_PHRASES) {
-        return Some(true);
-    }
-    if word_slice_contains_any_phrase(&words, THAT_TURN_DELAYED_STEP_PHRASES) {
-        return Some(true);
-    }
-    if word_slice_contains_any_phrase(&words, NEXT_END_STEP_PHRASES) {
-        return Some(false);
-    }
-
-    None
-}
-
 fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
     ability: &Ability,
-    original_text: &str,
+    delayed_surfaces: &[DelayedScheduleSurface],
 ) -> Option<Effect> {
-    if ability.functional_zones.as_slice() != [Zone::Battlefield] {
+    if ability.functional_zones.len() != 1
+        || ability.functional_zones.first().copied() != Some(Zone::Battlefield)
+    {
         return None;
     }
 
@@ -277,13 +94,11 @@ fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
         return None;
     }
 
-    let (ability_text, start_next_turn) = original_text.lines().find_map(|line| {
-        let line = line.trim();
-        let start_next_turn =
-            spell_battlefield_trigger_text_implies_delayed_schedule(line, &triggered.trigger)?;
-        Some((line, start_next_turn))
-    })?;
-    let trigger = delayed_trigger_spec_from_trigger(&triggered.trigger, Some(ability_text))?;
+    if !is_upkeep_or_end_step_trigger(&triggered.trigger) {
+        return None;
+    }
+    let surface = delayed_surfaces.first()?;
+    let trigger = delayed_trigger_spec_from_trigger(&triggered.trigger, Some(surface))?;
 
     let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
         trigger,
@@ -292,7 +107,7 @@ fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
         Vec::new(),
         PlayerFilter::You,
     );
-    if start_next_turn {
+    if surface.start_next_turn {
         delayed = delayed.starting_next_turn();
     }
 
@@ -301,16 +116,11 @@ fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
 
 fn delayed_trigger_spec_from_trigger(
     trigger: &Trigger,
-    ability_text: Option<&str>,
+    surface: Option<&DelayedScheduleSurface>,
 ) -> Option<ironsmith_core::DelayedTriggerSpec> {
-    let ability_tokens = ability_text
-        .and_then(|text| lex_line(text, 0).ok())
-        .unwrap_or_default();
-    let ability_words = token_word_refs(&ability_tokens);
-
     match trigger.kind {
         TriggerKind::BeginningOfUpkeep { .. } => {
-            let player = if word_slice_contains_phrase(&ability_words, YOUR_NEXT_UPKEEP_PHRASE) {
+            let player = if surface.is_some_and(|surface| surface.your_next_upkeep) {
                 PlayerFilter::You
             } else {
                 PlayerFilter::Any
@@ -320,7 +130,7 @@ fn delayed_trigger_spec_from_trigger(
             ))
         }
         TriggerKind::BeginningOfDrawStep { .. } => {
-            let player = if word_slice_contains_phrase(&ability_words, YOUR_NEXT_DRAW_STEP_PHRASE) {
+            let player = if surface.is_some_and(|surface| surface.your_next_draw_step) {
                 PlayerFilter::You
             } else {
                 PlayerFilter::Any
@@ -340,7 +150,7 @@ fn delayed_trigger_spec_from_trigger(
 
 fn finalize_nonpermanent_delayed_triggered_abilities(
     mut definition: CardDefinition,
-    original_text: &str,
+    delayed_surfaces: &[DelayedScheduleSurface],
 ) -> CardDefinition {
     if !definition.card.is_instant() && !definition.card.is_sorcery() {
         return definition;
@@ -349,9 +159,10 @@ fn finalize_nonpermanent_delayed_triggered_abilities(
     let mut rewritten_effects = Vec::new();
     let mut remaining_abilities = Vec::with_capacity(definition.abilities.len());
     for ability in std::mem::take(&mut definition.abilities) {
-        if let Some(effect) =
-            convert_nonpermanent_delayed_triggered_ability_to_spell_effect(&ability, original_text)
-        {
+        if let Some(effect) = convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
+            &ability,
+            &delayed_surfaces,
+        ) {
             rewritten_effects.push(effect);
         } else {
             remaining_abilities.push(ability);
@@ -368,17 +179,6 @@ fn finalize_nonpermanent_delayed_triggered_abilities(
     definition
 }
 
-fn semantic_text(original_text: &str) -> String {
-    original_text
-        .to_ascii_lowercase()
-        .replace('’', "'")
-        .replace('\n', " ")
-}
-
-fn has_all(text: &str, needles: &[&str]) -> bool {
-    needles.iter().all(|needle| text.contains(needle))
-}
-
 fn is_source_enters_battlefield_trigger(trigger: &Trigger) -> bool {
     match &trigger.kind {
         TriggerKind::ThisEntersBattlefield => true,
@@ -388,10 +188,6 @@ fn is_source_enters_battlefield_trigger(trigger: &Trigger) -> bool {
         TriggerKind::EntersBattlefield { filter, .. } => filter.source,
         _ => false,
     }
-}
-
-fn target_player(filter: PlayerFilter) -> ChooseSpec {
-    ChooseSpec::target(ChooseSpec::Player(filter))
 }
 
 fn target_creature() -> ChooseSpec {
@@ -406,12 +202,6 @@ fn target_creature_you_control_other() -> ChooseSpec {
 
 fn tagged_filter(tag: &str) -> ObjectFilter {
     ObjectFilter::tagged(TagKey::from(tag))
-}
-
-fn combined_filter(filters: Vec<ObjectFilter>) -> ObjectFilter {
-    let mut filter = ObjectFilter::default();
-    filter.any_of = filters;
-    filter
 }
 
 fn target_only(tag: &str, spec: ChooseSpec) -> Effect {
@@ -612,7 +402,9 @@ fn fix_quenchable_fire(definition: &mut CardDefinition) {
             let ChooseSpec::Object(filter) = &damage.target else {
                 return None;
             };
-            if filter.card_types.as_slice() != [CardType::Planeswalker] {
+            if filter.card_types.len() != 1
+                || filter.card_types.first().copied() != Some(CardType::Planeswalker)
+            {
                 return None;
             }
             let mut repaired = damage.clone();
@@ -631,7 +423,11 @@ fn is_target_opponent_nonland_hand_choice(choose: &crate::effects::ChooseObjects
     choose.zone == Some(Zone::Hand)
         && choose.filter.zone == Some(Zone::Hand)
         && choose.filter.owner == Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)))
-        && choose.filter.excluded_card_types.contains(&CardType::Land)
+        && choose
+            .filter
+            .excluded_card_types
+            .iter()
+            .any(|card_type| *card_type == CardType::Land)
         && choose.count.is_single()
         && !choose.is_search
 }
@@ -678,70 +474,6 @@ fn fix_pick_the_brain(definition: &mut CardDefinition) {
     }
 }
 
-fn fix_shadow_of_the_grave(definition: &mut CardDefinition, text: &str) {
-    if !text.contains("all cards in your graveyard that you cycled or discarded this turn") {
-        return;
-    }
-    if let Some(program) = &mut definition.spell_effect {
-        rewrite_program(program, |effect| {
-            let return_to_hand = effect.downcast_ref::<crate::effects::ReturnToHandEffect>()?;
-            let ChooseSpec::All(filter) = &return_to_hand.spec else {
-                return None;
-            };
-            if filter.zone != Some(Zone::Graveyard) || filter.owner != Some(PlayerFilter::You) {
-                return None;
-            }
-            let mut repaired = return_to_hand.clone();
-            let mut repaired_filter = filter.clone();
-            repaired_filter.discarded_or_cycled_this_turn_by = Some(PlayerFilter::You);
-            repaired.spec = ChooseSpec::All(repaired_filter);
-            Some(Effect::new(repaired))
-        });
-    }
-}
-
-fn is_creature_first_match_consult(consult: &crate::effects::ConsultTopOfLibraryEffect) -> bool {
-    consult.mode == crate::effects::LibraryConsultMode::Reveal
-        && matches!(
-            consult.stop_rule,
-            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
-                | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1))
-        )
-        && consult.filter.card_types.as_slice() == [CardType::Creature]
-}
-
-fn fix_telemin_performance(definition: &mut CardDefinition) {
-    let Some(program) = &mut definition.spell_effect else {
-        return;
-    };
-    for segment in &mut program.segments {
-        let match_tag = segment.default_effects.iter().find_map(|effect| {
-            let consult = effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
-            if !is_creature_first_match_consult(consult) {
-                return None;
-            }
-            Some(consult.match_tag.clone())
-        });
-        let Some(match_tag) = match_tag else {
-            continue;
-        };
-        let already_puts = segment.default_effects.iter().any(|effect| {
-            effect
-                .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
-                .is_some()
-        });
-        if !already_puts {
-            segment.default_effects.push(Effect::new(
-                crate::effects::PutOntoBattlefieldEffect::you_control(
-                    ChooseSpec::Tagged(match_tag),
-                    false,
-                ),
-            ));
-        }
-    }
-    *program = ResolutionProgram::new(program.segments.clone());
-}
-
 fn is_any_player_choose_then_self_sacrifice_model(triggered: &TriggeredAbility) -> bool {
     let has_any_player_may_choose_creatures = triggered.effects.segments.iter().any(|segment| {
         segment.default_effects.iter().any(|effect| {
@@ -758,7 +490,9 @@ fn is_any_player_choose_then_self_sacrifice_model(triggered: &TriggeredAbility) 
                             inner
                                 .downcast_ref::<crate::effects::ChooseObjectsEffect>()
                                 .is_some_and(|choose| {
-                                    choose.filter.card_types.as_slice() == [CardType::Creature]
+                                    choose.filter.card_types.len() == 1
+                                        && choose.filter.card_types.first().copied()
+                                            == Some(CardType::Creature)
                                         && choose.filter.controller == Some(PlayerFilter::Any)
                                         && choose.count.min == 2
                                         && choose.count.max == Some(2)
@@ -833,68 +567,8 @@ fn fix_prowling_pangolin(definition: &mut CardDefinition) {
     }
 }
 
-fn fix_tunnel_ignus(definition: &mut CardDefinition, text: &str) {
-    if !text.contains(
-        "if that player had another land enter the battlefield under their control this turn",
-    ) {
-        return;
-    }
-    for ability in &mut definition.abilities {
-        let AbilityKind::Triggered(triggered) = &mut ability.kind else {
-            continue;
-        };
-        if !matches!(
-            triggered.trigger.kind,
-            TriggerKind::EntersBattlefield { .. }
-        ) {
-            continue;
-        }
-        triggered.intervening_if = Some(Condition::ValueComparison {
-            left: Value::LandsEnteredBattlefieldThisTurn(PlayerFilter::ControllerOf(
-                ObjectRef::tagged("triggering"),
-            )),
-            operator: ValueComparisonOperator::GreaterThanOrEqual,
-            right: Value::Fixed(2),
-        });
-    }
-}
-
-fn fix_kusari_gama(definition: &mut CardDefinition, text: &str) {
-    if !text.contains("equipped creature deals damage to a blocking creature") {
-        return;
-    }
-    for ability in &mut definition.abilities {
-        let AbilityKind::Triggered(triggered) = &mut ability.kind else {
-            continue;
-        };
-        let TriggerKind::DealsDamage { filter } = &triggered.trigger.kind else {
-            continue;
-        };
-        let mut blocking_creature = ObjectFilter::creature();
-        blocking_creature.blocking = true;
-        triggered.trigger = Trigger::deals_damage_to(filter.clone(), blocking_creature);
-    }
-}
-
-fn fix_multanis_presence(definition: &mut CardDefinition, text: &str) {
-    if !text.contains("whenever a spell you've cast is countered") {
-        return;
-    }
-    for ability in &mut definition.abilities {
-        let AbilityKind::Triggered(triggered) = &mut ability.kind else {
-            continue;
-        };
-        let filter = match &triggered.trigger.kind {
-            TriggerKind::SpellCast { filter, .. }
-            | TriggerKind::SpellCastQualified { filter, .. } => filter.clone(),
-            _ => continue,
-        };
-        triggered.trigger = Trigger::spell_countered(filter, PlayerFilter::You);
-    }
-}
-
-fn fix_emet_selch(definition: &mut CardDefinition, text: &str) {
-    if !text.contains("one or more opponents lose life") {
+fn fix_emet_selch(definition: &mut CardDefinition, enabled: bool) {
+    if !enabled {
         return;
     }
     for ability in &mut definition.abilities {
@@ -912,74 +586,29 @@ fn fix_emet_selch(definition: &mut CardDefinition, text: &str) {
     }
 }
 
-fn fix_serpentine_spike(definition: &mut CardDefinition, text: &str) {
-    if !text.contains("deals 2 damage to target creature, 3 damage to another target creature, and 4 damage to a third target creature") {
-        return;
-    }
-    let Some(program) = &mut definition.spell_effect else {
-        return;
-    };
-    for segment in &mut program.segments {
-        let mut rest = Vec::new();
-        for effect in std::mem::take(&mut segment.default_effects) {
-            if effect
-                .downcast_ref::<crate::effects::DealDamageEffect>()
-                .is_some()
-                || effect
-                    .downcast_ref::<crate::effects::TaggedEffect>()
-                    .and_then(|tagged| {
-                        tagged
-                            .effect
-                            .downcast_ref::<crate::effects::DealDamageEffect>()
-                    })
-                    .is_some()
-            {
-                continue;
-            }
-            rest.push(effect);
+fn first_clash_effect_index(effects: &[Effect]) -> Option<usize> {
+    let mut index = 0usize;
+    for effect in effects {
+        if effect
+            .downcast_ref::<crate::effects::ClashEffect>()
+            .is_some()
+        {
+            return Some(index);
         }
-        let mut second = ObjectFilter::creature();
-        second = second.not_tagged("damaged_0");
-        let mut third = ObjectFilter::creature();
-        third = third.not_tagged("damaged_0");
-        segment.default_effects = vec![
-            tagged(
-                "damaged_0",
-                Effect::new(crate::effects::DealDamageEffect::new(2, target_creature())),
-            ),
-            tagged(
-                "damaged_0",
-                Effect::new(crate::effects::DealDamageEffect::new(
-                    3,
-                    ChooseSpec::target(ChooseSpec::Object(second)),
-                )),
-            ),
-            tagged(
-                "damaged_0",
-                Effect::new(crate::effects::DealDamageEffect::new(
-                    4,
-                    ChooseSpec::target(ChooseSpec::Object(third)),
-                )),
-            ),
-        ];
-        segment.default_effects.extend(rest);
+        index += 1;
     }
-    *program = ResolutionProgram::new(program.segments.clone());
+    None
 }
 
-fn fix_fistful_of_force(definition: &mut CardDefinition, text: &str) {
-    if !text.contains("if you win, that creature gets an additional +2/+2 and gains trample") {
+fn fix_fistful_of_force(definition: &mut CardDefinition, enabled: bool) {
+    if !enabled {
         return;
     }
     let Some(program) = &mut definition.spell_effect else {
         return;
     };
     for segment in &mut program.segments {
-        let Some(clash_idx) = segment.default_effects.iter().position(|effect| {
-            effect
-                .downcast_ref::<crate::effects::ClashEffect>()
-                .is_some()
-        }) else {
+        let Some(clash_idx) = first_clash_effect_index(&segment.default_effects) else {
             continue;
         };
         let target = ChooseSpec::Tagged(TagKey::from("pumped_0"));
@@ -1022,8 +651,8 @@ fn fix_fistful_of_force(definition: &mut CardDefinition, text: &str) {
     *program = ResolutionProgram::new(program.segments.clone());
 }
 
-fn fix_hisokas_guard(definition: &mut CardDefinition, text: &str) {
-    if !text.contains("has shroud for as long as this creature remains tapped") {
+fn fix_hisokas_guard(definition: &mut CardDefinition, enabled: bool) {
+    if !enabled {
         return;
     }
     for ability in &mut definition.abilities {
@@ -1042,138 +671,12 @@ fn fix_hisokas_guard(definition: &mut CardDefinition, text: &str) {
     }
 }
 
-fn fix_tempt_with_mayhem(definition: &mut CardDefinition, text: &str) {
-    if !has_all(
-        text,
-        &[
-            "each opponent may copy that spell",
-            "once plus an additional time for each opponent who copied the spell this way",
-        ],
-    ) {
-        return;
-    }
-    let Some(program) = &mut definition.spell_effect else {
-        return;
-    };
-    let spell_filter = ObjectFilter {
-        zone: Some(Zone::Stack),
-        card_types: vec![CardType::Instant, CardType::Sorcery],
-        has_mana_cost: true,
-        ..Default::default()
-    };
-    let opponent_copy = with_id(
-        1,
-        Effect::new(crate::effects::CopySpellEffect::new_for_player(
-            ChooseSpec::Tagged(TagKey::from("targeted_0")),
-            1,
-            PlayerFilter::IteratedPlayer,
-        )),
-    );
-    let opponent_offer = Effect::new(crate::effects::MayEffect {
-        decider: Some(PlayerFilter::IteratedPlayer),
-        effects: vec![
-            opponent_copy,
-            Effect::new(crate::effects::ChooseNewTargetsEffect::may_for_player(
-                EffectId(1),
-                PlayerFilter::IteratedPlayer,
-            )),
-        ],
-    });
-    let you_copy_count = Value::EffectMetricOffset {
-        effect_id: EffectId(0),
-        source: EffectMetricSource::Outcome,
-        metric: EffectMetric::PlayersWithPositiveCount,
-        offset: 1,
-    };
-    let you_copy = with_id(
-        2,
-        Effect::new(crate::effects::CopySpellEffect::new(
-            ChooseSpec::Tagged(TagKey::from("targeted_0")),
-            you_copy_count,
-        )),
-    );
-    for segment in &mut program.segments {
-        segment.default_effects = vec![
-            target_only(
-                "targeted_0",
-                ChooseSpec::target(ChooseSpec::Object(spell_filter.clone())),
-            ),
-            with_id(
-                0,
-                Effect::new(crate::effects::ForPlayersEffect {
-                    filter: PlayerFilter::Opponent,
-                    effects: vec![opponent_offer.clone()],
-                    starting_with_controller: true,
-                    stop_after_first_happened: false,
-                }),
-            ),
-            you_copy.clone(),
-            Effect::new(crate::effects::ChooseNewTargetsEffect::may(EffectId(2))),
-        ];
-    }
-    *program = ResolutionProgram::new(program.segments.clone());
-}
-
-fn fix_twist_allegiance(definition: &mut CardDefinition, text: &str) {
-    if !text.contains("you and target opponent each gain control of all creatures the other controls until end of turn") {
-        return;
-    }
-    let Some(program) = &mut definition.spell_effect else {
-        return;
-    };
-    let target_opponent = PlayerFilter::Target(Box::new(PlayerFilter::Opponent));
-    let your_creatures = ObjectFilter::creature().you_control();
-    let opponent_creatures = ObjectFilter::creature().controlled_by(target_opponent.clone());
-    let your_tagged = tagged_filter("__twist_your_creatures__");
-    let opponent_tagged = tagged_filter("__twist_opponent_creatures__");
-    let both = combined_filter(vec![your_tagged.clone(), opponent_tagged.clone()]);
-    for segment in &mut program.segments {
-        segment.default_effects = vec![
-            Effect::new(crate::effects::TargetOnlyEffect::new(target_player(
-                PlayerFilter::Opponent,
-            ))),
-            Effect::new(crate::effects::TagMatchingObjectsEffect::new(
-                your_creatures.clone(),
-                "__twist_your_creatures__",
-            )),
-            Effect::new(crate::effects::TagMatchingObjectsEffect::new(
-                opponent_creatures.clone(),
-                "__twist_opponent_creatures__",
-            )),
-            continuous_effect(
-                opponent_tagged.clone(),
-                Some(ChooseSpec::All(opponent_tagged.clone())),
-                None,
-                vec![crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController],
-                Until::EndOfTurn,
-                true,
-            ),
-            continuous_effect(
-                your_tagged.clone(),
-                Some(ChooseSpec::All(your_tagged.clone())),
-                None,
-                vec![crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
-                    target_opponent.clone(),
-                )],
-                Until::EndOfTurn,
-                true,
-            ),
-            Effect::new(crate::effects::UntapEffect::all(both.clone())),
-            continuous_effect(
-                both.clone(),
-                Some(ChooseSpec::All(both.clone())),
-                Some(Modification::AddAbility(StaticAbility::haste())),
-                Vec::new(),
-                Until::EndOfTurn,
-                true,
-            ),
-        ];
-    }
-    *program = ResolutionProgram::new(program.segments.clone());
-}
-
-fn fix_forced_block_spells(definition: &mut CardDefinition, text: &str) {
-    if text.contains("target creature blocks target creature this turn if able") {
+fn fix_forced_block_spells(
+    definition: &mut CardDefinition,
+    target_creature_blocks_target_creature: bool,
+    defending_creature_blocks_source: bool,
+) {
+    if target_creature_blocks_target_creature {
         let Some(program) = &mut definition.spell_effect else {
             return;
         };
@@ -1192,7 +695,7 @@ fn fix_forced_block_spells(definition: &mut CardDefinition, text: &str) {
         *program = ResolutionProgram::new(program.segments.clone());
     }
 
-    if text.contains("target creature defending player controls blocks it this combat if able") {
+    if defending_creature_blocks_source {
         for ability in &mut definition.abilities {
             let AbilityKind::Triggered(triggered) = &mut ability.kind else {
                 continue;
@@ -1219,12 +722,8 @@ fn fix_forced_block_spells(definition: &mut CardDefinition, text: &str) {
     }
 }
 
-fn fix_march_from_velis_vel(definition: &mut CardDefinition, text: &str) {
-    if !text.contains("choose a nonbasic land type")
-        || !text.contains(
-            "each land you control of that type becomes a copy of target creature you control",
-        )
-    {
+fn fix_march_from_velis_vel(definition: &mut CardDefinition, enabled: bool) {
+    if !enabled {
         return;
     }
     let Some(program) = &mut definition.spell_effect else {
@@ -1273,44 +772,142 @@ fn finalize_shape_driven_semantic_repairs(mut definition: CardDefinition) -> Car
     fix_quenchable_fire(&mut definition);
     fix_pick_the_brain(&mut definition);
     fix_prowling_pangolin(&mut definition);
-    fix_telemin_performance(&mut definition);
     definition
 }
 
-fn finalize_source_text_semantic_repairs(
+fn finalize_document_semantic_repairs(
     mut definition: CardDefinition,
-    original_text: &str,
+    semantic_facts: &DocumentSemanticFacts,
 ) -> CardDefinition {
-    let text = semantic_text(original_text);
-    fix_tunnel_ignus(&mut definition, &text);
-    fix_kusari_gama(&mut definition, &text);
-    fix_multanis_presence(&mut definition, &text);
-    fix_shadow_of_the_grave(&mut definition, &text);
-    fix_tempt_with_mayhem(&mut definition, &text);
-    fix_twist_allegiance(&mut definition, &text);
-    fix_fistful_of_force(&mut definition, &text);
-    fix_hisokas_guard(&mut definition, &text);
-    fix_emet_selch(&mut definition, &text);
-    fix_serpentine_spike(&mut definition, &text);
-    fix_forced_block_spells(&mut definition, &text);
-    fix_march_from_velis_vel(&mut definition, &text);
+    let facts = semantic_facts.postpass_repairs;
+    fix_fistful_of_force(&mut definition, facts.clash_additional_buff_and_trample);
+    fix_hisokas_guard(&mut definition, facts.shroud_while_source_tapped);
+    fix_emet_selch(&mut definition, facts.opponents_lose_life_one_or_more);
+    fix_forced_block_spells(
+        &mut definition,
+        facts.target_creature_blocks_target_creature,
+        facts.defending_creature_blocks_source,
+    );
+    fix_march_from_velis_vel(
+        &mut definition,
+        facts.chosen_nonbasic_land_type_becomes_copy,
+    );
     definition
 }
 
 pub(crate) fn apply(
     definition: CardDefinition,
-    original_builder: &CardDefinitionBuilder,
-    original_text: &str,
+    semantic_facts: &DocumentSemanticFacts,
 ) -> Result<CardDefinition, CardTextError> {
-    let definition = finalize_overload_definitions(definition, original_builder, original_text)?;
-    let definition = finalize_backup_abilities(definition);
-    let definition = finalize_cipher_effects(definition);
     let definition = finalize_squad_abilities(definition);
     let definition = finalize_offspring_abilities(definition);
     let definition = finalize_shape_driven_semantic_repairs(definition);
-    let definition = finalize_source_text_semantic_repairs(definition, original_text);
-    Ok(finalize_nonpermanent_delayed_triggered_abilities(
+    let definition = finalize_document_semantic_repairs(definition, semantic_facts);
+    let definition = finalize_nonpermanent_delayed_triggered_abilities(
         definition,
-        original_text,
+        &semantic_facts.delayed_schedule_surfaces,
+    );
+    Ok(kicked_counter::finalize_mana_value_replacement(
+        definition,
+        semantic_facts.kicked_counter_spell_mana_value_replacement,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CardId;
+    use crate::alternative_cast::AlternativeCastingMethod;
+    use crate::cards::builders::CardDefinitionBuilder;
+
+    #[test]
+    fn overload_effects_are_materialized_before_postpasses() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Typed Overload Pipeline")
+            .card_types(vec![CardType::Instant]);
+        let text = "Return target nonland permanent you don't control to its owner's hand.\nDraw a card.\nOverload {1}{U}";
+        let lowered = super::super::pipeline::parse_text_with_annotations_lowered_with_facts(
+            builder,
+            text.to_string(),
+            false,
+        )?;
+
+        let AlternativeCastingMethod::Overload { cost, effects } =
+            &lowered.definition.alternative_casts[0]
+        else {
+            panic!("expected overload alternative cast")
+        };
+        assert_eq!(cost.to_oracle(), "{1}{U}");
+        assert!(effects.len() >= 2, "multi-sentence effects: {effects:#?}");
+        assert!(!format!("{effects:#?}").contains("Target("));
+
+        let finalized = apply(lowered.definition, &lowered.semantic_facts)?;
+        let AlternativeCastingMethod::Overload { effects, .. } = &finalized.alternative_casts[0]
+        else {
+            panic!("expected overload alternative cast after postpasses")
+        };
+        assert!(effects.len() >= 2);
+        Ok(())
+    }
+
+    #[test]
+    fn delayed_trigger_postpass_consumes_front_end_schedule_facts() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Typed Delayed Postpass")
+            .card_types(vec![CardType::Sorcery]);
+        let text = "At the beginning of your next upkeep, draw a card.";
+        let lowered = super::super::pipeline::parse_text_with_annotations_lowered_with_facts(
+            builder.clone(),
+            text.to_string(),
+            false,
+        )?;
+
+        assert_eq!(lowered.semantic_facts.delayed_schedule_surfaces.len(), 1);
+        let finalized = apply(lowered.definition, &lowered.semantic_facts)?;
+        let debug = format!("{finalized:#?}");
+        assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
+        assert!(debug.contains("start_next_turn: true"), "{debug}");
+        Ok(())
+    }
+
+    #[test]
+    fn kicked_counter_postpass_consumes_front_end_fact() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Typed Kicked Counter Postpass")
+            .card_types(vec![CardType::Instant]);
+        let text = "Kicker {2}\nCounter target spell if its mana value is 2 or less. If this spell was kicked, counter that spell if its mana value is 4 or less instead.";
+        let lowered = super::super::pipeline::parse_text_with_annotations_lowered_with_facts(
+            builder.clone(),
+            text.to_string(),
+            false,
+        )?;
+
+        assert!(
+            lowered
+                .semantic_facts
+                .kicked_counter_spell_mana_value_replacement
+        );
+        let finalized = apply(lowered.definition, &lowered.semantic_facts)?;
+        let spell_effect = finalized.spell_effect.expect("expected spell effects");
+        let [segment] = spell_effect.segments.as_slice() else {
+            panic!("expected one resolution segment, got {spell_effect:#?}");
+        };
+        let kicked_branch = segment
+            .self_replacements
+            .iter()
+            .find(|branch| branch.condition == crate::effect::Condition::ThisSpellWasKicked)
+            .expect("expected kicked replacement branch");
+        let [kicked_effect] = kicked_branch.replacement_effects.as_slice() else {
+            panic!("expected one kicked replacement effect, got {kicked_branch:#?}");
+        };
+        let conditional = kicked_effect
+            .downcast_ref::<crate::effects::ConditionalEffect>()
+            .expect("expected a conditional kicked counter effect");
+        let crate::effect::Condition::TaggedObjectMatches(_, filter) = &conditional.condition
+        else {
+            panic!("expected a tagged spell filter, got {conditional:#?}");
+        };
+        assert!(matches!(
+            filter.mana_value.as_ref(),
+            Some(crate::target::Comparison::LessThanOrEqual(4))
+        ));
+        Ok(())
+    }
 }

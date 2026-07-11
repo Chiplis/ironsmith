@@ -31,9 +31,9 @@ pub(crate) use super::super::rule_engine::{
     ClauseView, RULE_SHAPE_STARTS_IF, RuleDef, RuleIndex, UnsupportedDiagnoser, UnsupportedRuleDef,
 };
 pub(crate) use super::super::util::{
-    classify_instead_followup_text, helper_tag_for_tokens, is_until_end_of_turn,
-    parse_mana_symbol_word_flexible, parse_number, parser_trace, parser_trace_enabled,
-    replace_unbound_x_with_value, starts_with_until_end_of_turn, value_contains_unbound_x,
+    classify_instead_followup_tokens, helper_tag_for_tokens, parse_mana_symbol_word_flexible,
+    parse_number, parser_trace, parser_trace_enabled, replace_unbound_x_with_value,
+    starts_with_until_end_of_turn, value_contains_unbound_x,
 };
 pub(crate) use super::chain_carry::{
     collapse_token_copy_end_of_combat_exile_followup,
@@ -82,6 +82,7 @@ pub(crate) use super::search_library::{
 pub(crate) use super::subject_verb_primitives::{
     POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX, POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
     PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX, PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+    parse_sentence_each_player_return_with_additional_counter,
     parse_sentence_exile_source_with_counters, parse_sentence_exile_source_with_counters_lexed,
     parse_sentence_put_onto_battlefield_with_counters_on_it,
     parse_sentence_put_onto_battlefield_with_counters_on_it_lexed,

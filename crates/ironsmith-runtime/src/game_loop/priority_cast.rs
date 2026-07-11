@@ -533,11 +533,12 @@ pub(super) fn compute_spell_cast_x_bounds(
 
     if pay_has_x && let Some(cost) = mana_cost_to_pay {
         let mana_spend_policy = game.mana_spend_policy(caster, Some(stack_id));
-        let allow_black_life = game.player_can_pay_black_with_life_for_reason(
-            caster,
-            Some(stack_id),
-            crate::costs::PaymentReason::CastSpell,
-        );
+        let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
+            && game.player_can_pay_black_with_life_for_reason(
+                caster,
+                Some(stack_id),
+                crate::costs::PaymentReason::CastSpell,
+            );
         max_x = Some(
             compute_potential_mana(game, caster)
                 .max_x_for_cost_with_mana_spend_policy_and_black_life(
@@ -1825,12 +1826,13 @@ pub(super) fn continue_spell_cast_mana_payment(
         .unwrap_or_else(|| "spell".to_string());
 
     let mana_spend_policy = game.mana_spend_policy(player_id, Some(source));
-    let allow_black_life = game.player_can_pay_black_with_life_for_reason(
-        player_id,
-        Some(source),
-        crate::costs::PaymentReason::CastSpell,
-    );
     let display_pip = current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
+    let allow_black_life = display_pip_can_use_black_life(display_pip)
+        && game.player_can_pay_black_with_life_for_reason(
+            player_id,
+            Some(source),
+            crate::costs::PaymentReason::CastSpell,
+        );
     let options = build_pip_payment_options(
         game,
         player_id,
@@ -2075,6 +2077,41 @@ pub(super) fn get_available_mana_abilities(
     player: PlayerId,
     decision_maker: &mut impl DecisionMaker,
 ) -> Vec<(ObjectId, usize, String)> {
+    let _ = decision_maker;
+    collect_available_mana_abilities(game, player, |_, _| true)
+}
+
+pub(super) fn get_available_mana_abilities_for_pip(
+    game: &GameState,
+    player: PlayerId,
+    payment_source: Option<ObjectId>,
+    payment_reason: crate::costs::PaymentReason,
+    pip: &[crate::mana::ManaSymbol],
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
+    decision_maker: &mut impl DecisionMaker,
+) -> Vec<(ObjectId, usize, String)> {
+    let _ = decision_maker;
+    collect_available_mana_abilities(game, player, |perm_id, ability| {
+        let mut source_policy = mana_spend_policy.clone();
+        source_policy.allow_any_color |=
+            game.can_spend_mana_as_any_color_from_mana_source(player, payment_source, perm_id);
+        mana_ability_definition_can_pay_pip_with_reason(
+            game,
+            perm_id,
+            ability,
+            payment_source,
+            payment_reason,
+            pip,
+            &source_policy,
+        )
+    })
+}
+
+fn collect_available_mana_abilities(
+    game: &GameState,
+    player: PlayerId,
+    mut include: impl FnMut(ObjectId, &crate::ability::Ability) -> bool,
+) -> Vec<(ObjectId, usize, String)> {
     use crate::special_actions::can_activate_mana_ability_check_with_view;
 
     let mut abilities = Vec::new();
@@ -2106,12 +2143,14 @@ pub(super) fn get_available_mana_abilities(
                 )
                 .is_ok()
             {
+                if !include(perm_id, ability) {
+                    continue;
+                }
                 let desc = describe_mana_ability(game, perm_id, player, &ability.kind);
                 abilities.push((perm_id, ability_index, desc));
             }
         }
     }
-    let _ = decision_maker;
 
     abilities
 }
@@ -3259,11 +3298,12 @@ pub(super) fn continue_activation(
             let mut max_x = if let Some(ref cost) = pending.mana_cost_to_pay {
                 let mana_spend_policy =
                     game.mana_spend_policy(pending.activator, Some(pending.source));
-                let allow_black_life = game.player_can_pay_black_with_life_for_reason(
-                    pending.activator,
-                    Some(pending.source),
-                    pending.payment_reason,
-                );
+                let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
+                    && game.player_can_pay_black_with_life_for_reason(
+                        pending.activator,
+                        Some(pending.source),
+                        pending.payment_reason,
+                    );
                 compute_potential_mana(game, pending.activator)
                     .max_x_for_cost_with_mana_spend_policy_and_black_life(
                         cost,
@@ -3474,13 +3514,14 @@ pub(super) fn continue_activation(
                 .unwrap_or_else(|| "ability".to_string());
 
             let mana_spend_policy = game.mana_spend_policy(player_id, Some(source));
-            let allow_black_life = game.player_can_pay_black_with_life_for_reason(
-                player_id,
-                Some(source),
-                pending.payment_reason,
-            );
             let display_pip =
                 current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
+            let allow_black_life = display_pip_can_use_black_life(display_pip)
+                && game.player_can_pay_black_with_life_for_reason(
+                    player_id,
+                    Some(source),
+                    pending.payment_reason,
+                );
             let options = build_pip_payment_options(
                 game,
                 player_id,

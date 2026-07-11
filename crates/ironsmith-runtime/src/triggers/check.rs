@@ -36,12 +36,19 @@ pub(crate) struct TriggerRegistryKey {
     effects_revision: u64,
     mutation_revision: u64,
     zone_revision: u64,
+    continuous_context_revision: u64,
+    turn_number: u32,
+    active_player: PlayerId,
+    phase: Phase,
+    step: Option<Step>,
+    combat_phases_started_this_turn: u32,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct TriggerRegistry {
     pub(crate) key: TriggerRegistryKey,
     by_kind: FxMap<EventKind, Vec<TriggerSubscriber>>,
+    source_local_by_kind: FxMap<EventKind, FxMap<ObjectId, Vec<TriggerSubscriber>>>,
     wildcard: Vec<TriggerSubscriber>,
 }
 
@@ -53,10 +60,22 @@ struct TriggerSubscriber {
 }
 
 impl TriggerRegistry {
-    fn subscribers_for(&self, kind: EventKind) -> Vec<TriggerSubscriber> {
+    fn subscribers_for(
+        &self,
+        kind: EventKind,
+        event_object: Option<ObjectId>,
+    ) -> Vec<TriggerSubscriber> {
         let mut subscribers = self.wildcard.clone();
         if let Some(kind_subscribers) = self.by_kind.get(&kind) {
             subscribers.extend(kind_subscribers.iter().copied());
+        }
+        if let Some(event_object) = event_object
+            && let Some(source_subscribers) = self
+                .source_local_by_kind
+                .get(&kind)
+                .and_then(|by_source| by_source.get(&event_object))
+        {
+            subscribers.extend(source_subscribers.iter().copied());
         }
         subscribers.sort_by_key(|subscriber| subscriber.ordinal);
         subscribers.dedup_by_key(|subscriber| subscriber.ordinal);
@@ -1089,21 +1108,104 @@ pub fn check_triggers(
     game: &GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
-    // The subscriber early-out only inspects objects currently in their
-    // functional zones. Events carrying LKI payloads (dies/sacrifice/leaves)
-    // can trigger from sources that already left, so they always take the
-    // full check.
-    if !game.may_have_triggered_abilities_for_event_kind(trigger_event.kind())
-        && !trigger_event_can_have_synthetic_triggers(trigger_event)
-        && trigger_event.snapshot().is_none()
-        && trigger_event.source_snapshot().is_none()
-        && trigger_event.lookback_source_snapshots().is_empty()
+    // LKI payloads are common on zone-change events even when none of the
+    // sources represented by those payloads can trigger for this event kind.
+    // Inspect the captured ability lists before constructing a layered view;
+    // otherwise an unrelated LKI snapshot forces a full battlefield trigger
+    // registry rebuild after every simultaneous zone change.
+    let lki_may_subscribe = trigger_event
+        .lookback_source_snapshots()
+        .iter()
+        .any(|snapshot| snapshot_may_subscribe_to_event(snapshot, trigger_event.kind()));
+    let direct_snapshot_may_subscribe = matches!(
+        trigger_event.kind(),
+        crate::events::traits::EventKind::Sacrifice
+            | crate::events::traits::EventKind::CardDiscarded
+    ) && trigger_event
+        .snapshot()
+        .is_some_and(|snapshot| snapshot_may_subscribe_to_event(snapshot, trigger_event.kind()));
+
+    if !trigger_event_can_have_synthetic_triggers(trigger_event)
+        && !game.may_have_triggered_abilities_for_event_kind(trigger_event.kind())
+        && !lki_may_subscribe
+        && !direct_snapshot_may_subscribe
     {
         return Vec::new();
     }
 
     let view = crate::derived_view::DerivedGameView::new(game);
     check_triggers_with_view(game, trigger_event, &view)
+}
+
+/// Check a group of events that all observe the same stable game state.
+///
+/// The derived view and battlefield trigger registry are shared across the
+/// group. Results retain event order and per-event trigger ordering.
+pub(crate) fn check_triggers_batch(
+    game: &GameState,
+    trigger_events: &[TriggerEvent],
+) -> Vec<Vec<TriggeredAbilityEntry>> {
+    if trigger_events.is_empty() {
+        return Vec::new();
+    }
+
+    let mut kind_may_subscribe = FxMap::default();
+    let should_check = trigger_events
+        .iter()
+        .map(|trigger_event| {
+            let lki_may_subscribe = trigger_event
+                .lookback_source_snapshots()
+                .iter()
+                .any(|snapshot| snapshot_may_subscribe_to_event(snapshot, trigger_event.kind()));
+            let direct_snapshot_may_subscribe = matches!(
+                trigger_event.kind(),
+                crate::events::traits::EventKind::Sacrifice
+                    | crate::events::traits::EventKind::CardDiscarded
+            ) && trigger_event.snapshot().is_some_and(
+                |snapshot| snapshot_may_subscribe_to_event(snapshot, trigger_event.kind()),
+            );
+            let current_state_may_subscribe =
+                trigger_event_can_have_synthetic_triggers(trigger_event)
+                    || *kind_may_subscribe
+                        .entry(trigger_event.kind())
+                        .or_insert_with(|| {
+                            game.may_have_triggered_abilities_for_event_kind(trigger_event.kind())
+                        });
+
+            current_state_may_subscribe || lki_may_subscribe || direct_snapshot_may_subscribe
+        })
+        .collect::<Vec<_>>();
+
+    if !should_check.iter().any(|should_check| *should_check) {
+        return vec![Vec::new(); trigger_events.len()];
+    }
+
+    let view = crate::derived_view::DerivedGameView::new(game);
+    let registry = battlefield_trigger_registry(game, &view);
+    trigger_events
+        .iter()
+        .zip(should_check)
+        .map(|(trigger_event, should_check)| {
+            if should_check {
+                check_triggers_with_view_and_registry(game, trigger_event, &view, &registry)
+            } else {
+                Vec::new()
+            }
+        })
+        .collect()
+}
+
+fn snapshot_may_subscribe_to_event(snapshot: &ObjectSnapshot, event_kind: EventKind) -> bool {
+    snapshot.abilities.iter().any(|ability| {
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            return false;
+        };
+        ability.functions_in(&snapshot.zone)
+            && triggered
+                .trigger
+                .subscribed_kinds()
+                .is_none_or(|kinds| kinds.contains(&event_kind))
+    })
 }
 
 fn trigger_event_can_have_synthetic_triggers(trigger_event: &TriggerEvent) -> bool {
@@ -1152,9 +1254,45 @@ fn for_each_hidden_trigger_object_id(game: &GameState, mut visit: impl FnMut(Obj
     }
 }
 
+fn trigger_requires_other_attacker_tag(trigger: &Trigger) -> bool {
+    if let Some(with_others) =
+        trigger.downcast_ref::<crate::triggers::ThisAttacksWithNOthersTrigger>()
+    {
+        return with_others.exact && with_others.other_count == 1;
+    }
+    trigger
+        .downcast_ref::<crate::triggers::OrTrigger>()
+        .is_some_and(|or_trigger| {
+            or_trigger
+                .triggers
+                .iter()
+                .any(trigger_requires_other_attacker_tag)
+        })
+}
+
+fn tagged_objects_for_matched_trigger(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    trigger: &Trigger,
+) -> HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>> {
+    tagged_objects_for_trigger_event_impl(
+        game,
+        trigger_event,
+        trigger_requires_other_attacker_tag(trigger),
+    )
+}
+
 fn tagged_objects_for_trigger_event(
     game: &GameState,
     trigger_event: &TriggerEvent,
+) -> HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>> {
+    tagged_objects_for_trigger_event_impl(game, trigger_event, true)
+}
+
+fn tagged_objects_for_trigger_event_impl(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    include_other_attackers: bool,
 ) -> HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>> {
     let mut tagged = HashMap::new();
     if let Some(source) = trigger_event.source_snapshot().cloned().or_else(|| {
@@ -1173,7 +1311,9 @@ fn tagged_objects_for_trigger_event(
             vec![snapshot],
         );
     }
-    if let Some(attacked) = trigger_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
+    if include_other_attackers
+        && let Some(attacked) =
+            trigger_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
         && attacked.total_attackers >= 2
     {
         let other_attackers: Vec<_> = game
@@ -1215,6 +1355,12 @@ fn trigger_registry_key(game: &GameState) -> TriggerRegistryKey {
         effects_revision: game.effect_store.continuous_effects.revision(),
         mutation_revision: game.mutation_revision(),
         zone_revision: game.zone_revisions().all,
+        continuous_context_revision: game.continuous_context_revision(),
+        turn_number: game.turn.turn_number,
+        active_player: game.turn.active_player,
+        phase: game.turn.phase,
+        step: game.turn.step,
+        combat_phases_started_this_turn: game.turn_store.combat_phases_started_this_turn,
     }
 }
 
@@ -1224,8 +1370,15 @@ fn build_trigger_registry(
     key: TriggerRegistryKey,
 ) -> TriggerRegistry {
     let mut by_kind: FxMap<EventKind, Vec<TriggerSubscriber>> = FxMap::default();
+    let mut source_local_by_kind: FxMap<EventKind, FxMap<ObjectId, Vec<TriggerSubscriber>>> =
+        FxMap::default();
     let mut wildcard = Vec::new();
     let mut ordinal = 0u32;
+
+    // A registry rebuild needs every permanent's current abilities. Prime the
+    // shared batch evaluator once so a dirty continuous state does not fall
+    // back to one full layer/dependency pass per battlefield object.
+    view.prewarm_characteristics(&game.battlefield);
 
     for &obj_id in &game.battlefield {
         let Some(obj) = game.object(obj_id) else {
@@ -1255,7 +1408,16 @@ fn build_trigger_registry(
 
             if let Some(kinds) = trigger_ability.trigger.subscribed_kinds() {
                 for kind in kinds {
-                    by_kind.entry(kind).or_default().push(subscriber);
+                    if trigger_ability.trigger.source_must_match_event_object(kind) {
+                        source_local_by_kind
+                            .entry(kind)
+                            .or_default()
+                            .entry(obj_id)
+                            .or_default()
+                            .push(subscriber);
+                    } else {
+                        by_kind.entry(kind).or_default().push(subscriber);
+                    }
                 }
             } else {
                 wildcard.push(subscriber);
@@ -1266,6 +1428,7 @@ fn build_trigger_registry(
     TriggerRegistry {
         key,
         by_kind,
+        source_local_by_kind,
         wildcard,
     }
 }
@@ -1364,7 +1527,11 @@ fn check_battlefield_trigger_subscriber(
         source_stable_id: obj.stable_id,
         source_name: obj.name.to_string(),
         source_snapshot: None,
-        tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+        tagged_objects: tagged_objects_for_matched_trigger(
+            game,
+            trigger_event,
+            &trigger_ability.trigger,
+        ),
         source_kind: TriggeredAbilitySourceKind::Object,
         trigger_identity,
     };
@@ -1472,7 +1639,7 @@ fn assert_trigger_registry_matches_legacy_scan(
     registry: &TriggerRegistry,
 ) {
     let indexed: Vec<_> = registry
-        .subscribers_for(trigger_event.kind())
+        .subscribers_for(trigger_event.kind(), trigger_event.object_id())
         .into_iter()
         .filter(|&subscriber| {
             battlefield_trigger_subscriber_matches_event(game, trigger_event, view, subscriber)
@@ -1656,6 +1823,16 @@ pub(crate) fn check_triggers_with_view(
     trigger_event: &TriggerEvent,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<TriggeredAbilityEntry> {
+    let registry = battlefield_trigger_registry(game, view);
+    check_triggers_with_view_and_registry(game, trigger_event, view, &registry)
+}
+
+fn check_triggers_with_view_and_registry(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    registry: &TriggerRegistry,
+) -> Vec<TriggeredAbilityEntry> {
     if suppresses_creature_etb_triggers_with_effects(game, trigger_event, Some(view.effects())) {
         return Vec::new();
     }
@@ -1663,11 +1840,10 @@ pub(crate) fn check_triggers_with_view(
     let mut triggered = Vec::new();
     collect_lookback_source_triggers(game, trigger_event, &mut triggered);
 
-    let registry = battlefield_trigger_registry(game, view);
     #[cfg(feature = "shadow-continuous")]
-    assert_trigger_registry_matches_legacy_scan(game, trigger_event, view, &registry);
+    assert_trigger_registry_matches_legacy_scan(game, trigger_event, view, registry);
 
-    for subscriber in registry.subscribers_for(trigger_event.kind()) {
+    for subscriber in registry.subscribers_for(trigger_event.kind(), trigger_event.object_id()) {
         check_battlefield_trigger_subscriber(game, trigger_event, view, subscriber, &mut triggered);
     }
 
@@ -1733,7 +1909,11 @@ pub(crate) fn check_triggers_with_view(
                     source_stable_id: snapshot.stable_id,
                     source_name: snapshot.name.to_string(),
                     source_snapshot: Some(snapshot.clone()),
-                    tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                    tagged_objects: tagged_objects_for_matched_trigger(
+                        game,
+                        trigger_event,
+                        &trigger_ability.trigger,
+                    ),
                     source_kind: TriggeredAbilitySourceKind::Object,
                     trigger_identity,
                 };
@@ -1799,7 +1979,11 @@ pub(crate) fn check_triggers_with_view(
                     source_stable_id: snapshot.stable_id,
                     source_name: snapshot.name.to_string(),
                     source_snapshot: Some(snapshot.clone()),
-                    tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                    tagged_objects: tagged_objects_for_matched_trigger(
+                        game,
+                        trigger_event,
+                        &trigger_ability.trigger,
+                    ),
                     source_kind: TriggeredAbilitySourceKind::Object,
                     trigger_identity,
                 };
@@ -2444,7 +2628,11 @@ fn check_triggers_in_zone(
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.to_string(),
                 source_snapshot: None,
-                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                tagged_objects: tagged_objects_for_matched_trigger(
+                    game,
+                    trigger_event,
+                    &trigger_ability.trigger,
+                ),
                 source_kind: TriggeredAbilitySourceKind::Object,
                 trigger_identity,
             };
@@ -2765,6 +2953,33 @@ mod tests {
                 }),
                 functional_zones: vec![Zone::Battlefield],
             });
+    }
+
+    fn add_conditional_battlefield_trigger_grant(
+        game: &mut GameState,
+        source: crate::ids::ObjectId,
+        controller: PlayerId,
+        condition: crate::ConditionExpr,
+    ) {
+        let granted_trigger = crate::ability::Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_attacks(),
+                effects: vec![Effect::gain_life(2)].into(),
+                choices: Vec::new(),
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::new(
+                source,
+                controller,
+                crate::continuous::EffectTarget::Source,
+                crate::continuous::Modification::AddAbilityGeneric(granted_trigger),
+            )
+            .with_condition(condition),
+        );
     }
 
     fn make_battlefield_artifact(
@@ -3238,6 +3453,48 @@ mod tests {
         assert!(
             triggered.is_empty(),
             "603.10 trigger sources must come from the pre-event look-back payload"
+        );
+    }
+
+    #[test]
+    fn unrelated_zone_change_lki_skips_layered_trigger_registry_rebuild() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        // Model a large board whose only triggers subscribe to combat events.
+        // A zone-change LKI snapshot must not make those sources relevant.
+        for index in 0..128 {
+            let source =
+                make_battlefield_creature(&mut game, alice, &format!("Attack Watcher {index}"));
+            add_battlefield_trigger(&mut game, source, Trigger::this_attacks());
+        }
+        let victim = make_battlefield_creature(&mut game, alice, "Departing Creature");
+        game.refresh_continuous_state();
+        let victim_snapshot =
+            ObjectSnapshot::from_object(game.object(victim).expect("victim exists"), &game);
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_cause(
+                victim,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                EventCause::from_legend_rule(alice),
+                Some(victim_snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let before = game.work_counters();
+
+        let triggered = check_triggers(&game, &event);
+
+        let after = game.work_counters();
+        assert!(triggered.is_empty());
+        assert_eq!(
+            after.derived_view_rebuilds, before.derived_view_rebuilds,
+            "an unrelated LKI payload should not build a layered trigger view"
+        );
+        assert_eq!(
+            after.characteristics_full_recomputes, before.characteristics_full_recomputes,
+            "an unrelated LKI payload should not calculate battlefield characteristics"
         );
     }
 
@@ -3851,13 +4108,250 @@ mod tests {
             CreatureAttackedEvent::with_total_attackers(source, AttackEventTarget::Player(bob), 2),
             crate::provenance::ProvNodeId::default(),
         );
-        let tagged = tagged_objects_for_trigger_event(&game, &trigger_event);
+        let tagged = tagged_objects_for_matched_trigger(
+            &game,
+            &trigger_event,
+            &Trigger::this_attacks_with_exact_n_others(1),
+        );
         let other_attackers = tagged
             .get(&crate::tag::TagKey::from("other_attacker"))
             .expect("expected other_attacker tag for exact partner attack event");
 
         assert_eq!(other_attackers.len(), 1);
         assert_eq!(other_attackers[0].object_id, partner);
+    }
+
+    #[test]
+    fn plain_attack_trigger_does_not_materialize_other_attackers_tag() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = make_battlefield_creature(&mut game, alice, "Source");
+        let partner = make_battlefield_creature(&mut game, alice, "Partner");
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![
+                crate::combat_state::AttackerInfo {
+                    creature: source,
+                    target: AttackTarget::Player(bob),
+                },
+                crate::combat_state::AttackerInfo {
+                    creature: partner,
+                    target: AttackTarget::Player(bob),
+                },
+            ],
+            ..Default::default()
+        });
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(source, AttackEventTarget::Player(bob), 2),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        let tagged = tagged_objects_for_matched_trigger(&game, &event, &Trigger::this_attacks());
+
+        assert!(!tagged.contains_key(&crate::tag::TagKey::from("other_attacker")));
+    }
+
+    #[test]
+    fn attack_event_batch_reuses_view_and_source_local_subscribers() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut attackers = Vec::new();
+        for index in 0..32 {
+            let source =
+                make_battlefield_creature(&mut game, alice, &format!("Self Attack Source {index}"));
+            add_battlefield_trigger(&mut game, source, Trigger::this_attacks());
+            attackers.push(source);
+        }
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: attackers
+                .iter()
+                .map(|source| crate::combat_state::AttackerInfo {
+                    creature: *source,
+                    target: AttackTarget::Player(bob),
+                })
+                .collect(),
+            ..Default::default()
+        });
+        game.refresh_continuous_state();
+        let events = attackers
+            .iter()
+            .map(|source| {
+                TriggerEvent::new_with_provenance(
+                    CreatureAttackedEvent::with_total_attackers(
+                        *source,
+                        AttackEventTarget::Player(bob),
+                        attackers.len(),
+                    ),
+                    crate::provenance::ProvNodeId::default(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let before = game.work_counters();
+        let trigger_groups = check_triggers_batch(&game, &events);
+        let after = game.work_counters();
+
+        assert_eq!(
+            after.derived_view_rebuilds - before.derived_view_rebuilds,
+            1
+        );
+        assert_eq!(trigger_groups.len(), attackers.len());
+        for (expected_source, triggers) in attackers.iter().zip(trigger_groups) {
+            assert_eq!(triggers.len(), 1);
+            assert_eq!(triggers[0].source, *expected_source);
+            assert!(
+                !triggers[0]
+                    .tagged_objects
+                    .contains_key(&crate::tag::TagKey::from("other_attacker"))
+            );
+        }
+    }
+
+    #[test]
+    fn dirty_registry_rebuild_batches_battlefield_characteristics() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut sources = Vec::new();
+        for index in 0..32 {
+            let source = make_battlefield_creature(
+                &mut game,
+                alice,
+                &format!("Layered Attack Source {index}"),
+            );
+            add_battlefield_trigger(&mut game, source, Trigger::this_attacks());
+            sources.push(source);
+        }
+
+        let effect_source = sources[0];
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                effect_source,
+                alice,
+                crate::continuous::EffectTarget::AllPermanents,
+                crate::continuous::Modification::AddAbility(StaticAbility::flying()),
+            ));
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                effect_source,
+                alice,
+                crate::continuous::EffectTarget::AllPermanents,
+                crate::continuous::Modification::RemoveAbility(StaticAbility::flying()),
+            ));
+        game.refresh_continuous_state();
+
+        // Mana payment and similar action plumbing can invalidate continuous
+        // state without changing the effect list. Registry construction must
+        // still use the layer batch rather than one full pass per permanent.
+        game.mark_continuous_state_dirty();
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                effect_source,
+                AttackEventTarget::Player(bob),
+                1,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let before = game.work_counters();
+
+        let triggered = check_triggers(&game, &event);
+
+        let after = game.work_counters();
+        assert_eq!(triggered.len(), 1);
+        assert_eq!(triggered[0].source, effect_source);
+        assert_eq!(
+            after.dependency_sorts - before.dependency_sorts,
+            1,
+            "a dirty registry rebuild should sort the shared layer batch once"
+        );
+    }
+
+    #[test]
+    fn trigger_registry_rebuilds_when_combat_activates_granted_trigger() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = make_battlefield_creature(&mut game, alice, "Conditional Attack Source");
+        add_conditional_battlefield_trigger_grant(
+            &mut game,
+            source,
+            alice,
+            crate::ConditionExpr::SourceIsAttacking,
+        );
+        game.refresh_continuous_state();
+
+        let event = || {
+            TriggerEvent::new_with_provenance(
+                CreatureAttackedEvent::with_total_attackers(
+                    source,
+                    AttackEventTarget::Player(bob),
+                    1,
+                ),
+                crate::provenance::ProvNodeId::default(),
+            )
+        };
+
+        assert!(
+            check_triggers(&game, &event()).is_empty(),
+            "the conditional trigger should not be registered before its source attacks"
+        );
+
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: source,
+                target: AttackTarget::Player(bob),
+            }],
+            ..Default::default()
+        });
+        game.mark_continuous_state_dirty();
+        game.refresh_continuous_state();
+
+        let triggered = check_triggers(&game, &event());
+        assert_eq!(triggered.len(), 1);
+        assert_eq!(triggered[0].source, source);
+    }
+
+    #[test]
+    fn trigger_registry_rebuilds_when_turn_context_activates_granted_trigger() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = make_battlefield_creature(&mut game, alice, "Your Turn Attack Source");
+        add_conditional_battlefield_trigger_grant(
+            &mut game,
+            source,
+            alice,
+            crate::ConditionExpr::YourTurn,
+        );
+        game.turn.active_player = bob;
+        game.refresh_continuous_state();
+
+        let event = || {
+            TriggerEvent::new_with_provenance(
+                CreatureAttackedEvent::with_total_attackers(
+                    source,
+                    AttackEventTarget::Player(bob),
+                    1,
+                ),
+                crate::provenance::ProvNodeId::default(),
+            )
+        };
+
+        assert!(
+            check_triggers(&game, &event()).is_empty(),
+            "the conditional trigger should not be registered during another player's turn"
+        );
+
+        // Turn progression changes these fields directly. It does not need an
+        // object or effect-list mutation to change a conditional grant.
+        game.turn.active_player = alice;
+
+        let triggered = check_triggers(&game, &event());
+        assert_eq!(triggered.len(), 1);
+        assert_eq!(triggered[0].source, source);
     }
 
     #[test]

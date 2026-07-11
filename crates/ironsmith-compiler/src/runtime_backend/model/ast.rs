@@ -22,7 +22,7 @@ use super::super::{
 use super::semantic::ParsedAbility;
 use crate::runtime_backend::GrantedAbilityAst;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum StaticAbilityAst {
     Static(StaticAbility),
     KeywordAction(KeywordAction),
@@ -189,6 +189,11 @@ pub(crate) enum TriggerSpec {
     ThisDealsCombatDamage,
     ThisDealsCombatDamageTo(ObjectFilter),
     DealsDamage(ObjectFilter),
+    DealsDamageTo {
+        source: ObjectFilter,
+        target: ObjectFilter,
+        source_surface: crate::triggers::DamageSourceSurface,
+    },
     DealsDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,
@@ -196,6 +201,7 @@ pub(crate) enum TriggerSpec {
     DealsNoncombatDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,
+        source_surface: crate::triggers::DamageSourceSurface,
     },
     DealsCombatDamage(ObjectFilter),
     DealsCombatDamageTo {
@@ -336,6 +342,10 @@ pub(crate) enum TriggerSpec {
         filter: Option<ObjectFilter>,
         copier: PlayerFilter,
     },
+    SpellCountered {
+        filter: Option<ObjectFilter>,
+        controller: PlayerFilter,
+    },
     EntersBattlefield {
         filter: ObjectFilter,
         cause_filter: Option<crate::events::cause::CauseFilter>,
@@ -433,6 +443,7 @@ pub(crate) enum PredicateAst {
     TaggedMatches(TagKey, ObjectFilter),
     TaggedWasCast(TagKey),
     EnchantedPermanentAttackedThisTurn,
+    TargetObjectsHaveDifferentColorSets,
     PlayerTaggedObjectMatches {
         player: PlayerAst,
         tag: TagKey,
@@ -597,6 +608,9 @@ pub(crate) enum PredicateAst {
         count: u32,
     },
     OpponentLostLifeThisTurn,
+    AnyPlayerLostLifeThisTurnOrMore {
+        count: u32,
+    },
     OpponentWasDealtDamageThisTurn,
     YouHaveNoCardsInHand,
     PlayerWouldDrawCard {
@@ -774,6 +788,23 @@ pub(crate) struct ReturnAsAuraAst {
     pub(crate) attachment_filter: ObjectFilter,
     pub(crate) remove_all_abilities: bool,
     pub(crate) granted_abilities: Vec<GrantedAbilityAst>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct EmblemDescriptionAst {
+    pub(crate) text: String,
+    pub(crate) abilities: Vec<EmblemAbilityAst>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum EmblemAbilityAst {
+    Static(Vec<StaticAbilityAst>),
+    Activated(ParsedAbility),
+    Triggered {
+        trigger: TriggerSpec,
+        effects: Vec<EffectAst>,
+        trigger_limit_condition: Option<ConditionExpr>,
+    },
 }
 
 #[derive(Clone, PartialEq)]
@@ -1109,6 +1140,7 @@ pub(crate) enum SubjectVerbActionAst {
     GrantProtectionChoice {
         target: TargetAst,
         allow_colorless: bool,
+        allow_artifacts: bool,
     },
     PreventAllCombatDamage {
         duration: Until,
@@ -1463,6 +1495,7 @@ pub(crate) enum SubjectVerbActionAst {
         mode: LibraryConsultModeAst,
         filter: ObjectFilter,
         stop_rule: LibraryConsultStopRuleAst,
+        max_exposed: Option<Value>,
         all_tag: TagKey,
         match_tag: TagKey,
     },
@@ -1530,6 +1563,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     CreateTokenWithMods {
         name: String,
+        definition: crate::runtime_backend::token_definition::TokenDefinitionSpec,
         count: Value,
         dynamic_power_toughness: Option<(Value, Value)>,
         player: PlayerAst,
@@ -1849,7 +1883,7 @@ pub(crate) enum SubjectVerbActionAst {
     BecomeMonarch,
     TakeInitiative,
     CreateEmblem {
-        text: String,
+        emblem: EmblemDescriptionAst,
     },
     LoseGame,
     WinGame,
@@ -2335,10 +2369,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::GrantProtectionChoice {
                 target,
                 allow_colorless,
+                allow_artifacts,
             } => f
                 .debug_struct("GrantProtectionChoice")
                 .field("target", target)
                 .field("allow_colorless", allow_colorless)
+                .field("allow_artifacts", allow_artifacts)
                 .finish(),
             Self::PreventAllCombatDamage { duration } => f
                 .debug_struct("PreventAllCombatDamage")
@@ -2994,6 +3030,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 mode,
                 filter,
                 stop_rule,
+                max_exposed,
                 all_tag,
                 match_tag,
             } => f
@@ -3002,6 +3039,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("mode", mode)
                 .field("filter", filter)
                 .field("stop_rule", stop_rule)
+                .field("max_exposed", max_exposed)
                 .field("all_tag", all_tag)
                 .field("match_tag", match_tag)
                 .finish(),
@@ -3482,7 +3520,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::BecomeMonarch => f.write_str("BecomeMonarch"),
             Self::TakeInitiative => f.write_str("TakeInitiative"),
-            Self::CreateEmblem { text } => f.debug_tuple("CreateEmblem").field(text).finish(),
+            Self::CreateEmblem { emblem } => f.debug_tuple("CreateEmblem").field(emblem).finish(),
             Self::LoseGame => f.write_str("LoseGame"),
             Self::WinGame => f.write_str("WinGame"),
             Self::Detain { target } => f.debug_tuple("Detain").field(target).finish(),
@@ -3579,6 +3617,7 @@ pub(crate) enum EffectAst {
         trigger: TriggerSpec,
         effects: Vec<EffectAst>,
         one_shot: bool,
+        attach_to_previous_ability: bool,
     },
     DelayedWhenLastObjectDiesThisTurn {
         filter: Option<ObjectFilter>,
@@ -3597,6 +3636,7 @@ pub(crate) enum EffectAst {
         predicate: PredicateAst,
         if_true: Vec<EffectAst>,
         if_false: Vec<EffectAst>,
+        attach_to_previous_ability: bool,
     },
     ChooseObjects {
         filter: ObjectFilter,
@@ -3604,6 +3644,14 @@ pub(crate) enum EffectAst {
         count_value: Option<Value>,
         player: PlayerAst,
         tag: TagKey,
+    },
+    /// Choose objects subject to a constraint on the selection as a whole.
+    ChooseObjectsWithAggregateConstraint {
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        player: PlayerAst,
+        tag: TagKey,
+        constraint: crate::effect::ChoiceAggregateConstraint,
     },
     ChooseObjectsBottomOfLibrary {
         filter: ObjectFilter,
@@ -3956,6 +4004,7 @@ impl EffectAst {
     pub(crate) fn subject_verb_grant_protection_choice(
         target: TargetAst,
         allow_colorless: bool,
+        allow_artifacts: bool,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -3963,6 +4012,7 @@ impl EffectAst {
             SubjectVerbActionAst::GrantProtectionChoice {
                 target,
                 allow_colorless,
+                allow_artifacts,
             },
         )
     }
@@ -5193,6 +5243,31 @@ impl EffectAst {
                 mode,
                 filter,
                 stop_rule,
+                max_exposed: None,
+                all_tag,
+                match_tag,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_consult_top_of_library_with_max_exposed(
+        player: PlayerAst,
+        mode: LibraryConsultModeAst,
+        filter: ObjectFilter,
+        stop_rule: LibraryConsultStopRuleAst,
+        max_exposed: Value,
+        all_tag: TagKey,
+        match_tag: TagKey,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::ConsultTopOfLibrary {
+                player,
+                mode,
+                filter,
+                stop_rule,
+                max_exposed: Some(max_exposed),
                 all_tag,
                 match_tag,
             },
@@ -7289,11 +7364,14 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_create_emblem(player: PlayerAst, text: String) -> Self {
+    pub(crate) fn subject_verb_create_emblem(
+        player: PlayerAst,
+        emblem: EmblemDescriptionAst,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::CreateEmblem { text },
+            SubjectVerbActionAst::CreateEmblem { emblem },
         )
     }
 

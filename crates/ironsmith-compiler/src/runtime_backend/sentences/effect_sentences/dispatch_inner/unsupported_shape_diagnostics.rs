@@ -1,33 +1,11 @@
-const UNSUPPORTED_GAIN_LIFE_EQUAL_TO_PREFIX: &[&str] = &["life", "equal", "to"];
-const UNSUPPORTED_ITS_POWER_PHRASE: &[&str] = &["its", "power"];
-const UNSUPPORTED_X_PLUS_PREFIX: &[&str] = &["x", "plus"];
-
-fn unsupported_word_is_gain(word: &str) -> bool {
-    matches!(word, "gain" | "gains")
-}
-
-fn unsupported_word_is_negation(word: &str) -> bool {
-    matches!(word, "cant" | "cannot" | "doesnt" | "don't" | "dont")
-}
-
 pub(crate) fn parse_gain_life_equal_to_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = find_index(words.as_slice(), |word| unsupported_word_is_gain(word)) else {
+    let Some(shape) = effect_grammar::parse_gain_life_equal_power_tokens(tokens) else {
         return Ok(None);
     };
-
-    if !word_slice_starts_with(&words[gain_idx + 1..], UNSUPPORTED_GAIN_LIFE_EQUAL_TO_PREFIX) {
-        return Ok(None);
-    }
-
-    if !word_slice_contains_phrase(&words[gain_idx + 4..], UNSUPPORTED_ITS_POWER_PHRASE) {
-        return Ok(None);
-    }
-
-    let subject = if gain_idx > 0 {
-        Some(parse_subject(&tokens[..gain_idx]))
+    let subject = if !shape.subject_tokens.is_empty() {
+        Some(parse_subject(shape.subject_tokens))
     } else {
         None
     };
@@ -56,46 +34,15 @@ pub(crate) fn parse_prevent_damage_sentence(
 pub(crate) fn parse_gain_x_plus_life_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = find_index(words.as_slice(), |word| unsupported_word_is_gain(word)) else {
+    let Some(shape) = effect_grammar::parse_gain_x_plus_life_tokens(tokens) else {
         return Ok(None);
     };
-    if gain_idx > 0 && unsupported_word_is_negation(words[gain_idx - 1]) {
-        return Ok(None);
-    }
-
-    if words.len() <= gain_idx + 4 {
-        return Ok(None);
-    }
-
-    if !word_slice_starts_with(&words[gain_idx + 1..], UNSUPPORTED_X_PLUS_PREFIX) {
-        return Ok(None);
-    }
-
-    let (bonus, number_used) = parse_number(&tokens[gain_idx + 3..]).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing life gain amount (clause: '{}')",
-            words.join(" ")
-        ))
-    })?;
-    let life_idx = gain_idx + 3 + number_used;
-    if !tokens
-        .get(life_idx)
-        .is_some_and(|token| token.is_word("life"))
-    {
-        return Err(CardTextError::ParseError(format!(
-            "missing life keyword in gain-x-plus-life clause (clause: '{}')",
-            words.join(" ")
-        )));
-    }
-
-    let subject_tokens = &tokens[..gain_idx];
-    let player = match parse_subject(subject_tokens) {
+    let player = match parse_subject(shape.subject_tokens) {
         SubjectAst::Player(player) => player,
         _ => PlayerAst::Implicit,
     };
 
-    let trailing_tokens = trim_commas(&tokens[life_idx + 1..]);
+    let trailing_tokens = trim_commas(shape.trailing_tokens);
     let x_value = if trailing_tokens.is_empty() {
         Value::X
     } else if let Some(where_x) = parse_value_binding_clause(&trailing_tokens) {
@@ -103,10 +50,13 @@ pub(crate) fn parse_gain_x_plus_life_sentence(
     } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported gain-x-plus-life trailing clause (clause: '{}')",
-            words.join(" ")
+            render_token_slice(tokens)
         )));
     };
-    let amount = Value::Add(Box::new(x_value), Box::new(Value::Fixed(bonus as i32)));
+    let amount = Value::Add(
+        Box::new(x_value),
+        Box::new(Value::Fixed(shape.bonus as i32)),
+    );
     let effects = vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         player,

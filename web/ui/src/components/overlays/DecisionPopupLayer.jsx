@@ -3345,7 +3345,8 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "pass-priority-btn decision-main-button action-strip-advance-button h-full w-[224px] min-w-[224px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase",
+                  "pass-priority-btn decision-main-button action-strip-advance-button w-[224px] min-w-[224px] shrink-0 rounded-none px-3 text-[14px] font-bold uppercase",
+                  inline ? "combat-inline-primary my-auto self-center" : "h-full self-stretch",
                   compactPortraitViewport && "w-full min-w-0"
                 )}
                 style={decisionButtonStyle}

@@ -221,17 +221,29 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::this_deals_combat_damage_to_player(player)
         }
         TriggerKind::DealsDamage { filter } => crate::triggers::Trigger::deals_damage(filter),
-        TriggerKind::DealsDamageTo { source, target } => {
-            crate::triggers::Trigger::deals_damage_to(source, target)
-        }
+        TriggerKind::DealsDamageTo {
+            source,
+            target,
+            source_surface,
+        } => crate::triggers::Trigger::deals_damage_to_with_source_surface(
+            source,
+            target,
+            source_surface,
+        ),
         TriggerKind::DealsDamageToPlayer { source, player } => {
             let mut trigger = crate::triggers::combat::DealsDamageTrigger::new(source);
             trigger.damaged_player = Some(player);
             crate::triggers::Trigger::new(trigger)
         }
-        TriggerKind::DealsNoncombatDamageToPlayer { source, player } => {
-            crate::triggers::Trigger::deals_noncombat_damage_to_player(source, player)
-        }
+        TriggerKind::DealsNoncombatDamageToPlayer {
+            source,
+            player,
+            source_surface,
+        } => crate::triggers::Trigger::deals_noncombat_damage_to_player_with_source_surface(
+            source,
+            player,
+            source_surface,
+        ),
         TriggerKind::DealsCombatDamage { filter } => {
             crate::triggers::Trigger::deals_combat_damage(filter)
         }
@@ -639,6 +651,9 @@ impl super::Trigger {
                 exact_spells_this_turn,
                 from_not_hand,
             ),
+            ironsmith_core::DelayedTriggerSpec::PlayerPlaysLand { player, filter } => {
+                Self::player_plays_land(player, filter)
+            }
             ironsmith_core::DelayedTriggerSpec::AbilityActivated {
                 activator,
                 filter,
@@ -663,5 +678,27 @@ impl super::Trigger {
         trigger: ironsmith_core::trigger_model::Trigger,
     ) -> Result<Self, TriggerModelConversionError> {
         interpret_trigger_model(trigger)
+    }
+}
+
+#[cfg(test)]
+mod delayed_spec_tests {
+    use super::*;
+    use crate::target::{ObjectFilter, PlayerFilter};
+
+    #[test]
+    fn player_plays_land_delayed_spec_uses_land_play_matcher() {
+        let filter = ObjectFilter::land();
+        let trigger = crate::triggers::Trigger::from_delayed_trigger_spec(
+            ironsmith_core::DelayedTriggerSpec::PlayerPlaysLand {
+                player: PlayerFilter::You,
+                filter: filter.clone(),
+            },
+        );
+        let matcher = trigger
+            .downcast_ref::<crate::triggers::PlayerPlaysLandTrigger>()
+            .expect("land-play delayed spec should preserve the runtime matcher");
+        assert_eq!(matcher.player, PlayerFilter::You);
+        assert_eq!(matcher.filter, filter);
     }
 }

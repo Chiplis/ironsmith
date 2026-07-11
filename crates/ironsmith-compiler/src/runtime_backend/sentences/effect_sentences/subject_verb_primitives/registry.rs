@@ -1,25 +1,6 @@
 use super::*;
 use crate::parse_trace;
-use crate::runtime_backend::front_end::lex_patterns::{
-    LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
-};
-
-pub(super) const FOR_EACH_PLAYER_PREFIXES: &[&[&str]] = &[
-    &["for", "each", "player"],
-    &["for", "each", "players"],
-    &["each", "player"],
-    &["each", "players"],
-];
-pub(super) const EACH_OPPONENT_PREFIXES: &[&[&str]] = &[
-    &["for", "each", "opponent"],
-    &["for", "each", "opponents"],
-    &["each", "opponent"],
-    &["each", "opponents"],
-];
-pub(super) const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"]];
-pub(super) const CHOOSE_ALL_OR_PUT_ALL_PREFIXES: &[&[&str]] =
-    &[&["choose", "all"], &["put", "all"]];
-pub(super) const CHOOSE_ALL_PREFIXES: &[&[&str]] = &[&["choose", "all"]];
+use crate::runtime_backend::front_end::grammar::effects::subject_verb_registry_shapes as registry_shapes;
 pub(super) const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
     &["you", "choose", "one", "of", "them"],
     &[
@@ -29,28 +10,11 @@ pub(super) const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
     &["venture", "into", "the", "dungeon"],
     &["it", "doesnt", "untap", "during"],
 ];
-pub(crate) const REMAIN_EXILED_PREFIXES: &[&[&str]] = &[
-    &["if", "any", "of", "those", "cards", "remain", "exiled"],
-    &["if", "those", "cards", "remain", "exiled"],
-    &["if", "that", "card", "remains", "exiled"],
-    &["if", "it", "remains", "exiled"],
-];
 pub(crate) type SubjectVerbPrimitiveParser =
     for<'a> fn(SubjectVerbPrimitiveClause<'a>) -> Result<Option<Vec<EffectAst>>, CardTextError>;
-pub(crate) type SubjectVerbPatternPrimitiveParser =
-    for<'a, 'p> fn(
-        SubjectVerbPrimitiveClause<'a>,
-        &LexPatternMatch<'p>,
-    ) -> Result<Option<Vec<EffectAst>>, CardTextError>;
-
 pub(super) type SubjectVerbPrimitiveNormalizedWords<'a> = TokenWordView<'a>;
 
 const REGISTRY_CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
-const REGISTRY_TARGET_OPPONENT_OBJECT_WORDS: &[&[&str]] =
-    &[&["target", "opponent"], &["target", "opponents"]];
-const REGISTRY_TARGET_PLAYER_OBJECT_WORDS: &[&[&str]] =
-    &[&["target", "player"], &["target", "players"]];
-const REGISTRY_THAT_PLAYER_OBJECT_WORDS: &[&[&str]] = &[&["that", "player"], &["that", "players"]];
 const PRIMITIVE_ROUTE_VERBS: &[(&[&str], &str)] = &[
     (&["choose"], "Choose"),
     (&["search"], "Search"),
@@ -79,7 +43,6 @@ const THAT_PLAYER_SUBJECT_WORDS: &[&str] = &["that", "player"];
 const YOU_SUBJECT_WORDS: &[&str] = &["you"];
 const THEIR_HAND_OWNER_WORD: &str = "their";
 const YOUR_HAND_OWNER_WORD: &str = "your";
-const SHUFFLES_THEN_DRAWS_PHRASE: &[&str] = &["shuffles", "then", "draws"];
 
 fn registry_token_matches_word(token: &OwnedLexToken, expected: &str) -> bool {
     token.as_word().is_some_and(|word| word == expected)
@@ -99,21 +62,6 @@ fn registry_token_is_life(token: &OwnedLexToken) -> bool {
     registry_token_matches_word(token, "life")
 }
 
-fn parse_registry_player_object_clause(
-    object_clause: SubjectVerbPrimitiveClause<'_>,
-) -> Option<PlayerAst> {
-    let words = object_clause.word_refs();
-    if word_slice_eq_any(&words, REGISTRY_TARGET_OPPONENT_OBJECT_WORDS) {
-        Some(PlayerAst::TargetOpponent)
-    } else if word_slice_eq_any(&words, REGISTRY_TARGET_PLAYER_OBJECT_WORDS) {
-        Some(PlayerAst::Target)
-    } else if word_slice_eq_any(&words, REGISTRY_THAT_PLAYER_OBJECT_WORDS) {
-        Some(PlayerAst::That)
-    } else {
-        None
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SubjectVerbPrimitiveClause<'a> {
     tokens: &'a [OwnedLexToken],
@@ -127,41 +75,6 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
 
     fn lexed(self) -> LexedClause<'a> {
         LexedClause::new(self.tokens)
-    }
-
-    pub(crate) fn match_pattern<'p>(self, pattern: LexPattern<'p>) -> Option<LexPatternMatch<'p>> {
-        pattern.match_clause(self.lexed())
-    }
-
-    pub(crate) fn match_prefix_pattern<'p>(
-        self,
-        pattern: LexPattern<'p>,
-    ) -> Option<LexPatternMatch<'p>> {
-        pattern.match_prefix(self.lexed())
-    }
-
-    pub(crate) fn find_pattern<'p>(self, pattern: LexPattern<'p>) -> Option<LexPatternMatch<'p>> {
-        pattern.find_in_clause(self.lexed())
-    }
-
-    pub(crate) fn pattern_capture<'p>(
-        self,
-        matched: &LexPatternMatch<'p>,
-        name: &str,
-    ) -> Option<Self> {
-        matched
-            .capture_clause(name, self.lexed())
-            .map(|clause| Self::new(clause.tokens()))
-    }
-
-    pub(crate) fn pattern_capture_role<'p>(
-        self,
-        matched: &LexPatternMatch<'p>,
-        role: LexCaptureRole,
-    ) -> Option<Self> {
-        matched
-            .capture_clause_by_role(role, self.lexed())
-            .map(|clause| Self::new(clause.tokens()))
     }
 
     pub(crate) fn tokens(self) -> &'a [OwnedLexToken] {
@@ -178,14 +91,6 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
 
     pub(crate) fn token(self, idx: usize) -> Option<&'a OwnedLexToken> {
         self.lexed().token(idx)
-    }
-
-    pub(crate) fn first_is_word(self, expected: &str) -> bool {
-        self.lexed().first_is_word(expected)
-    }
-
-    pub(crate) fn first_is_any_word(self, expected: &[&str]) -> bool {
-        self.lexed().first_is_any_word(expected)
     }
 
     pub(crate) fn before(self, idx: usize) -> Self {
@@ -216,109 +121,12 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
         span_from_tokens(self.tokens)
     }
 
-    pub(crate) fn starts_with(self, expected: &[&str]) -> bool {
-        self.lexed().starts_with(expected)
-    }
-
-    pub(crate) fn starts_with_any(self, phrases: &[&[&str]]) -> bool {
-        self.lexed().starts_with_any(phrases)
-    }
-
-    pub(crate) fn ends_with(self, expected: &[&str]) -> bool {
-        self.lexed().ends_with(expected)
-    }
-
-    pub(crate) fn ends_with_any(self, phrases: &[&[&str]]) -> bool {
-        self.lexed().ends_with_any(phrases)
-    }
-
-    pub(crate) fn strip_prefix(self, expected: &[&str]) -> Option<&'a [OwnedLexToken]> {
-        self.lexed()
-            .strip_prefix_clause(expected)
-            .map(LexedClause::tokens)
-    }
-
-    pub(crate) fn strip_prefix_clause(self, expected: &[&str]) -> Option<Self> {
-        self.strip_prefix(expected).map(Self::new)
-    }
-
-    pub(crate) fn strip_any_prefix<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], &'a [OwnedLexToken])> {
-        self.lexed()
-            .strip_any_prefix_clause(phrases)
-            .map(|(prefix, tail)| (prefix, tail.tokens()))
-    }
-
-    pub(crate) fn strip_any_prefix_clause<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], Self)> {
-        self.strip_any_prefix(phrases)
-            .map(|(prefix, tail)| (prefix, Self::new(tail)))
-    }
-
-    pub(crate) fn strip_prefix_value_clause<T: Clone>(
-        self,
-        phrases: &[(&[&str], T)],
-    ) -> Option<(T, Self)> {
-        self.lexed()
-            .strip_prefix_value_clause(phrases)
-            .map(|(value, tail)| (value, Self::new(tail.tokens())))
-    }
-
-    pub(crate) fn strip_suffix(self, expected: &[&str]) -> Option<Self> {
-        self.lexed()
-            .strip_suffix_clause(expected)
-            .map(|head| Self::new(head.tokens()))
-    }
-
-    pub(crate) fn strip_any_suffix<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], Self)> {
-        self.lexed()
-            .strip_any_suffix_clause(phrases)
-            .map(|(phrase, head)| (phrase, Self::new(head.tokens())))
-    }
-
     pub(crate) fn first_word(self) -> Option<&'a str> {
         self.lexed().first_word()
     }
 
-    pub(crate) fn find_word(self, expected: &str) -> Option<usize> {
-        self.lexed().find_word(expected)
-    }
-
-    pub(crate) fn find_word_any(self, expected: &[&str]) -> Option<usize> {
-        self.lexed().find_word_any(expected)
-    }
-
     pub(crate) fn rfind_word(self, expected: &str) -> Option<usize> {
         self.lexed().rfind_word(expected)
-    }
-
-    pub(crate) fn find_phrase_start(self, expected: &[&str]) -> Option<usize> {
-        self.lexed().find_phrase_start(expected)
-    }
-
-    pub(crate) fn find_any_phrase_start<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], usize)> {
-        self.lexed().find_any_phrase_start(phrases)
-    }
-
-    pub(crate) fn find_any_phrase_span<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(usize, usize)> {
-        self.lexed().find_any_phrase_span(phrases)
-    }
-
-    pub(crate) fn token_index_for_word_index(self, word_idx: usize) -> Option<usize> {
-        self.lexed().token_index_for_word_index(word_idx)
     }
 
     pub(crate) fn token_index_after_words(self, word_count: usize) -> Option<usize> {
@@ -326,13 +134,13 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
     }
 
     pub(crate) fn before_word(self, word_idx: usize) -> Option<Self> {
-        let token_idx = self.token_index_for_word_index(word_idx)?;
-        Some(self.before(token_idx))
+        registry_shapes::split_registry_clause_at_word(self.tokens, word_idx)
+            .map(|split| Self::new(split.before))
     }
 
     pub(crate) fn from_word(self, word_idx: usize) -> Option<Self> {
-        let token_idx = self.token_index_for_word_index(word_idx)?;
-        Some(self.from(token_idx))
+        registry_shapes::split_registry_clause_at_word(self.tokens, word_idx)
+            .map(|split| Self::new(split.after))
     }
 
     pub(crate) fn after_words(self, word_count: usize) -> Option<Self> {
@@ -499,18 +307,6 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
             })
     }
 
-    pub(crate) fn contains_word(self, expected: &str) -> bool {
-        self.lexed().contains_word(expected)
-    }
-
-    pub(crate) fn contains_any_word(self, expected: &[&str]) -> bool {
-        self.lexed().contains_any_word(expected)
-    }
-
-    pub(crate) fn contains_no_words(self, expected: &[&str]) -> bool {
-        self.lexed().contains_no_words(expected)
-    }
-
     pub(crate) fn count_word(self, expected: &str) -> usize {
         self.lexed().count_word(expected)
     }
@@ -521,18 +317,6 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
 
     pub(crate) fn contains_comma_or_any_word(self, expected: &[&str]) -> bool {
         self.lexed().contains_comma_or_any_word(expected)
-    }
-
-    pub(crate) fn contains_all_words(self, expected: &[&str]) -> bool {
-        self.lexed().contains_all_words(expected)
-    }
-
-    pub(crate) fn contains_phrase(self, expected: &[&str]) -> bool {
-        self.words().has_phrase(expected)
-    }
-
-    pub(crate) fn contains_any_phrase(self, phrases: &[&[&str]]) -> bool {
-        self.lexed().contains_any_phrase(phrases)
     }
 
     pub(crate) fn trim(self) -> Vec<OwnedLexToken> {
@@ -717,10 +501,6 @@ impl SubjectVerbPrimitiveOwnedClause {
         self.as_clause().word_refs()
     }
 
-    pub(crate) fn contains_word(&self, expected: &str) -> bool {
-        self.as_clause().contains_word(expected)
-    }
-
     pub(crate) fn find_token_word(&self, expected: &str) -> Option<usize> {
         self.as_clause().find_token_word(expected)
     }
@@ -787,39 +567,15 @@ pub(crate) struct SubjectVerbPrimitive {
     pub(crate) stage: SubjectVerbPrimitiveStage,
     pub(crate) head_hints: &'static [LexRuleHeadHint],
     pub(crate) shape_mask: u32,
-    pub(crate) pattern: Option<LexPattern<'static>>,
     pub(crate) parser: SubjectVerbPrimitiveParser,
-    pub(crate) pattern_parser: Option<SubjectVerbPatternPrimitiveParser>,
 }
 
 impl SubjectVerbPrimitive {
-    pub(crate) const fn with_pattern_parser(
+    pub(crate) const fn new(
         id: &'static str,
         priority: u16,
         stage: SubjectVerbPrimitiveStage,
         head_hints: &'static [LexRuleHeadHint],
-        pattern_atoms: &'static [LexPatternAtom<'static>],
-        parser: SubjectVerbPrimitiveParser,
-        pattern_parser: SubjectVerbPatternPrimitiveParser,
-    ) -> Self {
-        Self {
-            id,
-            priority,
-            stage,
-            head_hints,
-            shape_mask: 0,
-            pattern: Some(LexPattern::new(pattern_atoms)),
-            parser,
-            pattern_parser: Some(pattern_parser),
-        }
-    }
-
-    pub(crate) const fn with_pattern(
-        id: &'static str,
-        priority: u16,
-        stage: SubjectVerbPrimitiveStage,
-        head_hints: &'static [LexRuleHeadHint],
-        pattern_atoms: &'static [LexPatternAtom<'static>],
         parser: SubjectVerbPrimitiveParser,
     ) -> Self {
         Self {
@@ -828,9 +584,7 @@ impl SubjectVerbPrimitive {
             stage,
             head_hints,
             shape_mask: 0,
-            pattern: Some(LexPattern::new(pattern_atoms)),
             parser,
-            pattern_parser: None,
         }
     }
 }
@@ -884,14 +638,9 @@ fn primitive_route_starts_with_any(id: &str, prefixes: &[&str]) -> bool {
 fn run_sentence_primitive(
     primitive: &SubjectVerbPrimitive,
     tokens: &[OwnedLexToken],
-    matched: Option<&LexPatternMatch<'_>>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause = SubjectVerbPrimitiveClause::new(tokens);
-    let parsed = if let (Some(parser), Some(matched)) = (primitive.pattern_parser, matched) {
-        parser(clause, matched)
-    } else {
-        (primitive.parser)(clause)
-    };
+    let parsed = (primitive.parser)(clause);
     match parsed {
         Ok(Some(effects)) => {
             let stage = format!(
@@ -957,15 +706,7 @@ fn run_sentence_primitive_lexed(
     lowered: &OnceCell<Vec<OwnedLexToken>>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let lowered_tokens = lowered.get_or_init(|| normalize_parser_tokens(tokens));
-    let matched = if let Some(pattern) = primitive.pattern {
-        let Some(matched) = pattern.match_clause(LexedClause::new(lowered_tokens)) else {
-            return Ok(None);
-        };
-        Some(matched)
-    } else {
-        None
-    };
-    run_sentence_primitive(primitive, lowered_tokens, matched.as_ref())
+    run_sentence_primitive(primitive, lowered_tokens)
 }
 
 pub(crate) fn run_subject_verb_primitives_lexed(
@@ -1077,114 +818,48 @@ pub(crate) fn parse_sentence_exile_source_with_counters_lexed(
 pub(crate) fn parse_you_and_target_player_each_draw_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let optional_each = [LexPattern::word("each")];
-    let action_boundaries: &[&[&str]] = &[&["each"], &["draw"], &["draws"]];
-    let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilPhrase(&["and"]),
-        ),
-        LexPattern::word("and"),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::UntilAnyPhrase(action_boundaries),
-        ),
-        LexPattern::optional(&optional_each),
-        LexPattern::any_word(&["draw", "draws"]),
-        LexPattern::role_capture(
-            "amount",
-            LexCaptureRole::Amount,
-            LexCaptureKind::OneOrMoreWords,
-        ),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = clause.match_pattern(pattern) else {
+    let Some(shape) = registry_shapes::parse_joint_draw_shape(clause.tokens()) else {
         return Ok(None);
     };
-    parse_you_and_target_player_each_draw_sentence_matched(clause, &matched)
-}
-
-pub(crate) fn parse_you_and_target_player_each_draw_sentence_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let amount_clause = SubjectVerbPrimitiveClause::new(shape.amount_tokens);
     let clause_text = clause.text();
-    let Some(subject_clause) = clause.pattern_capture_role(&matched, LexCaptureRole::Subject)
-    else {
-        return Ok(None);
-    };
-    if subject_clause.word_refs() != YOU_SUBJECT_WORDS {
-        return Ok(None);
-    }
-
-    let Some(object_clause) = clause.pattern_capture_role(&matched, LexCaptureRole::Object) else {
-        return Ok(None);
-    };
-    let Some(target_player) = parse_registry_player_object_clause(object_clause) else {
-        return Ok(None);
-    };
-
-    let Some(amount_clause) = clause.pattern_capture_role(&matched, LexCaptureRole::Amount) else {
-        return Ok(None);
-    };
     let remainder_words = amount_clause.word_refs();
-    if remainder_words.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing draw count in shared draw sentence (clause: '{}')",
-            clause_text
-        )));
-    }
-    if let Some((count, used_words)) = parse_half_rounded_down_draw_count_words(&remainder_words) {
-        let trailing_words = &remainder_words[used_words..];
-        if !trailing_words.is_empty() {
+    let count = if let Some((count, used_words)) =
+        parse_half_rounded_down_draw_count_words(&remainder_words)
+    {
+        if !remainder_words[used_words..].is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing shared draw clause (clause: '{}')",
                 clause_text
             )));
         }
-        return Ok(Some(vec![
-            EffectAst::subject_verb(
-                SubjectVerbRoleAst::AffectedPlayer,
-                PlayerAst::You,
-                SubjectVerbActionAst::Draw {
-                    count: count.clone(),
-                },
-            ),
-            EffectAst::subject_verb(
-                SubjectVerbRoleAst::AffectedPlayer,
-                target_player,
-                SubjectVerbActionAst::Draw { count },
-            ),
-        ]));
-    }
-    let (count, used) = parse_value(amount_clause.tokens()).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing draw count in shared draw sentence (clause: '{}')",
-            clause_text
-        ))
-    })?;
-    if amount_clause
-        .tokens()
-        .get(used)
-        .and_then(OwnedLexToken::as_word)
-        .is_none_or(|word| !registry_word_is_card_or_cards(word))
-    {
-        return Err(CardTextError::ParseError(format!(
-            "missing card keyword in shared draw sentence (clause: '{}')",
-            clause_text
-        )));
-    }
-
-    let trailing_words = amount_clause.from(used + 1).word_refs();
-    if !trailing_words.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported trailing shared draw clause (clause: '{}')",
-            clause_text
-        )));
-    }
-
+        count
+    } else {
+        let (count, used) = parse_value(amount_clause.tokens()).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing draw count in shared draw sentence (clause: '{}')",
+                clause_text
+            ))
+        })?;
+        if amount_clause
+            .tokens()
+            .get(used)
+            .and_then(OwnedLexToken::as_word)
+            .is_none_or(|word| !registry_word_is_card_or_cards(word))
+        {
+            return Err(CardTextError::ParseError(format!(
+                "missing card keyword in shared draw sentence (clause: '{}')",
+                clause_text
+            )));
+        }
+        if !amount_clause.from(used + 1).word_refs().is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing shared draw clause (clause: '{}')",
+                clause_text
+            )));
+        }
+        count
+    };
     Ok(Some(vec![
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
@@ -1195,7 +870,7 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence_matched(
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
-            target_player,
+            shape.other_player,
             SubjectVerbActionAst::Draw { count },
         ),
     ]))
@@ -1212,65 +887,10 @@ pub(crate) fn parse_sentence_you_and_target_player_each_draw(
 pub(crate) fn parse_you_and_player_each_gain_or_lose_life_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let optional_each = [LexPattern::word("each")];
-    let action_boundaries: &[&[&str]] = &[&["each"], &["gain"], &["gains"], &["lose"], &["loses"]];
-    let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilPhrase(&["and"]),
-        ),
-        LexPattern::word("and"),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::UntilAnyPhrase(action_boundaries),
-        ),
-        LexPattern::optional(&optional_each),
-        LexPattern::role_capture(
-            "verb",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["gain", "gains", "lose", "loses"]),
-        ),
-        LexPattern::role_capture(
-            "amount",
-            LexCaptureRole::Amount,
-            LexCaptureKind::OneOrMoreWords,
-        ),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = clause.match_pattern(pattern) else {
+    let Some(shape) = registry_shapes::parse_joint_life_shape(clause.tokens()) else {
         return Ok(None);
     };
-    parse_you_and_player_each_gain_or_lose_life_sentence_matched(clause, &matched)
-}
-
-pub(crate) fn parse_you_and_player_each_gain_or_lose_life_sentence_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(subject_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Subject) else {
-        return Ok(None);
-    };
-    if subject_clause.word_refs() != YOU_SUBJECT_WORDS {
-        return Ok(None);
-    }
-
-    let Some(object_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Object) else {
-        return Ok(None);
-    };
-    let Some(other_player) = parse_registry_player_object_clause(object_clause) else {
-        return Ok(None);
-    };
-
-    let Some(verb_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Action) else {
-        return Ok(None);
-    };
-    let gains = matches!(verb_clause.word_refs().as_slice(), ["gain"] | ["gains"]);
-
-    let Some(amount_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Amount) else {
-        return Ok(None);
-    };
+    let amount_clause = SubjectVerbPrimitiveClause::new(shape.amount_tokens);
     let Some((amount, used)) = parse_value(amount_clause.tokens()) else {
         return Ok(None);
     };
@@ -1279,15 +899,12 @@ pub(crate) fn parse_you_and_player_each_gain_or_lose_life_sentence_matched(
         .get(used)
         .and_then(OwnedLexToken::as_word)
         .is_none_or(|word| word != "life")
+        || !amount_clause.from(used + 1).word_refs().is_empty()
     {
         return Ok(None);
     }
-    if !amount_clause.from(used + 1).word_refs().is_empty() {
-        return Ok(None);
-    }
-
     let action = |amount: Value| {
-        if gains {
+        if shape.gains {
             SubjectVerbActionAst::GainLife { amount }
         } else {
             SubjectVerbActionAst::LoseLife { amount }
@@ -1301,7 +918,7 @@ pub(crate) fn parse_you_and_player_each_gain_or_lose_life_sentence_matched(
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
-            other_player,
+            shape.other_player,
             action(amount),
         ),
     ]))
@@ -1319,67 +936,12 @@ pub(crate) fn parse_sentence_you_and_player_each_gain_or_lose_life(
 pub(crate) fn parse_you_and_player_each_create_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let optional_each = [LexPattern::word("each")];
-    let action_boundaries: &[&[&str]] = &[&["each"], &["create"], &["creates"]];
-    let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilPhrase(&["and"]),
-        ),
-        LexPattern::word("and"),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::UntilAnyPhrase(action_boundaries),
-        ),
-        LexPattern::optional(&optional_each),
-        LexPattern::role_capture(
-            "verb",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["create", "creates"]),
-        ),
-        LexPattern::role_capture(
-            "amount",
-            LexCaptureRole::Amount,
-            LexCaptureKind::OneOrMoreWords,
-        ),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = clause.match_pattern(pattern) else {
+    let Some(shape) = registry_shapes::parse_joint_create_shape(clause.tokens()) else {
         return Ok(None);
     };
-    parse_you_and_player_each_create_sentence_matched(clause, &matched)
-}
-
-pub(crate) fn parse_you_and_player_each_create_sentence_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(subject_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Subject) else {
-        return Ok(None);
-    };
-    if subject_clause.word_refs() != YOU_SUBJECT_WORDS {
-        return Ok(None);
-    }
-    let Some(object_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Object) else {
-        return Ok(None);
-    };
-    let Some(other_player) = parse_registry_player_object_clause(object_clause) else {
-        return Ok(None);
-    };
-    let Some(verb_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Action) else {
-        return Ok(None);
-    };
-    let Some(amount_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Amount) else {
-        return Ok(None);
-    };
-
-    let mut sub_tokens = verb_clause.tokens().to_vec();
-    sub_tokens.extend_from_slice(amount_clause.tokens());
     let Ok(parsed) =
         crate::runtime_backend::sentences::effect_sentences::parse_effect_sentence_lexed(
-            &sub_tokens,
+            shape.effect_tokens,
         )
     else {
         return Ok(None);
@@ -1387,14 +949,12 @@ pub(crate) fn parse_you_and_player_each_create_sentence_matched(
     let [EffectAst::SubjectVerb(template)] = parsed.as_slice() else {
         return Ok(None);
     };
-
     fn with_subject_player(
         template: &SubjectVerbEffectAst,
         player: PlayerAst,
     ) -> SubjectVerbEffectAst {
         let mut copy = template.clone();
-        copy.subject.player = player;
-        // Token creation carries its creator inside the action.
+        copy.subject.player = player.clone();
         if let SubjectVerbActionAst::CreateTokenWithMods {
             player: action_player,
             ..
@@ -1404,10 +964,9 @@ pub(crate) fn parse_you_and_player_each_create_sentence_matched(
         }
         copy
     }
-
     Ok(Some(vec![
         EffectAst::SubjectVerb(with_subject_player(template, PlayerAst::You)),
-        EffectAst::SubjectVerb(with_subject_player(template, other_player)),
+        EffectAst::SubjectVerb(with_subject_player(template, shape.other_player)),
     ]))
 }
 
@@ -1463,57 +1022,18 @@ mod tests {
 pub(crate) fn parse_sentence_choose_player_to_effect(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let stripped_clause = clause.without_leading_connectors_clause();
-    if stripped_clause.is_empty() {
-        return Ok(None);
-    }
-
-    let atoms = [
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::UntilPhrase(&["to"]),
-        ),
-        LexPattern::word("to"),
-        LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::OneOrMoreWords),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = stripped_clause.match_pattern(pattern) else {
+    let Some(shape) = registry_shapes::parse_choose_player_to_effect_shape(clause.tokens()) else {
         return Ok(None);
     };
-    parse_sentence_choose_player_to_effect_matched(stripped_clause, &matched)
-}
-
-pub(crate) fn parse_sentence_choose_player_to_effect_matched(
-    stripped_clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(choose_clause) = stripped_clause
-        .pattern_capture_role(&matched, LexCaptureRole::Action)
-        .map(SubjectVerbPrimitiveClause::trimmed)
-    else {
-        return Ok(None);
-    };
-    let Some(tail_clause) = stripped_clause
-        .pattern_capture_role(&matched, LexCaptureRole::Tail)
-        .map(SubjectVerbPrimitiveClause::trimmed)
-    else {
-        return Ok(None);
-    };
-    if choose_clause.is_empty() || tail_clause.is_empty() {
-        return Ok(None);
-    }
     let Some((chooser, filter, random, exclude_previous_choices)) =
-        parse_you_choose_player_clause(choose_clause.tokens())?
+        parse_you_choose_player_clause(shape.choose_tokens)?
     else {
         return Ok(None);
     };
-
-    let mut tail_effects = parse_effect_chain(tail_clause.tokens())?;
+    let mut tail_effects = parse_effect_chain(shape.effect_tokens)?;
     for effect in &mut tail_effects {
         bind_implicit_player_context(effect, PlayerAst::That);
     }
-
     let mut effects = vec![EffectAst::subject_verb_choose_player(
         chooser,
         filter,
@@ -1528,46 +1048,10 @@ pub(crate) fn parse_sentence_choose_player_to_effect_matched(
 pub(crate) fn parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let optional_connector = [LexPattern::any_word(&["and", "then"])];
-    let owner_words = ["owner's", "owners'", "owners", "owner"];
-    let hand_words = ["hand", "hands"];
-    let atoms = [
-        LexPattern::optional(&optional_connector),
-        LexPattern::phrase(&["return", "half", "the"]),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::UntilPhrase(&["they", "control"]),
-        ),
-        LexPattern::phrase(&["they", "control", "to", "their"]),
-        LexPattern::any_word(&owner_words),
-        LexPattern::any_word(&hand_words),
-        LexPattern::phrase(&["rounded", "up"]),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = clause.match_pattern(pattern) else {
+    let Some(shape) = registry_shapes::parse_return_half_controlled_shape(clause.tokens()) else {
         return Ok(None);
     };
-    parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand_matched(
-        clause, &matched,
-    )
-}
-
-pub(crate) fn parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(filter_clause) = clause
-        .pattern_capture_role(matched, LexCaptureRole::Object)
-        .map(SubjectVerbPrimitiveClause::trimmed)
-    else {
-        return Ok(None);
-    };
-    if filter_clause.is_empty() {
-        return Ok(None);
-    }
-
-    let mut filter = parse_object_filter(filter_clause.tokens(), false)?;
+    let mut filter = parse_object_filter(shape.filter_tokens, false)?;
     if filter.controller.is_none() {
         filter.controller = Some(PlayerFilter::IteratedPlayer);
     }
@@ -1591,44 +1075,10 @@ pub(crate) fn parse_sentence_return_half_the_creatures_they_control_to_their_own
 pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let optional_connector = [LexPattern::any_word(&["and", "then"])];
-    let atoms = [
-        LexPattern::optional(&optional_connector),
-        LexPattern::role_capture(
-            "source",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(&[&["deal"], &["deals"]]),
-        ),
-        LexPattern::any_word(&["deal", "deals"]),
-        LexPattern::phrase(&[
-            "damage", "to", "that", "player", "equal", "to", "half", "the", "damage", "dealt",
-            "by", "one", "of", "those",
-        ]),
-        LexPattern::role_capture(
-            "card_type",
-            LexCaptureRole::Object,
-            LexCaptureKind::WordCount(1),
-        ),
-        LexPattern::phrase(&["spells", "this", "turn", "rounded", "down"]),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = clause.match_pattern(pattern) else {
+    let Some(shape) = registry_shapes::parse_historical_half_damage_shape(clause.tokens()) else {
         return Ok(None);
     };
-    parse_sentence_damage_to_that_player_half_damage_of_those_spells_matched(clause, &matched)
-}
-
-pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(card_type_clause) = clause.pattern_capture(matched, "card_type") else {
-        return Ok(None);
-    };
-    let Some(card_type_word) = card_type_clause.first_word() else {
-        return Ok(None);
-    };
-    let card_type = parse_card_type(card_type_word).ok_or_else(|| {
+    let card_type = parse_card_type(shape.card_type_word).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported spell type in historical half-damage sentence (clause: '{}')",
             clause.text()
@@ -1653,60 +1103,26 @@ pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells_m
 pub(crate) fn parse_draw_for_each_card_exiled_from_hand_this_way_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let optional_connector = [LexPattern::any_word(&["and", "then"])];
-    let action_phrases: &[&[&str]] = &[&["shuffles", "then", "draws"], &["draw"], &["draws"]];
-    let owner_words = ["your", "their"];
-    let atoms = [
-        LexPattern::optional(&optional_connector),
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(action_phrases),
-        ),
-        LexPattern::any_phrase(action_phrases),
-        LexPattern::phrase(&["a", "card", "for", "each", "card", "exiled", "from"]),
-        LexPattern::role_capture(
-            "hand_owner",
-            LexCaptureRole::Object,
-            LexCaptureKind::OneOf(&owner_words),
-        ),
-        LexPattern::phrase(&["hand", "this", "way"]),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = clause.match_pattern(pattern) else {
+    let Some(shape) = registry_shapes::parse_draw_for_exiled_hand_shape(clause.tokens()) else {
         return Ok(None);
     };
-    parse_draw_for_each_card_exiled_from_hand_this_way_sentence_matched(clause, &matched)
-}
-
-pub(crate) fn parse_draw_for_each_card_exiled_from_hand_this_way_sentence_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(subject_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Subject) else {
-        return Ok(None);
+    let subject_words = LexedClause::new(shape.subject_tokens).word_refs();
+    let hand_owner = match shape.hand_owner {
+        registry_shapes::ExiledHandOwner::Your => Some(YOUR_HAND_OWNER_WORD),
+        registry_shapes::ExiledHandOwner::Their => Some(THEIR_HAND_OWNER_WORD),
     };
-    let Some(hand_owner_clause) = clause.pattern_capture(matched, "hand_owner") else {
-        return Ok(None);
-    };
-
-    let subject_words = subject_clause.trimmed_word_refs();
-    let hand_owner = hand_owner_clause.first_word();
-    let shuffles_first = clause.contains_phrase(SHUFFLES_THEN_DRAWS_PHRASE);
     let Some((player, mut effects)) = draw_exiled_hand_this_way_actor(
         &subject_words,
         hand_owner,
-        shuffles_first,
-        clause.first_word().is_some_and(|word| word == "draws"),
+        shape.shuffles_first,
+        shape.starts_with_draws,
     ) else {
         return Ok(None);
     };
-
     let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
     if matches!(player, PlayerAst::That) {
         filter.owner = Some(PlayerFilter::IteratedPlayer);
     }
-
     effects.push(EffectAst::subject_verb_draw_for_each_tagged_matching(
         player,
         TagKey::from(IT_TAG),
@@ -1761,103 +1177,59 @@ pub(crate) fn parse_sentence_draw_for_each_card_exiled_from_hand_this_way(
 pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let optional_the = [LexPattern::word("the")];
-    let optional_each = [LexPattern::word("each")];
-    let atoms = [
-        LexPattern::word("you"),
-        LexPattern::word("and"),
-        LexPattern::optional(&optional_the),
-        LexPattern::phrase(&["attacking", "player"]),
-        LexPattern::optional(&optional_each),
-        LexPattern::any_word(&["draw", "draws"]),
-        LexPattern::role_capture(
-            "draw_amount",
-            LexCaptureRole::Amount,
-            LexCaptureKind::UntilPhrase(&["and"]),
-        ),
-        LexPattern::word("and"),
-        LexPattern::any_word(&["lose", "loses"]),
-        LexPattern::role_capture(
-            "lose_amount",
-            LexCaptureRole::Modifier,
-            LexCaptureKind::OneOrMoreWords,
-        ),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = clause.match_pattern(pattern) else {
+    let Some(shape) = registry_shapes::parse_attacking_player_draw_lose_shape(clause.tokens())
+    else {
         return Ok(None);
     };
-    parse_sentence_you_and_attacking_player_each_draw_and_lose_matched(clause, &matched)
-}
-
-pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_text = clause.text();
-    let Some(draw_clause) = clause.pattern_capture(matched, "draw_amount") else {
-        return Ok(None);
-    };
+    let draw_clause = SubjectVerbPrimitiveClause::new(shape.draw_tokens);
     let draw_words = draw_clause.word_refs();
-    let (draw_count, after_draw_words) = if let Some((draw_count, used_words)) =
-        parse_half_rounded_down_draw_count_words(&draw_words)
-    {
-        (draw_count, draw_words[used_words..].to_vec())
-    } else {
-        let (draw_count, draw_used) = parse_value(draw_clause.tokens()).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing shared draw count (clause: '{}')",
-                clause_text
-            ))
-        })?;
-        if draw_clause
-            .tokens()
-            .get(draw_used)
-            .is_none_or(|token| !registry_token_is_card_or_cards(token))
-        {
-            return Err(CardTextError::ParseError(format!(
-                "missing card keyword in shared draw/lose sentence (clause: '{}')",
-                clause_text
-            )));
-        }
-
-        (draw_count, draw_clause.from(draw_used + 1).word_refs())
-    };
-    if !after_draw_words.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported trailing shared draw clause (clause: '{}')",
-            clause_text
-        )));
-    }
-
-    let Some(lose_clause) = clause.pattern_capture(matched, "lose_amount") else {
-        return Ok(None);
-    };
+    let draw_count =
+        if let Some((count, used_words)) = parse_half_rounded_down_draw_count_words(&draw_words) {
+            if !draw_words[used_words..].is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing shared draw clause (clause: '{}')",
+                    clause.text()
+                )));
+            }
+            count
+        } else {
+            let (count, used) = parse_value(draw_clause.tokens()).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing shared draw count (clause: '{}')",
+                    clause.text()
+                ))
+            })?;
+            if draw_clause
+                .tokens()
+                .get(used)
+                .is_none_or(|token| !registry_token_is_card_or_cards(token))
+                || !draw_clause.from(used + 1).word_refs().is_empty()
+            {
+                return Err(CardTextError::ParseError(format!(
+                    "missing card keyword in shared draw/lose sentence (clause: '{}')",
+                    clause.text()
+                )));
+            }
+            count
+        };
+    let lose_clause = SubjectVerbPrimitiveClause::new(shape.lose_tokens);
     let (lose_amount, lose_used) = parse_value(lose_clause.tokens()).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing shared life-loss amount (clause: '{}')",
-            clause_text
+            clause.text()
         ))
     })?;
     if lose_clause
         .tokens()
         .get(lose_used)
         .is_none_or(|token| !registry_token_is_life(token))
+        || !lose_clause.from(lose_used + 1).word_refs().is_empty()
     {
         return Err(CardTextError::ParseError(format!(
             "missing life keyword in shared draw/lose sentence (clause: '{}')",
-            clause_text
+            clause.text()
         )));
     }
-
-    let trailing_words = lose_clause.from(lose_used + 1).word_refs();
-    if !trailing_words.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported trailing shared draw/lose clause (clause: '{}')",
-            clause_text
-        )));
-    }
-
     Ok(Some(vec![
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
@@ -1891,69 +1263,23 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose_matched
 pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    // "sacrifice <object> at the beginning of [the] next end step"
-    let optional_owner = [LexPattern::any_phrase(&[&["the"], &["your"]])];
-    let atoms = [
-        LexPattern::word("sacrifice"),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::UntilPhrase(&["at", "the", "beginning", "of"]),
-        ),
-        LexPattern::phrase(&["at", "the", "beginning", "of"]),
-        LexPattern::optional(&optional_owner),
-        LexPattern::phrase(&["next", "end", "step"]),
-        LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = clause.match_pattern(pattern) else {
+    let Some(shape) = registry_shapes::parse_registry_next_end_step_shape(clause.tokens()) else {
         return Ok(None);
     };
-    parse_sentence_sacrifice_it_next_end_step_matched(clause, &matched)
-}
-
-pub(crate) fn parse_sentence_sacrifice_it_next_end_step_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(object_clause) = clause
-        .pattern_capture_role(&matched, LexCaptureRole::Object)
-        .map(SubjectVerbPrimitiveClause::trimmed)
-    else {
+    if shape.action != registry_shapes::RegistryDelayedAction::Sacrifice {
         return Ok(None);
-    };
-    if object_clause.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing sacrifice object in delayed next-end-step clause (clause: '{}')",
-            clause.text()
-        )));
     }
-
-    let object_words = object_clause.word_refs();
-    let filter = if matches!(
-        object_words.as_slice(),
-        ["it"]
-            | ["them"]
-            | ["the", "creature"]
-            | ["that", "creature"]
-            | ["the", "permanent"]
-            | ["that", "permanent"]
-            | ["the", "token"]
-            | ["that", "token"]
-    ) {
+    let filter = if registry_shapes::is_tagged_delayed_object(shape.object_tokens) {
         ObjectFilter::tagged(TagKey::from(IT_TAG))
     } else {
-        parse_object_filter(object_clause.tokens(), false)?
+        parse_object_filter(shape.object_tokens, false)?
     };
-    let player =
-        if word_slice_contains_phrase(&clause.word_refs(), &["your", "next", "end", "step"]) {
+    Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
+        player: if shape.your_end_step {
             PlayerFilter::You
         } else {
             PlayerFilter::Any
-        };
-
-    Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
-        player,
+        },
         effects: vec![EffectAst::subject_verb_sacrifice(
             PlayerAst::Implicit,
             filter,
@@ -1966,73 +1292,28 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step_matched(
 pub(crate) fn parse_sentence_exile_it_next_end_step(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let optional_owner = [LexPattern::any_phrase(&[&["the"], &["your"]])];
-    let atoms = [
-        LexPattern::word("exile"),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::UntilPhrase(&["at", "the", "beginning", "of"]),
-        ),
-        LexPattern::phrase(&["at", "the", "beginning", "of"]),
-        LexPattern::optional(&optional_owner),
-        LexPattern::phrase(&["next", "end", "step"]),
-        LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = clause.match_pattern(pattern) else {
+    let Some(shape) = registry_shapes::parse_registry_next_end_step_shape(clause.tokens()) else {
         return Ok(None);
     };
-    parse_sentence_exile_it_next_end_step_matched(clause, &matched)
-}
-
-pub(crate) fn parse_sentence_exile_it_next_end_step_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(object_clause) = clause
-        .pattern_capture_role(matched, LexCaptureRole::Object)
-        .map(SubjectVerbPrimitiveClause::trimmed)
-    else {
+    if shape.action != registry_shapes::RegistryDelayedAction::Exile {
         return Ok(None);
-    };
-    if object_clause.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing exile object in delayed next-end-step clause (clause: '{}')",
-            clause.text()
-        )));
     }
-
-    let object_words = object_clause.word_refs();
-    let target = if matches!(
-        object_words.as_slice(),
-        ["it"]
-            | ["them"]
-            | ["the", "creature"]
-            | ["that", "creature"]
-            | ["the", "permanent"]
-            | ["that", "permanent"]
-            | ["the", "token"]
-            | ["that", "token"]
-    ) {
+    let object_clause = SubjectVerbPrimitiveClause::new(shape.object_tokens);
+    let target = if registry_shapes::is_tagged_delayed_object(shape.object_tokens) {
         TargetAst::Tagged(TagKey::from(IT_TAG), object_clause.span())
     } else {
         TargetAst::Object(
-            parse_object_filter(object_clause.tokens(), false)?,
+            parse_object_filter(shape.object_tokens, false)?,
             None,
             object_clause.span(),
         )
     };
-
-    let player =
-        if word_slice_contains_phrase(&clause.word_refs(), &["your", "next", "end", "step"]) {
+    Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
+        player: if shape.your_end_step {
             PlayerFilter::You
         } else {
             PlayerFilter::Any
-        };
-
-    Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
-        player,
+        },
         effects: vec![EffectAst::subject_verb_exile(target, false)],
     }]))
 }
@@ -2040,22 +1321,7 @@ pub(crate) fn parse_sentence_exile_it_next_end_step_matched(
 pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let atoms = [
-        LexPattern::any_phrase(REMAIN_EXILED_PREFIXES),
-        LexPattern::capture("tail", LexCaptureKind::Rest),
-    ];
-    let pattern = LexPattern::new(&atoms);
-    let Some(matched) = clause.match_pattern(pattern) else {
-        return Ok(None);
-    };
-    parse_sentence_if_tagged_cards_remain_exiled_matched(clause, &matched)
-}
-
-pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if clause.pattern_capture(matched, "tail").is_none() {
+    if registry_shapes::parse_remain_exiled_tail(clause.tokens()).is_none() {
         return Ok(None);
     }
     parse_conditional_sentence_with_grammar_entrypoint_lexed(

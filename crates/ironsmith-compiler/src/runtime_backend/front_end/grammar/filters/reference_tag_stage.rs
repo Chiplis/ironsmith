@@ -1,5 +1,8 @@
-use super::super::super::lexer::{
-    parser_token_word_refs, word_slice_contains_any_word, word_slice_contains_phrase,
+use super::super::super::lexer::parser_token_word_refs;
+use super::reference_tag_word_facts::{
+    parse_last_word_choice_before, parse_phrase_anywhere, parse_phrase_at_head,
+    parse_phrase_choice_anywhere, parse_phrase_choice_at_head, parse_phrase_choice_whole,
+    parse_phrase_whole, parse_word_choice, parse_word_choice_anywhere,
 };
 use super::*;
 
@@ -110,9 +113,12 @@ fn source_reference_tail_prefix(
         let Some(surface) = source_reference_surface_for_words(prefix)
             .or_else(|| this_source_surface_for_words(prefix))
             .or_else(|| {
-                (word_len == 1 && SELF_REFERENCE_WORDS.contains(&prefix[0])).then(|| {
-                    crate::target::SourceReferenceSurface::ThisPermanentType(prefix[0].to_string())
-                })
+                (word_len == 1 && parse_word_choice(prefix[0], SELF_REFERENCE_WORDS).is_some())
+                    .then(|| {
+                        crate::target::SourceReferenceSurface::ThisPermanentType(
+                            prefix[0].to_string(),
+                        )
+                    })
             })
         else {
             continue;
@@ -286,14 +292,18 @@ const NO_SHARED_CREATURE_TYPE_WITH_YOUR_CREATURES_OR_GRAVEYARD_CLAUSES: &[&[&str
     ],
 ];
 
-fn find_phrase_start(words: &[&str], phrase: &[&str]) -> Option<usize> {
-    words
-        .windows(phrase.len())
-        .position(|window| window == phrase)
-}
-
-fn word_is_any(word: &str, expected: &[&str]) -> bool {
-    expected.contains(&word)
+fn token_index_for_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        if tokens[idx]
+            .as_word()
+            .is_some_and(|word| parse_word_choice(word, &[expected]).is_some())
+        {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
 }
 
 fn non_article_parser_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
@@ -301,40 +311,6 @@ fn non_article_parser_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
         .into_iter()
         .filter(|word| !is_article(word))
         .collect()
-}
-
-fn non_article_token_words_eq(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    word_slice_eq(&non_article_parser_word_refs(tokens), expected)
-}
-
-fn non_article_token_words_eq_any(tokens: &[OwnedLexToken], expected: &[&[&str]]) -> bool {
-    word_slice_eq_any(&non_article_parser_word_refs(tokens), expected)
-}
-
-fn non_article_token_words_starts_with(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    word_slice_starts_with(&non_article_parser_word_refs(tokens), expected)
-}
-
-fn non_article_token_words_starts_with_any(tokens: &[OwnedLexToken], expected: &[&[&str]]) -> bool {
-    word_slice_starts_with_any(&non_article_parser_word_refs(tokens), expected)
-}
-
-fn non_article_token_words_contains_phrase(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
-    word_slice_contains_phrase(&non_article_parser_word_refs(tokens), phrase)
-}
-
-fn non_article_token_words_contains_any_phrase(
-    tokens: &[OwnedLexToken],
-    phrases: &[&[&str]],
-) -> bool {
-    word_slice_contains_any_phrase(&non_article_parser_word_refs(tokens), phrases)
-}
-
-fn non_article_token_words_contains_any_word(tokens: &[OwnedLexToken], words: &[&str]) -> bool {
-    let token_words = non_article_parser_word_refs(tokens);
-    words
-        .iter()
-        .any(|word| word_slice_contains_word(&token_words, word))
 }
 
 fn has_tap_activated_ability_phrase(words: &[&str]) -> bool {
@@ -378,9 +354,7 @@ fn has_tap_activated_ability_phrase(words: &[&str]) -> bool {
             "costs",
         ],
     ];
-    TAP_ACTIVATED_ABILITY_PHRASES
-        .iter()
-        .any(|phrase| find_phrase_start(words, phrase).is_some())
+    parse_phrase_choice_anywhere(words, TAP_ACTIVATED_ABILITY_PHRASES).is_some()
 }
 
 fn strip_be_put_on_reference_prefix(all_words: &mut Vec<&str>, segment_tokens: &[OwnedLexToken]) {
@@ -392,9 +366,9 @@ fn strip_be_put_on_reference_prefix(all_words: &mut Vec<&str>, segment_tokens: &
     let put_on_words = non_article_parser_word_refs(&segment_tokens[1..4]);
     if !be_words
         .first()
-        .is_some_and(|word| word_is_any(word, BE_VERB_WORDS))
-        || !word_slice_starts_with(&put_on_words, PUT_ON_PREFIX)
-        || !word_slice_contains_any_word(&put_on_words, PUT_ON_REFERENCE_WORDS)
+        .is_some_and(|word| parse_word_choice(word, BE_VERB_WORDS).is_some())
+        || parse_phrase_at_head(&put_on_words, PUT_ON_PREFIX).is_none()
+        || parse_word_choice_anywhere(&put_on_words, PUT_ON_REFERENCE_WORDS).is_none()
     {
         return;
     }
@@ -443,7 +417,7 @@ pub(super) fn parse_object_filter_inner(
     for (idx, token) in tokens.iter().enumerate() {
         if token
             .as_word()
-            .is_some_and(|word| TARGET_OR_TARGETS_WORDS.contains(&word))
+            .is_some_and(|word| parse_word_choice(word, TARGET_OR_TARGETS_WORDS).is_some())
         {
             if idx > 0
                 && tokens[idx - 1]
@@ -504,13 +478,28 @@ pub(super) fn parse_object_filter_inner(
                 fragment_tokens.drain(..1);
             }
 
-            if non_article_token_words_starts_with(&fragment_tokens, YOU_TARGET_PREFIX) {
+            if parse_phrase_at_head(
+                &non_article_parser_word_refs(&fragment_tokens),
+                YOU_TARGET_PREFIX,
+            )
+            .is_some()
+            {
                 return Ok((Some(PlayerFilter::You), None, only, count));
             }
-            if non_article_token_words_starts_with_any(&fragment_tokens, OPPONENT_TARGET_PREFIXES) {
+            if parse_phrase_choice_at_head(
+                &non_article_parser_word_refs(&fragment_tokens),
+                OPPONENT_TARGET_PREFIXES,
+            )
+            .is_some()
+            {
                 return Ok((Some(PlayerFilter::Opponent), None, only, count));
             }
-            if non_article_token_words_starts_with_any(&fragment_tokens, PLAYER_TARGET_PREFIXES) {
+            if parse_phrase_choice_at_head(
+                &non_article_parser_word_refs(&fragment_tokens),
+                PLAYER_TARGET_PREFIXES,
+            )
+            .is_some()
+            {
                 return Ok((Some(PlayerFilter::Any), None, only, count));
             }
 
@@ -518,7 +507,7 @@ pub(super) fn parse_object_filter_inner(
             if target_filter_tokens.first().is_some_and(|token| {
                 token
                     .as_word()
-                    .is_some_and(|word| TARGET_OR_TARGETS_WORDS.contains(&word))
+                    .is_some_and(|word| parse_word_choice(word, TARGET_OR_TARGETS_WORDS).is_some())
             }) {
                 target_filter_tokens = &target_filter_tokens[1..];
             }
@@ -533,10 +522,7 @@ pub(super) fn parse_object_filter_inner(
             ))
         };
 
-        if let Some(or_token_idx) = target_tokens
-            .iter()
-            .position(|token| token.as_word().is_some_and(|word| word == OR_WORD))
-        {
+        if let Some(or_token_idx) = token_index_for_word(target_tokens, OR_WORD) {
             let left_tokens = trim_commas(&target_tokens[..or_token_idx]);
             let right_tokens = trim_commas(&target_tokens[or_token_idx + 1..]);
             let (left_player, left_object, left_only, left_count) =
@@ -562,9 +548,8 @@ pub(super) fn parse_object_filter_inner(
 
     // Object filters should not absorb trailing duration clauses such as
     // "... until this enchantment leaves the battlefield".
-    if let Some(until_token_idx) = token_find_index(&base_tokens, |token| {
-        token.as_word().is_some_and(|word| word == UNTIL_WORD)
-    }) && until_token_idx > 0
+    if let Some(until_token_idx) = token_index_for_word(&base_tokens, UNTIL_WORD)
+        && until_token_idx > 0
     {
         base_tokens.truncate(until_token_idx);
     }
@@ -575,7 +560,12 @@ pub(super) fn parse_object_filter_inner(
     // selector. Keep "other" and capture the source surface when available.
     let mut idx = 0usize;
     while idx + 2 < base_tokens.len() {
-        if !non_article_token_words_eq(&base_tokens[idx..idx + 2], OTHER_THAN_PREFIX) {
+        if parse_phrase_whole(
+            &non_article_parser_word_refs(&base_tokens[idx..idx + 2]),
+            OTHER_THAN_PREFIX,
+        )
+        .is_none()
+        {
             idx += 1;
             continue;
         }
@@ -595,7 +585,12 @@ pub(super) fn parse_object_filter_inner(
     // object class, not the source-relative "other" predicate.
     let mut idx = 0usize;
     while idx + 2 < base_tokens.len() {
-        if !non_article_token_words_eq(&base_tokens[idx..idx + 2], OTHER_THAN_PREFIX) {
+        if parse_phrase_whole(
+            &non_article_parser_word_refs(&base_tokens[idx..idx + 2]),
+            OTHER_THAN_PREFIX,
+        )
+        .is_none()
+        {
             idx += 1;
             continue;
         }
@@ -610,7 +605,11 @@ pub(super) fn parse_object_filter_inner(
         }
 
         let tail_tokens = &base_tokens[idx + 2..];
-        if non_article_token_words_starts_with_any(tail_tokens, EXCLUSION_RELATION_IGNORED_PREFIXES)
+        if parse_phrase_choice_at_head(
+            &non_article_parser_word_refs(tail_tokens),
+            EXCLUSION_RELATION_IGNORED_PREFIXES,
+        )
+        .is_some()
         {
             idx += 1;
             continue;
@@ -622,7 +621,7 @@ pub(super) fn parse_object_filter_inner(
         for token in tail_tokens {
             for piece in token.parser_word_pieces() {
                 let word = piece.text.as_str();
-                if is_article(word) || AND_OR_WORDS.contains(&word) {
+                if is_article(word) || parse_word_choice(word, AND_OR_WORDS).is_some() {
                     continue;
                 }
                 if let Some(card_type) = parse_card_type(word) {
@@ -650,7 +649,7 @@ pub(super) fn parse_object_filter_inner(
         }
 
         for card_type in excluded_card_types {
-            if has_specific_exclusion && base_card_types.contains(&card_type) {
+            if has_specific_exclusion && slice_has(&base_card_types, &card_type) {
                 continue;
             }
             push_unique(&mut filter.excluded_card_types, card_type);
@@ -719,22 +718,42 @@ pub(super) fn parse_object_filter_inner(
 
     let mut all_words = non_article_word_refs(&all_words_with_articles);
     let has_tap_activated_ability = has_tap_activated_ability_phrase(&all_words);
-    if non_article_token_words_eq(&base_tokens, ACTIVATED_ABILITY_WORDS) {
+    if parse_phrase_whole(
+        &non_article_parser_word_refs(&base_tokens),
+        ACTIVATED_ABILITY_WORDS,
+    )
+    .is_some()
+    {
         return Ok(ObjectFilter::activated_ability());
     }
-    if non_article_token_words_eq(&base_tokens, TRIGGERED_ABILITY_WORDS) {
+    if parse_phrase_whole(
+        &non_article_parser_word_refs(&base_tokens),
+        TRIGGERED_ABILITY_WORDS,
+    )
+    .is_some()
+    {
         let mut filter = ObjectFilter::ability();
         filter.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
         return Ok(filter);
     }
-    if non_article_token_words_eq_any(&base_tokens, ACTIVATED_OR_TRIGGERED_ABILITY_PHRASES) {
+    if parse_phrase_choice_whole(
+        &non_article_parser_word_refs(&base_tokens),
+        ACTIVATED_OR_TRIGGERED_ABILITY_PHRASES,
+    )
+    .is_some()
+    {
         let mut triggered = ObjectFilter::ability();
         triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
         let mut filter = ObjectFilter::default();
         filter.any_of = vec![ObjectFilter::activated_ability(), triggered];
         return Ok(filter);
     }
-    if non_article_token_words_eq_any(&base_tokens, REST_REVEALED_OBJECT_PHRASES) {
+    if parse_phrase_choice_whole(
+        &non_article_parser_word_refs(&base_tokens),
+        REST_REVEALED_OBJECT_PHRASES,
+    )
+    .is_some()
+    {
         return Ok(ObjectFilter::tagged("rest"));
     }
     if let Some(filter) = parse_permanent_or_suspended_card_disjunction(&base_tokens) {
@@ -762,8 +781,8 @@ pub(super) fn parse_object_filter_inner(
     // "legendary or Rat card" (Nashi, Moon's Legacy) is a supertype/subtype disjunction.
     // We parse it by collecting both selectors and then expanding into an `any_of` filter
     // after the normal pass so other shared qualifiers (zone/owner/etc.) are preserved.
-    let legendary_or_subtype = find_phrase_start(&all_words, LEGENDARY_OR_PREFIX)
-        .and_then(|idx| all_words.get(idx + 2).copied())
+    let legendary_or_subtype = parse_phrase_anywhere(&all_words, LEGENDARY_OR_PREFIX)
+        .and_then(|fact| all_words.get(fact.span.end).copied())
         .and_then(parse_subtype_word);
 
     // "in a graveyard that was put there from anywhere this turn" (Reenact the Crime)
@@ -791,10 +810,12 @@ pub(super) fn parse_object_filter_inner(
 
     try_apply_drawn_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
-    if non_article_token_words_contains_any_phrase(
-        &segment_tokens,
+    if parse_phrase_choice_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
         BLOCKED_BY_TAGGED_OBJECT_PHRASES,
-    ) {
+    )
+    .is_some()
+    {
         filter.blocked = true;
         filter.blocked_by = Some(crate::filter::ObjectRef::Tagged(TagKey::from(IT_TAG)));
     }
@@ -817,6 +838,8 @@ pub(super) fn parse_object_filter_inner(
 
     strip_object_filter_leading_prefixes(&mut all_words);
 
+    let _ = try_apply_required_both_colors_clause(&mut filter, &mut all_words);
+
     let _ = try_apply_not_all_colors_clause(&mut filter, &mut all_words);
 
     let _ = try_apply_not_exactly_two_colors_clause(&mut filter, &mut all_words);
@@ -829,23 +852,27 @@ pub(super) fn parse_object_filter_inner(
 
     strip_object_filter_face_state_words(&mut filter, &mut all_words);
 
-    if non_article_token_words_contains_phrase(
-        &segment_tokens,
+    if parse_phrase_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
         ENTERED_THIS_TURN_UNSUPPORTED_PHRASE,
-    ) {
+    )
+    .is_some()
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported entered-this-turn object filter (clause: '{}')",
             all_words.join(" ")
         )));
     }
-    let has_counter_state_or_clause = non_article_token_words_contains_any_phrase(
-        &segment_tokens,
+    let has_counter_state_or_clause = parse_phrase_choice_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
         TAGGED_COUNTER_STATE_DISJUNCTION_PHRASES,
-    );
-    let has_supported_suspended_disjunction = non_article_token_words_contains_any_phrase(
-        &segment_tokens,
+    )
+    .is_some();
+    let has_supported_suspended_disjunction = parse_phrase_choice_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
         SUSPENDED_CARD_DISJUNCTION_PHRASES,
-    );
+    )
+    .is_some();
     if has_counter_state_or_clause && !has_supported_suspended_disjunction {
         return Err(CardTextError::ParseError(format!(
             "unsupported counter-state object filter (clause: '{}')",
@@ -871,12 +898,16 @@ pub(super) fn parse_object_filter_inner(
     )?;
 
     let _ = try_apply_color_count_phrase(&mut filter, &mut all_words)?;
-    let has_power_or_toughness_clause =
-        non_article_token_words_contains_any_phrase(&segment_tokens, POWER_OR_TOUGHNESS_PHRASES);
+    let _ = try_apply_sticker_filter_clause(&mut filter, &mut all_words);
+    let has_power_or_toughness_clause = parse_phrase_choice_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
+        POWER_OR_TOUGHNESS_PHRASES,
+    )
+    .is_some();
     if has_power_or_toughness_clause
         && !all_words
             .iter()
-            .any(|word| word_is_any(word, SPELL_OR_SPELLS_WORDS))
+            .any(|word| parse_word_choice(word, SPELL_OR_SPELLS_WORDS).is_some())
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported power-or-toughness object filter (clause: '{}')",
@@ -890,14 +921,16 @@ pub(super) fn parse_object_filter_inner(
     }
     let source_linked_exile_reference = reference_stage.source_linked_exile_reference;
 
-    let references_target_player = non_article_token_words_contains_any_phrase(
-        &segment_tokens,
+    let references_target_player = parse_phrase_choice_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
         TARGET_PLAYER_REFERENCE_PHRASES,
-    );
-    let references_target_opponent = non_article_token_words_contains_any_phrase(
-        &segment_tokens,
+    )
+    .is_some();
+    let references_target_opponent = parse_phrase_choice_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
         TARGET_OPPONENT_REFERENCE_PHRASES,
-    );
+    )
+    .is_some();
     let pronoun_player_filter = if references_target_opponent {
         PlayerFilter::target_opponent()
     } else if references_target_player {
@@ -915,23 +948,21 @@ pub(super) fn parse_object_filter_inner(
     let is_tagged_spell_reference_at = |idx: usize| {
         all_words
             .get(idx.wrapping_sub(1))
-            .is_some_and(|prev| word_is_any(prev, TAGGED_SPELL_REFERENCE_WORDS))
+            .is_some_and(|prev| parse_word_choice(prev, TAGGED_SPELL_REFERENCE_WORDS).is_some())
     };
     let contains_unqualified_spell_word = all_words.iter().enumerate().any(|(idx, word)| {
-        word_is_any(word, SPELL_OR_SPELLS_WORDS) && !is_tagged_spell_reference_at(idx)
+        parse_word_choice(word, SPELL_OR_SPELLS_WORDS).is_some()
+            && !is_tagged_spell_reference_at(idx)
     });
     let mentions_ability_word = all_words
         .iter()
-        .any(|word| word_is_any(word, ABILITY_OR_ABILITIES_WORDS));
+        .any(|word| parse_word_choice(word, ABILITY_OR_ABILITIES_WORDS).is_some());
     if contains_unqualified_spell_word && !mentions_ability_word {
         filter.has_mana_cost = true;
     }
     // "... with a mana cost that contains {X}" narrows a spell/permanent filter
     // to objects whose printed mana cost includes an {X} symbol.
-    if all_words
-        .windows(4)
-        .any(|w| w[0] == "mana" && w[1] == "cost" && w[2] == "that" && w[3] == "contains")
-    {
+    if parse_phrase_anywhere(&all_words, &["mana", "cost", "that", "contains"]).is_some() {
         filter.has_x_in_cost = true;
     }
 
@@ -985,7 +1016,7 @@ pub(super) fn parse_object_filter_inner(
 
     let mut has_idx = 0usize;
     while has_idx + 1 < all_words.len() {
-        if !word_is_any(all_words[has_idx], HAS_HAVE_WORDS) {
+        if parse_word_choice(all_words[has_idx], HAS_HAVE_WORDS).is_none() {
             has_idx += 1;
             continue;
         }
@@ -1024,7 +1055,7 @@ pub(super) fn parse_object_filter_inner(
     let mut referenced_zones = Vec::new();
     for idx in 0..all_words.len() {
         if let Some(zone) = parse_zone_word(all_words[idx]) {
-            if !slice_contains(&referenced_zones, &zone) {
+            if !slice_has(&referenced_zones, &zone) {
                 referenced_zones.push(zone);
             }
             let is_reference_zone_for_spell = if contains_unqualified_spell_word {
@@ -1106,11 +1137,11 @@ pub(super) fn parse_object_filter_inner(
 
     for idx in 0..all_words.len() {
         let (is_base_reference, pt_word_idx) = if idx + 4 < all_words.len()
-            && word_slice_starts_with(&all_words[idx..], BASE_POWER_TOUGHNESS_PREFIX)
+            && parse_phrase_at_head(&all_words[idx..], BASE_POWER_TOUGHNESS_PREFIX).is_some()
         {
             (true, idx + 4)
         } else if idx + 3 < all_words.len()
-            && word_slice_starts_with(&all_words[idx..], POWER_TOUGHNESS_PREFIX)
+            && parse_phrase_at_head(&all_words[idx..], POWER_TOUGHNESS_PREFIX).is_some()
             && (idx == 0 || all_words[idx - 1] != BASE_WORD)
         {
             (false, idx + 3)
@@ -1141,7 +1172,7 @@ pub(super) fn parse_object_filter_inner(
         } else if all_words[idx] == TOUGHNESS_WORD {
             Some("toughness")
         } else if idx + 1 < all_words.len()
-            && word_slice_starts_with(&all_words[idx..], MANA_VALUE_PREFIX)
+            && parse_phrase_at_head(&all_words[idx..], MANA_VALUE_PREFIX).is_some()
         {
             Some("mana value")
         } else {
@@ -1154,7 +1185,7 @@ pub(super) fn parse_object_filter_inner(
         let is_base_reference = idx > 0 && all_words[idx - 1] == BASE_WORD;
 
         let axis_word_count =
-            usize::from(word_slice_starts_with(&all_words[idx..], MANA_VALUE_PREFIX)) + 1;
+            usize::from(parse_phrase_at_head(&all_words[idx..], MANA_VALUE_PREFIX).is_some()) + 1;
         let value_tokens = if idx + axis_word_count < all_words.len() {
             &all_words[idx + axis_word_count..]
         } else {
@@ -1206,14 +1237,16 @@ pub(super) fn parse_object_filter_inner(
 
     apply_parity_filter_phrases(&clause_words, &mut filter);
 
-    if word_slice_contains_phrase(&clause_words, POWER_GREATER_THAN_BASE_POWER_PHRASE) {
+    if parse_phrase_anywhere(&clause_words, POWER_GREATER_THAN_BASE_POWER_PHRASE).is_some() {
         filter.power_greater_than_base_power = true;
     }
-    if word_slice_contains_any_phrase(&clause_words, TOUGHNESS_GREATER_THAN_POWER_PHRASES) {
+    if parse_phrase_choice_anywhere(&clause_words, TOUGHNESS_GREATER_THAN_POWER_PHRASES).is_some() {
         let relation = crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower;
         filter.power_toughness_relation = Some(relation);
         clear_redundant_power_toughness_axis_filter(&mut filter, relation);
-    } else if word_slice_contains_any_phrase(&clause_words, POWER_GREATER_THAN_TOUGHNESS_PHRASES) {
+    } else if parse_phrase_choice_anywhere(&clause_words, POWER_GREATER_THAN_TOUGHNESS_PHRASES)
+        .is_some()
+    {
         let relation = crate::filter::PowerToughnessRelation::PowerGreaterThanToughness;
         filter.power_toughness_relation = Some(relation);
         clear_redundant_power_toughness_axis_filter(&mut filter, relation);
@@ -1226,7 +1259,7 @@ pub(super) fn parse_object_filter_inner(
     let mut saw_subtype = false;
     let mut negated_word_indices = std::collections::HashSet::new();
     let mut negated_historic_indices = std::collections::HashSet::new();
-    let is_text_negation_word = |word: &str| word_is_any(word, TEXT_NEGATION_WORDS);
+    let is_text_negation_word = |word: &str| parse_word_choice(word, TEXT_NEGATION_WORDS).is_some();
     for idx in 0..all_words.len().saturating_sub(1) {
         if all_words[idx] != NON_WORD {
             continue;
@@ -1254,7 +1287,7 @@ pub(super) fn parse_object_filter_inner(
             filter.unblocked = true;
             negated_word_indices.insert(idx + 1);
         }
-        if word_is_any(next, COMMANDER_OR_COMMANDERS_WORDS) {
+        if parse_word_choice(next, COMMANDER_OR_COMMANDERS_WORDS).is_some() {
             filter.noncommander = true;
             negated_word_indices.insert(idx + 1);
         }
@@ -1301,7 +1334,7 @@ pub(super) fn parse_object_filter_inner(
             filter.nonhistoric = true;
             negated_historic_indices.insert(target_idx);
         }
-        if word_is_any(negated_word, COMMANDER_OR_COMMANDERS_WORDS) {
+        if parse_word_choice(negated_word, COMMANDER_OR_COMMANDERS_WORDS).is_some() {
             filter.noncommander = true;
             negated_word_indices.insert(target_idx);
         }
@@ -1329,7 +1362,7 @@ pub(super) fn parse_object_filter_inner(
         }
     }
     for idx in 0..all_words.len().saturating_sub(1) {
-        if word_slice_eq(&all_words[idx..idx + 2], NOT_HISTORIC_PHRASE) {
+        if parse_phrase_whole(&all_words[idx..idx + 2], NOT_HISTORIC_PHRASE).is_some() {
             filter.nonhistoric = true;
             negated_historic_indices.insert(idx + 1);
         }
@@ -1338,11 +1371,17 @@ pub(super) fn parse_object_filter_inner(
         EXCLUDED_CHOSEN_TYPE_PHRASES
             .iter()
             .filter_map(|phrase| {
-                find_phrase_start(&all_words, phrase).map(|start| start + phrase.len() - 2)
+                parse_phrase_anywhere(&all_words, phrase)
+                    .map(|fact| fact.span.end.saturating_sub(2))
             })
             .collect();
 
-    if non_article_token_words_contains_phrase(&segment_tokens, ATTACKED_THIS_TURN_PHRASE) {
+    if parse_phrase_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
+        ATTACKED_THIS_TURN_PHRASE,
+    )
+    .is_some()
+    {
         filter.attacked_this_turn = true;
     }
 
@@ -1529,26 +1568,26 @@ pub(super) fn parse_object_filter_inner(
         let qualifier_in_all_segments = |qualifier: &str| {
             segment_words_lists.iter().all(|segment| {
                 let segment_refs = segment.iter().map(String::as_str).collect::<Vec<_>>();
-                segment_refs.contains(&qualifier)
+                parse_word_choice_anywhere(&segment_refs, &[qualifier]).is_some()
             })
         };
         let shared_leading_qualifier = |qualifier: &str, opposite: &str| {
             if qualifier_in_all_segments(qualifier) {
                 return true;
             }
-            if all_words.contains(&opposite) {
+            if parse_word_choice_anywhere(&all_words, &[opposite]).is_some() {
                 return false;
             }
             let Some(first_segment) = segment_words_lists.first() else {
                 return false;
             };
             let first_segment_refs = first_segment.iter().map(String::as_str).collect::<Vec<_>>();
-            if !first_segment_refs.contains(&qualifier) {
+            if parse_word_choice_anywhere(&first_segment_refs, &[qualifier]).is_none() {
                 return false;
             }
             segment_words_lists.iter().skip(1).all(|segment| {
                 let segment_refs = segment.iter().map(String::as_str).collect::<Vec<_>>();
-                !segment_refs.contains(&opposite)
+                parse_word_choice_anywhere(&segment_refs, &[opposite]).is_none()
             })
         };
 
@@ -1590,11 +1629,14 @@ pub(super) fn parse_object_filter_inner(
             }
         }
     } else if let Some(types) = segment_types.into_iter().next() {
+        let normalized_segment_words = non_article_parser_word_refs(&segment_tokens);
         let has_conjunction =
-            non_article_token_words_contains_any_word(&segment_tokens, TYPE_LIST_CONJUNCTION_WORDS);
-        let has_and = non_article_token_words_contains_any_word(&segment_tokens, &["and"]);
-        let has_or = non_article_token_words_contains_any_word(&segment_tokens, &["or"]);
-        let has_and_or = non_article_token_words_contains_any_word(&segment_tokens, &["and/or"]);
+            parse_word_choice_anywhere(&normalized_segment_words, TYPE_LIST_CONJUNCTION_WORDS)
+                .is_some();
+        let has_and = parse_word_choice_anywhere(&normalized_segment_words, &["and"]).is_some();
+        let has_or = parse_word_choice_anywhere(&normalized_segment_words, &["or"]).is_some();
+        let has_and_or =
+            parse_word_choice_anywhere(&normalized_segment_words, &["and/or"]).is_some();
         if types.len() > 1 {
             if has_conjunction {
                 filter.card_types = types;
@@ -1634,13 +1676,13 @@ pub(super) fn parse_object_filter_inner(
     let segment_has_standalone_spell = |segment: &[String]| {
         let contains_spell = segment
             .iter()
-            .any(|word| word_is_any(word, SPELL_OR_SPELLS_WORDS));
+            .any(|word| parse_word_choice(word, SPELL_OR_SPELLS_WORDS).is_some());
         if !contains_spell {
             return false;
         }
 
         !segment.iter().any(|word| {
-            OBJECT_REFERENCE_NOUN_WORDS.contains(&word.as_str())
+            parse_word_choice(word.as_str(), OBJECT_REFERENCE_NOUN_WORDS).is_some()
                 || parse_card_type(word).is_some()
                 || parse_subtype_flexible(word).is_some()
         })
@@ -1648,13 +1690,13 @@ pub(super) fn parse_object_filter_inner(
     let segment_has_nonspell_permanent_head = |segment: &[String]| {
         let contains_spell = segment
             .iter()
-            .any(|word| word_is_any(word, SPELL_OR_SPELLS_WORDS));
+            .any(|word| parse_word_choice(word, SPELL_OR_SPELLS_WORDS).is_some());
         if contains_spell {
             return false;
         }
 
         segment.iter().any(|word| {
-            word_is_any(word, PERMANENT_OR_PERMANENTS_WORDS)
+            parse_word_choice(word, PERMANENT_OR_PERMANENTS_WORDS).is_some()
                 || parse_card_type(word).is_some_and(is_permanent_type)
                 || parse_subtype_flexible(word).is_some()
         })
@@ -1667,8 +1709,8 @@ pub(super) fn parse_object_filter_inner(
         while idx + 1 < segment.len() {
             let permanent = &segment[idx];
             let spell = &segment[idx + 1];
-            if word_is_any(permanent, PERMANENT_OR_PERMANENTS_WORDS)
-                && word_is_any(spell, SPELL_OR_SPELLS_WORDS)
+            if parse_word_choice(permanent, PERMANENT_OR_PERMANENTS_WORDS).is_some()
+                && parse_word_choice(spell, SPELL_OR_SPELLS_WORDS).is_some()
             {
                 return true;
             }
@@ -1878,7 +1920,11 @@ pub(super) fn parse_object_filter_inner(
         apply_basic_land_exception(&mut filter);
     }
 
-    if non_article_token_words_contains_any_word(&segment_tokens, TYPE_LIST_CONJUNCTION_WORDS)
+    if parse_word_choice_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
+        TYPE_LIST_CONJUNCTION_WORDS,
+    )
+    .is_some()
         && !filter.card_types.is_empty()
     {
         filter.all_card_types.clear();
@@ -1911,6 +1957,8 @@ pub(super) fn parse_object_filter_inner(
         || filter.unblocked
         || filter.is_commander
         || filter.noncommander
+        || filter.required_colors.is_some()
+        || filter.sticker.is_some()
         || !filter.excluded_colors.is_empty()
         || filter.colorless
         || filter.multicolored
@@ -1974,6 +2022,8 @@ pub(super) fn parse_object_filter_inner(
         || filter.unblocked
         || filter.is_commander
         || filter.noncommander
+        || filter.required_colors.is_some()
+        || filter.sticker.is_some()
         || !filter.excluded_colors.is_empty()
         || filter.colorless
         || filter.multicolored
@@ -2063,18 +2113,20 @@ pub(super) fn parse_object_filter_inner(
         // (e.g. "and each other creature" is a subject qualifier, but
         // "and each foretold card you own in exile" is a new clause).
         for (idx, _) in input_words.iter().enumerate() {
-            if !word_slice_starts_with_any(&input_words[idx..], STRICT_COMPOUND_COUNT_PREFIXES) {
+            if parse_phrase_choice_at_head(&input_words[idx..], STRICT_COMPOUND_COUNT_PREFIXES)
+                .is_none()
+            {
                 continue;
             }
             // A "other than basic land card(s)" exception is stripped before
             // this point, so it never reaches the compound-clause check; guard
             // for it defensively to keep the strict scan stable.
-            if word_slice_starts_with(&all_words[idx..], OTHER_THAN_BASIC_LAND_PREFIX) {
+            if parse_phrase_at_head(&all_words[idx..], OTHER_THAN_BASIC_LAND_PREFIX).is_some() {
                 continue;
             }
             // "and each other" is typically a subject qualifier, allow it.
             let after_each = input_words.get(idx + 2).copied();
-            if after_each.is_some_and(|w| word_is_any(w, OTHER_OR_ANOTHER_WORDS)) {
+            if after_each.is_some_and(|w| parse_word_choice(w, OTHER_OR_ANOTHER_WORDS).is_some()) {
                 continue;
             }
             return Err(CardTextError::ParseError(format!(
@@ -2087,7 +2139,9 @@ pub(super) fn parse_object_filter_inner(
         // "for each" signals a trailing iteration clause that should have
         // been split out by the caller before passing to the filter parser.
         for (idx, _) in input_words.iter().enumerate() {
-            if idx > 0 && word_slice_starts_with(&input_words[idx..], STRICT_FOR_EACH_TAIL_PREFIX) {
+            if idx > 0
+                && parse_phrase_at_head(&input_words[idx..], STRICT_FOR_EACH_TAIL_PREFIX).is_some()
+            {
                 return Err(CardTextError::ParseError(format!(
                     "object filter has unconsumed 'for each' clause '{}' (full input: '{}')",
                     input_words[idx..].join(" "),
@@ -2101,17 +2155,16 @@ pub(super) fn parse_object_filter_inner(
 }
 
 fn relation_clause_is_inside_aggregate_scope(words: &[&str], relation_start: usize) -> bool {
-    let Some(with_idx) = words[..relation_start]
-        .iter()
-        .rposition(|word| *word == WITH_WORD)
-    else {
+    let Some(with_fact) = parse_last_word_choice_before(words, &[WITH_WORD], relation_start) else {
         return false;
     };
+    let with_idx = with_fact.index;
     let prefix = &words[with_idx + 1..relation_start];
     let has_aggregate = prefix
         .iter()
-        .any(|word| word_is_any(word, AGGREGATE_SCOPE_WORDS));
-    let has_scope_marker = word_slice_contains_any_word(prefix, AGGREGATE_SCOPE_MARKER_WORDS);
+        .any(|word| parse_word_choice(word, AGGREGATE_SCOPE_WORDS).is_some());
+    let has_scope_marker =
+        parse_word_choice_anywhere(prefix, AGGREGATE_SCOPE_MARKER_WORDS).is_some();
     has_aggregate && has_scope_marker
 }
 
@@ -2121,7 +2174,7 @@ fn strip_other_than_basic_land_cards_clause(
 ) -> bool {
     let mut idx = 0usize;
     while idx + 3 < all_words.len() {
-        if !word_slice_starts_with(&all_words[idx..], OTHER_THAN_BASIC_LAND_PREFIX) {
+        if parse_phrase_at_head(&all_words[idx..], OTHER_THAN_BASIC_LAND_PREFIX).is_none() {
             idx += 1;
             continue;
         }
@@ -2129,7 +2182,7 @@ fn strip_other_than_basic_land_cards_clause(
         let mut end = idx + 4;
         if all_words
             .get(end)
-            .is_some_and(|word| CARD_OR_CARDS_WORDS.contains(word))
+            .is_some_and(|word| parse_word_choice(word, CARD_OR_CARDS_WORDS).is_some())
         {
             end += 1;
         }
@@ -2144,10 +2197,12 @@ fn strip_other_than_basic_land_cards_clause(
 fn strip_other_than_basic_land_cards_tokens(segment_tokens: &mut Vec<OwnedLexToken>) {
     let mut idx = 0usize;
     while idx + 3 < segment_tokens.len() {
-        if !non_article_token_words_starts_with(
-            &segment_tokens[idx..],
+        if parse_phrase_at_head(
+            &non_article_parser_word_refs(&segment_tokens[idx..]),
             OTHER_THAN_BASIC_LAND_PREFIX,
-        ) {
+        )
+        .is_none()
+        {
             idx += 1;
             continue;
         }
@@ -2156,7 +2211,7 @@ fn strip_other_than_basic_land_cards_tokens(segment_tokens: &mut Vec<OwnedLexTok
         if segment_tokens.get(end).is_some_and(|token| {
             token
                 .as_word()
-                .is_some_and(|word| CARD_OR_CARDS_WORDS.contains(&word))
+                .is_some_and(|word| parse_word_choice(word, CARD_OR_CARDS_WORDS).is_some())
         }) {
             end += 1;
         }
@@ -2189,9 +2244,10 @@ fn try_apply_could_be_targeted_by_that_spell_clause(
         ["this", "spell", "could", "target"].as_slice(),
         ["it", "could", "target"].as_slice(),
     ] {
-        let Some(idx) = find_phrase_start(all_words, phrase) else {
+        let Some(fact) = parse_phrase_anywhere(all_words, phrase) else {
             continue;
         };
+        let idx = fact.span.start;
         filter.could_be_targeted_by = Some(TargetabilityConstraint::by_stack_object(
             ObjectRef::tagged(TagKey::from(IT_TAG)),
         ));
@@ -2231,7 +2287,7 @@ fn parse_permanent_or_suspended_card_arm(
     let words = non_article_parser_word_refs(tokens);
     let words = if words
         .first()
-        .is_some_and(|word| TARGET_OR_TARGETS_WORDS.contains(word))
+        .is_some_and(|word| parse_word_choice(word, TARGET_OR_TARGETS_WORDS).is_some())
     {
         &words[1..]
     } else {
@@ -2310,9 +2366,10 @@ fn try_apply_distinct_powers_clause(filter: &mut ObjectFilter, all_words: &mut V
         ["that", "have", "different", "powers"].as_slice(),
         ["that", "has", "different", "powers"].as_slice(),
     ] {
-        let Some(idx) = find_phrase_start(all_words, phrase) else {
+        let Some(fact) = parse_phrase_anywhere(all_words, phrase) else {
             continue;
         };
+        let idx = fact.span.start;
         filter.distinct_powers = true;
         all_words.drain(idx..idx + phrase.len());
         return true;
@@ -2329,9 +2386,10 @@ fn try_apply_distinct_creature_types_clause(
         ["that", "shares", "no", "creature", "types"].as_slice(),
         ["with", "no", "creature", "types", "in", "common"].as_slice(),
     ] {
-        let Some(idx) = find_phrase_start(all_words, phrase) else {
+        let Some(fact) = parse_phrase_anywhere(all_words, phrase) else {
             continue;
         };
+        let idx = fact.span.start;
         filter.distinct_creature_types = true;
         all_words.drain(idx..idx + phrase.len());
         return true;
@@ -2344,9 +2402,10 @@ fn try_apply_no_shared_creature_type_with_your_creatures_or_graveyard_clause(
     all_words: &mut Vec<&str>,
 ) -> bool {
     for phrase in NO_SHARED_CREATURE_TYPE_WITH_YOUR_CREATURES_OR_GRAVEYARD_CLAUSES {
-        let Some(idx) = find_phrase_start(all_words, phrase) else {
+        let Some(fact) = parse_phrase_anywhere(all_words, phrase) else {
             continue;
         };
+        let idx = fact.span.start;
 
         filter
             .no_shared_creature_types_with
@@ -2397,9 +2456,10 @@ fn try_apply_shared_creature_type_with_source_clause(
         ]
         .as_slice(),
     ] {
-        let Some(idx) = find_phrase_start(all_words, phrase) else {
+        let Some(fact) = parse_phrase_anywhere(all_words, phrase) else {
             continue;
         };
+        let idx = fact.span.start;
 
         filter.shares_creature_type_with_source = true;
         all_words.drain(idx..idx + phrase.len());

@@ -81,6 +81,10 @@ fn first_word_sacrifice(sentences: &[SentenceInput], sentence_idx: usize) -> boo
     sentence_head_word_is(sentences, sentence_idx, "sacrifice")
 }
 
+fn first_word_exile(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "exile")
+}
+
 fn first_word_look_or_reveal(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_in(sentences, sentence_idx, &["look", "reveal"])
 }
@@ -150,6 +154,10 @@ fn first_word_choose(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "choose")
 }
 
+fn first_word_choose_or_tempting(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["choose", "tempting"])
+}
+
 fn first_word_choose_or_each(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_in(sentences, sentence_idx, &["choose", "each"])
 }
@@ -206,6 +214,30 @@ fn for_each_tagged_copy_window(sentences: &[SentenceInput], sentence_idx: usize)
 }
 
 const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
+    SequenceRuleDef {
+        name: "exile-top-play-event-followup",
+        feature_tag: Some("exile-play-event-followup"),
+        priority: 445,
+        consumed_sentences: 3,
+        predicate: first_word_exile,
+        parser: generic_subject_verb_sequences::exile_permission_followups::parse_exile_top_play_then_event_followup,
+    },
+    SequenceRuleDef {
+        name: "tempting-offer-copy-spell",
+        feature_tag: Some("tempting-offer-copy-spell"),
+        priority: 440,
+        consumed_sentences: 4,
+        predicate: first_word_choose_or_tempting,
+        parser: generic_subject_verb_sequences::pairs::parse_tempting_offer_copy_spell_sequence,
+    },
+    SequenceRuleDef {
+        name: "reciprocal-creature-control",
+        feature_tag: Some("reciprocal-creature-control"),
+        priority: 439,
+        consumed_sentences: 3,
+        predicate: first_word_you,
+        parser: generic_subject_verb_sequences::pairs::parse_reciprocal_creature_control_sequence,
+    },
     SequenceRuleDef {
         name: "sacrifice-reveal-top-choose-any-revealed-land-nonland-split-rest-bottom",
         feature_tag: Some("sacrifice-revealed-land-nonland-bottom"),
@@ -281,6 +313,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         predicate: first_word_look,
         parser:
             generic_subject_verb_sequences::quads::parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle,
+    },
+    SequenceRuleDef {
+        name: "reveal-top-opponent-chooses-one-move-then-followup",
+        feature_tag: Some("revealed-card-opponent-choice"),
+        priority: 343,
+        consumed_sentences: 3,
+        predicate: first_word_reveal,
+        parser:
+            generic_subject_verb_sequences::triples::parse_reveal_top_opponent_chooses_one_then_move_and_followup,
     },
     SequenceRuleDef {
         name: "choose-two-targets-counter-first-if-power-then-fight",
@@ -545,6 +586,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::parse_parameterized_flashback_grant_sequence,
     },
     SequenceRuleDef {
+        name: "exile-face-down-pile-then-cloak-tapped",
+        feature_tag: Some("cloak-pile"),
+        priority: 245,
+        consumed_sentences: 2,
+        predicate: first_word_target_exile_look_or_reveal,
+        parser: generic_subject_verb_sequences::pairs::parse_exile_face_down_pile_then_cloak,
+    },
+    SequenceRuleDef {
         name: "each-player-shuffle-reveal-put-revealed-types-rest-bottom",
         feature_tag: Some("mass-reveal-battlefield-bottom"),
         priority: 243,
@@ -680,6 +729,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_choose_or_each,
         parser: generic_subject_verb_sequences::pairs::parse_choose_then_affect_rest,
+    },
+    SequenceRuleDef {
+        name: "subject-reveals-top-choose-one-and-move",
+        feature_tag: Some("revealed-card-candidate-choice"),
+        priority: 237,
+        consumed_sentences: 2,
+        predicate: first_word_that_or_the,
+        parser:
+            generic_subject_verb_sequences::pairs::parse_reveal_top_then_choose_revealed_and_move,
     },
     SequenceRuleDef {
         name: "delayed-dies-exile-top-power-choose-play",
@@ -820,7 +878,7 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
     SequenceRuleDef {
         name: "consult-match-into-battlefield-others-graveyard",
         feature_tag: Some("consult-battlefield-graveyard-others"),
-        priority: 227,
+        priority: 229,
         consumed_sentences: 2,
         predicate: first_word_target_exile_look_or_reveal,
         parser: generic_subject_verb_sequences::pairs::parse_consult_match_into_battlefield_others_graveyard,
@@ -833,6 +891,12 @@ pub(crate) fn try_parse_subject_verb_sequence_rule(
 ) -> Result<Option<SequenceRuleMatch>, CardTextError> {
     let mut best_match: Option<(u16, SequenceRuleMatch)> = None;
     for rule in SUBJECT_VERB_SEQUENCE_RULES {
+        if best_match
+            .as_ref()
+            .is_some_and(|(best_priority, _)| *best_priority >= rule.priority)
+        {
+            continue;
+        }
         if sentence_idx + rule.consumed_sentences > sentences.len() {
             continue;
         }

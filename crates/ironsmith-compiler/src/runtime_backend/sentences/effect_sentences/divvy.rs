@@ -1,7 +1,7 @@
-use super::super::grammar::primitives::TokenWordView;
-use super::super::lexer::{
-    OwnedLexToken, split_lexed_sentences, token_word_refs, word_slice_starts_with,
+use super::super::front_end::grammar::effects::divvy_shapes::{
+    self, DivvyChooserShape, DivvyRestDestinationShape, DivvySequenceShape,
 };
+use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
 use super::dispatch_entry::SentenceInput;
 use super::dispatch_inner::parse_effect_sentence_lexed;
 use crate::cards::builders::{
@@ -11,20 +11,6 @@ use crate::cards::builders::{
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
-
-const DIVVY_SEARCH_LIBRARY_GRAVEYARD_CREATURE_CARDS_PREFIX: &[&str] = &[
-    "search",
-    "your",
-    "library",
-    "and",
-    "graveyard",
-    "for",
-    "up",
-    "to",
-    "four",
-    "creature",
-    "cards",
-];
 
 fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {
     PredicateAst::TaggedMatches(
@@ -46,148 +32,75 @@ fn parse_effect_sentence_sequence(
     }
 }
 
-fn normalized_divvy_match_word(word: &str) -> String {
-    word.chars().filter(|ch| *ch != '\'').collect()
-}
-
-fn matches_sentence(words: &TokenWordView<'_>, expected: &[&str]) -> bool {
-    words.len() == expected.len()
-        && expected.iter().enumerate().all(|(idx, expected)| {
-            words.get(idx).is_some_and(|actual| {
-                normalized_divvy_match_word(actual) == normalized_divvy_match_word(expected)
-            })
-        })
-}
-
-fn matches_sentence_sequence(sentence_words: &[TokenWordView<'_>], expected: &[&[&str]]) -> bool {
-    sentence_words.len() == expected.len()
-        && sentence_words
-            .iter()
-            .zip(expected.iter().copied())
-            .all(|(words, expected)| matches_sentence(words, expected))
-}
-
-fn first_sentence_has_prefix(sentences: &[SentenceInput], prefix: &[&str]) -> bool {
-    sentences.first().is_some_and(|sentence| {
-        word_slice_starts_with(&token_word_refs(sentence.lowered()), prefix)
-    })
-}
-
-fn sentence_has_phrase(sentence_words: &[TokenWordView<'_>], phrase: &[&str]) -> bool {
-    sentence_words.iter().any(|words| words.has_phrase(phrase))
-}
-
 pub(super) fn try_parse_divvy_sentence_sequence(
     sentences: &[SentenceInput],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let sentence_words = sentences
+    let sentence_tokens = sentences
         .iter()
-        .map(|sentence| TokenWordView::new(sentence.lowered()))
+        .map(SentenceInput::lowered)
         .collect::<Vec<_>>();
+    let Some(shape) = divvy_shapes::parse_divvy_sequence_shape(&sentence_tokens) else {
+        return Ok(None);
+    };
 
-    if sentences.len() == 1 {
-        let words = TokenWordView::new(sentences[0].lowered());
-        if words.has_phrase(&["chooses", "two", "of", "those", "cards"])
-            && words.has_phrase(&["shuffle", "the", "chosen", "cards"])
-            && words.has_phrase(&["put", "the", "rest", "onto", "the", "battlefield"])
-            && word_slice_starts_with(
-                &token_word_refs(sentences[0].lowered()),
-                DIVVY_SEARCH_LIBRARY_GRAVEYARD_CREATURE_CARDS_PREFIX,
-            )
-        {
-            let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
-                .into_iter()
-                .next()
-                .unwrap_or_else(|| sentences[0].lowered());
-            let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
-            effects.extend(vec![
-                EffectAst::subject_verb_tag_matching_objects(
-                    ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                    vec![Zone::Library, Zone::Graveyard],
-                    TagKey::from("divvy_source"),
-                ),
-                EffectAst::ChooseObjectsAcrossZones {
-                    filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
-                    count: ChoiceCount::exactly(2),
-                    count_value: None,
-                    player: PlayerAst::Opponent,
-                    tag: TagKey::from("divvy_chosen"),
-                    zones: vec![Zone::Library, Zone::Graveyard],
-                    search_mode: None,
-                },
-                EffectAst::ForEachTagged {
-                    tag: TagKey::from("divvy_source"),
-                    effects: vec![EffectAst::Conditional {
-                        predicate: membership_predicate_for_iterated_object("divvy_chosen"),
-                        if_true: Vec::new(),
-                        if_false: vec![EffectAst::subject_verb_move_to_zone(
-                            TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                            Zone::Battlefield,
-                            false,
-                            ReturnControllerAst::Preserve,
-                            false,
-                            None,
-                        )],
-                    }],
-                },
-                EffectAst::ForEachTagged {
-                    tag: TagKey::from("divvy_chosen"),
-                    effects: vec![EffectAst::subject_verb_move_to_zone(
+    if shape == DivvySequenceShape::SearchFourCreatureCards {
+        let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| sentences[0].lowered());
+        let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
+        effects.extend(vec![
+            EffectAst::subject_verb_tag_matching_objects(
+                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                vec![Zone::Library, Zone::Graveyard],
+                TagKey::from("divvy_source"),
+            ),
+            EffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+                count: ChoiceCount::exactly(2),
+                count_value: None,
+                player: PlayerAst::Opponent,
+                tag: TagKey::from("divvy_chosen"),
+                zones: vec![Zone::Library, Zone::Graveyard],
+                search_mode: None,
+            },
+            EffectAst::ForEachTagged {
+                tag: TagKey::from("divvy_source"),
+                effects: vec![EffectAst::Conditional {
+                    predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                    if_true: Vec::new(),
+                    if_false: vec![EffectAst::subject_verb_move_to_zone(
                         TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                        Zone::Library,
+                        Zone::Battlefield,
                         false,
                         ReturnControllerAst::Preserve,
                         false,
                         None,
                     )],
-                },
-                EffectAst::subject_verb(
-                    SubjectVerbRoleAst::LibraryOwner,
-                    PlayerAst::You,
-                    SubjectVerbActionAst::ShuffleLibrary,
-                ),
-                EffectAst::subject_verb_exile(TargetAst::Source(None), false),
-            ]);
-            return Ok(Some(effects));
-        }
+                }],
+            },
+            EffectAst::ForEachTagged {
+                tag: TagKey::from("divvy_chosen"),
+                effects: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Library,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            },
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::You,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ),
+            EffectAst::subject_verb_exile(TargetAst::Source(None), false),
+        ]);
+        return Ok(Some(effects));
     }
 
-    if matches_sentence_sequence(
-        &sentence_words,
-        &[
-            &[
-                "choose",
-                "any",
-                "number",
-                "of",
-                "creatures",
-                "target",
-                "player",
-                "controls",
-            ],
-            &[
-                "choose",
-                "the",
-                "same",
-                "number",
-                "of",
-                "creatures",
-                "another",
-                "target",
-                "player",
-                "controls",
-            ],
-            &[
-                "those",
-                "players",
-                "exchange",
-                "control",
-                "of",
-                "those",
-                "creatures",
-            ],
-        ],
-    ) {
+    if shape == DivvySequenceShape::ExchangeCreatureControl {
         let first_player_tag = TagKey::from("exchange_player_one");
         let second_player_tag = TagKey::from("exchange_player_two");
         let first_creatures_tag = TagKey::from("exchange_creatures_one");
@@ -252,35 +165,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         ]));
     }
 
-    if matches_sentence_sequence(
-        &sentence_words,
-        &[
-            &[
-                "separate",
-                "all",
-                "creatures",
-                "target",
-                "player",
-                "controls",
-                "into",
-                "two",
-                "piles",
-            ],
-            &[
-                "destroy",
-                "all",
-                "creatures",
-                "in",
-                "the",
-                "pile",
-                "of",
-                "that",
-                "player's",
-                "choice",
-            ],
-            &["they", "can't", "be", "regenerated"],
-        ],
-    ) {
+    if shape == DivvySequenceShape::DestroyChosenCreaturePile {
         return Ok(Some(vec![
             EffectAst::ChooseObjects {
                 filter: ObjectFilter::creature().controlled_by(PlayerFilter::target_player()),
@@ -296,39 +181,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         ]));
     }
 
-    if matches_sentence_sequence(
-        &sentence_words,
-        &[
-            &[
-                "separate",
-                "all",
-                "creature",
-                "cards",
-                "in",
-                "your",
-                "graveyard",
-                "into",
-                "two",
-                "piles",
-            ],
-            &[
-                "exile",
-                "the",
-                "pile",
-                "of",
-                "an",
-                "opponent's",
-                "choice",
-                "and",
-                "return",
-                "the",
-                "other",
-                "to",
-                "the",
-                "battlefield",
-            ],
-        ],
-    ) {
+    if shape == DivvySequenceShape::GraveyardCreaturePiles {
         let mut graveyard_creatures = ObjectFilter::creature();
         graveyard_creatures.zone = Some(Zone::Graveyard);
         graveyard_creatures.owner = Some(PlayerFilter::You);
@@ -356,36 +209,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         ]));
     }
 
-    if first_sentence_has_prefix(
-        sentences,
-        &[
-            "each",
-            "opponent",
-            "separates",
-            "the",
-            "creatures",
-            "they",
-            "control",
-            "into",
-            "two",
-            "piles",
-        ],
-    ) && sentence_has_phrase(&sentence_words, &["for", "each", "opponent"])
-        && sentence_has_phrase(
-            &sentence_words,
-            &[
-                "each",
-                "opponent",
-                "sacrifices",
-                "the",
-                "creatures",
-                "in",
-                "their",
-                "chosen",
-                "pile",
-            ],
-        )
-    {
+    if shape == DivvySequenceShape::OpponentCreaturePilesSacrifice {
         let chosen_pile_filter = ObjectFilter::creature()
             .controlled_by(PlayerFilter::IteratedPlayer)
             .match_tagged(
@@ -424,35 +248,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         ]));
     }
 
-    if first_sentence_has_prefix(
-        sentences,
-        &[
-            "separate",
-            "all",
-            "permanents",
-            "target",
-            "player",
-            "controls",
-            "into",
-            "two",
-            "piles",
-        ],
-    ) && sentence_has_phrase(
-        &sentence_words,
-        &[
-            "that",
-            "player",
-            "sacrifices",
-            "all",
-            "permanents",
-            "in",
-            "the",
-            "pile",
-            "of",
-            "their",
-            "choice",
-        ],
-    ) {
+    if shape == DivvySequenceShape::PermanentPilesSacrifice {
         return Ok(Some(vec![
             EffectAst::ChooseObjects {
                 filter: ObjectFilter::permanent().controlled_by(PlayerFilter::target_player()),
@@ -468,43 +264,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         ]));
     }
 
-    if matches_sentence_sequence(
-        &sentence_words,
-        &[
-            &[
-                "for",
-                "each",
-                "defending",
-                "player",
-                "separate",
-                "all",
-                "creatures",
-                "that",
-                "player",
-                "controls",
-                "into",
-                "two",
-                "piles",
-                "and",
-                "that",
-                "player",
-                "chooses",
-                "one",
-            ],
-            &[
-                "only",
-                "creatures",
-                "in",
-                "the",
-                "chosen",
-                "piles",
-                "can",
-                "block",
-                "this",
-                "turn",
-            ],
-        ],
-    ) {
+    if shape == DivvySequenceShape::DefendingCreaturePilesBlock {
         return Ok(Some(vec![EffectAst::ForEachPlayersFiltered {
             filter: PlayerFilter::Defending,
             effects: vec![
@@ -528,36 +288,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         }]));
     }
 
-    if first_sentence_has_prefix(
-        sentences,
-        &[
-            "separate",
-            "all",
-            "creatures",
-            "that",
-            "player",
-            "controls",
-            "into",
-            "two",
-            "piles",
-        ],
-    ) && sentence_has_phrase(
-        &sentence_words,
-        &[
-            "only",
-            "creatures",
-            "in",
-            "the",
-            "pile",
-            "of",
-            "their",
-            "choice",
-            "can",
-            "attack",
-            "this",
-            "turn",
-        ],
-    ) {
+    if shape == DivvySequenceShape::CreaturePilesAttack {
         return Ok(Some(vec![
             EffectAst::ChooseObjects {
                 filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
@@ -578,45 +309,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         ]));
     }
 
-    if matches_sentence_sequence(
-        &sentence_words,
-        &[
-            &[
-                "each",
-                "player",
-                "separates",
-                "all",
-                "nontoken",
-                "lands",
-                "they",
-                "control",
-                "into",
-                "two",
-                "piles",
-            ],
-            &[
-                "for",
-                "each",
-                "player",
-                "one",
-                "of",
-                "their",
-                "piles",
-                "is",
-                "chosen",
-                "by",
-                "one",
-                "of",
-                "their",
-                "opponents",
-                "of",
-                "their",
-                "choice",
-            ],
-            &["destroy", "all", "lands", "in", "the", "chosen", "piles"],
-            &["tap", "all", "lands", "in", "the", "other", "piles"],
-        ],
-    ) {
+    if shape == DivvySequenceShape::LandPiles {
         return Ok(Some(vec![EffectAst::ForEachPlayer {
             effects: vec![
                 EffectAst::subject_verb_choose_player(
@@ -649,36 +342,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         }]));
     }
 
-    if first_sentence_has_prefix(
-        sentences,
-        &[
-            "exile",
-            "up",
-            "to",
-            "five",
-            "target",
-            "permanent",
-            "cards",
-            "from",
-            "your",
-            "graveyard",
-            "and",
-            "separate",
-            "them",
-            "into",
-            "two",
-            "piles",
-        ],
-    ) && sentence_has_phrase(
-        &sentence_words,
-        &["an", "opponent", "chooses", "one", "of", "those", "piles"],
-    ) && sentence_has_phrase(
-        &sentence_words,
-        &["put", "that", "pile", "into", "your", "hand"],
-    ) && sentence_has_phrase(
-        &sentence_words,
-        &["the", "other", "into", "your", "graveyard"],
-    ) {
+    if shape == DivvySequenceShape::ExilePermanentCardsPile {
         let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
             .into_iter()
             .next()
@@ -752,30 +416,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
-    if first_sentence_has_prefix(sentences, &["reveal", "the", "top"])
-        && sentence_has_phrase(&sentence_words, &["cards", "of", "your", "library"])
-        && sentence_has_phrase(
-            &sentence_words,
-            &[
-                "an",
-                "opponent",
-                "separates",
-                "those",
-                "cards",
-                "into",
-                "two",
-                "piles",
-            ],
-        )
-        && sentence_has_phrase(
-            &sentence_words,
-            &["put", "one", "pile", "into", "your", "hand"],
-        )
-        && sentence_has_phrase(
-            &sentence_words,
-            &["the", "other", "into", "your", "graveyard"],
-        )
-    {
+    if shape == DivvySequenceShape::RevealTopPiles {
         let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
         effects.extend(vec![
             EffectAst::subject_verb_tag_matching_objects(
@@ -849,56 +490,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
-    if matches_sentence_sequence(
-        &sentence_words,
-        &[
-            &[
-                "exile",
-                "up",
-                "to",
-                "five",
-                "target",
-                "creature",
-                "cards",
-                "from",
-                "graveyards",
-            ],
-            &[
-                "an",
-                "opponent",
-                "separates",
-                "those",
-                "cards",
-                "into",
-                "two",
-                "piles",
-            ],
-            &[
-                "put",
-                "all",
-                "cards",
-                "from",
-                "the",
-                "pile",
-                "of",
-                "your",
-                "choice",
-                "onto",
-                "the",
-                "battlefield",
-                "under",
-                "your",
-                "control",
-                "and",
-                "the",
-                "rest",
-                "into",
-                "their",
-                "owners'",
-                "graveyards",
-            ],
-        ],
-    ) {
+    if shape == DivvySequenceShape::ExileCreatureCardsFromGraveyards {
         let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
             .into_iter()
             .next()
@@ -946,109 +538,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
-    if first_sentence_has_prefix(
-        sentences,
-        &[
-            "search",
-            "your",
-            "library",
-            "and",
-            "graveyard",
-            "for",
-            "up",
-            "to",
-            "four",
-            "creature",
-            "cards",
-        ],
-    ) && sentence_has_phrase(&sentence_words, &["different", "names"])
-        && sentence_has_phrase(&sentence_words, &["mana", "value", "x", "or", "less"])
-        && sentence_has_phrase(&sentence_words, &["reveal", "them"])
-        && sentence_has_phrase(
-            &sentence_words,
-            &["an", "opponent", "chooses", "two", "of", "those", "cards"],
-        )
-        && sentence_has_phrase(
-            &sentence_words,
-            &[
-                "shuffle", "the", "chosen", "cards", "into", "your", "library",
-            ],
-        )
-        && sentence_has_phrase(
-            &sentence_words,
-            &["put", "the", "rest", "onto", "the", "battlefield"],
-        )
-    {
-        let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| sentences[0].lowered());
-        let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
-        effects.extend(vec![
-            EffectAst::subject_verb_tag_matching_objects(
-                ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                vec![Zone::Library, Zone::Graveyard],
-                TagKey::from("divvy_source"),
-            ),
-            EffectAst::ChooseObjectsAcrossZones {
-                filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
-                count: ChoiceCount::exactly(2),
-                count_value: None,
-                player: PlayerAst::Opponent,
-                tag: TagKey::from("divvy_chosen"),
-                zones: vec![Zone::Library, Zone::Graveyard],
-                search_mode: None,
-            },
-            EffectAst::ForEachTagged {
-                tag: TagKey::from("divvy_source"),
-                effects: vec![EffectAst::Conditional {
-                    predicate: membership_predicate_for_iterated_object("divvy_chosen"),
-                    if_true: Vec::new(),
-                    if_false: vec![EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                        Zone::Battlefield,
-                        false,
-                        ReturnControllerAst::Preserve,
-                        false,
-                        None,
-                    )],
-                }],
-            },
-            EffectAst::ForEachTagged {
-                tag: TagKey::from("divvy_chosen"),
-                effects: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    Zone::Library,
-                    false,
-                    ReturnControllerAst::Preserve,
-                    false,
-                    None,
-                )],
-            },
-            EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner,
-                PlayerAst::You,
-                SubjectVerbActionAst::ShuffleLibrary,
-            ),
-            EffectAst::subject_verb_exile(TargetAst::Source(None), false),
-        ]);
-        return Ok(Some(effects));
-    }
-
-    if sentences.len() >= 2
-        && sentence_has_phrase(
-            &sentence_words,
-            &["an", "opponent", "chooses", "one", "of", "them"],
-        )
-        && sentence_has_phrase(
-            &sentence_words,
-            &["put", "the", "chosen", "card", "into", "your", "hand"],
-        )
-        && sentence_has_phrase(
-            &sentence_words,
-            &["the", "other", "into", "your", "graveyard"],
-        )
-    {
+    if shape == DivvySequenceShape::ChooseOneOfThem {
         let mut prefix = Vec::new();
         prefix.extend(parse_effect_sentence_lexed(sentences[0].lowered())?);
         prefix.extend(parse_effect_sentence_lexed(sentences[1].lowered())?);
@@ -1098,43 +588,15 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
-    if first_sentence_has_prefix(
-        sentences,
-        &["search", "your", "library", "for", "up", "to", "four"],
-    ) && sentence_has_phrase(&sentence_words, &["cards", "with", "different", "names"])
-        && sentence_has_phrase(&sentence_words, &["reveal", "them"])
-        && sentence_has_phrase(
-            &sentence_words,
-            &["put", "the", "chosen", "cards", "into", "your", "graveyard"],
-        )
-        && sentence_has_phrase(&sentence_words, &["shuffle"])
-    {
-        let choose_player = if sentence_has_phrase(
-            &sentence_words,
-            &[
-                "target", "opponent", "chooses", "two", "of", "those", "cards",
-            ],
-        ) {
-            PlayerAst::TargetOpponent
-        } else if sentence_has_phrase(
-            &sentence_words,
-            &["an", "opponent", "chooses", "two", "of", "those", "cards"],
-        ) {
-            PlayerAst::Opponent
-        } else {
-            return Ok(None);
+    if let DivvySequenceShape::SearchFourDifferentNames { chooser, rest } = shape {
+        let choose_player = match chooser {
+            DivvyChooserShape::Opponent => PlayerAst::Opponent,
+            DivvyChooserShape::TargetOpponent => PlayerAst::TargetOpponent,
         };
-        let (rest_zone, rest_enters_tapped) =
-            if sentence_has_phrase(&sentence_words, &["the", "rest", "into", "your", "hand"]) {
-                (Zone::Hand, false)
-            } else if sentence_has_phrase(
-                &sentence_words,
-                &["the", "rest", "onto", "the", "battlefield", "tapped"],
-            ) {
-                (Zone::Battlefield, true)
-            } else {
-                return Ok(None);
-            };
+        let (rest_zone, rest_enters_tapped) = match rest {
+            DivvyRestDestinationShape::Hand => (Zone::Hand, false),
+            DivvyRestDestinationShape::BattlefieldTapped => (Zone::Battlefield, true),
+        };
 
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
         effects.push(EffectAst::subject_verb_tag_matching_objects(
@@ -1182,16 +644,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
-    if sentence_has_phrase(&sentence_words, &["target", "opponent", "chooses", "one"])
-        && sentence_has_phrase(
-            &sentence_words,
-            &["put", "that", "card", "into", "your", "hand"],
-        )
-        && sentence_has_phrase(
-            &sentence_words,
-            &["the", "rest", "into", "your", "graveyard"],
-        )
-    {
+    if shape == DivvySequenceShape::TargetOpponentChoosesOne {
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
         effects.push(EffectAst::subject_verb_tag_matching_objects(
             ObjectFilter::tagged(TagKey::from(IT_TAG)),

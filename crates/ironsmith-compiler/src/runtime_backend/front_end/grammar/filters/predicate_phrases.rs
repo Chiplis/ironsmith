@@ -1,22 +1,26 @@
 use super::super::super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
-use super::super::super::lex_patterns::{
-    LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom,
-};
 use super::super::super::lexer::{
     LexedClause, OwnedLexToken, TokenKind, TokenWordView, render_token_slice, token_slice_first_is,
     token_slice_words_eq,
 };
 use super::*;
 use crate::cards::TextSpan;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::grammar::conditions::{
     parse_control_or_controlled_relation_clauses, parse_control_relation_clauses,
     parse_copula_relation_clauses, parse_existential_object_clause, parse_has_relation_clauses,
     parse_negated_control_relation_clauses, parse_prepositional_copula_relation_clauses,
 };
 use crate::runtime_backend::util::{
-    FilterKeywordConstraint, is_article, parse_value, strip_leading_article_tokens,
+    FilterKeywordConstraint, is_article, is_source_reference_words, parse_value,
+    strip_leading_article_tokens,
 };
+
+#[path = "predicate_phrases/capture_shapes.rs"]
+mod capture_shapes;
+#[path = "predicate_phrases/surface.rs"]
+mod surface;
+
+pub(crate) use capture_shapes::{WinnowAtom, WinnowCaptureKind, WinnowCaptureRole, WinnowSequence};
 
 const OUTLAW_SHORTHAND_FILTER_PHRASES: &[&[&str]] = &[
     &["outlaw"],
@@ -111,8 +115,6 @@ const OR_WORD: &str = "or";
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const CARD_WORD: &str = "card";
 const CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
-const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["card"], &["cards"]]);
 const NONLAND_CARD_OBJECT_PHRASES: &[&[&str]] = &[
     &["nonland", "card"],
     &["nonland", "cards"],
@@ -307,19 +309,17 @@ enum HalfStartingLifeThreshold {
     LessThan,
 }
 
-fn clause_matches_phrase(clause: LexedClause<'_>, phrase: &[&str]) -> bool {
-    LexPattern::new(&[LexPattern::phrase(phrase)]).matches_clause(clause)
-}
-
-fn clause_matches_any_phrase(clause: LexedClause<'_>, phrases: &[&[&str]]) -> bool {
-    LexPattern::new(&[LexPattern::any_phrase(phrases)]).matches_clause(clause)
-}
-
 fn token_word_is_any(token: &OwnedLexToken, expected: &[&str]) -> bool {
-    token
-        .parser_word_pieces()
-        .iter()
-        .any(|piece| expected.contains(&piece.text.as_str()))
+    token.parser_word_pieces().iter().any(|piece| {
+        let mut idx = 0usize;
+        while idx < expected.len() {
+            if expected[idx] == piece.text.as_str() {
+                return true;
+            }
+            idx += 1;
+        }
+        false
+    })
 }
 
 fn token_word_is(token: &OwnedLexToken, expected: &str) -> bool {
@@ -327,7 +327,40 @@ fn token_word_is(token: &OwnedLexToken, expected: &str) -> bool {
 }
 
 fn word_is_any(word: &str, expected: &[&str]) -> bool {
-    expected.contains(&word)
+    let mut idx = 0usize;
+    while idx < expected.len() {
+        if expected[idx] == word {
+            return true;
+        }
+        idx += 1;
+    }
+    false
+}
+
+fn token_index_for_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        if token_word_is(&tokens[idx], expected) {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
+}
+
+fn token_index_for_word_from(
+    tokens: &[OwnedLexToken],
+    expected: &str,
+    start: usize,
+) -> Option<usize> {
+    let mut idx = start;
+    while idx < tokens.len() {
+        if token_word_is(&tokens[idx], expected) {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
 }
 
 fn non_article_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
@@ -365,74 +398,17 @@ fn non_article_token_words_eq_any(tokens: &[OwnedLexToken], phrases: &[&[&str]])
         .any(|phrase| non_article_token_words_eq_phrase(tokens, phrase))
 }
 
-fn clause_starts_with_phrase(clause: LexedClause<'_>, phrase: &[&str]) -> bool {
-    let words = clause.word_refs();
-    words.len() >= phrase.len()
-        && words
-            .iter()
-            .zip(phrase.iter())
-            .all(|(word, expected)| word == expected)
-}
-
-fn clause_starts_with_any_phrase(clause: LexedClause<'_>, phrases: &[&[&str]]) -> bool {
-    phrases
-        .iter()
-        .any(|phrase| clause_starts_with_phrase(clause, phrase))
-}
-
-fn phrase_window_start(words: &[&str], phrase: &[&str]) -> Option<usize> {
-    if phrase.is_empty() || words.len() < phrase.len() {
-        return None;
-    }
-    words.windows(phrase.len()).position(|window| {
-        window
-            .iter()
-            .zip(phrase.iter())
-            .all(|(word, expected)| word == expected)
-    })
-}
-
-fn clause_contains_phrase(clause: LexedClause<'_>, phrase: &[&str]) -> bool {
-    LexPattern::new(&[LexPattern::phrase(phrase)])
-        .find_in_clause(clause)
-        .is_some()
-}
-
 fn is_source_reference_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
-        clause,
-        &[
-            &["it"],
-            &["its"],
-            &["this"],
-            &["this", "artifact"],
-            &["this", "artifacts"],
-            &["this", "card"],
-            &["this", "cards"],
-            &["this", "creature"],
-            &["this", "creatures"],
-            &["this", "enchantment"],
-            &["this", "enchantments"],
-            &["this", "land"],
-            &["this", "lands"],
-            &["this", "permanent"],
-            &["this", "permanents"],
-            &["this", "spell"],
-            &["this", "spells"],
-            &["this", "source"],
-            &["this", "object"],
-            &["this", "objects"],
-        ],
-    )
+    let words = clause.word_refs();
+    surface::exact_any(clause, &[&["it"], &["its"]]) || is_source_reference_words(&words)
 }
 
 fn is_explicit_source_state_subject_clause(clause: LexedClause<'_>) -> bool {
-    let words = clause.word_refs();
-    !matches!(words.as_slice(), ["it"] | ["its"]) && is_source_reference_clause(clause)
+    !surface::exact_any(clause, &[&["it"], &["its"]]) && is_source_reference_clause(clause)
 }
 
 fn is_source_card_reference_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["this"], &["this", "card"]])
+    surface::exact_any(clause, &[&["this"], &["this", "card"]])
 }
 
 fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -443,22 +419,22 @@ fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
     }
 
     let zone = relation.tail_clause;
-    if clause_matches_phrase(zone, &["your", "graveyard"]) {
+    if surface::exact(zone, &["your", "graveyard"]) {
         return Some(PredicateAst::SourceIsInZone(Zone::Graveyard));
     }
     if !is_source_card_reference_clause(source) {
         return None;
     }
-    if clause_matches_phrase(zone, &["your", "hand"]) {
+    if surface::exact(zone, &["your", "hand"]) {
         return Some(PredicateAst::SourceIsInZone(Zone::Hand));
     }
-    if clause_matches_phrase(zone, &["your", "library"]) {
+    if surface::exact(zone, &["your", "library"]) {
         return Some(PredicateAst::SourceIsInZone(Zone::Library));
     }
-    if clause_matches_phrase(zone, &["exile"]) {
+    if surface::exact(zone, &["exile"]) {
         return Some(PredicateAst::SourceIsInZone(Zone::Exile));
     }
-    if clause_matches_any_phrase(zone, &[&["the", "command", "zone"], &["command", "zone"]]) {
+    if surface::exact_any(zone, &[&["the", "command", "zone"], &["command", "zone"]]) {
         return Some(PredicateAst::SourceIsInZone(Zone::Command));
     }
     None
@@ -466,7 +442,7 @@ fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
 
 fn parse_outlaw_shorthand_filter(clause: LexedClause<'_>) -> Option<ObjectFilter> {
     let trimmed_tokens = strip_leading_article_tokens(clause.tokens());
-    if !clause_matches_any_phrase(
+    if !surface::exact_any(
         LexedClause::new(trimmed_tokens),
         OUTLAW_SHORTHAND_FILTER_PHRASES,
     ) {
@@ -493,13 +469,13 @@ fn parse_source_attachment_count_predicate(
     };
     let enchanted_by_phrase = &["enchanted", "by"];
     let atoms = [
-        LexPattern::capture(
+        WinnowSequence::capture(
             "enchanted_by",
-            LexCaptureKind::WordCount(enchanted_by_phrase.len()),
+            WinnowCaptureKind::WordCount(enchanted_by_phrase.len()),
         ),
-        LexPattern::amount("quantity", LexCaptureKind::Rest),
+        WinnowSequence::amount("quantity", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(relation.tail_clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(relation.tail_clause) else {
         return Ok(None);
     };
     let source = relation.subject_clause;
@@ -509,11 +485,11 @@ fn parse_source_attachment_count_predicate(
     let enchanted_by = matched
         .capture_clause("enchanted_by", relation.tail_clause)
         .ok_or_else(|| CardTextError::ParseError("missing enchanted-by phrase".to_string()))?;
-    if !clause_matches_phrase(enchanted_by, &["enchanted", "by"]) {
+    if !surface::exact(enchanted_by, &["enchanted", "by"]) {
         return Ok(None);
     }
     let attachment = matched
-        .capture_clause_by_role(LexCaptureRole::Amount, relation.tail_clause)
+        .capture_clause_by_role(WinnowCaptureRole::Amount, relation.tail_clause)
         .ok_or_else(|| CardTextError::ParseError("missing attachment count".to_string()))?;
     let (comparison, used) = parse_attachment_quantity_prefix(attachment.tokens())?;
     let filter_tokens = attachment.tokens().get(used..).unwrap_or_default();
@@ -541,14 +517,14 @@ fn parse_attachment_count_filter_tokens(tokens: &[OwnedLexToken]) -> Option<Obje
 }
 
 fn parse_aura_attachment_filter_clause(clause: LexedClause<'_>) -> Option<ObjectFilter> {
-    const AURA_ATTACHMENT_FILTER_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::object(
+    const AURA_ATTACHMENT_FILTER_PATTERN: WinnowSequence<'static> =
+        WinnowSequence::new(&[WinnowSequence::object(
             "aura",
-            LexCaptureKind::OneOf(AURA_WORDS),
+            WinnowCaptureKind::OneOf(AURA_WORDS),
         )]);
 
     AURA_ATTACHMENT_FILTER_PATTERN
-        .matches_clause(clause)
+        .accepts_full(clause)
         .then(|| ObjectFilter::default().with_subtype(Subtype::Aura))
 }
 
@@ -558,6 +534,8 @@ fn object_filter_has_identity(filter: &ObjectFilter) -> bool {
         || !filter.subtypes.is_empty()
         || !filter.supertypes.is_empty()
         || filter.colors.is_some()
+        || filter.required_colors.is_some()
+        || filter.sticker.is_some()
         || filter.token
         || filter.nontoken
         || !filter.excluded_card_types.is_empty()
@@ -575,24 +553,24 @@ fn parse_source_identity_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
         &["aren't"],
     ];
     let atoms = [
-        LexPattern::subject("source", LexCaptureKind::UntilAnyPhrase(state_phrases)),
-        LexPattern::action(
+        WinnowSequence::subject("source", WinnowCaptureKind::UntilAnyPhrase(state_phrases)),
+        WinnowSequence::action(
             "state",
-            LexCaptureKind::OneOf(&["is", "are", "isnt", "isn't", "arent", "aren't"]),
+            WinnowCaptureKind::OneOf(&["is", "are", "isnt", "isn't", "arent", "aren't"]),
         ),
-        LexPattern::object("descriptor", LexCaptureKind::Rest),
+        WinnowSequence::object("descriptor", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let source = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_source_reference_clause(source) {
         return None;
     }
-    if clause_matches_phrase(source, &["it"]) {
+    if surface::exact(source, &["it"]) {
         return None;
     }
-    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let action = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     let mut negative = source_identity_copula_is_negative(action);
-    let descriptor_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let descriptor_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let (descriptor_negative, descriptor_clause) =
         parse_source_identity_descriptor_clause(descriptor_clause)?;
     negative |= descriptor_negative;
@@ -633,13 +611,13 @@ fn parse_identity_descriptor_filter_tokens(tokens: &[OwnedLexToken]) -> Option<O
 fn parse_source_identity_descriptor_clause<'a>(
     descriptor: LexedClause<'a>,
 ) -> Option<(bool, LexedClause<'a>)> {
-    const NEGATED_DESCRIPTOR_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::word("not"),
-        LexPattern::object("descriptor", LexCaptureKind::Rest),
+    const NEGATED_DESCRIPTOR_PATTERN: WinnowSequence<'static> = WinnowSequence::new(&[
+        WinnowSequence::word("not"),
+        WinnowSequence::object("descriptor", WinnowCaptureKind::Rest),
     ]);
 
-    if let Some(matched) = NEGATED_DESCRIPTOR_PATTERN.match_clause(descriptor) {
-        let descriptor = matched.capture_clause_by_role(LexCaptureRole::Object, descriptor)?;
+    if let Some(matched) = NEGATED_DESCRIPTOR_PATTERN.parse_full(descriptor) {
+        let descriptor = matched.capture_clause_by_role(WinnowCaptureRole::Object, descriptor)?;
         return Some((true, descriptor));
     }
 
@@ -647,19 +625,21 @@ fn parse_source_identity_descriptor_clause<'a>(
 }
 
 fn source_identity_copula_is_negative(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["isnt"], &["isn't"], &["arent"], &["aren't"]])
+    surface::exact_any(clause, &[&["isnt"], &["isn't"], &["arent"], &["aren't"]])
 }
 
 fn is_there_are_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["there", "are"])
+    surface::exact(clause, &["there", "are"])
 }
 
 fn source_identity_descriptor_contains_ignored_state(descriptor: LexedClause<'_>) -> bool {
-    const IGNORED_SOURCE_DESCRIPTOR_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::any_word(SOURCE_FILTER_IGNORED_DESCRIPTOR_WORDS)]);
+    const IGNORED_SOURCE_DESCRIPTOR_PATTERN: WinnowSequence<'static> =
+        WinnowSequence::new(&[WinnowSequence::any_word(
+            SOURCE_FILTER_IGNORED_DESCRIPTOR_WORDS,
+        )]);
 
     IGNORED_SOURCE_DESCRIPTOR_PATTERN
-        .find_in_clause(descriptor)
+        .locate_in(descriptor)
         .is_some()
 }
 
@@ -694,15 +674,15 @@ fn parse_you_life_total_at_most_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let have_atoms = [
-        LexPattern::amount("amount", LexCaptureKind::UntilLastPhrase(&["life"])),
-        LexPattern::object("unit", LexCaptureKind::OneOf(&["life"])),
+        WinnowSequence::amount("amount", WinnowCaptureKind::UntilLastPhrase(&["life"])),
+        WinnowSequence::object("unit", WinnowCaptureKind::OneOf(&["life"])),
     ];
     if let Some(relation) = parse_has_relation_clauses(tokens)
-        && let Some(matched) = LexPattern::new(&have_atoms).match_clause(relation.tail_clause)
+        && let Some(matched) = WinnowSequence::new(&have_atoms).parse_full(relation.tail_clause)
     {
-        if clause_matches_phrase(relation.subject_clause, &["you"]) {
+        if surface::exact(relation.subject_clause, &["you"]) {
             let amount = matched
-                .capture_clause_by_role(LexCaptureRole::Amount, relation.tail_clause)
+                .capture_clause_by_role(WinnowCaptureRole::Amount, relation.tail_clause)
                 .ok_or_else(|| {
                     CardTextError::ParseError("missing amount in life predicate".to_string())
                 })?;
@@ -711,23 +691,23 @@ fn parse_you_life_total_at_most_predicate(
     }
 
     let total_atoms = [
-        LexPattern::subject("life_total", LexCaptureKind::WordCount(3)),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["is"])),
-        LexPattern::amount("amount", LexCaptureKind::Rest),
+        WinnowSequence::subject("life_total", WinnowCaptureKind::WordCount(3)),
+        WinnowSequence::action("action", WinnowCaptureKind::OneOf(&["is"])),
+        WinnowSequence::amount("amount", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&total_atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&total_atoms).parse_full(clause) else {
         return Ok(None);
     };
     let subject = matched
-        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Subject, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing subject in life predicate".to_string())
         })?;
-    if !clause_matches_phrase(subject, &["your", "life", "total"]) {
+    if !surface::exact(subject, &["your", "life", "total"]) {
         return Ok(None);
     }
     let amount = matched
-        .capture_clause_by_role(LexCaptureRole::Amount, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Amount, clause)
         .ok_or_else(|| CardTextError::ParseError("missing amount in life predicate".to_string()))?;
     life_total_at_most_from_amount_tokens(amount.tokens())
 }
@@ -770,10 +750,10 @@ fn parse_half_starting_life_total_threshold_predicate(
 }
 
 fn parse_life_total_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
-    if clause_matches_phrase(clause, &["your", "life", "total"]) {
+    if surface::exact(clause, &["your", "life", "total"]) {
         return Some(PlayerAst::You);
     }
-    if clause_matches_any_phrase(
+    if surface::exact_any(
         clause,
         &[
             &["their", "life", "total"],
@@ -782,13 +762,13 @@ fn parse_life_total_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst>
     ) {
         return Some(PlayerAst::That);
     }
-    if clause_matches_phrase(clause, &["target", "players", "life", "total"]) {
+    if surface::exact(clause, &["target", "players", "life", "total"]) {
         return Some(PlayerAst::Target);
     }
-    if clause_matches_phrase(clause, &["target", "opponents", "life", "total"]) {
+    if surface::exact(clause, &["target", "opponents", "life", "total"]) {
         return Some(PlayerAst::TargetOpponent);
     }
-    if clause_matches_any_phrase(
+    if surface::exact_any(
         clause,
         &[
             &["opponent", "life", "total"],
@@ -797,10 +777,10 @@ fn parse_life_total_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst>
     ) {
         return Some(PlayerAst::Opponent);
     }
-    if clause_matches_phrase(clause, &["defending", "players", "life", "total"]) {
+    if surface::exact(clause, &["defending", "players", "life", "total"]) {
         return Some(PlayerAst::Defending);
     }
-    if clause_matches_phrase(clause, &["attacking", "players", "life", "total"]) {
+    if surface::exact(clause, &["attacking", "players", "life", "total"]) {
         return Some(PlayerAst::Attacking);
     }
     None
@@ -809,18 +789,18 @@ fn parse_life_total_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst>
 fn parse_half_starting_life_total_threshold_clause(
     clause: LexedClause<'_>,
 ) -> Option<HalfStartingLifeThreshold> {
-    const AT_MOST_HALF_STARTING_LIFE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(&["less", "than", "or", "equal", "to"]),
-        LexPattern::any_phrase(HALF_STARTING_LIFE_TOTAL_PHRASES),
+    const AT_MOST_HALF_STARTING_LIFE_PATTERN: WinnowSequence<'static> = WinnowSequence::new(&[
+        WinnowSequence::phrase(&["less", "than", "or", "equal", "to"]),
+        WinnowSequence::any_phrase(HALF_STARTING_LIFE_TOTAL_PHRASES),
     ]);
-    const LESS_THAN_HALF_STARTING_LIFE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(&["less", "than"]),
-        LexPattern::any_phrase(HALF_STARTING_LIFE_TOTAL_PHRASES),
+    const LESS_THAN_HALF_STARTING_LIFE_PATTERN: WinnowSequence<'static> = WinnowSequence::new(&[
+        WinnowSequence::phrase(&["less", "than"]),
+        WinnowSequence::any_phrase(HALF_STARTING_LIFE_TOTAL_PHRASES),
     ]);
 
-    if AT_MOST_HALF_STARTING_LIFE_PATTERN.matches_clause(clause) {
+    if AT_MOST_HALF_STARTING_LIFE_PATTERN.accepts_full(clause) {
         Some(HalfStartingLifeThreshold::AtMost)
-    } else if LESS_THAN_HALF_STARTING_LIFE_PATTERN.matches_clause(clause) {
+    } else if LESS_THAN_HALF_STARTING_LIFE_PATTERN.accepts_full(clause) {
         Some(HalfStartingLifeThreshold::LessThan)
     } else {
         None
@@ -835,32 +815,32 @@ fn parse_source_power_threshold_predicate(tokens: &[OwnedLexToken]) -> Option<Pr
 fn parse_source_possessive_power_threshold_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("source", LexCaptureKind::UntilPhrase(&["power"])),
-        LexPattern::object("stat", LexCaptureKind::OneOf(&["power"])),
-        LexPattern::action("copula", LexCaptureKind::OneOf(&["is"])),
-        LexPattern::amount("amount", LexCaptureKind::Rest),
+        WinnowSequence::subject("source", WinnowCaptureKind::UntilPhrase(&["power"])),
+        WinnowSequence::object("stat", WinnowCaptureKind::OneOf(&["power"])),
+        WinnowSequence::action("copula", WinnowCaptureKind::OneOf(&["is"])),
+        WinnowSequence::amount("amount", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let source_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_explicit_source_state_subject_clause(source_clause) {
         return None;
     }
-    let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let amount_clause = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
     source_power_at_least_from_amount_tokens(amount_clause.tokens())
 }
 
 fn parse_source_has_power_threshold_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let atoms = [
-        LexPattern::object("stat", LexCaptureKind::OneOf(&["power"])),
-        LexPattern::amount("amount", LexCaptureKind::Rest),
+        WinnowSequence::object("stat", WinnowCaptureKind::OneOf(&["power"])),
+        WinnowSequence::amount("amount", WinnowCaptureKind::Rest),
     ];
     let relation = parse_has_relation_clauses(tokens)?;
     if !is_explicit_source_state_subject_clause(relation.subject_clause) {
         return None;
     }
-    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(relation.tail_clause)?;
     let amount_clause =
-        matched.capture_clause_by_role(LexCaptureRole::Amount, relation.tail_clause)?;
+        matched.capture_clause_by_role(WinnowCaptureRole::Amount, relation.tail_clause)?;
     source_power_at_least_from_amount_tokens(amount_clause.tokens())
 }
 
@@ -883,16 +863,16 @@ fn parse_source_crewed_by_exactly_predicate(
     let clause = LexedClause::new(tokens);
     let action_phrase = &["was", "crewed", "by", "exactly"];
     let atoms = [
-        LexPattern::subject("source", LexCaptureKind::UntilPhrase(action_phrase)),
-        LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-        LexPattern::amount("count", LexCaptureKind::WordCount(1)),
-        LexPattern::object("filter", LexCaptureKind::Rest),
+        WinnowSequence::subject("source", WinnowCaptureKind::UntilPhrase(action_phrase)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(action_phrase.len())),
+        WinnowSequence::amount("count", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object("filter", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let subject = matched
-        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Subject, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing source in crew-count predicate".to_string())
         })?;
@@ -900,15 +880,15 @@ fn parse_source_crewed_by_exactly_predicate(
         return Ok(None);
     }
     let action = matched
-        .capture_clause_by_role(LexCaptureRole::Action, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Action, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing action in crew-count predicate".to_string())
         })?;
-    if !clause_matches_phrase(action, action_phrase) {
+    if !surface::exact(action, action_phrase) {
         return Ok(None);
     }
     let count_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Amount, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Amount, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing crew-count predicate quantity".to_string())
         })?;
@@ -922,7 +902,7 @@ fn parse_source_crewed_by_exactly_predicate(
         return Ok(None);
     }
     let filter_tokens = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing crew-count predicate filter".to_string())
         })?
@@ -946,18 +926,18 @@ fn parse_source_bare_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAs
     let clause = LexedClause::new(tokens);
     let state_phrases: &[&[&str]] = &[&["enchanted"], &["equipped"], &["tapped"], &["untapped"]];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(state_phrases)),
-        LexPattern::object(
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilAnyPhrase(state_phrases)),
+        WinnowSequence::object(
             "state",
-            LexCaptureKind::OneOf(&["enchanted", "equipped", "tapped", "untapped"]),
+            WinnowCaptureKind::OneOf(&["enchanted", "equipped", "tapped", "untapped"]),
         ),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_source_state_subject_clause(subject_clause) {
         return None;
     }
-    let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let state_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     source_state_predicate_from_clause(state_clause, false)
 }
 
@@ -978,25 +958,25 @@ fn parse_source_negative_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<
     let clause = LexedClause::new(tokens);
     let negated_copula_phrases: &[&[&str]] = &[&["isnt"], &["isn't"], &["is", "not"]];
     let atoms = [
-        LexPattern::subject(
+        WinnowSequence::subject(
             "subject",
-            LexCaptureKind::UntilAnyPhrase(negated_copula_phrases),
+            WinnowCaptureKind::UntilAnyPhrase(negated_copula_phrases),
         ),
-        LexPattern::action(
+        WinnowSequence::action(
             "copula",
-            LexCaptureKind::OneOfPhrase(negated_copula_phrases),
+            WinnowCaptureKind::OneOfPhrase(negated_copula_phrases),
         ),
-        LexPattern::object(
+        WinnowSequence::object(
             "state",
-            LexCaptureKind::OneOf(&["enchanted", "equipped", "tapped", "untapped", "saddled"]),
+            WinnowCaptureKind::OneOf(&["enchanted", "equipped", "tapped", "untapped", "saddled"]),
         ),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_source_state_subject_clause(subject_clause) {
         return None;
     }
-    let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let state_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     source_state_predicate_from_clause(state_clause, true)
 }
 
@@ -1008,35 +988,35 @@ fn source_state_predicate_from_clause(
     clause: LexedClause<'_>,
     negative: bool,
 ) -> Option<PredicateAst> {
-    if clause_matches_phrase(clause, &["tapped"]) {
+    if surface::exact(clause, &["tapped"]) {
         return if negative {
             Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)))
         } else {
             Some(PredicateAst::SourceIsTapped)
         };
     }
-    if clause_matches_phrase(clause, &["untapped"]) {
+    if surface::exact(clause, &["untapped"]) {
         return if negative {
             Some(PredicateAst::SourceIsTapped)
         } else {
             Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)))
         };
     }
-    if clause_matches_phrase(clause, &["equipped"]) {
+    if surface::exact(clause, &["equipped"]) {
         return if negative {
             Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsEquipped)))
         } else {
             Some(PredicateAst::SourceIsEquipped)
         };
     }
-    if clause_matches_phrase(clause, &["enchanted"]) {
+    if surface::exact(clause, &["enchanted"]) {
         return if negative {
             Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsEnchanted)))
         } else {
             Some(PredicateAst::SourceIsEnchanted)
         };
     }
-    if clause_matches_phrase(clause, &["saddled"]) {
+    if surface::exact(clause, &["saddled"]) {
         return if negative {
             Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsSaddled)))
         } else {
@@ -1053,17 +1033,17 @@ fn parse_terminal_counter_phrase(
 }
 
 fn parse_terminal_counter_phrase_shape(tokens: &[OwnedLexToken]) -> Option<TerminalCounterPhrase> {
-    const TERMINAL_COUNTER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::amount(
+    const TERMINAL_COUNTER_PATTERN: WinnowSequence<'static> = WinnowSequence::new(&[
+        WinnowSequence::amount(
             "count_and_type",
-            LexCaptureKind::UntilAnyPhrase(COUNTER_WORD_PHRASES),
+            WinnowCaptureKind::UntilAnyPhrase(COUNTER_WORD_PHRASES),
         ),
-        LexPattern::any_phrase(COUNTER_WORD_PHRASES),
+        WinnowSequence::any_phrase(COUNTER_WORD_PHRASES),
     ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = TERMINAL_COUNTER_PATTERN.match_clause(clause)?;
-    let count_and_type = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let matched = TERMINAL_COUNTER_PATTERN.parse_full(clause)?;
+    let count_and_type = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
     let count = parse_number(count_and_type.tokens())
         .map(|(count, _)| count)
         .unwrap_or(1);
@@ -1080,20 +1060,20 @@ fn parse_terminal_counter_phrase_shape(tokens: &[OwnedLexToken]) -> Option<Termi
 
 fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let atoms = [
-        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
-        LexPattern::modifier("target", LexCaptureKind::Rest),
+        WinnowSequence::object("counter", WinnowCaptureKind::UntilPhrase(&["on"])),
+        WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
     ];
     let relation = parse_has_relation_clauses(tokens)?;
     if !is_source_reference_clause(relation.subject_clause) {
         return None;
     }
-    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(relation.tail_clause)?;
     let target_clause = matched.capture_clause("target", relation.tail_clause)?;
     if !is_exact_counter_on_source_tail_clause(target_clause) {
         return None;
     }
     let counter_clause =
-        matched.capture_clause_by_role(LexCaptureRole::Object, relation.tail_clause)?;
+        matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)?;
     if counter_clause
         .token(0)
         .is_some_and(|token| token_word_is(token, NO_WORD))
@@ -1117,49 +1097,52 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
 fn parse_source_doesnt_have_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject(
+        WinnowSequence::subject(
             "subject",
-            LexCaptureKind::UntilAnyPhrase(NEGATED_HAVE_PHRASES),
+            WinnowCaptureKind::UntilAnyPhrase(NEGATED_HAVE_PHRASES),
         ),
-        LexPattern::action("action", LexCaptureKind::OneOfPhrase(NEGATED_HAVE_PHRASES)),
-        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
-        LexPattern::modifier("target", LexCaptureKind::Rest),
+        WinnowSequence::action(
+            "action",
+            WinnowCaptureKind::OneOfPhrase(NEGATED_HAVE_PHRASES),
+        ),
+        WinnowSequence::object("counter", WinnowCaptureKind::UntilPhrase(&["on"])),
+        WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_source_reference_clause(subject_clause) {
         return None;
     }
-    let target_clause = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let target_clause = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
     if !is_exact_counter_on_source_tail_clause(target_clause) {
         return None;
     }
-    let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
     Some(PredicateAst::SourceHasNoCounter(counter_type))
 }
 
 fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let atoms = [
-        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
-        LexPattern::modifier("target", LexCaptureKind::Rest),
+        WinnowSequence::object("counter", WinnowCaptureKind::UntilPhrase(&["on"])),
+        WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
     ];
     let relation = parse_has_relation_clauses(tokens)?;
     if !is_source_reference_clause(relation.subject_clause) {
         return None;
     }
-    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(relation.tail_clause)?;
     let target_clause = matched.capture_clause("target", relation.tail_clause)?;
     if !is_counter_on_source_pronoun_tail_clause(target_clause) {
         return None;
     }
     let counter_clause =
-        matched.capture_clause_by_role(LexCaptureRole::Object, relation.tail_clause)?;
+        matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)?;
     let (comparison, used) = predicate_quantity_prefix_tokens(counter_clause.tokens())?;
     let count = comparison_to_at_least_threshold(&comparison)?;
     let counter_tail = counter_clause.tokens().get(used..)?;
     let counter_type = parse_terminal_counter_phrase(counter_tail)??;
-    if clause_matches_phrase(relation.subject_clause, &["it"]) {
+    if surface::exact(relation.subject_clause, &["it"]) {
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
                 Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
@@ -1176,7 +1159,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
 }
 
 fn is_counter_on_source_pronoun_tail_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["on", "it"],
@@ -1205,11 +1188,11 @@ fn parse_source_verbless_counted_counter_predicate(tokens: &[OwnedLexToken]) -> 
         }
         let rest_clause = LexedClause::new(rest);
         let atoms = [
-            LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
-            LexPattern::modifier("target", LexCaptureKind::Rest),
+            WinnowSequence::object("counter", WinnowCaptureKind::UntilPhrase(&["on"])),
+            WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
         ];
-        let matched = LexPattern::new(&atoms).match_clause(rest_clause)?;
-        let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, rest_clause)?;
+        let matched = WinnowSequence::new(&atoms).parse_full(rest_clause)?;
+        let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, rest_clause)?;
         let (count, used) = if let Some((comparison, used)) =
             predicate_quantity_prefix_tokens(counter_clause.tokens())
         {
@@ -1218,7 +1201,7 @@ fn parse_source_verbless_counted_counter_predicate(tokens: &[OwnedLexToken]) -> 
             predicate_at_least_quantity_prefix_tokens(counter_clause.tokens())?
         };
         let target_clause =
-            matched.capture_clause_by_role(LexCaptureRole::Modifier, rest_clause)?;
+            matched.capture_clause_by_role(WinnowCaptureRole::Modifier, rest_clause)?;
         if !is_counter_on_source_pronoun_tail_clause(target_clause) {
             continue;
         }
@@ -1241,13 +1224,13 @@ fn parse_there_are_no_counters_on_source_predicate(
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
-        LexPattern::amount("quantity", LexCaptureKind::OneOf(&["no"])),
-        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
-        LexPattern::modifier("target", LexCaptureKind::Rest),
+        WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::amount("quantity", WinnowCaptureKind::OneOf(&["no"])),
+        WinnowSequence::object("counter", WinnowCaptureKind::UntilPhrase(&["on"])),
+        WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let existential = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_there_are_clause(existential) {
         return None;
     }
@@ -1255,7 +1238,7 @@ fn parse_there_are_no_counters_on_source_predicate(
     if !is_exact_counter_on_source_tail_clause(target) {
         return None;
     }
-    let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
     Some(PredicateAst::SourceHasNoCounter(counter_type))
 }
@@ -1263,13 +1246,13 @@ fn parse_there_are_no_counters_on_source_predicate(
 fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["had"])),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["had"])),
-        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
-        LexPattern::modifier("target", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(&["had"])),
+        WinnowSequence::action("action", WinnowCaptureKind::OneOf(&["had"])),
+        WinnowSequence::object("counter", WinnowCaptureKind::UntilPhrase(&["on"])),
+        WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_triggering_object_counter_subject_clause(subject_clause) {
         return None;
     }
@@ -1277,7 +1260,7 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
     if !is_exact_counter_on_triggering_object_tail_clause(target_clause) {
         return None;
     }
-    let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if counter_clause
         .token(0)
         .is_some_and(|token| token_word_is(token, NO_WORD))
@@ -1293,7 +1276,7 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
 }
 
 fn is_triggering_object_counter_subject_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["it"],
@@ -1306,7 +1289,7 @@ fn is_triggering_object_counter_subject_clause(clause: LexedClause<'_>) -> bool 
 }
 
 fn is_exact_counter_on_triggering_object_tail_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["on", "it"],
@@ -1329,11 +1312,14 @@ fn parse_basic_land_types_among_lands_predicate(
         &["basic", "land", "types", "among", "lands"],
     ];
     let atoms = [
-        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
-        LexPattern::amount("count", LexCaptureKind::UntilAnyPhrase(land_type_phrases)),
-        LexPattern::object(
+        WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::amount(
+            "count",
+            WinnowCaptureKind::UntilAnyPhrase(land_type_phrases),
+        ),
+        WinnowSequence::object(
             "land_types",
-            LexCaptureKind::UntilAnyPhrase(&[
+            WinnowCaptureKind::UntilAnyPhrase(&[
                 &["you", "control"],
                 &["you", "controls"],
                 &["that", "player", "control"],
@@ -1341,13 +1327,13 @@ fn parse_basic_land_types_among_lands_predicate(
                 &["that", "players", "controls"],
             ]),
         ),
-        LexPattern::modifier("controller", LexCaptureKind::Rest),
+        WinnowSequence::modifier("controller", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let existential = matched
-        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Subject, clause)
         .ok_or_else(|| {
             CardTextError::ParseError(
                 "missing existential in basic-land-types predicate".to_string(),
@@ -1357,7 +1343,7 @@ fn parse_basic_land_types_among_lands_predicate(
         return Ok(None);
     }
     let count_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Amount, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Amount, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing count in basic-land-types predicate".to_string())
         })?;
@@ -1375,11 +1361,11 @@ fn parse_basic_land_types_among_lands_predicate(
         return Ok(None);
     };
     let land_types = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing object in basic-land-types predicate".to_string())
         })?;
-    if !clause_matches_any_phrase(land_types, land_type_phrases) {
+    if !surface::exact_any(land_types, land_type_phrases) {
         return Ok(None);
     }
     let controller = matched
@@ -1401,10 +1387,10 @@ fn parse_basic_land_types_among_lands_predicate(
 }
 
 fn parse_basic_land_types_controller_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
-    if clause_matches_any_phrase(clause, &[&["you", "control"], &["you", "controls"]]) {
+    if surface::exact_any(clause, &[&["you", "control"], &["you", "controls"]]) {
         return Some(PlayerAst::You);
     }
-    if clause_matches_any_phrase(
+    if surface::exact_any(
         clause,
         &[
             &["that", "player", "control"],
@@ -1422,12 +1408,12 @@ fn parse_there_are_source_counters_at_least_predicate(
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
-        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
-        LexPattern::modifier("target", LexCaptureKind::Rest),
+        WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::object("counter", WinnowCaptureKind::UntilPhrase(&["on"])),
+        WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let existential = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_there_are_clause(existential) {
         return None;
     }
@@ -1435,7 +1421,7 @@ fn parse_there_are_source_counters_at_least_predicate(
     if !is_exact_counter_on_source_tail_clause(target) {
         return None;
     }
-    let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let (comparison, used) = predicate_quantity_prefix_tokens(counter_clause.tokens())?;
     let count = comparison_to_at_least_threshold(&comparison)?;
     let counter_tail = counter_clause.tokens().get(used..)?;
@@ -1449,15 +1435,15 @@ fn parse_there_are_source_counters_at_least_predicate(
 }
 
 fn is_exact_counter_on_source_tail_clause(clause: LexedClause<'_>) -> bool {
-    const COUNTER_ON_SOURCE_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::word("on"),
-        LexPattern::subject("source", LexCaptureKind::Rest),
+    const COUNTER_ON_SOURCE_TAIL_PATTERN: WinnowSequence<'static> = WinnowSequence::new(&[
+        WinnowSequence::word("on"),
+        WinnowSequence::subject("source", WinnowCaptureKind::Rest),
     ]);
 
-    let Some(matched) = COUNTER_ON_SOURCE_TAIL_PATTERN.match_clause(clause) else {
+    let Some(matched) = COUNTER_ON_SOURCE_TAIL_PATTERN.parse_full(clause) else {
         return false;
     };
-    let Some(source) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause) else {
+    let Some(source) = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause) else {
         return false;
     };
     is_source_state_subject_clause(source)
@@ -1467,23 +1453,23 @@ fn parse_source_exiled_with_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     let clause = LexedClause::new(tokens);
     let exiled_with_phrase = &["is", "exiled", "with"];
     let atoms = [
-        LexPattern::subject("source", LexCaptureKind::UntilPhrase(exiled_with_phrase)),
-        LexPattern::phrase(exiled_with_phrase),
-        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
-        LexPattern::modifier("target", LexCaptureKind::Rest),
+        WinnowSequence::subject("source", WinnowCaptureKind::UntilPhrase(exiled_with_phrase)),
+        WinnowSequence::phrase(exiled_with_phrase),
+        WinnowSequence::object("counter", WinnowCaptureKind::UntilPhrase(&["on"])),
+        WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let source_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_source_state_subject_clause(source_clause) {
         return None;
     }
 
-    let target_clause = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let target_clause = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
     if !is_exact_counter_on_source_tail_clause(target_clause) {
         return None;
     }
 
-    let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let counter = parse_terminal_counter_phrase_shape(counter_clause.tokens())?;
     let counter_type = counter.counter_type?;
     Some(PredicateAst::And(
@@ -1509,39 +1495,39 @@ fn parse_source_is_your_ring_bearer_predicate(tokens: &[OwnedLexToken]) -> Optio
 }
 
 fn is_this_source_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["this"], &["this", "creature"]])
+    surface::exact_any(clause, &[&["this"], &["this", "creature"]])
 }
 
 fn is_your_ring_bearer_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["your", "ring", "bearer"])
+    surface::exact(clause, &["your", "ring", "bearer"])
 }
 
 fn parse_ring_has_tempted_you_this_game_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    let article_atoms = [LexPattern::word("the")];
+    let article_atoms = [WinnowSequence::word("the")];
     let atoms = [
-        LexPattern::optional(&article_atoms),
-        LexPattern::subject("ring", LexCaptureKind::OneOf(&["ring"])),
-        LexPattern::action("tempted", LexCaptureKind::WordCount(3)),
-        LexPattern::amount("count", LexCaptureKind::UntilPhrase(&["or", "more"])),
-        LexPattern::phrase(&["or", "more"]),
-        LexPattern::modifier("window", LexCaptureKind::Rest),
+        WinnowSequence::optional(&article_atoms),
+        WinnowSequence::subject("ring", WinnowCaptureKind::OneOf(&["ring"])),
+        WinnowSequence::action("tempted", WinnowCaptureKind::WordCount(3)),
+        WinnowSequence::amount("count", WinnowCaptureKind::UntilPhrase(&["or", "more"])),
+        WinnowSequence::phrase(&["or", "more"]),
+        WinnowSequence::modifier("window", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let tempted = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !clause_matches_phrase(tempted, &["has", "tempted", "you"]) {
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let tempted = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
+    if !surface::exact(tempted, &["has", "tempted", "you"]) {
         return None;
     }
-    let window = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
-    if !clause_matches_any_phrase(
+    let window = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
+    if !surface::exact_any(
         window,
         &[&["time", "this", "game"], &["times", "this", "game"]],
     ) {
         return None;
     }
-    let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let count_clause = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
     let (count, used) = parse_number(count_clause.tokens())?;
     if used != count_clause.tokens().len() {
         return None;
@@ -1562,11 +1548,11 @@ fn parse_ring_bearer_temptation_predicate(tokens: &[OwnedLexToken]) -> Option<Pr
 
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::condition("left", LexCaptureKind::UntilPhrase(&["and"])),
-        LexPattern::word("and"),
-        LexPattern::condition("right", LexCaptureKind::Rest),
+        WinnowSequence::condition("left", WinnowCaptureKind::UntilPhrase(&["and"])),
+        WinnowSequence::word("and"),
+        WinnowSequence::condition("right", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
     let left_clause = matched.capture_clause("left", clause)?;
     let right_clause = matched.capture_clause("right", clause)?;
     if left_clause.tokens().is_empty() || right_clause.tokens().is_empty() {
@@ -1582,21 +1568,24 @@ fn parse_stack_object_targets_only_source_predicate(
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("spell", LexCaptureKind::UntilPhrase(&["targets", "only"])),
-        LexPattern::action("targets_only", LexCaptureKind::WordCount(2)),
-        LexPattern::object("target", LexCaptureKind::Rest),
+        WinnowSequence::subject(
+            "spell",
+            WinnowCaptureKind::UntilPhrase(&["targets", "only"]),
+        ),
+        WinnowSequence::action("targets_only", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::object("target", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let spell = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let spell = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_stack_object_reference_clause(spell) {
         return None;
     }
-    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !clause_matches_phrase(action, &["targets", "only"]) {
+    let action = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
+    if !surface::exact(action, &["targets", "only"]) {
         return None;
     }
 
-    let target = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let target = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let mut target_filter = source_target_filter_from_clause(target)?;
     target_filter.source = true;
 
@@ -1610,16 +1599,16 @@ fn parse_stack_object_targets_only_source_predicate(
 fn parse_stack_object_targets_object_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("spell", LexCaptureKind::UntilPhrase(&["targets"])),
-        LexPattern::action("targets", LexCaptureKind::WordCount(1)),
-        LexPattern::object("target", LexCaptureKind::Rest),
+        WinnowSequence::subject("spell", WinnowCaptureKind::UntilPhrase(&["targets"])),
+        WinnowSequence::action("targets", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object("target", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let spell = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let spell = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_stack_object_reference_clause(spell) {
         return None;
     }
-    let target = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let target = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if target
         .tokens()
         .first()
@@ -1635,26 +1624,26 @@ fn parse_stack_object_targets_object_predicate(tokens: &[OwnedLexToken]) -> Opti
 
 fn is_stack_object_reference_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_any_phrase(clause, &[&["that", "spell"], &["spell"], &["it"]])
+    surface::exact_any(clause, &[&["that", "spell"], &["spell"], &["it"]])
 }
 
 fn source_target_filter_from_clause(clause: LexedClause<'_>) -> Option<ObjectFilter> {
-    if clause_matches_phrase(clause, &["this", "creature"]) {
+    if surface::exact(clause, &["this", "creature"]) {
         return Some(ObjectFilter::creature());
     }
-    if clause_matches_phrase(clause, &["this", "artifact"]) {
+    if surface::exact(clause, &["this", "artifact"]) {
         return Some(ObjectFilter::artifact());
     }
-    if clause_matches_phrase(clause, &["this", "enchantment"]) {
+    if surface::exact(clause, &["this", "enchantment"]) {
         return Some(ObjectFilter::enchantment());
     }
-    if clause_matches_phrase(clause, &["this", "land"]) {
+    if surface::exact(clause, &["this", "land"]) {
         return Some(ObjectFilter::land());
     }
-    if clause_matches_phrase(clause, &["this", "permanent"]) {
+    if surface::exact(clause, &["this", "permanent"]) {
         return Some(ObjectFilter::default().in_zone(Zone::Battlefield));
     }
-    if clause_matches_any_phrase(clause, &[&["this", "source"], &["it"]]) {
+    if surface::exact_any(clause, &[&["this", "source"], &["it"]]) {
         return Some(ObjectFilter::source().in_zone(Zone::Battlefield));
     }
     None
@@ -1686,11 +1675,20 @@ fn mana_cost_label_from_words(words: &[&str]) -> Option<String> {
 }
 
 fn strip_source_possessive_label_prefix<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
-    match words {
-        ["this", possessive, tail @ ..] if is_this_spell_possessive_word(possessive) => tail,
-        ["this", source, "s", tail @ ..] if is_this_spell_possessive_word(source) => tail,
-        _ => words,
+    if words.len() >= 3
+        && surface::prefix_words(words, &["this"])
+        && is_this_spell_possessive_word(words[1])
+        && surface::exact_words(&words[2..3], &["s"])
+    {
+        return &words[3..];
     }
+    if words.len() >= 2
+        && surface::prefix_words(words, &["this"])
+        && is_this_spell_possessive_word(words[1])
+    {
+        return &words[2..];
+    }
+    words
 }
 
 fn named_paid_cost_label_from_word(word: &str) -> Option<String> {
@@ -1742,7 +1740,7 @@ fn predicate_number_or_more_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<(u
     let count = parse_named_number(first_word)?;
     let tail_token_idx = words.token_index_after_words(1)?;
     let tail = tokens.get(tail_token_idx..)?;
-    if !clause_matches_phrase(LexedClause::new(tail), OR_MORE_PREFIX) {
+    if !surface::exact(LexedClause::new(tail), OR_MORE_PREFIX) {
         return None;
     }
     let consumed = LexedClause::new(tail)
@@ -1770,7 +1768,7 @@ fn control_predicate_quantity_tokens(
     let mut exact_count = None;
 
     let comparison = words
-        .token_range_for_word_range(prefix_len, words.len())
+        .token_span_for_words(prefix_len, words.len())
         .and_then(|range| predicate_quantity_prefix_tokens(&tokens[range]));
     if let Some((comparison, used)) = comparison {
         if let crate::effect::Comparison::Equal(count) = comparison
@@ -1799,16 +1797,16 @@ fn parse_player_controls_zero_quantity_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<Result<PredicateAst, CardTextError>> {
     let atoms = [
-        LexPattern::amount("amount", LexCaptureKind::WordCount(1)),
-        LexPattern::object("object", LexCaptureKind::Rest),
+        WinnowSequence::amount("amount", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object("object", WinnowCaptureKind::Rest),
     ];
     let relation = parse_control_relation_clauses(tokens, false)?;
     let tail_clause = relation.tail_clause;
-    let matched = LexPattern::new(&atoms).match_clause(tail_clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(tail_clause)?;
     let (player, controller) = zero_control_subject_clause(relation.subject_clause)?;
-    let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, tail_clause)?;
+    let amount_clause = matched.capture_clause_by_role(WinnowCaptureRole::Amount, tail_clause)?;
     let tagged_neither = zero_control_amount_clause(amount_clause, player)?;
-    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, tail_clause)?;
+    let object_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, tail_clause)?;
     if object_clause.tokens().is_empty() {
         return None;
     }
@@ -1824,20 +1822,20 @@ fn parse_player_controls_zero_quantity_predicate(
 }
 
 fn zero_control_subject_clause(clause: LexedClause<'_>) -> Option<(PlayerAst, PlayerFilter)> {
-    if clause_matches_phrase(clause, &["you"]) {
+    if surface::exact(clause, &["you"]) {
         return Some((PlayerAst::You, PlayerFilter::You));
     }
-    if clause_matches_any_phrase(clause, &[&["player"], &["a", "player"], &["any", "player"]]) {
+    if surface::exact_any(clause, &[&["player"], &["a", "player"], &["any", "player"]]) {
         return Some((PlayerAst::Any, PlayerFilter::Any));
     }
     None
 }
 
 fn zero_control_amount_clause(clause: LexedClause<'_>, player: PlayerAst) -> Option<bool> {
-    if clause_matches_phrase(clause, &["no"]) {
+    if surface::exact(clause, &["no"]) {
         return Some(false);
     }
-    (player == PlayerAst::You && clause_matches_phrase(clause, &["neither"])).then_some(true)
+    (player == PlayerAst::You && surface::exact(clause, &["neither"])).then_some(true)
 }
 
 fn parse_player_does_not_control_predicate(
@@ -1869,24 +1867,24 @@ fn parse_player_does_not_control_predicate(
 }
 
 fn is_you_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["you"])
+    surface::exact(clause, &["you"])
 }
 
 fn is_do_not_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["dont"], &["don't"], &["do", "not"]])
+    surface::exact_any(clause, &[&["dont"], &["don't"], &["do", "not"]])
 }
 
 fn parse_you_control_or_graveyard_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<Result<PredicateAst, CardTextError>> {
     let atoms = [
-        LexPattern::object("control_object", LexCaptureKind::UntilPhrase(&["or"])),
-        LexPattern::word("or"),
-        LexPattern::modifier("graveyard_object", LexCaptureKind::Rest),
+        WinnowSequence::object("control_object", WinnowCaptureKind::UntilPhrase(&["or"])),
+        WinnowSequence::word("or"),
+        WinnowSequence::modifier("graveyard_object", WinnowCaptureKind::Rest),
     ];
     let relation = parse_control_relation_clauses(tokens, false)?;
     let tail_clause = relation.tail_clause;
-    let matched = LexPattern::new(&atoms).match_clause(tail_clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(tail_clause)?;
     if !is_you_clause(relation.subject_clause) {
         return None;
     }
@@ -1926,22 +1924,21 @@ fn graveyard_object_tokens_after_existential<'a>(
 ) -> Option<&'a [OwnedLexToken]> {
     let object_clause = parse_existential_object_clause(clause.tokens()).unwrap_or(clause);
     let object_clause = object_clause.trimmed();
-    (!object_clause.tokens().is_empty()
-        && clause_contains_phrase(object_clause, &["your", "graveyard"]))
-    .then_some(object_clause.tokens())
+    (!object_clause.tokens().is_empty() && surface::contains(object_clause, &["your", "graveyard"]))
+        .then_some(object_clause.tokens())
 }
 
 fn parse_you_control_conjoined_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<Result<PredicateAst, CardTextError>> {
     let atoms = [
-        LexPattern::object("left_object", LexCaptureKind::UntilPhrase(&["and"])),
-        LexPattern::word("and"),
-        LexPattern::object("right_object", LexCaptureKind::Rest),
+        WinnowSequence::object("left_object", WinnowCaptureKind::UntilPhrase(&["and"])),
+        WinnowSequence::word("and"),
+        WinnowSequence::object("right_object", WinnowCaptureKind::Rest),
     ];
     let relation = parse_control_relation_clauses(tokens, false)?;
     let tail_clause = relation.tail_clause;
-    let matched = LexPattern::new(&atoms).match_clause(tail_clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(tail_clause)?;
     if !is_you_clause(relation.subject_clause) {
         return None;
     }
@@ -1982,7 +1979,7 @@ fn matching_tail_phrase_len(
         (filter_end >= filter_start + len)
             .then(|| clause.between_word_range(filter_end - len, filter_end))
             .flatten()
-            .is_some_and(|tail| clause_matches_phrase(tail, phrase))
+            .is_some_and(|tail| surface::exact(tail, phrase))
             .then_some(len)
     })
 }
@@ -2066,13 +2063,13 @@ fn parse_player_controls_predicate(
         && filter_end >= filter_start + 3
         && clause
             .between_word_range(filter_end.saturating_sub(3), filter_end)
-            .is_some_and(|tail| clause_matches_any_phrase(tail, WITH_DIFFERENT_POWERS_TAIL_PHRASES))
+            .is_some_and(|tail| surface::exact_any(tail, WITH_DIFFERENT_POWERS_TAIL_PHRASES))
     {
         requires_different_powers = true;
         filter_end = filter_end.saturating_sub(3);
     }
 
-    let Some(filter_range) = words_view.token_range_for_word_range(filter_start, filter_end) else {
+    let Some(filter_range) = words_view.token_span_for_words(filter_start, filter_end) else {
         return Ok(None);
     };
     let filter_tokens = &tokens[filter_range];
@@ -2170,55 +2167,55 @@ fn parse_this_ability_resolution_count_predicate(tokens: &[OwnedLexToken]) -> Op
 }
 
 fn ability_resolution_ordinal_count(clause: LexedClause<'_>) -> Option<u32> {
-    const OPTIONAL_THE: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
+    const OPTIONAL_THE: &[WinnowAtom<'static>] = &[WinnowSequence::word("the")];
 
     ability_resolution_count_from_pattern(
         clause,
-        LexPattern::new(&[
-            LexPattern::phrase(&["this", "is"]),
-            LexPattern::optional(OPTIONAL_THE),
-            LexPattern::amount("count", LexCaptureKind::WordCount(1)),
-            LexPattern::phrase(&["time", "this", "ability", "has", "resolved", "this", "turn"]),
+        WinnowSequence::new(&[
+            WinnowSequence::phrase(&["this", "is"]),
+            WinnowSequence::optional(OPTIONAL_THE),
+            WinnowSequence::amount("count", WinnowCaptureKind::WordCount(1)),
+            WinnowSequence::phrase(&["time", "this", "ability", "has", "resolved", "this", "turn"]),
         ]),
     )
     .or_else(|| {
         ability_resolution_count_from_pattern(
             clause,
-            LexPattern::new(&[
-                LexPattern::phrase(&["this", "is"]),
-                LexPattern::optional(OPTIONAL_THE),
-                LexPattern::amount("count", LexCaptureKind::WordCount(1)),
-                LexPattern::phrase(&["time", "this", "ability", "resolved", "this", "turn"]),
+            WinnowSequence::new(&[
+                WinnowSequence::phrase(&["this", "is"]),
+                WinnowSequence::optional(OPTIONAL_THE),
+                WinnowSequence::amount("count", WinnowCaptureKind::WordCount(1)),
+                WinnowSequence::phrase(&["time", "this", "ability", "resolved", "this", "turn"]),
             ]),
         )
     })
     .or_else(|| {
         ability_resolution_count_from_pattern(
             clause,
-            LexPattern::new(&[
-                LexPattern::phrase(&["this", "ability", "has", "resolved", "for"]),
-                LexPattern::amount("count", LexCaptureKind::WordCount(1)),
-                LexPattern::phrase(&["time", "this", "turn"]),
+            WinnowSequence::new(&[
+                WinnowSequence::phrase(&["this", "ability", "has", "resolved", "for"]),
+                WinnowSequence::amount("count", WinnowCaptureKind::WordCount(1)),
+                WinnowSequence::phrase(&["time", "this", "turn"]),
             ]),
         )
     })
     .or_else(|| {
         ability_resolution_count_from_pattern(
             clause,
-            LexPattern::new(&[
-                LexPattern::phrase(&["this", "ability", "resolved", "for"]),
-                LexPattern::amount("count", LexCaptureKind::WordCount(1)),
-                LexPattern::phrase(&["time", "this", "turn"]),
+            WinnowSequence::new(&[
+                WinnowSequence::phrase(&["this", "ability", "resolved", "for"]),
+                WinnowSequence::amount("count", WinnowCaptureKind::WordCount(1)),
+                WinnowSequence::phrase(&["time", "this", "turn"]),
             ]),
         )
     })
     .or_else(|| {
         ability_resolution_count_from_pattern(
             clause,
-            LexPattern::new(&[
-                LexPattern::any_phrase(&[&["it's"], &["its"], &["it", "s"], &["it"]]),
-                LexPattern::amount("count", LexCaptureKind::WordCount(1)),
-                LexPattern::phrase(&["time"]),
+            WinnowSequence::new(&[
+                WinnowSequence::any_phrase(&[&["it's"], &["its"], &["it", "s"], &["it"]]),
+                WinnowSequence::amount("count", WinnowCaptureKind::WordCount(1)),
+                WinnowSequence::phrase(&["time"]),
             ]),
         )
     })
@@ -2226,9 +2223,9 @@ fn ability_resolution_ordinal_count(clause: LexedClause<'_>) -> Option<u32> {
 
 fn ability_resolution_count_from_pattern(
     clause: LexedClause<'_>,
-    pattern: LexPattern<'_>,
+    pattern: WinnowSequence<'_>,
 ) -> Option<u32> {
-    let matched = pattern.match_clause(clause)?;
+    let matched = pattern.parse_full(clause)?;
     let count = matched.capture_clause("count", clause)?;
     let count_token = count.token(0)?;
     ordinal_number_word(count_token.parser_text())
@@ -2270,12 +2267,12 @@ fn strip_clause_suffix<'a>(
     suffix: &'static [&'static str],
 ) -> Option<LexedClause<'a>> {
     let atoms = [
-        LexPattern::object("base", LexCaptureKind::UntilLastPhrase(suffix)),
-        LexPattern::phrase(suffix),
+        WinnowSequence::object("base", WinnowCaptureKind::UntilLastPhrase(suffix)),
+        WinnowSequence::phrase(suffix),
     ];
-    LexPattern::new(&atoms)
-        .match_clause(clause)
-        .and_then(|matched| matched.capture_clause_by_role(LexCaptureRole::Object, clause))
+    WinnowSequence::new(&atoms)
+        .parse_full(clause)
+        .and_then(|matched| matched.capture_clause_by_role(WinnowCaptureRole::Object, clause))
         .map(LexedClause::trimmed)
 }
 
@@ -2294,7 +2291,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
     let has_card_noun = base_clause
         .tokens()
         .last()
-        .is_some_and(|token| CARD_OR_CARDS_WORD_PATTERN.matches_token(token));
+        .is_some_and(|token| token_word_is_any(token, CARD_OR_CARDS_WORDS));
     let candidates = [
         (base_clause, has_card_noun),
         (
@@ -2384,15 +2381,18 @@ fn parse_passive_this_way_tagged_object_predicate(
         &["were", "sacrificed"],
     ];
     let atoms = [
-        LexPattern::object("object", LexCaptureKind::UntilLastAnyPhrase(action_phrases)),
-        LexPattern::action("action", LexCaptureKind::WordCount(2)),
-        LexPattern::phrase(&["this", "way"]),
+        WinnowSequence::object(
+            "object",
+            WinnowCaptureKind::UntilLastAnyPhrase(action_phrases),
+        ),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::phrase(&["this", "way"]),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let filter_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing object in passive this-way predicate".to_string())
         })?;
@@ -2414,19 +2414,19 @@ fn parse_active_this_way_discard_predicate(
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["discard"], &["discards"], &["discarded"]];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
-        LexPattern::action(
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilAnyPhrase(action_phrases)),
+        WinnowSequence::action(
             "action",
-            LexCaptureKind::OneOf(&["discard", "discards", "discarded"]),
+            WinnowCaptureKind::OneOf(&["discard", "discards", "discarded"]),
         ),
-        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["this", "way"])),
-        LexPattern::phrase(&["this", "way"]),
+        WinnowSequence::object("object", WinnowCaptureKind::UntilPhrase(&["this", "way"])),
+        WinnowSequence::phrase(&["this", "way"]),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let subject_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Subject, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing subject in active this-way predicate".to_string())
         })?;
@@ -2434,7 +2434,7 @@ fn parse_active_this_way_discard_predicate(
         return Ok(None);
     };
     let filter_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing object in active this-way predicate".to_string())
         })?;
@@ -2459,17 +2459,17 @@ fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Optio
         &["onto", "the", "battlefield"],
     ];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
-        LexPattern::modifier("negation", LexCaptureKind::UntilPhrase(&["put"])),
-        LexPattern::action("action", LexCaptureKind::WordCount(1)),
-        LexPattern::object(
+        WinnowSequence::subject("subject", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::modifier("negation", WinnowCaptureKind::UntilPhrase(&["put"])),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object(
             "object",
-            LexCaptureKind::UntilAnyPhrase(destination_phrases),
+            WinnowCaptureKind::UntilAnyPhrase(destination_phrases),
         ),
-        LexPattern::modifier("destination", LexCaptureKind::Rest),
+        WinnowSequence::modifier("destination", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_you_clause(subject_clause) {
         return None;
     }
@@ -2477,11 +2477,11 @@ fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Optio
     if !is_do_or_did_not_clause(negation_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !clause_matches_phrase(action_clause, &["put"]) {
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
+    if !surface::exact(action_clause, &["put"]) {
         return None;
     }
-    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let object_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_tagged_card_reference_clause(object_clause) {
         return None;
     }
@@ -2497,7 +2497,7 @@ fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Optio
 }
 
 fn is_do_or_did_not_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["dont"],
@@ -2510,17 +2510,17 @@ fn is_do_or_did_not_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn is_tagged_card_reference_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[&["the", "card"], &["that", "card"], &["card"], &["it"]],
     )
 }
 
 fn tagged_put_destination_zone(clause: LexedClause<'_>) -> Option<Zone> {
-    if clause_matches_phrase(clause, &["into", "your", "hand"]) {
+    if surface::exact(clause, &["into", "your", "hand"]) {
         return Some(Zone::Hand);
     }
-    if clause_matches_any_phrase(
+    if surface::exact_any(
         clause,
         &[&["onto", "battlefield"], &["onto", "the", "battlefield"]],
     ) {
@@ -2530,7 +2530,7 @@ fn tagged_put_destination_zone(clause: LexedClause<'_>) -> Option<Zone> {
 }
 
 fn is_battlefield_this_way_destination_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["onto", "battlefield", "this", "way"],
@@ -2546,19 +2546,19 @@ fn parse_active_this_way_battlefield_predicate(
     let destination_phrases: &[&[&str]] =
         &[&["onto", "battlefield"], &["onto", "the", "battlefield"]];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["put"])),
-        LexPattern::action("action", LexCaptureKind::WordCount(1)),
-        LexPattern::object(
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(&["put"])),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object(
             "object",
-            LexCaptureKind::UntilAnyPhrase(destination_phrases),
+            WinnowCaptureKind::UntilAnyPhrase(destination_phrases),
         ),
-        LexPattern::modifier("destination", LexCaptureKind::Rest),
+        WinnowSequence::modifier("destination", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let subject_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Subject, clause)
         .ok_or_else(|| {
             CardTextError::ParseError(
                 "missing subject in this-way battlefield predicate".to_string(),
@@ -2578,7 +2578,7 @@ fn parse_active_this_way_battlefield_predicate(
         return Ok(None);
     }
     let filter_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError(
                 "missing object in this-way battlefield predicate".to_string(),
@@ -2600,21 +2600,21 @@ fn parse_passive_this_way_battlefield_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["is", "put"])),
-        LexPattern::action("action", LexCaptureKind::WordCount(2)),
-        LexPattern::modifier("destination", LexCaptureKind::Rest),
+        WinnowSequence::object("object", WinnowCaptureKind::UntilPhrase(&["is", "put"])),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::modifier("destination", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let action_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Action, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Action, clause)
         .ok_or_else(|| {
             CardTextError::ParseError(
                 "missing action in passive this-way battlefield predicate".to_string(),
             )
         })?;
-    if !clause_matches_phrase(action_clause, &["is", "put"]) {
+    if !surface::exact(action_clause, &["is", "put"]) {
         return Ok(None);
     }
     let destination_clause = matched
@@ -2628,7 +2628,7 @@ fn parse_passive_this_way_battlefield_predicate(
         return Ok(None);
     }
     let filter_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError(
                 "missing object in passive this-way battlefield predicate".to_string(),
@@ -2645,19 +2645,19 @@ fn parse_passive_this_way_battlefield_predicate(
 }
 
 fn active_discard_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
-    if clause_matches_phrase(clause, &["you"]) {
+    if surface::exact(clause, &["you"]) {
         return Some(PlayerAst::You);
     }
-    if clause_matches_any_phrase(clause, &[&["that", "player"], &["that", "players"]]) {
+    if surface::exact_any(clause, &[&["that", "player"], &["that", "players"]]) {
         return Some(PlayerAst::That);
     }
-    if clause_matches_phrase(clause, &["target", "player"]) {
+    if surface::exact(clause, &["target", "player"]) {
         return Some(PlayerAst::Target);
     }
-    if clause_matches_phrase(clause, &["target", "opponent"]) {
+    if surface::exact(clause, &["target", "opponent"]) {
         return Some(PlayerAst::TargetOpponent);
     }
-    if clause_matches_any_phrase(clause, &[&["opponent"], &["opponents"]]) {
+    if surface::exact_any(clause, &[&["opponent"], &["opponents"]]) {
         return Some(PlayerAst::Opponent);
     }
     None
@@ -2668,21 +2668,21 @@ fn parse_repeated_if_or_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["or", "if"])),
-        LexPattern::phrase(&["or", "if"]),
-        LexPattern::modifier("right", LexCaptureKind::Rest),
+        WinnowSequence::object("left", WinnowCaptureKind::UntilPhrase(&["or", "if"])),
+        WinnowSequence::phrase(&["or", "if"]),
+        WinnowSequence::modifier("right", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
 
     let left_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing left side in or-if predicate".to_string())
         })?;
     let right_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Modifier, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing right side in or-if predicate".to_string())
         })?;
@@ -2782,7 +2782,7 @@ fn predicate_tokens_start_with_reference(tokens: &[OwnedLexToken]) -> bool {
 
 fn parse_single_card_type_card_descriptor_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let clause = LexedClause::new(tokens);
-    if clause_matches_any_phrase(clause, &[&["permanent", "card"], &["permanent", "cards"]]) {
+    if surface::exact_any(clause, &[&["permanent", "card"], &["permanent", "cards"]]) {
         return Some(ObjectFilter::permanent_card());
     }
     if tokens.len() == 2
@@ -2812,9 +2812,12 @@ struct DemonstrativeReferencePrefix {
 }
 
 fn demonstrative_reference_prefix(clause: LexedClause<'_>) -> Option<DemonstrativeReferencePrefix> {
-    if let Some(matched) =
-        LexPattern::new(&[LexPattern::any_phrase(&[&["it"], &["its"], &["it", "s"]])])
-            .match_prefix(clause)
+    if let Some(matched) = WinnowSequence::new(&[WinnowSequence::any_phrase(&[
+        &["it"],
+        &["its"],
+        &["it", "s"],
+    ])])
+    .parse_prefix(clause)
     {
         return Some(DemonstrativeReferencePrefix {
             word_len: matched.word_range.end,
@@ -2825,11 +2828,11 @@ fn demonstrative_reference_prefix(clause: LexedClause<'_>) -> Option<Demonstrati
     }
 
     let that_reference_atoms = [
-        LexPattern::word("that"),
-        LexPattern::object("reference", LexCaptureKind::WordCount(1)),
+        WinnowSequence::word("that"),
+        WinnowSequence::object("reference", WinnowCaptureKind::WordCount(1)),
     ];
-    let matched = LexPattern::new(&that_reference_atoms).match_prefix(clause)?;
-    let reference = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let matched = WinnowSequence::new(&that_reference_atoms).parse_prefix(clause)?;
+    let reference = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let reference_token = reference.token(0)?;
     if !token_word_is_any(reference_token, PREDICATE_REFERENCE_NOUN_WORDS) {
         return None;
@@ -2849,7 +2852,7 @@ fn clause_word_range_matches_phrase(
 ) -> bool {
     clause
         .between_word_range(word_start, word_start + phrase.len())
-        .is_some_and(|words| clause_matches_phrase(words, phrase))
+        .is_some_and(|words| surface::exact(words, phrase))
 }
 
 fn clause_word_range_matches_any_phrase(
@@ -2919,7 +2922,7 @@ fn demonstrative_descriptor_filter_tokens(
         nontoken_prefix = true;
     }
 
-    let range = words.token_range_for_word_range(descriptor_start, words.len())?;
+    let range = words.token_span_for_words(descriptor_start, words.len())?;
     let mut descriptor_tokens = strip_leading_article_tokens(tokens.get(range)?).to_vec();
     if nontoken_prefix {
         descriptor_tokens.insert(0, OwnedLexToken::synthetic_word("nontoken"));
@@ -2947,10 +2950,7 @@ fn parse_demonstrative_or_descriptor_predicate(
     if negative || tagged_that_enchantment {
         return Ok(None);
     }
-    let Some(or_idx) = descriptor_tokens
-        .iter()
-        .position(|token| token_word_is(token, OR_WORD))
-    else {
+    let Some(or_idx) = token_index_for_word(&descriptor_tokens, OR_WORD) else {
         return Ok(None);
     };
     let left_tokens = &descriptor_tokens[..or_idx];
@@ -2999,7 +2999,7 @@ fn parse_demonstrative_toxic_predicate(tokens: &[OwnedLexToken]) -> Option<Predi
     let relation = parse_has_relation_clauses(tokens)?;
     let subject = relation.subject_clause;
     let reference = demonstrative_reference_prefix(subject)?;
-    if !clause_matches_phrase(relation.tail_clause, &["toxic"]) {
+    if !surface::exact(relation.tail_clause, &["toxic"]) {
         return None;
     }
     let mut filter = ObjectFilter::default().with_ability_marker("toxic");
@@ -3050,23 +3050,23 @@ fn parse_demonstrative_mana_value_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
-    let optional_copula = [LexPattern::action(
+    let optional_copula = [WinnowSequence::action(
         "copula",
-        LexCaptureKind::OneOf(&["is", "are", "was", "were"]),
+        WinnowCaptureKind::OneOf(&["is", "are", "was", "were"]),
     )];
     let atoms = [
-        LexPattern::subject(
+        WinnowSequence::subject(
             "subject",
-            LexCaptureKind::UntilAnyPhrase(&[&["mana", "value"]]),
+            WinnowCaptureKind::UntilAnyPhrase(&[&["mana", "value"]]),
         ),
-        LexPattern::phrase(&["mana", "value"]),
-        LexPattern::optional(&optional_copula),
-        LexPattern::amount("comparison", LexCaptureKind::Rest),
+        WinnowSequence::phrase(&["mana", "value"]),
+        WinnowSequence::optional(&optional_copula),
+        WinnowSequence::amount("comparison", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
-    let Some(subject) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause) else {
+    let Some(subject) = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause) else {
         return Ok(None);
     };
     let mut filter = if is_it_demonstrative_subject_clause(subject) {
@@ -3097,11 +3097,11 @@ fn parse_demonstrative_mana_value_predicate(
             parse_object_filter_lexed(descriptor_tokens, false)?
         }
     };
-    let Some(comparison) = matched.capture_clause_by_role(LexCaptureRole::Amount, clause) else {
+    let Some(comparison) = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause) else {
         return Ok(None);
     };
     let comparison_words = comparison.word_refs();
-    if clause_matches_any_phrase(comparison, COLORS_SPENT_TO_CAST_SOURCE_TAIL_PHRASES) {
+    if surface::exact_any(comparison, COLORS_SPENT_TO_CAST_SOURCE_TAIL_PHRASES) {
         return Ok(Some(
             PredicateAst::TargetManaValueLteColorsSpentToCastThisSpell,
         ));
@@ -3121,23 +3121,23 @@ fn parse_demonstrative_total_power_toughness_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject(
+        WinnowSequence::subject(
             "subject",
-            LexCaptureKind::UntilPhrase(&["total", "power", "and", "toughness"]),
+            WinnowCaptureKind::UntilPhrase(&["total", "power", "and", "toughness"]),
         ),
-        LexPattern::phrase(&["total", "power", "and", "toughness"]),
-        LexPattern::amount("comparison", LexCaptureKind::Rest),
+        WinnowSequence::phrase(&["total", "power", "and", "toughness"]),
+        WinnowSequence::amount("comparison", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
-    let Some(subject) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause) else {
+    let Some(subject) = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause) else {
         return Ok(None);
     };
     if !is_it_demonstrative_subject_clause(subject) {
         return Ok(None);
     }
-    let Some(comparison) = matched.capture_clause_by_role(LexCaptureRole::Amount, clause) else {
+    let Some(comparison) = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause) else {
         return Ok(None);
     };
     let comparison_words = comparison.word_refs();
@@ -3156,14 +3156,14 @@ fn parse_demonstrative_total_power_toughness_predicate(
 fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("reference", LexCaptureKind::WordCount(1)),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["has", "have"])),
-        LexPattern::object("keyword", LexCaptureKind::Rest),
+        WinnowSequence::subject("reference", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::action("action", WinnowCaptureKind::OneOf(&["has", "have"])),
+        WinnowSequence::object("keyword", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let reference = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let reference = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     demonstrative_reference_prefix(reference)?;
-    let keyword = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let keyword = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let (constraint, consumed) = parse_filter_keyword_constraint_tokens(keyword.tokens())?;
     if consumed != keyword.tokens().len() {
         return None;
@@ -3176,7 +3176,7 @@ fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<Pre
 fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let (descriptor_tokens, _, _, _) = demonstrative_descriptor_filter_tokens(tokens)?;
     let descriptor = LexedClause::new(&descriptor_tokens);
-    if clause_matches_any_phrase(
+    if surface::exact_any(
         descriptor,
         &[
             &["shares", "a", "card", "type", "with", "that", "spell"],
@@ -3187,7 +3187,7 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
             ObjectFilter::default().shares_card_type_with_tagged("triggering"),
         ));
     }
-    if clause_matches_any_phrase(
+    if surface::exact_any(
         descriptor,
         &[
             &[
@@ -3242,7 +3242,7 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
     })?;
     let filter_start = if descriptor
         .between_word_range(shares_color_with_idx, shares_color_with_idx + 4)
-        .is_some_and(|clause| clause_matches_phrase(clause, &["shares", "a", "color", "with"]))
+        .is_some_and(|clause| surface::exact(clause, &["shares", "a", "color", "with"]))
     {
         shares_color_with_idx + 4
     } else {
@@ -3261,11 +3261,17 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
 }
 
 fn contains_most_common_color_among_all_permanents_clause(tokens: &[OwnedLexToken]) -> bool {
-    const MOST_COMMON_COLOR_AMONG_ALL_PERMANENTS_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(&["most", "common", "color", "among", "all", "permanents"]),
-    ]);
+    const MOST_COMMON_COLOR_AMONG_ALL_PERMANENTS_PATTERN: WinnowSequence<'static> =
+        WinnowSequence::new(&[WinnowSequence::phrase(&[
+            "most",
+            "common",
+            "color",
+            "among",
+            "all",
+            "permanents",
+        ])]);
     MOST_COMMON_COLOR_AMONG_ALL_PERMANENTS_PATTERN
-        .find_in_clause(LexedClause::new(tokens))
+        .locate_in(LexedClause::new(tokens))
         .is_some()
 }
 
@@ -3334,19 +3340,22 @@ fn parse_attacking_you_own_control_predicate(
         })
         .collect();
     let normalized_clause = LexedClause::new(&normalized_tokens);
-    if let Some(exile_word_idx) = normalized_clause.find_phrase_start(EXILE_THEM_PHRASE)
-        && let Some(exile_token_idx) = normalized_clause.token_index_for_word_index(exile_word_idx)
+    if let Some(exile_word_idx) = surface::find(normalized_clause, EXILE_THEM_PHRASE)
+        && let Some(exile_token_idx) = normalized_clause
+            .words()
+            .token_span_for_words(exile_word_idx, exile_word_idx + 1)
+            .map(|range| range.start)
     {
         normalized_tokens.truncate(exile_token_idx);
     }
     let tokens = normalized_tokens.as_slice();
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
-        LexPattern::word("and"),
-        LexPattern::object(
+        WinnowSequence::object("left", WinnowCaptureKind::UntilPhrase(&["and"])),
+        WinnowSequence::word("and"),
+        WinnowSequence::object(
             "right",
-            LexCaptureKind::UntilPhrase(&[
+            WinnowCaptureKind::UntilPhrase(&[
                 "are",
                 "attacking",
                 "and",
@@ -3358,7 +3367,7 @@ fn parse_attacking_you_own_control_predicate(
                 "them",
             ]),
         ),
-        LexPattern::phrase(&[
+        WinnowSequence::phrase(&[
             "are",
             "attacking",
             "and",
@@ -3370,7 +3379,7 @@ fn parse_attacking_you_own_control_predicate(
             "them",
         ]),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let left = matched.capture_clause("left", clause).ok_or_else(|| {
@@ -3417,14 +3426,14 @@ fn parse_you_both_own_and_control_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let atoms = [
-        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
-        LexPattern::word("and"),
-        LexPattern::object("right", LexCaptureKind::Rest),
+        WinnowSequence::object("left", WinnowCaptureKind::UntilPhrase(&["and"])),
+        WinnowSequence::word("and"),
+        WinnowSequence::object("right", WinnowCaptureKind::Rest),
     ];
     let Some(relation) = parse_control_relation_clauses(tokens, false) else {
         return Ok(None);
     };
-    let Some(matched) = LexPattern::new(&atoms).match_clause(relation.tail_clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(relation.tail_clause) else {
         return Ok(None);
     };
     if !is_you_both_own_and_clause(relation.subject_clause) {
@@ -3490,7 +3499,7 @@ fn parse_meld_subject_filter_clause(
 }
 
 fn is_you_both_own_and_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["you", "both", "own", "and"])
+    surface::exact(clause, &["you", "both", "own", "and"])
 }
 
 fn parse_implicit_subject_and_predicate(
@@ -3498,20 +3507,20 @@ fn parse_implicit_subject_and_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
-        LexPattern::word("and"),
-        LexPattern::modifier("right", LexCaptureKind::Rest),
+        WinnowSequence::object("left", WinnowCaptureKind::UntilPhrase(&["and"])),
+        WinnowSequence::word("and"),
+        WinnowSequence::modifier("right", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let left_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing left side in and predicate".to_string())
         })?;
     let right_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Modifier, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing right side in and predicate".to_string())
         })?;
@@ -3546,20 +3555,20 @@ fn parse_while_conjoined_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["while"])),
-        LexPattern::word("while"),
-        LexPattern::modifier("right", LexCaptureKind::Rest),
+        WinnowSequence::object("left", WinnowCaptureKind::UntilPhrase(&["while"])),
+        WinnowSequence::word("while"),
+        WinnowSequence::modifier("right", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let left_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing left side in while predicate".to_string())
         })?;
     let right_clause = matched
-        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Modifier, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing right side in while predicate".to_string())
         })?;
@@ -3656,16 +3665,19 @@ fn parse_empty_battlefield_predicate(tokens: &[OwnedLexToken]) -> Option<Predica
     let clause = LexedClause::new(tokens);
     let relation = parse_copula_relation_clauses(clause.tokens())?;
     let subject_atoms = [
-        LexPattern::amount("quantity", LexCaptureKind::OneOf(&["no"])),
-        LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
+        WinnowSequence::amount("quantity", WinnowCaptureKind::OneOf(&["no"])),
+        WinnowSequence::object(
+            "object",
+            WinnowCaptureKind::OneOf(&["creature", "creatures"]),
+        ),
     ];
-    LexPattern::new(&subject_atoms).match_clause(relation.subject_clause)?;
+    WinnowSequence::new(&subject_atoms).parse_full(relation.subject_clause)?;
     let tail_atoms = [
-        LexPattern::word("on"),
-        LexPattern::modifier("zone", LexCaptureKind::Rest),
+        WinnowSequence::word("on"),
+        WinnowSequence::modifier("zone", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&tail_atoms).match_clause(relation.tail_clause)?;
-    let zone = matched.capture_clause_by_role(LexCaptureRole::Modifier, relation.tail_clause)?;
+    let matched = WinnowSequence::new(&tail_atoms).parse_full(relation.tail_clause)?;
+    let zone = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, relation.tail_clause)?;
     if !is_battlefield_zone_clause(zone) {
         return None;
     }
@@ -3676,28 +3688,31 @@ fn parse_empty_battlefield_predicate(tokens: &[OwnedLexToken]) -> Option<Predica
 }
 
 fn is_battlefield_zone_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["battlefield"], &["the", "battlefield"]])
+    surface::exact_any(clause, &[&["battlefield"], &["the", "battlefield"]])
 }
 
 fn parse_initiative_choice_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let action_phrase = &["has"];
     let atoms = [
-        LexPattern::subject("first_player", LexCaptureKind::OneOf(&["you"])),
-        LexPattern::word("or"),
-        LexPattern::subject("second_player", LexCaptureKind::UntilPhrase(action_phrase)),
-        LexPattern::action(
-            "status_verb",
-            LexCaptureKind::WordCount(action_phrase.len()),
+        WinnowSequence::subject("first_player", WinnowCaptureKind::OneOf(&["you"])),
+        WinnowSequence::word("or"),
+        WinnowSequence::subject(
+            "second_player",
+            WinnowCaptureKind::UntilPhrase(action_phrase),
         ),
-        LexPattern::object("status", LexCaptureKind::Rest),
+        WinnowSequence::action(
+            "status_verb",
+            WinnowCaptureKind::WordCount(action_phrase.len()),
+        ),
+        WinnowSequence::object("status", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
     let second_player = matched.capture_clause("second_player", clause)?;
     if !is_player_youre_attacking_clause(second_player) {
         return None;
     }
-    let status = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let status = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_initiative_status_clause(status) {
         return None;
     }
@@ -3712,7 +3727,7 @@ fn parse_initiative_choice_predicate_shape(tokens: &[OwnedLexToken]) -> Option<P
 }
 
 fn is_player_youre_attacking_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["player", "youre", "attacking"],
@@ -3722,37 +3737,43 @@ fn is_player_youre_attacking_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn is_initiative_status_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["initiative"], &["the", "initiative"]])
+    surface::exact_any(clause, &[&["initiative"], &["the", "initiative"]])
 }
 
 fn parse_night_state_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    let copula = [LexPattern::action("copula", LexCaptureKind::OneOf(&["is"]))];
+    let copula = [WinnowSequence::action(
+        "copula",
+        WinnowCaptureKind::OneOf(&["is"]),
+    )];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::OneOf(&["it", "its"])),
-        LexPattern::optional(&copula),
-        LexPattern::object("state", LexCaptureKind::OneOf(&["night"])),
+        WinnowSequence::subject("subject", WinnowCaptureKind::OneOf(&["it", "its"])),
+        WinnowSequence::optional(&copula),
+        WinnowSequence::object("state", WinnowCaptureKind::OneOf(&["night"])),
     ];
-    LexPattern::new(&atoms).match_clause(clause)?;
+    WinnowSequence::new(&atoms).parse_full(clause)?;
     Some(PredicateAst::ItIsNight)
 }
 
 fn parse_first_combat_phase_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    let copula = [LexPattern::action("copula", LexCaptureKind::OneOf(&["is"]))];
-    let article = [LexPattern::word("the")];
-    let tail_article = [LexPattern::word("the")];
+    let copula = [WinnowSequence::action(
+        "copula",
+        WinnowCaptureKind::OneOf(&["is"]),
+    )];
+    let article = [WinnowSequence::word("the")];
+    let tail_article = [WinnowSequence::word("the")];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::OneOf(&["it", "its"])),
-        LexPattern::optional(&copula),
-        LexPattern::optional(&article),
-        LexPattern::object("phase", LexCaptureKind::WordCount(3)),
-        LexPattern::word("of"),
-        LexPattern::optional(&tail_article),
-        LexPattern::modifier("turn", LexCaptureKind::OneOf(&["turn"])),
+        WinnowSequence::subject("subject", WinnowCaptureKind::OneOf(&["it", "its"])),
+        WinnowSequence::optional(&copula),
+        WinnowSequence::optional(&article),
+        WinnowSequence::object("phase", WinnowCaptureKind::WordCount(3)),
+        WinnowSequence::word("of"),
+        WinnowSequence::optional(&tail_article),
+        WinnowSequence::modifier("turn", WinnowCaptureKind::OneOf(&["turn"])),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let phase = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let phase = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_first_combat_phase_clause(phase) {
         return None;
     }
@@ -3760,25 +3781,25 @@ fn parse_first_combat_phase_predicate_shape(tokens: &[OwnedLexToken]) -> Option<
 }
 
 fn is_first_combat_phase_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["first", "combat", "phase"])
+    surface::exact(clause, &["first", "combat", "phase"])
 }
 
 fn parse_cast_this_spell_during_main_phase_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let during_phrase = &["during"];
     let atoms = [
-        LexPattern::subject("player", LexCaptureKind::OneOf(&["you"])),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["cast"])),
-        LexPattern::object("spell", LexCaptureKind::UntilPhrase(during_phrase)),
-        LexPattern::word("during"),
-        LexPattern::modifier("phase", LexCaptureKind::Rest),
+        WinnowSequence::subject("player", WinnowCaptureKind::OneOf(&["you"])),
+        WinnowSequence::action("action", WinnowCaptureKind::OneOf(&["cast"])),
+        WinnowSequence::object("spell", WinnowCaptureKind::UntilPhrase(during_phrase)),
+        WinnowSequence::word("during"),
+        WinnowSequence::modifier("phase", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !clause_matches_phrase(object, &["this", "spell"]) {
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let object = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
+    if !surface::exact(object, &["this", "spell"]) {
         return None;
     }
-    let phase = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let phase = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
     if !is_your_main_phase_clause(phase) {
         return None;
     }
@@ -3788,7 +3809,7 @@ fn parse_cast_this_spell_during_main_phase_shape(tokens: &[OwnedLexToken]) -> Op
 }
 
 fn is_your_main_phase_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["your", "main", "phase"])
+    surface::exact(clause, &["your", "main", "phase"])
 }
 
 fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3830,9 +3851,7 @@ fn parse_player_cards_in_hand_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
     let at_turn_start_suffix = stripped.tokens().len() != clause.tokens().len();
     let base_tokens = stripped.tokens();
 
-    let had_idx = base_tokens
-        .iter()
-        .position(|token| token.as_word().is_some_and(|word| word == "had"));
+    let had_idx = token_index_for_word(base_tokens, "had");
     let at_turn_start = at_turn_start_suffix || had_idx.is_some();
 
     let mut present_tokens = base_tokens.to_vec();
@@ -3937,14 +3956,14 @@ fn parse_player_life_relation_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
 fn parse_count_parity_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("count", LexCaptureKind::WordCount(2)),
-        LexPattern::object("scope", LexCaptureKind::UntilPhrase(&["is"])),
-        LexPattern::word("is"),
-        LexPattern::action("parity", LexCaptureKind::OneOf(&["even", "odd"])),
+        WinnowSequence::subject("count", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::object("scope", WinnowCaptureKind::UntilPhrase(&["is"])),
+        WinnowSequence::word("is"),
+        WinnowSequence::action("parity", WinnowCaptureKind::OneOf(&["even", "odd"])),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let count_prefix = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !clause_matches_any_phrase(
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let count_prefix = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
+    if !surface::exact_any(
         count_prefix,
         &[
             &["number", "of"],
@@ -3961,7 +3980,7 @@ fn parse_count_parity_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst
         "odd" => false,
         _ => return None,
     };
-    let captured_scope = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let captured_scope = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let scope_tokens = if captured_scope.token(0)?.parser_text() == "of" {
         &captured_scope.tokens()[1..]
     } else {
@@ -3969,7 +3988,7 @@ fn parse_count_parity_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst
     };
     let scope = LexedClause::new(scope_tokens);
     let count = match scope {
-        scope if clause_matches_any_phrase(scope, &[&["permanent"], &["permanents"]]) => {
+        scope if surface::exact_any(scope, &[&["permanent"], &["permanents"]]) => {
             crate::static_abilities::AnthemCountExpression::MatchingFilter(
                 crate::target::ObjectFilter::permanent(),
             )
@@ -4037,29 +4056,29 @@ fn parse_player_turn_event_predicate(tokens: &[OwnedLexToken]) -> Option<Predica
 
 fn parse_turn_timing_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    let subject = [LexPattern::subject(
+    let subject = [WinnowSequence::subject(
         "subject",
-        LexCaptureKind::OneOf(&["it", "its"]),
+        WinnowCaptureKind::OneOf(&["it", "its"]),
     )];
-    let copula = [LexPattern::action(
+    let copula = [WinnowSequence::action(
         "copula",
-        LexCaptureKind::OneOf(&["is", "s"]),
+        WinnowCaptureKind::OneOf(&["is", "s"]),
     )];
-    let negation = [LexPattern::modifier(
+    let negation = [WinnowSequence::modifier(
         "negation",
-        LexCaptureKind::OneOf(&["not"]),
+        WinnowCaptureKind::OneOf(&["not"]),
     )];
     let atoms = [
-        LexPattern::optional(&subject),
-        LexPattern::optional(&copula),
-        LexPattern::optional(&negation),
-        LexPattern::object("turn", LexCaptureKind::WordCount(2)),
+        WinnowSequence::optional(&subject),
+        WinnowSequence::optional(&copula),
+        WinnowSequence::optional(&negation),
+        WinnowSequence::object("turn", WinnowCaptureKind::WordCount(2)),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
     if matched.capture("copula").is_some() && matched.capture("subject").is_none() {
         return None;
     }
-    let turn_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let turn_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_your_turn_clause(turn_clause) {
         return None;
     }
@@ -4072,7 +4091,7 @@ fn parse_turn_timing_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
 }
 
 fn is_your_turn_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["your", "turn"])
+    surface::exact(clause, &["your", "turn"])
 }
 
 fn parse_opponent_controls_tagged_object_predicate(
@@ -4100,14 +4119,14 @@ enum ControlledTaggedObjectKind {
 }
 
 fn is_opponent_controller_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["opponent"], &["an", "opponent"]])
+    surface::exact_any(clause, &[&["opponent"], &["an", "opponent"]])
 }
 
 fn controlled_tagged_object_kind(clause: LexedClause<'_>) -> Option<ControlledTaggedObjectKind> {
-    if clause_matches_any_phrase(clause, &[&["it"], &["that", "permanent"]]) {
+    if surface::exact_any(clause, &[&["it"], &["that", "permanent"]]) {
         return Some(ControlledTaggedObjectKind::Permanent);
     }
-    if clause_matches_phrase(clause, &["that", "creature"]) {
+    if surface::exact(clause, &["that", "creature"]) {
         return Some(ControlledTaggedObjectKind::Creature);
     }
     None
@@ -4116,11 +4135,11 @@ fn controlled_tagged_object_kind(clause: LexedClause<'_>) -> Option<ControlledTa
 fn parse_secret_choices_match_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("choices", LexCaptureKind::UntilPhrase(&["match"])),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["match"])),
+        WinnowSequence::subject("choices", WinnowCaptureKind::UntilPhrase(&["match"])),
+        WinnowSequence::action("action", WinnowCaptureKind::OneOf(&["match"])),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_secret_choices_subject_clause(subject) {
         return None;
     }
@@ -4128,7 +4147,7 @@ fn parse_secret_choices_match_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
 }
 
 fn is_secret_choices_subject_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["they"], &["those", "choices"]])
+    surface::exact_any(clause, &[&["they"], &["those", "choices"]])
 }
 
 fn parse_vote_result_predicate(
@@ -4178,7 +4197,7 @@ fn parse_x_value_comparison_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
     }
 
     let relation = parse_copula_relation_clauses(tokens)?;
-    if !clause_matches_phrase(relation.subject_clause, &["x"]) {
+    if !surface::exact(relation.subject_clause, &["x"]) {
         return None;
     }
     let comparison_clause = relation.tail_clause;
@@ -4200,7 +4219,7 @@ fn parse_controlled_creatures_total_power_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let relation = parse_has_relation_clauses(tokens)?;
-    if !clause_matches_any_phrase(
+    if !surface::exact_any(
         relation.subject_clause,
         &[
             &["creature", "you", "control"],
@@ -4213,7 +4232,13 @@ fn parse_controlled_creatures_total_power_predicate(
     }
 
     let tail_words = relation.tail_clause.word_refs();
-    let comparison_words = tail_words.strip_prefix(&["total", "power"])?;
+    let mut comparison_words: primitives::WordSliceInput<'_> = tail_words.as_slice();
+    primitives::word_slice_exact("total")
+        .parse_next(&mut comparison_words)
+        .ok()?;
+    primitives::word_slice_exact("power")
+        .parse_next(&mut comparison_words)
+        .ok()?;
     let clause_words = LexedClause::new(tokens).word_refs();
     let Some((comparison, used)) =
         parse_filter_comparison_tokens("power", comparison_words, &clause_words).ok()?
@@ -4304,11 +4329,14 @@ fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
         &["cost", "was", "not", "paid"],
     ];
     let atoms = [
-        LexPattern::object("label", LexCaptureKind::UntilAnyPhrase(paid_tail_phrases)),
-        LexPattern::action("paid_tail", LexCaptureKind::Rest),
+        WinnowSequence::object(
+            "label",
+            WinnowCaptureKind::UntilAnyPhrase(paid_tail_phrases),
+        ),
+        WinnowSequence::action("paid_tail", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let label_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let label_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let mut label_words = label_clause.word_refs();
     if label_words.first().copied() == Some("the") {
         label_words.remove(0);
@@ -4316,16 +4344,18 @@ fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
     let label_words = strip_source_possessive_label_prefix(&label_words);
     let paid_tail = matched.capture_clause("paid_tail", clause)?;
     let negated = paid_cost_tail_is_negated(paid_tail)?;
-    let label = match label_words {
-        ["this", possessive, label] if is_this_spell_possessive_word(possessive) => {
-            named_paid_cost_label_from_word(label)?
-        }
-        [possessive, label] if is_paid_cost_possessive_word(possessive) => {
-            named_paid_cost_label_from_word(label)?
-        }
-        [label] => mana_cost_label_from_words(label_words)
-            .or_else(|| named_paid_cost_label_from_word(label))?,
-        words => mana_cost_label_from_words(words)?,
+    let label = if label_words.len() == 3
+        && surface::exact_words(&label_words[..1], &["this"])
+        && is_this_spell_possessive_word(label_words[1])
+    {
+        named_paid_cost_label_from_word(label_words[2])?
+    } else if label_words.len() == 2 && is_paid_cost_possessive_word(label_words[0]) {
+        named_paid_cost_label_from_word(label_words[1])?
+    } else if label_words.len() == 1 {
+        mana_cost_label_from_words(label_words)
+            .or_else(|| named_paid_cost_label_from_word(label_words[0]))?
+    } else {
+        mana_cost_label_from_words(label_words)?
     };
     let predicate = PredicateAst::ThisSpellPaidLabel(label.into());
     if negated {
@@ -4336,13 +4366,13 @@ fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
 }
 
 fn paid_cost_tail_is_negated(clause: LexedClause<'_>) -> Option<bool> {
-    let words = clause.words();
-    if words.starts_with(&["cost", "was", "paid"]) {
+    if surface::prefix(clause, &["cost", "was", "paid"]) {
         return Some(false);
     }
-    if words.starts_with(&["cost", "wasnt", "paid"])
-        || words.starts_with(&["cost", "was", "not", "paid"])
-    {
+    if surface::prefix_any(
+        clause,
+        &[&["cost", "wasnt", "paid"], &["cost", "was", "not", "paid"]],
+    ) {
         return Some(true);
     }
     None
@@ -4354,22 +4384,22 @@ fn parse_vote_option_result_predicate(
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("option", LexCaptureKind::UntilPhrase(&["gets"])),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["gets"])),
-        LexPattern::object("result", LexCaptureKind::Rest),
+        WinnowSequence::subject("option", WinnowCaptureKind::UntilPhrase(&["gets"])),
+        WinnowSequence::action("action", WinnowCaptureKind::OneOf(&["gets"])),
+        WinnowSequence::object("result", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let option = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let option = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if option.tokens().is_empty() {
         return None;
     }
-    let result = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let result = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let option = render_token_slice(option.tokens());
-    if clause_matches_phrase(result, &["more", "votes"]) {
+    if surface::exact(result, &["more", "votes"]) {
         return Some(PredicateAst::VoteOptionGetsMoreVotes { option });
     }
     if allow_tied
-        && clause_matches_any_phrase(
+        && surface::exact_any(
             result,
             &[
                 &["more", "votes", "or", "vote", "is", "tied"],
@@ -4387,23 +4417,23 @@ fn parse_no_vote_objects_matched_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::amount("quantity", LexCaptureKind::OneOf(&["no"])),
-        LexPattern::object("objects", LexCaptureKind::UntilPhrase(&["got", "votes"])),
-        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+        WinnowSequence::amount("quantity", WinnowCaptureKind::OneOf(&["no"])),
+        WinnowSequence::object("objects", WinnowCaptureKind::UntilPhrase(&["got", "votes"])),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let action = matched
-        .capture_clause_by_role(LexCaptureRole::Action, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Action, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing action in vote result predicate".to_string())
         })?;
-    if !clause_matches_phrase(action, &["got", "votes"]) {
+    if !surface::exact(action, &["got", "votes"]) {
         return Ok(None);
     }
     let objects = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing object in vote result predicate".to_string())
         })?;
@@ -4486,6 +4516,12 @@ fn parse_player_life_change_this_turn_predicate(tokens: &[OwnedLexToken]) -> Opt
                 && comparison_to_strict_at_least_threshold(&condition.comparison) == Some(1) =>
         {
             Some(PredicateAst::OpponentLostLifeThisTurn)
+        }
+        crate::runtime_backend::grammar::conditions::PlayerLifeChangeDirectionAst::Lost
+            if condition.player == PlayerFilter::Any =>
+        {
+            let count = comparison_to_strict_at_least_threshold(&condition.comparison)?;
+            Some(PredicateAst::AnyPlayerLostLifeThisTurnOrMore { count })
         }
         crate::runtime_backend::grammar::conditions::PlayerLifeChangeDirectionAst::Lost => {
             let (operator, count) = comparison_to_value_comparison_operator(condition.comparison)?;
@@ -4606,14 +4642,14 @@ fn parse_combat_damage_this_turn_predicate(tokens: &[OwnedLexToken]) -> Option<P
 }
 
 fn is_player_object_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["player"], &["a", "player"]])
+    surface::exact_any(clause, &[&["player"], &["a", "player"]])
 }
 
 fn combat_damage_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
-    if clause_matches_any_phrase(clause, &[&["a", "player"], &["player"]]) {
+    if surface::exact_any(clause, &[&["a", "player"], &["player"]]) {
         return Some(PlayerAst::Any);
     }
-    if clause_matches_any_phrase(clause, &[&["an", "opponent"], &["opponent"]]) {
+    if surface::exact_any(clause, &[&["an", "opponent"], &["opponent"]]) {
         return Some(PlayerAst::Opponent);
     }
     None
@@ -4621,31 +4657,28 @@ fn combat_damage_player_subject_clause(clause: LexedClause<'_>) -> Option<Player
 
 fn single_subtype_word_clause(clause: LexedClause<'_>) -> Option<&str> {
     let words = clause.word_refs();
-    match words.as_slice() {
-        [word] => Some(*word),
-        ["a" | "an", word] => Some(*word),
-        _ => None,
-    }
+    let words = strip_leading_article_word_refs(&words);
+    (words.len() == 1).then_some(words[0])
 }
 
 fn is_this_turn_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["this", "turn"])
+    surface::exact(clause, &["this", "turn"])
 }
 
 fn is_this_combat_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["this", "combat"])
+    surface::exact(clause, &["this", "combat"])
 }
 
 fn is_attacked_action_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["attacked"])
+    surface::exact(clause, &["attacked"])
 }
 
 fn is_triggering_attack_subject_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["that", "creature"], &["it"]])
+    surface::exact_any(clause, &[&["that", "creature"], &["it"]])
 }
 
 fn is_other_creatures_this_combat_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["other", "creature", "this", "combat"],
@@ -4657,7 +4690,7 @@ fn is_other_creatures_this_combat_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn is_source_attacked_or_blocked_subject_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["this", "creature"],
@@ -4669,16 +4702,16 @@ fn is_source_attacked_or_blocked_subject_clause(clause: LexedClause<'_>) -> bool
 }
 
 fn is_attacked_or_blocked_action_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["attacked", "or", "blocked"])
+    surface::exact(clause, &["attacked", "or", "blocked"])
 }
 
 fn is_source_did_not_attack_subject_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_phrase(clause, &["this", "creature"])
+    surface::exact(clause, &["this", "creature"])
 }
 
 fn is_entered_under_your_control_tail_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["or", "come", "under", "your", "control"],
@@ -4693,17 +4726,17 @@ fn parse_source_dealt_combat_damage_this_turn_shape(
     let clause = LexedClause::new(tokens);
     let action_phrase = &["dealt", "combat", "damage", "to"];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
-        LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["this", "turn"])),
-        LexPattern::modifier("window", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(action_phrase)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(action_phrase.len())),
+        WinnowSequence::object("object", WinnowCaptureKind::UntilPhrase(&["this", "turn"])),
+        WinnowSequence::modifier("window", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !clause_matches_phrase(subject_clause, &["it"]) {
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
+    if !surface::exact(subject_clause, &["it"]) {
         return None;
     }
-    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let object_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_player_object_clause(object_clause) {
         return None;
     }
@@ -4720,15 +4753,15 @@ fn parse_player_dealt_combat_damage_by_subtype_this_turn_shape(
     let clause = LexedClause::new(tokens);
     let action_phrase = &["was", "dealt", "combat", "damage", "by"];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
-        LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-        LexPattern::object("subtype", LexCaptureKind::UntilPhrase(&["this", "turn"])),
-        LexPattern::modifier("window", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(action_phrase)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(action_phrase.len())),
+        WinnowSequence::object("subtype", WinnowCaptureKind::UntilPhrase(&["this", "turn"])),
+        WinnowSequence::modifier("window", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     let player = combat_damage_player_subject_clause(subject_clause)?;
-    let subtype_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let subtype_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let subtype_word = single_subtype_word_clause(subtype_clause)?;
     let subtype = parse_subtype_word(subtype_word)?;
     let window_clause = matched.capture_clause("window", clause)?;
@@ -4749,16 +4782,16 @@ fn parse_combat_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
 fn parse_you_attacked_this_turn_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["attacked"])),
-        LexPattern::action("action", LexCaptureKind::WordCount(1)),
-        LexPattern::modifier("window", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(&["attacked"])),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::modifier("window", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_you_clause(subject_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     if !is_attacked_action_clause(action_clause) {
         return None;
     }
@@ -4776,14 +4809,14 @@ fn parse_triggering_object_had_to_attack_this_combat_shape(
     let action_phrases: &[&[&str]] = &[&["had", "to", "attack"], &["must", "attack"]];
     for action_phrase in action_phrases {
         let atoms = [
-            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
-            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-            LexPattern::modifier("window", LexCaptureKind::Rest),
+            WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(action_phrase)),
+            WinnowSequence::action("action", WinnowCaptureKind::WordCount(action_phrase.len())),
+            WinnowSequence::modifier("window", WinnowCaptureKind::Rest),
         ];
-        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
             continue;
         };
-        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
         if !is_triggering_attack_subject_clause(subject_clause) {
             continue;
         }
@@ -4806,21 +4839,21 @@ fn parse_you_attacked_with_n_or_more_creatures_shape(
         &["or", "more", "creature", "this", "turn"],
     ];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
-        LexPattern::action("action", LexCaptureKind::WordCount(2)),
-        LexPattern::amount("count", LexCaptureKind::UntilAnyPhrase(tail_phrases)),
-        LexPattern::object("object", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::amount("count", WinnowCaptureKind::UntilAnyPhrase(tail_phrases)),
+        WinnowSequence::object("object", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_you_clause(subject_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !clause_matches_phrase(action_clause, &["attacked", "with"]) {
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
+    if !surface::exact(action_clause, &["attacked", "with"]) {
         return None;
     }
-    let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let count_clause = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
     let (count, used) = parse_number(count_clause.tokens())?;
     if used != count_clause.tokens().len() {
         return None;
@@ -4839,25 +4872,25 @@ fn parse_you_attacked_with_exactly_other_creatures_shape(
         &["others", "creatures", "this", "combat"],
     ];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
-        LexPattern::action("action", LexCaptureKind::WordCount(3)),
-        LexPattern::amount("count", LexCaptureKind::UntilAnyPhrase(tail_phrases)),
-        LexPattern::object("object", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(3)),
+        WinnowSequence::amount("count", WinnowCaptureKind::UntilAnyPhrase(tail_phrases)),
+        WinnowSequence::object("object", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_you_clause(subject_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !clause_matches_phrase(action_clause, &["attacked", "with", "exactly"]) {
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
+    if !surface::exact(action_clause, &["attacked", "with", "exactly"]) {
         return None;
     }
-    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let object_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_other_creatures_this_combat_clause(object_clause) {
         return None;
     }
-    let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let count_clause = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
     let (count, used) = parse_number(count_clause.tokens())?;
     if used != count_clause.tokens().len() {
         return None;
@@ -4870,19 +4903,19 @@ fn parse_source_attacked_or_blocked_this_turn_shape(
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject(
+        WinnowSequence::subject(
             "subject",
-            LexCaptureKind::UntilPhrase(&["attacked", "or", "blocked"]),
+            WinnowCaptureKind::UntilPhrase(&["attacked", "or", "blocked"]),
         ),
-        LexPattern::action("action", LexCaptureKind::WordCount(3)),
-        LexPattern::modifier("window", LexCaptureKind::Rest),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(3)),
+        WinnowSequence::modifier("window", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_source_attacked_or_blocked_subject_clause(subject_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     if !is_attacked_or_blocked_action_clause(action_clause) {
         return None;
     }
@@ -4898,17 +4931,20 @@ fn parse_source_did_not_attack_or_enter_control_this_turn_shape(
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["didnt", "attack"])),
-        LexPattern::modifier("negation", LexCaptureKind::OneOf(&["didnt"])),
-        LexPattern::action("attack", LexCaptureKind::OneOf(&["attack"])),
-        LexPattern::modifier(
-            "enter",
-            LexCaptureKind::UntilAnyPhrase(&[&["this", "turn"]]),
+        WinnowSequence::subject(
+            "subject",
+            WinnowCaptureKind::UntilPhrase(&["didnt", "attack"]),
         ),
-        LexPattern::modifier("window", LexCaptureKind::Rest),
+        WinnowSequence::modifier("negation", WinnowCaptureKind::OneOf(&["didnt"])),
+        WinnowSequence::action("attack", WinnowCaptureKind::OneOf(&["attack"])),
+        WinnowSequence::modifier(
+            "enter",
+            WinnowCaptureKind::UntilAnyPhrase(&[&["this", "turn"]]),
+        ),
+        WinnowSequence::modifier("window", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_source_did_not_attack_subject_clause(subject_clause) {
         return None;
     }
@@ -4940,17 +4976,17 @@ fn parse_spell_lifecycle_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
 }
 
 fn is_cast_action_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["cast"])
+    surface::exact(clause, &["cast"])
 }
 
 fn is_source_spell_object_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_any_phrase(clause, &[&["it"], &["this", "spell"]])
+    surface::exact_any(clause, &[&["it"], &["this", "spell"]])
 }
 
 fn is_tagged_cast_subject_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["it"],
@@ -4962,51 +4998,55 @@ fn is_tagged_cast_subject_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn is_was_cast_action_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["was", "cast"])
+    surface::exact(clause, &["was", "cast"])
 }
 
 fn is_this_spell_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_phrase(clause, &["this", "spell"])
+    surface::exact(clause, &["this", "spell"])
 }
 
 fn is_was_cast_from_action_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["was", "cast", "from"])
+    surface::exact(clause, &["was", "cast", "from"])
 }
 
 fn spell_cast_origin_zone_clause(clause: LexedClause<'_>) -> Option<Zone> {
-    if clause_matches_phrase(clause, &["anywhere", "other", "than", "your", "hand"]) {
+    if surface::exact(clause, &["anywhere", "other", "than", "your", "hand"]) {
         return None;
     }
     let words = clause.word_refs();
-    match words.as_slice() {
-        [zone_word] => parse_zone_word(zone_word),
-        [article, zone_word] if is_article(article) || *article == DEFINITE_ARTICLE_WORD => {
-            parse_zone_word(zone_word)
-        }
-        _ => None,
-    }
+    let words = if words
+        .first()
+        .is_some_and(|word| is_article(word) || *word == DEFINITE_ARTICLE_WORD)
+    {
+        &words[1..]
+    } else {
+        words.as_slice()
+    };
+    (words.len() == 1)
+        .then(|| parse_zone_word(words[0]))
+        .flatten()
 }
 
 fn is_no_amount_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["no"])
+    surface::exact(clause, &["no"])
 }
 
 fn is_spell_object_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["spell"], &["spells"]])
+    surface::exact_any(clause, &[&["spell"], &["spells"]])
 }
 
 fn is_were_cast_action_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["was", "cast"], &["were", "cast"]])
+    surface::exact_any(clause, &[&["was", "cast"], &["were", "cast"]])
 }
 
 fn is_last_turn_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["last", "turn"])
+    surface::exact(clause, &["last", "turn"])
 }
 
 fn is_kicked_source_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["this", "spell"],
@@ -5018,7 +5058,7 @@ fn is_kicked_source_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn is_was_kicked_action_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["was", "kicked"])
+    surface::exact(clause, &["was", "kicked"])
 }
 
 fn is_bargained_source_clause(clause: LexedClause<'_>) -> bool {
@@ -5026,30 +5066,30 @@ fn is_bargained_source_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn is_was_bargained_action_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["was", "bargained"])
+    surface::exact(clause, &["was", "bargained"])
 }
 
 fn is_that_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["that"])
+    surface::exact(clause, &["that"]) || surface::exact(clause, &["that", "spell"])
 }
 
 fn parse_you_cast_source_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["cast"])),
-        LexPattern::action("action", LexCaptureKind::WordCount(1)),
-        LexPattern::object("object", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(&["cast"])),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object("object", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_you_clause(subject_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     if !is_cast_action_clause(action_clause) {
         return None;
     }
-    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let object_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_source_spell_object_clause(object_clause) {
         return None;
     }
@@ -5059,15 +5099,15 @@ fn parse_you_cast_source_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
 fn parse_tagged_was_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["was", "cast"])),
-        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(&["was", "cast"])),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_tagged_cast_subject_clause(subject_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     if !is_was_cast_action_clause(action_clause) {
         return None;
     }
@@ -5077,24 +5117,24 @@ fn parse_tagged_was_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
 fn parse_this_spell_was_cast_from_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject(
+        WinnowSequence::subject(
             "subject",
-            LexCaptureKind::UntilPhrase(&["was", "cast", "from"]),
+            WinnowCaptureKind::UntilPhrase(&["was", "cast", "from"]),
         ),
-        LexPattern::action("action", LexCaptureKind::WordCount(3)),
-        LexPattern::object("origin", LexCaptureKind::Rest),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(3)),
+        WinnowSequence::object("origin", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_this_spell_clause(subject_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     if !is_was_cast_from_action_clause(action_clause) {
         return None;
     }
-    let origin_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if clause_matches_phrase(
+    let origin_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
+    if surface::exact(
         origin_clause,
         &["anywhere", "other", "than", "your", "hand"],
     ) {
@@ -5107,21 +5147,21 @@ fn parse_this_spell_was_cast_from_shape(tokens: &[OwnedLexToken]) -> Option<Pred
 fn parse_no_spells_cast_last_turn_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::amount("amount", LexCaptureKind::WordCount(1)),
-        LexPattern::object("object", LexCaptureKind::WordCount(1)),
-        LexPattern::action("action", LexCaptureKind::WordCount(2)),
-        LexPattern::modifier("window", LexCaptureKind::Rest),
+        WinnowSequence::amount("amount", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object("object", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::modifier("window", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let amount_clause = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
     if !is_no_amount_clause(amount_clause) {
         return None;
     }
-    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let object_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_spell_object_clause(object_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     if !is_were_cast_action_clause(action_clause) {
         return None;
     }
@@ -5164,7 +5204,7 @@ fn parse_this_spell_paid_named_label_shape(tokens: &[OwnedLexToken]) -> Option<P
 }
 
 fn parse_this_spell_was_kicked_with_cost_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let was_idx = tokens.iter().position(|token| token.is_word("was"))?;
+    let was_idx = token_index_for_word(tokens, "was")?;
     if !tokens
         .get(was_idx + 1)
         .is_some_and(|token| token.is_word("kicked"))
@@ -5186,11 +5226,7 @@ fn parse_this_spell_was_kicked_with_cost_shape(tokens: &[OwnedLexToken]) -> Opti
     {
         cost_start += 1;
     }
-    let kicker_idx = tokens
-        .iter()
-        .enumerate()
-        .skip(cost_start)
-        .find_map(|(idx, token)| token.is_word("kicker").then_some(idx))?;
+    let kicker_idx = token_index_for_word_from(tokens, "kicker", cost_start)?;
     if kicker_idx + 1 != tokens.len() || cost_start >= kicker_idx {
         return None;
     }
@@ -5208,15 +5244,18 @@ fn parse_this_spell_was_kicked_with_cost_shape(tokens: &[OwnedLexToken]) -> Opti
 fn parse_this_spell_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["was", "kicked"])),
-        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+        WinnowSequence::subject(
+            "subject",
+            WinnowCaptureKind::UntilPhrase(&["was", "kicked"]),
+        ),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_kicked_source_clause(subject_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     if !is_was_kicked_action_clause(action_clause) {
         return None;
     }
@@ -5226,18 +5265,18 @@ fn parse_this_spell_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<Predica
 fn parse_this_spell_was_bargained_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject(
+        WinnowSequence::subject(
             "subject",
-            LexCaptureKind::UntilPhrase(&["was", "bargained"]),
+            WinnowCaptureKind::UntilPhrase(&["was", "bargained"]),
         ),
-        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_bargained_source_clause(subject_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     if !is_was_bargained_action_clause(action_clause) {
         return None;
     }
@@ -5251,13 +5290,26 @@ fn parse_named_spell_label_action_shape(
     negated: bool,
 ) -> Option<PredicateAst> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let label_words = words.as_slice().strip_suffix(action_phrase)?;
-    let label_words = label_words
-        .strip_prefix(&["the"])
-        .or_else(|| label_words.strip_prefix(&["a"]))
-        .or_else(|| label_words.strip_prefix(&["an"]))
-        .unwrap_or(label_words);
-    if !matches!(label_words, [word] if word.eq_ignore_ascii_case(label)) {
+    let mut input: primitives::WordSliceInput<'_> = words.as_slice();
+    if input
+        .first()
+        .is_some_and(|word| matches!(*word, "the" | "a" | "an"))
+    {
+        input = &input[1..];
+    }
+    let (actual_label, rest) = input.split_first()?;
+    if !actual_label.eq_ignore_ascii_case(label) {
+        return None;
+    }
+    input = rest;
+    for expected in action_phrase {
+        let (actual, rest) = input.split_first()?;
+        if actual != expected {
+            return None;
+        }
+        input = rest;
+    }
+    if !input.is_empty() {
         return None;
     }
     let predicate = PredicateAst::ThisSpellPaidLabel(label.into());
@@ -5270,18 +5322,15 @@ fn parse_named_spell_label_action_shape(
 
 fn parse_behold_spell_label_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    let words = clause.word_refs();
-    let subtype_words = match words.as_slice() {
-        [subtype @ .., "was", "beheld"] => subtype,
-        [subtype @ .., "beheld"] => subtype,
-        _ => return None,
-    };
-    let subtype_words = if matches!(subtype_words.first(), Some(&word) if word_is_any(word, ARTICLE_WORDS))
-    {
-        &subtype_words[1..]
-    } else {
-        subtype_words
-    };
+    let action_phrases: &[&[&str]] = &[&["was", "beheld"], &["beheld"]];
+    let atoms = [
+        WinnowSequence::object("subtype", WinnowCaptureKind::UntilAnyPhrase(action_phrases)),
+        WinnowSequence::any_phrase(action_phrases),
+    ];
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subtype_clause = matched.capture_clause("subtype", clause)?;
+    let subtype_tokens = strip_leading_article_tokens(subtype_clause.tokens());
+    let subtype_words = LexedClause::new(subtype_tokens).word_refs();
     if subtype_words.len() != 1 || parse_subtype_word(subtype_words[0]).is_none() {
         return None;
     }
@@ -5291,15 +5340,18 @@ fn parse_behold_spell_label_shape(tokens: &[OwnedLexToken]) -> Option<PredicateA
 fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["was", "kicked"])),
-        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+        WinnowSequence::subject(
+            "subject",
+            WinnowCaptureKind::UntilPhrase(&["was", "kicked"]),
+        ),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_that_clause(subject_clause) {
         return None;
     }
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     if !is_was_kicked_action_clause(action_clause) {
         return None;
     }
@@ -5323,77 +5375,54 @@ fn parse_mana_spent_capture_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
 }
 
 fn parse_no_mana_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let words = LexedClause::new(tokens).word_refs();
-    match words.as_slice() {
-        ["no", "mana", "was" | "were", "spent", "to", "cast", "it"]
-        | [
-            "no",
-            "mana",
-            "was" | "were",
-            "spent",
-            "to",
-            "cast",
-            "this",
-            "spell",
-        ]
-        | [
-            "no",
-            "mana",
-            "was" | "were",
-            "spent",
-            "to",
-            "cast",
-            "that",
-            "spell",
-        ] => Some(PredicateAst::Not(Box::new(
-            PredicateAst::ManaSpentToCastThisSpellAtLeast {
-                amount: 1,
-                symbol: None,
-            },
-        ))),
-        _ => None,
+    let clause = LexedClause::new(tokens);
+    if !surface::exact_any(
+        clause,
+        &[
+            &["no", "mana", "was", "spent", "to", "cast", "it"],
+            &["no", "mana", "were", "spent", "to", "cast", "it"],
+            &["no", "mana", "was", "spent", "to", "cast", "this", "spell"],
+            &["no", "mana", "were", "spent", "to", "cast", "this", "spell"],
+            &["no", "mana", "was", "spent", "to", "cast", "that", "spell"],
+            &["no", "mana", "were", "spent", "to", "cast", "that", "spell"],
+        ],
+    ) {
+        return None;
     }
+    Some(PredicateAst::Not(Box::new(
+        PredicateAst::ManaSpentToCastThisSpellAtLeast {
+            amount: 1,
+            symbol: None,
+        },
+    )))
 }
 
 fn parse_no_colored_mana_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let words = LexedClause::new(tokens).word_refs();
-    match words.as_slice() {
-        [
-            "no",
-            "colored",
-            "mana",
-            "was" | "were",
-            "spent",
-            "to",
-            "cast",
-            "it",
-        ]
-        | [
-            "no",
-            "colored",
-            "mana",
-            "was" | "were",
-            "spent",
-            "to",
-            "cast",
-            "this",
-            "spell",
-        ]
-        | [
-            "no",
-            "colored",
-            "mana",
-            "was" | "were",
-            "spent",
-            "to",
-            "cast",
-            "that",
-            "spell",
-        ] => Some(PredicateAst::Not(Box::new(
-            PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(1),
-        ))),
-        _ => None,
+    let clause = LexedClause::new(tokens);
+    if !surface::exact_any(
+        clause,
+        &[
+            &["no", "colored", "mana", "was", "spent", "to", "cast", "it"],
+            &["no", "colored", "mana", "were", "spent", "to", "cast", "it"],
+            &[
+                "no", "colored", "mana", "was", "spent", "to", "cast", "this", "spell",
+            ],
+            &[
+                "no", "colored", "mana", "were", "spent", "to", "cast", "this", "spell",
+            ],
+            &[
+                "no", "colored", "mana", "was", "spent", "to", "cast", "that", "spell",
+            ],
+            &[
+                "no", "colored", "mana", "were", "spent", "to", "cast", "that", "spell",
+            ],
+        ],
+    ) {
+        return None;
     }
+    Some(PredicateAst::Not(Box::new(
+        PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(1),
+    )))
 }
 
 fn parse_snow_mana_of_any_spell_color_spent_to_cast_shape(
@@ -5405,36 +5434,35 @@ fn parse_snow_mana_of_any_spell_color_spent_to_cast_shape(
         return None;
     }
 
-    let words = LexedClause::new(&tokens[1..]).word_refs();
-    match words.as_slice() {
-        [
-            "of",
-            "any",
-            "of",
-            "that",
-            "spell" | "spells" | "spell's",
-            "colors",
-            "was",
-            "spent",
-            "to",
-            "cast",
-            "it",
-        ] => Some(PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell),
-        _ => None,
-    }
+    let clause = LexedClause::new(&tokens[1..]);
+    surface::exact_any(
+        clause,
+        &[
+            &[
+                "of", "any", "of", "that", "spell", "colors", "was", "spent", "to", "cast", "it",
+            ],
+            &[
+                "of", "any", "of", "that", "spells", "colors", "was", "spent", "to", "cast", "it",
+            ],
+            &[
+                "of", "any", "of", "that", "spell's", "colors", "was", "spent", "to", "cast", "it",
+            ],
+        ],
+    )
+    .then_some(PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell)
 }
 
 fn parse_mana_symbol_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::amount(
+        WinnowSequence::amount(
             "symbols",
-            LexCaptureKind::UntilAnyPhrase(MANA_SPENT_TO_CAST_THIS_SPELL_PHRASES),
+            WinnowCaptureKind::UntilAnyPhrase(MANA_SPENT_TO_CAST_THIS_SPELL_PHRASES),
         ),
-        LexPattern::any_phrase(MANA_SPENT_TO_CAST_THIS_SPELL_PHRASES),
+        WinnowSequence::any_phrase(MANA_SPENT_TO_CAST_THIS_SPELL_PHRASES),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let symbol_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let symbol_clause = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
     let validation_words = mana_spent_symbol_clause_words(symbol_clause);
     if validation_words.is_empty()
         || !validation_words
@@ -5466,18 +5494,18 @@ fn parse_this_permanent_attached_to_shape(tokens: &[OwnedLexToken]) -> Option<Pr
     let action_phrases: &[&[&str]] = &[&["attached", "to"], &["is", "attached", "to"]];
     for action_phrase in action_phrases {
         let atoms = [
-            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
-            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-            LexPattern::object("attached_to", LexCaptureKind::Rest),
+            WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(action_phrase)),
+            WinnowSequence::action("action", WinnowCaptureKind::WordCount(action_phrase.len())),
+            WinnowSequence::object("attached_to", WinnowCaptureKind::Rest),
         ];
-        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
             continue;
         };
-        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
         if !is_this_or_that_permanent_clause(subject_clause) {
             continue;
         }
-        let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        let object_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
         let mut filter = parse_object_filter(object_clause.tokens(), false).ok()?;
         if filter.card_types.is_empty() {
             filter.card_types.push(CardType::Creature);
@@ -5491,7 +5519,7 @@ fn parse_this_permanent_attached_to_shape(tokens: &[OwnedLexToken]) -> Option<Pr
 }
 
 fn is_this_or_that_permanent_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["this", "permanent"],
@@ -5504,7 +5532,7 @@ fn is_this_or_that_permanent_clause(clause: LexedClause<'_>) -> bool {
 
 fn is_tagged_exiled_subject_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["any", "of", "those", "cards"],
@@ -5516,44 +5544,44 @@ fn is_tagged_exiled_subject_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn is_exiled_zone_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["exiled"])
+    surface::exact(clause, &["exiled"])
 }
 
 fn is_that_permanent_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["that", "permanent"])
+    surface::exact(clause, &["that", "permanent"])
 }
 
 fn is_tagged_entered_subject_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[&["it"], &["that", "card"], &["that", "permanent"]],
     )
 }
 
 fn is_your_control_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["your", "control"])
+    surface::exact(clause, &["your", "control"])
 }
 
 fn is_tagged_creature_subject_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_any_phrase(clause, &[&["it"], &["that", "creature"]])
+    surface::exact_any(clause, &[&["it"], &["that", "creature"]])
 }
 
 fn is_blocking_state_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["blocking"])
+    surface::exact(clause, &["blocking"])
 }
 
 fn is_soulbond_partner_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_any_phrase(clause, &[&["creature"], &["another", "creature"]])
+    surface::exact_any(clause, &[&["creature"], &["another", "creature"]])
 }
 
 fn tagged_creature_role_clause(clause: LexedClause<'_>) -> Option<&'static str> {
-    if clause_matches_phrase(clause, &["equipped", "creature"]) {
+    if surface::exact(clause, &["equipped", "creature"]) {
         return Some("equipped");
     }
-    if clause_matches_phrase(clause, &["enchanted", "creature"]) {
+    if surface::exact(clause, &["enchanted", "creature"]) {
         return Some("enchanted");
     }
     None
@@ -5563,19 +5591,19 @@ fn parse_sacrificed_permanent_state_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
-    let optional_article = [LexPattern::any_word(&["a", "an", "the"])];
+    let optional_article = [WinnowSequence::any_word(&["a", "an", "the"])];
     let atoms = [
-        LexPattern::optional(&optional_article),
-        LexPattern::word("sacrificed"),
-        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
-        LexPattern::word("was"),
-        LexPattern::modifier("descriptor", LexCaptureKind::Rest),
+        WinnowSequence::optional(&optional_article),
+        WinnowSequence::word("sacrificed"),
+        WinnowSequence::subject("subject", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::word("was"),
+        WinnowSequence::modifier("descriptor", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let subject = matched
-        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Subject, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing subject in sacrificed predicate".to_string())
         })?;
@@ -5591,7 +5619,7 @@ fn parse_sacrificed_permanent_state_predicate(
     }
 
     let descriptor = matched
-        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Modifier, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing descriptor in sacrificed predicate".to_string())
         })?;
@@ -5617,16 +5645,16 @@ fn parse_tagged_exiled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["remain"], &["remains"]];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
-        LexPattern::action("action", LexCaptureKind::WordCount(1)),
-        LexPattern::object("zone", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilAnyPhrase(action_phrases)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object("zone", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_tagged_exiled_subject_clause(subject_clause) {
         return None;
     }
-    let zone_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let zone_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_exiled_zone_clause(zone_clause) {
         return None;
     }
@@ -5666,16 +5694,16 @@ fn parse_tagged_entered_under_your_control_shape(tokens: &[OwnedLexToken]) -> Op
     let clause = LexedClause::new(tokens);
     let action_phrase = &["entered", "under"];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
-        LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-        LexPattern::object("controller", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(action_phrase)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(action_phrase.len())),
+        WinnowSequence::object("controller", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_tagged_entered_subject_clause(subject_clause) {
         return None;
     }
-    let controller_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let controller_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_your_control_clause(controller_clause) {
         return None;
     }
@@ -5690,18 +5718,18 @@ fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Option<Predica
     let action_phrases: &[&[&str]] = &[&["wasnt"], &["wasn't"], &["was", "not"]];
     for action_phrase in action_phrases {
         let atoms = [
-            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
-            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-            LexPattern::object("state", LexCaptureKind::Rest),
+            WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(action_phrase)),
+            WinnowSequence::action("action", WinnowCaptureKind::WordCount(action_phrase.len())),
+            WinnowSequence::object("state", WinnowCaptureKind::Rest),
         ];
-        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
             continue;
         };
-        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
         if !is_tagged_creature_subject_clause(subject_clause) {
             continue;
         }
-        let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        let state_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
         if !is_blocking_state_clause(state_clause) {
             continue;
         }
@@ -5718,7 +5746,7 @@ fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Option<Predica
 
 fn is_implicit_object_state_subject_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["it"],
@@ -5773,22 +5801,22 @@ fn parse_implicit_object_present_state_shape(tokens: &[OwnedLexToken]) -> Option
         &["aren't"],
     ];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(state_phrases)),
-        LexPattern::action(
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilAnyPhrase(state_phrases)),
+        WinnowSequence::action(
             "state",
-            LexCaptureKind::OneOf(&["is", "are", "isnt", "isn't", "arent", "aren't"]),
+            WinnowCaptureKind::OneOf(&["is", "are", "isnt", "isn't", "arent", "aren't"]),
         ),
-        LexPattern::object("descriptor", LexCaptureKind::Rest),
+        WinnowSequence::object("descriptor", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_implicit_object_state_subject_clause(subject_clause) {
         return None;
     }
-    let subject_is_bare_pronoun = clause_matches_any_phrase(subject_clause, &[&["it"], &["its"]]);
-    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let subject_is_bare_pronoun = surface::exact_any(subject_clause, &[&["it"], &["its"]]);
+    let action = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     let mut negative = source_identity_copula_is_negative(action);
-    let descriptor_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let descriptor_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let (descriptor_negative, descriptor_clause) =
         parse_source_identity_descriptor_clause(descriptor_clause)?;
     negative |= descriptor_negative;
@@ -5812,15 +5840,15 @@ fn parse_implicit_object_bare_state_shape(tokens: &[OwnedLexToken]) -> Option<Pr
     let state_words = &["attacking", "blocking", "tapped", "untapped"];
     let state_phrases: &[&[&str]] = &[&["attacking"], &["blocking"], &["tapped"], &["untapped"]];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(state_phrases)),
-        LexPattern::object("state", LexCaptureKind::OneOf(state_words)),
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilAnyPhrase(state_phrases)),
+        WinnowSequence::object("state", WinnowCaptureKind::OneOf(state_words)),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_implicit_object_state_subject_clause(subject_clause) {
         return None;
     }
-    let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let state_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let filter = parse_object_filter(state_clause.tokens(), false).ok()?;
     implicit_object_state_predicate_from_filter(filter, false)
 }
@@ -5829,16 +5857,16 @@ fn parse_tagged_historical_identity_shape(tokens: &[OwnedLexToken]) -> Option<Pr
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["was"], &["were"]];
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
-        LexPattern::action("action", LexCaptureKind::WordCount(1)),
-        LexPattern::object("descriptor", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::UntilAnyPhrase(action_phrases)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object("descriptor", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_tagged_identity_subject_clause(subject_clause) {
         return None;
     }
-    let descriptor_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let descriptor_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let (negative, descriptor_clause) = parse_source_identity_descriptor_clause(descriptor_clause)?;
     if negative
         || descriptor_clause.tokens().is_empty()
@@ -5857,7 +5885,7 @@ fn parse_tagged_historical_identity_shape(tokens: &[OwnedLexToken]) -> Option<Pr
 }
 
 fn is_tagged_identity_subject_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["it"],
@@ -5873,18 +5901,18 @@ fn parse_it_soulbond_paired_shape(tokens: &[OwnedLexToken]) -> Option<PredicateA
     let action_phrases: &[&[&str]] = &[&["paired", "with"], &["is", "paired", "with"]];
     for action_phrase in action_phrases {
         let atoms = [
-            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
-            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-            LexPattern::object("partner", LexCaptureKind::Rest),
+            WinnowSequence::subject("subject", WinnowCaptureKind::UntilPhrase(action_phrase)),
+            WinnowSequence::action("action", WinnowCaptureKind::WordCount(action_phrase.len())),
+            WinnowSequence::object("partner", WinnowCaptureKind::Rest),
         ];
-        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
             continue;
         };
-        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-        if !clause_matches_any_phrase(subject_clause, &[&["it"], &["its"], &["it's"]]) {
+        let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
+        if !surface::exact_any(subject_clause, &[&["it"], &["its"], &["it's"]]) {
             continue;
         }
-        let partner_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        let partner_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
         if !is_soulbond_partner_clause(partner_clause) {
             continue;
         }
@@ -5896,13 +5924,13 @@ fn parse_it_soulbond_paired_shape(tokens: &[OwnedLexToken]) -> Option<PredicateA
 fn parse_tagged_creature_filter_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("tagged_subject", LexCaptureKind::WordCount(2)),
-        LexPattern::object("filter", LexCaptureKind::Rest),
+        WinnowSequence::subject("tagged_subject", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::object("filter", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let tagged_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let tagged_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     let tag = tagged_creature_role_clause(tagged_clause)?;
-    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let filter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let mut filter = parse_object_filter(filter_clause.tokens(), false).ok()?;
     if filter.card_types.is_empty() {
         filter.card_types.push(CardType::Creature);
@@ -5922,19 +5950,19 @@ fn graveyard_possessive_matches_subject(player: PlayerAst, possessive: LexedClau
 
 fn comparison_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
     let word_len = clause.word_len();
-    if word_len == 2 && clause_matches_phrase(clause, THAT_PLAYER_SUBJECT_PREFIX) {
+    if word_len == 2 && surface::exact(clause, THAT_PLAYER_SUBJECT_PREFIX) {
         Some(PlayerAst::That)
-    } else if word_len == 2 && clause_matches_phrase(clause, TARGET_PLAYER_SUBJECT_PREFIX) {
+    } else if word_len == 2 && surface::exact(clause, TARGET_PLAYER_SUBJECT_PREFIX) {
         Some(PlayerAst::Target)
-    } else if word_len == 2 && clause_matches_phrase(clause, TARGET_OPPONENT_SUBJECT_PREFIX) {
+    } else if word_len == 2 && surface::exact(clause, TARGET_OPPONENT_SUBJECT_PREFIX) {
         Some(PlayerAst::TargetOpponent)
-    } else if word_len == 2 && clause_matches_phrase(clause, EACH_OPPONENT_SUBJECT_PREFIX) {
+    } else if word_len == 2 && surface::exact(clause, EACH_OPPONENT_SUBJECT_PREFIX) {
         Some(PlayerAst::Opponent)
-    } else if word_len == 2 && clause_matches_any_phrase(clause, A_OR_ANY_PLAYER_SUBJECT_PREFIXES) {
+    } else if word_len == 2 && surface::exact_any(clause, A_OR_ANY_PLAYER_SUBJECT_PREFIXES) {
         Some(PlayerAst::Any)
-    } else if word_len == 2 && clause_matches_phrase(clause, DEFENDING_PLAYER_SUBJECT_PREFIX) {
+    } else if word_len == 2 && surface::exact(clause, DEFENDING_PLAYER_SUBJECT_PREFIX) {
         Some(PlayerAst::Defending)
-    } else if word_len == 2 && clause_matches_phrase(clause, ATTACKING_PLAYER_SUBJECT_PREFIX) {
+    } else if word_len == 2 && surface::exact(clause, ATTACKING_PLAYER_SUBJECT_PREFIX) {
         Some(PlayerAst::Attacking)
     } else if word_len == 1
         && clause
@@ -5942,9 +5970,9 @@ fn comparison_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst
             .is_some_and(|token| token_word_is(token, YOU_WORD))
     {
         Some(PlayerAst::You)
-    } else if clause_matches_any_phrase(clause, AN_OR_THE_OPPONENT_SUBJECT_PHRASES) {
+    } else if surface::exact_any(clause, AN_OR_THE_OPPONENT_SUBJECT_PHRASES) {
         Some(PlayerAst::Opponent)
-    } else if word_len == 1 && clause_matches_any_phrase(clause, OPPONENT_SUBJECT_PREFIXES) {
+    } else if word_len == 1 && surface::exact_any(clause, OPPONENT_SUBJECT_PREFIXES) {
         Some(PlayerAst::Opponent)
     } else if word_len == 1
         && clause
@@ -5960,15 +5988,19 @@ fn comparison_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst
 fn parse_player_cards_in_graveyard_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let card_in_phrases: &[&[&str]] = &[&["card", "in"], &["cards", "in"]];
     let atoms = [
-        LexPattern::amount("quantity", LexCaptureKind::UntilAnyPhrase(card_in_phrases)),
-        LexPattern::any_phrase(card_in_phrases),
-        LexPattern::modifier("possessive", LexCaptureKind::WordCount(1)),
-        LexPattern::object("zone", LexCaptureKind::OneOf(&["graveyard"])),
+        WinnowSequence::amount(
+            "quantity",
+            WinnowCaptureKind::UntilAnyPhrase(card_in_phrases),
+        ),
+        WinnowSequence::any_phrase(card_in_phrases),
+        WinnowSequence::modifier("possessive", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object("zone", WinnowCaptureKind::OneOf(&["graveyard"])),
     ];
     let relation = parse_has_relation_clauses(tokens)?;
-    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(relation.tail_clause)?;
     let player = comparison_player_subject_clause(relation.subject_clause)?;
-    let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, relation.tail_clause)?;
+    let quantity =
+        matched.capture_clause_by_role(WinnowCaptureRole::Amount, relation.tail_clause)?;
     let (comparison, used) = predicate_quantity_prefix_tokens(quantity.tokens())?;
     if used != quantity.tokens().len() {
         return None;
@@ -5991,7 +6023,7 @@ fn parse_quantified_objects_in_graveyard_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let relation = parse_prepositional_copula_relation_clauses(tokens, &["in"])?;
-    if !clause_matches_phrase(relation.preposition_clause, &["in"])
+    if !surface::exact(relation.preposition_clause, &["in"])
         || !is_graveyard_location_clause(relation.tail_clause)
     {
         return None;
@@ -6016,7 +6048,7 @@ fn parse_quantified_objects_in_graveyard_predicate(
                 })
         })?;
     filter.zone = Some(Zone::Graveyard);
-    if clause_matches_phrase(relation.tail_clause, &["your", "graveyard"]) {
+    if surface::exact(relation.tail_clause, &["your", "graveyard"]) {
         filter.owner = Some(PlayerFilter::You);
     }
 
@@ -6030,20 +6062,20 @@ fn parse_quantified_objects_in_graveyard_predicate(
 
 fn parse_player_controls_more_than_you_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let atoms = [
-        LexPattern::amount("comparison", LexCaptureKind::OneOf(&["more"])),
-        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["than"])),
-        LexPattern::word("than"),
-        LexPattern::modifier("comparison_player", LexCaptureKind::Rest),
+        WinnowSequence::amount("comparison", WinnowCaptureKind::OneOf(&["more"])),
+        WinnowSequence::object("object", WinnowCaptureKind::UntilPhrase(&["than"])),
+        WinnowSequence::word("than"),
+        WinnowSequence::modifier("comparison_player", WinnowCaptureKind::Rest),
     ];
     let relation = parse_control_relation_clauses(tokens, false)?;
     let subject = relation.subject_clause;
     let player = comparison_player_subject_clause(subject)?;
-    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(relation.tail_clause)?;
     let tail = matched.capture_clause("comparison_player", relation.tail_clause)?;
     if !is_you_comparison_tail_clause(tail) {
         return None;
     }
-    let object = matched.capture_clause_by_role(LexCaptureRole::Object, relation.tail_clause)?;
+    let object = matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)?;
     if object.tokens().is_empty() {
         return None;
     }
@@ -6063,23 +6095,23 @@ fn parse_player_controls_more_than_each_other_player_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let atoms = [
-        LexPattern::amount("comparison", LexCaptureKind::OneOf(&["more"])),
-        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["than"])),
-        LexPattern::word("than"),
-        LexPattern::modifier("comparison_player", LexCaptureKind::Rest),
+        WinnowSequence::amount("comparison", WinnowCaptureKind::OneOf(&["more"])),
+        WinnowSequence::object("object", WinnowCaptureKind::UntilPhrase(&["than"])),
+        WinnowSequence::word("than"),
+        WinnowSequence::modifier("comparison_player", WinnowCaptureKind::Rest),
     ];
     let relation = parse_control_relation_clauses(tokens, false)?;
     let subject = relation.subject_clause;
     let player = comparison_player_subject_clause(subject)?;
-    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(relation.tail_clause)?;
     let tail = matched.capture_clause("comparison_player", relation.tail_clause)?;
-    if !clause_matches_any_phrase(
+    if !surface::exact_any(
         tail,
         &[&["each", "other", "player"], &["each", "other", "players"]],
     ) {
         return None;
     }
-    let object = matched.capture_clause_by_role(LexCaptureRole::Object, relation.tail_clause)?;
+    let object = matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)?;
     if object.tokens().is_empty() {
         return None;
     }
@@ -6134,7 +6166,7 @@ fn object_starts_with_more_than_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn is_you_comparison_tail_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["you"], &["you", "do"]])
+    surface::exact_any(clause, &[&["you"], &["you", "do"]])
 }
 
 fn parse_keyword_subject_object_filter_tokens(
@@ -6180,25 +6212,25 @@ fn parse_graveyard_escape_keyword_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     const IN_YOUR_GRAVEYARD_PHRASE: &[&str] = &["in", "your", "graveyard"];
-    const GRAVEYARD_SUBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::object(
+    const GRAVEYARD_SUBJECT_PATTERN: WinnowSequence<'static> = WinnowSequence::new(&[
+        WinnowSequence::object(
             "object",
-            LexCaptureKind::UntilPhrase(IN_YOUR_GRAVEYARD_PHRASE),
+            WinnowCaptureKind::UntilPhrase(IN_YOUR_GRAVEYARD_PHRASE),
         ),
-        LexPattern::phrase(IN_YOUR_GRAVEYARD_PHRASE),
+        WinnowSequence::phrase(IN_YOUR_GRAVEYARD_PHRASE),
     ]);
 
     let Some(relation) = parse_has_relation_clauses(tokens) else {
         return Ok(None);
     };
-    if !clause_matches_phrase(relation.tail_clause, &["escape"]) {
+    if !surface::exact(relation.tail_clause, &["escape"]) {
         return Ok(None);
     }
-    let Some(matched) = GRAVEYARD_SUBJECT_PATTERN.match_clause(relation.subject_clause) else {
+    let Some(matched) = GRAVEYARD_SUBJECT_PATTERN.parse_full(relation.subject_clause) else {
         return Ok(None);
     };
     let object = matched
-        .capture_clause_by_role(LexCaptureRole::Object, relation.subject_clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, relation.subject_clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing object in escape predicate".to_string())
         })?;
@@ -6286,23 +6318,23 @@ fn parse_player_object_keyword_predicate(
 fn parse_keyword_subject_object_in_zone_filter(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
-    const OBJECT_IN_ZONE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["in"])),
-        LexPattern::word("in"),
-        LexPattern::modifier("zone", LexCaptureKind::Rest),
+    const OBJECT_IN_ZONE_PATTERN: WinnowSequence<'static> = WinnowSequence::new(&[
+        WinnowSequence::object("object", WinnowCaptureKind::UntilPhrase(&["in"])),
+        WinnowSequence::word("in"),
+        WinnowSequence::modifier("zone", WinnowCaptureKind::Rest),
     ]);
 
     let clause = LexedClause::new(subject_tokens);
-    let Some(matched) = OBJECT_IN_ZONE_PATTERN.match_clause(clause) else {
+    let Some(matched) = OBJECT_IN_ZONE_PATTERN.parse_full(clause) else {
         return Ok(None);
     };
     let object = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing object in keyword-zone predicate".to_string())
         })?;
     let zone = matched
-        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Modifier, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing zone in keyword-zone predicate".to_string())
         })?;
@@ -6322,22 +6354,22 @@ fn parse_keyword_subject_object_in_zone_filter(
 }
 
 fn is_your_graveyard_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["your", "graveyard"])
+    surface::exact(clause, &["your", "graveyard"])
 }
 
 fn is_there_are_or_were_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["there", "are"], &["there", "were"]])
+    surface::exact_any(clause, &[&["there", "are"], &["there", "were"]])
 }
 
 fn permanents_you_control_scope(clause: LexedClause<'_>) -> Option<ObjectFilter> {
-    if clause_matches_any_phrase(clause, PERMANENTS_YOU_CONTROL_SCOPE_PHRASES) {
+    if surface::exact_any(clause, PERMANENTS_YOU_CONTROL_SCOPE_PHRASES) {
         return Some(ObjectFilter::permanent().you_control());
     }
     None
 }
 
 fn cards_in_your_graveyard_scope(clause: LexedClause<'_>) -> Option<ObjectFilter> {
-    if clause_matches_any_phrase(clause, CARDS_IN_YOUR_GRAVEYARD_SCOPE_PHRASES) {
+    if surface::exact_any(clause, CARDS_IN_YOUR_GRAVEYARD_SCOPE_PHRASES) {
         return Some(
             ObjectFilter::default()
                 .in_zone(Zone::Graveyard)
@@ -6357,12 +6389,12 @@ fn permanents_and_your_graveyard_scope(clause: LexedClause<'_>) -> Option<Object
     })?;
     let connector_tail = clause.between_word_range(battlefield_end, battlefield_end + 1);
     let split_tail = clause.between_word_range(battlefield_end, battlefield_end + 2);
-    let connector_end = if connector_tail.is_some_and(|tail| {
-        clause_matches_phrase(tail, PERMANENTS_AND_OR_GRAVEYARD_CONNECTOR_PHRASE)
-    }) {
+    let connector_end = if connector_tail
+        .is_some_and(|tail| surface::exact(tail, PERMANENTS_AND_OR_GRAVEYARD_CONNECTOR_PHRASE))
+    {
         battlefield_end + 1
     } else if split_tail
-        .is_some_and(|tail| clause_matches_phrase(tail, PERMANENTS_AND_OR_SPLIT_CONNECTOR_PHRASE))
+        .is_some_and(|tail| surface::exact(tail, PERMANENTS_AND_OR_SPLIT_CONNECTOR_PHRASE))
     {
         battlefield_end + 2
     } else {
@@ -6379,28 +6411,28 @@ fn permanents_and_your_graveyard_scope(clause: LexedClause<'_>) -> Option<Object
 fn parse_colors_among_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
-        LexPattern::amount(
+        WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::amount(
             "quantity",
-            LexCaptureKind::UntilAnyPhrase(&[&["color"], &["colors"]]),
+            WinnowCaptureKind::UntilAnyPhrase(&[&["color"], &["colors"]]),
         ),
-        LexPattern::object("unit", LexCaptureKind::OneOf(&["color", "colors"])),
-        LexPattern::word("among"),
-        LexPattern::modifier("scope", LexCaptureKind::Rest),
+        WinnowSequence::object("unit", WinnowCaptureKind::OneOf(&["color", "colors"])),
+        WinnowSequence::word("among"),
+        WinnowSequence::modifier("scope", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let existential = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_there_are_or_were_clause(existential) {
         return None;
     }
 
-    let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let quantity = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
     let (count, used) = parse_number(quantity.tokens())?;
     if used != quantity.tokens().len() {
         return None;
     }
 
-    let scope = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let scope = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
     let filter = permanents_you_control_scope(scope)?;
     Some(PredicateAst::ValueComparison {
         left: Value::ColorsAmong(filter),
@@ -6418,29 +6450,29 @@ fn parse_card_types_among_predicate(tokens: &[OwnedLexToken]) -> Option<Predicat
         &["cards", "types"],
     ];
     let atoms = [
-        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
-        LexPattern::amount(
+        WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::amount(
             "quantity",
-            LexCaptureKind::UntilAnyPhrase(card_type_phrases),
+            WinnowCaptureKind::UntilAnyPhrase(card_type_phrases),
         ),
-        LexPattern::any_phrase(card_type_phrases),
-        LexPattern::word("among"),
-        LexPattern::modifier("scope", LexCaptureKind::Rest),
+        WinnowSequence::any_phrase(card_type_phrases),
+        WinnowSequence::word("among"),
+        WinnowSequence::modifier("scope", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let existential = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_there_are_or_were_clause(existential) {
         return None;
     }
 
-    let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let quantity = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
     let (count, used) = predicate_at_least_quantity_prefix_tokens(quantity.tokens())?;
     if used != quantity.tokens().len() {
         return None;
     }
 
-    let scope = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
-    let filter = if clause_matches_any_phrase(scope, SACRIFICED_PERMANENTS_SCOPE_PHRASES) {
+    let scope = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
+    let filter = if surface::exact_any(scope, SACRIFICED_PERMANENTS_SCOPE_PHRASES) {
         ObjectFilter::tagged("sacrificed_0")
     } else {
         permanents_and_your_graveyard_scope(scope)?
@@ -6559,7 +6591,7 @@ fn parse_counted_source_exiled_objects_predicate(
     }
 
     let tail = relation.tail_clause;
-    if !clause_starts_with_any_phrase(tail, BEEN_EXILED_WITH_THIS_SOURCE_PREFIXES) {
+    if !surface::prefix_any(tail, BEEN_EXILED_WITH_THIS_SOURCE_PREFIXES) {
         return None;
     }
 
@@ -6593,11 +6625,14 @@ fn parse_happily_style_conjoined_predicate(tokens: &[OwnedLexToken]) -> Option<P
         .collect();
     let cleaned_clause = LexedClause::new(&cleaned_tokens);
     let words = cleaned_clause.word_refs();
-    let second_there_idx = phrase_window_start(&words[1..], THERE_ARE_PREFIX).map(|idx| idx + 1)?;
+    let second_there_idx = surface::find_words(&words[1..], THERE_ARE_PREFIX).map(|idx| idx + 1)?;
     let life_word_idx =
-        phrase_window_start(&words[second_there_idx + 1..], AND_YOUR_LIFE_TOTAL_PHRASE)
+        surface::find_words(&words[second_there_idx + 1..], AND_YOUR_LIFE_TOTAL_PHRASE)
             .map(|idx| idx + second_there_idx + 1)?;
-    let life_idx = cleaned_clause.token_index_for_word_index(life_word_idx)?;
+    let life_idx = cleaned_clause
+        .words()
+        .token_span_for_words(life_word_idx, life_word_idx + 1)?
+        .start;
 
     let first_clause = cleaned_clause.between_word_range(0, second_there_idx)?;
     let second_clause = cleaned_clause.between_word_range(second_there_idx, life_word_idx)?;
@@ -6618,19 +6653,22 @@ fn parse_revealed_or_controlled_subtype_predicate(
     let clause = LexedClause::new(tokens);
     let suffix_phrase = &["as", "you", "cast", "this", "spell"];
     let atoms = [
-        LexPattern::subject("revealer", LexCaptureKind::WordCount(1)),
-        LexPattern::action("reveal_action", LexCaptureKind::OneOf(&["revealed"])),
-        LexPattern::object("revealed_subtype", LexCaptureKind::UntilPhrase(&["card"])),
-        LexPattern::word("card"),
-        LexPattern::word("or"),
-        LexPattern::action(
-            "control_action",
-            LexCaptureKind::OneOf(&["control", "controlled", "controls"]),
+        WinnowSequence::subject("revealer", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::action("reveal_action", WinnowCaptureKind::OneOf(&["revealed"])),
+        WinnowSequence::object(
+            "revealed_subtype",
+            WinnowCaptureKind::UntilPhrase(&["card"]),
         ),
-        LexPattern::object("controlled_subtype", LexCaptureKind::Rest),
+        WinnowSequence::word("card"),
+        WinnowSequence::word("or"),
+        WinnowSequence::action(
+            "control_action",
+            WinnowCaptureKind::OneOf(&["control", "controlled", "controls"]),
+        ),
+        WinnowSequence::object("controlled_subtype", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let revealer = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let revealer = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_you_clause(revealer) {
         return None;
     }
@@ -6661,13 +6699,9 @@ fn single_subtype_descriptor_clause<'a>(
 ) -> Option<LexedClause<'a>> {
     let mut tokens = clause.trimmed().tokens();
     if !optional_suffix.is_empty()
-        && tokens.len() >= optional_suffix.len()
-        && token_slice_words_eq(
-            &tokens[tokens.len() - optional_suffix.len()..],
-            optional_suffix,
-        )
+        && let Some(without_suffix) = primitives::strip_lexed_suffix_phrase(tokens, optional_suffix)
     {
-        tokens = &tokens[..tokens.len() - optional_suffix.len()];
+        tokens = without_suffix;
     }
     let descriptor = strip_leading_article_tokens(tokens);
     if descriptor.len() != 1 {
@@ -6678,11 +6712,11 @@ fn single_subtype_descriptor_clause<'a>(
 }
 
 fn is_card_graveyard_existential_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(clause, &[&["there", "is"], &["there", "are"]])
+    surface::exact_any(clause, &[&["there", "is"], &["there", "are"]])
 }
 
 fn is_graveyard_location_clause(clause: LexedClause<'_>) -> bool {
-    clause_matches_any_phrase(
+    surface::exact_any(
         clause,
         &[
             &["your", "graveyard"],
@@ -6709,23 +6743,23 @@ fn parse_subtype_card_descriptor_clause(clause: LexedClause<'_>) -> Option<Objec
 fn parse_card_in_your_graveyard_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
-        LexPattern::object("descriptor", LexCaptureKind::UntilPhrase(&["in"])),
-        LexPattern::action("preposition", LexCaptureKind::OneOf(&["in"])),
-        LexPattern::modifier("location", LexCaptureKind::Rest),
+        WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::object("descriptor", WinnowCaptureKind::UntilPhrase(&["in"])),
+        WinnowSequence::action("preposition", WinnowCaptureKind::OneOf(&["in"])),
+        WinnowSequence::modifier("location", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let existential = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     if !is_card_graveyard_existential_clause(existential) {
         return None;
     }
 
-    let location = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let location = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
     if !is_graveyard_location_clause(location) {
         return None;
     }
 
-    let descriptor = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let descriptor = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if descriptor.tokens().is_empty() {
         return None;
     }
@@ -6759,7 +6793,7 @@ fn parse_object_on_battlefield_predicate(
     let Some(relation) = parse_prepositional_copula_relation_clauses(tokens, &["on"]) else {
         return Ok(None);
     };
-    if !clause_matches_phrase(relation.preposition_clause, &["on"])
+    if !surface::exact(relation.preposition_clause, &["on"])
         || !is_battlefield_zone_clause(relation.tail_clause)
     {
         return Ok(None);
@@ -6786,19 +6820,19 @@ fn parse_object_on_battlefield_predicate(
 }
 
 fn parse_named_object_filter_name_tail(tokens: &[OwnedLexToken]) -> Option<String> {
-    const NAMED_OBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["named"])),
-        LexPattern::word("named"),
-        LexPattern::modifier("name", LexCaptureKind::Rest),
+    const NAMED_OBJECT_PATTERN: WinnowSequence<'static> = WinnowSequence::new(&[
+        WinnowSequence::object("object", WinnowCaptureKind::UntilPhrase(&["named"])),
+        WinnowSequence::word("named"),
+        WinnowSequence::modifier("name", WinnowCaptureKind::Rest),
     ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = NAMED_OBJECT_PATTERN.match_clause(clause)?;
-    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let matched = NAMED_OBJECT_PATTERN.parse_full(clause)?;
+    let object = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if object.tokens().is_empty() {
         return None;
     }
-    let name = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let name = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
     let name_words = name.word_refs();
     let name_end = find_name_clause_end(name_words.as_slice(), 0);
     let name = render_token_slice(name.between_words_trimmed(0, name_end).tokens())
@@ -6808,15 +6842,15 @@ fn parse_named_object_filter_name_tail(tokens: &[OwnedLexToken]) -> Option<Strin
 }
 
 fn graveyard_card_types_subject(clause: LexedClause<'_>) -> Option<PlayerAst> {
-    if clause_matches_phrase(clause, YOUR_GRAVEYARD_PHRASE) {
+    if surface::exact(clause, YOUR_GRAVEYARD_PHRASE) {
         Some(PlayerAst::You)
-    } else if clause_matches_any_phrase(clause, THAT_PLAYER_GRAVEYARD_PHRASES) {
+    } else if surface::exact_any(clause, THAT_PLAYER_GRAVEYARD_PHRASES) {
         Some(PlayerAst::That)
-    } else if clause_matches_any_phrase(clause, TARGET_PLAYER_GRAVEYARD_PHRASES) {
+    } else if surface::exact_any(clause, TARGET_PLAYER_GRAVEYARD_PHRASES) {
         Some(PlayerAst::Target)
-    } else if clause_matches_any_phrase(clause, TARGET_OPPONENT_GRAVEYARD_PHRASES) {
+    } else if surface::exact_any(clause, TARGET_OPPONENT_GRAVEYARD_PHRASES) {
         Some(PlayerAst::TargetOpponent)
-    } else if clause_matches_any_phrase(clause, OPPONENT_GRAVEYARD_PHRASES) {
+    } else if surface::exact_any(clause, OPPONENT_GRAVEYARD_PHRASES) {
         Some(PlayerAst::Opponent)
     } else {
         None
@@ -6832,23 +6866,23 @@ fn parse_card_types_in_graveyard_predicate(tokens: &[OwnedLexToken]) -> Option<P
         &["card", "types", "among", "cards", "in"],
     ];
     let atoms = [
-        LexPattern::subject("lead", LexCaptureKind::WordCount(2)),
-        LexPattern::amount(
+        WinnowSequence::subject("lead", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::amount(
             "quantity",
-            LexCaptureKind::UntilAnyPhrase(card_type_phrases),
+            WinnowCaptureKind::UntilAnyPhrase(card_type_phrases),
         ),
-        LexPattern::any_phrase(card_type_phrases),
-        LexPattern::modifier("graveyard", LexCaptureKind::Rest),
+        WinnowSequence::any_phrase(card_type_phrases),
+        WinnowSequence::modifier("graveyard", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let lead = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let lead = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     let constrained_player = card_types_graveyard_lead_player_clause(lead)?;
-    let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let quantity = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
     let (count, used) = predicate_at_least_quantity_prefix_tokens(quantity.tokens())?;
     if used != quantity.tokens().len() {
         return None;
     }
-    let graveyard = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let graveyard = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
     let player = graveyard_card_types_subject(graveyard)?;
     if constrained_player.is_some_and(|expected| expected != player) {
         return None;
@@ -6861,7 +6895,7 @@ fn card_types_graveyard_lead_player_clause(clause: LexedClause<'_>) -> Option<Op
     if is_there_are_clause(clause) {
         return Some(None);
     }
-    if clause_matches_phrase(clause, &["you", "have"]) {
+    if surface::exact(clause, &["you", "have"]) {
         return Some(Some(PlayerAst::You));
     }
     None
@@ -6872,16 +6906,19 @@ fn parse_there_are_objects_on_battlefield_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
-        LexPattern::object("counted_object", LexCaptureKind::UntilLastPhrase(&["on"])),
-        LexPattern::action("preposition", LexCaptureKind::OneOf(&["on"])),
-        LexPattern::modifier("location", LexCaptureKind::Rest),
+        WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::object(
+            "counted_object",
+            WinnowCaptureKind::UntilLastPhrase(&["on"]),
+        ),
+        WinnowSequence::action("preposition", WinnowCaptureKind::OneOf(&["on"])),
+        WinnowSequence::modifier("location", WinnowCaptureKind::Rest),
     ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
     let existential = matched
-        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Subject, clause)
         .ok_or_else(|| {
             CardTextError::ParseError(
                 "missing existential in battlefield count predicate".to_string(),
@@ -6891,7 +6928,7 @@ fn parse_there_are_objects_on_battlefield_predicate(
         return Ok(None);
     }
     let location = matched
-        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Modifier, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing location in battlefield count predicate".to_string())
         })?;
@@ -6900,7 +6937,7 @@ fn parse_there_are_objects_on_battlefield_predicate(
     }
 
     let counted_object = matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
             CardTextError::ParseError("missing object in battlefield count predicate".to_string())
         })?;
@@ -6934,17 +6971,17 @@ fn parse_there_are_objects_on_battlefield_predicate(
 fn parse_exploited_triggering_object_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["exploited"])),
-        LexPattern::object("object", LexCaptureKind::Rest),
+        WinnowSequence::subject("subject", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::action("action", WinnowCaptureKind::OneOf(&["exploited"])),
+        WinnowSequence::object("object", WinnowCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !clause_matches_phrase(subject, &["it"]) {
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
+    if !surface::exact(subject, &["it"]) {
         return None;
     }
-    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !clause_matches_any_phrase(object, &[&["that", "creature"], &["that", "object"]]) {
+    let object = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
+    if !surface::exact_any(object, &[&["that", "creature"], &["that", "object"]]) {
         return None;
     }
     Some(PredicateAst::And(
@@ -6982,9 +7019,9 @@ fn predicate_diagnostic_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
         display_tokens.remove(1);
     }
 
-    if let Some(instead_idx) = display_tokens
-        .iter()
-        .position(|token| token_word_is(token, INSTEAD_WORD))
+    if let Some(instead_idx) =
+        primitives::find_prefix(&display_tokens, || primitives::kw(INSTEAD_WORD))
+            .map(|(token_idx, _, _)| token_idx)
         && instead_idx > 0
     {
         let maybe_predicate = &display_tokens[..instead_idx];
@@ -6993,24 +7030,23 @@ fn predicate_diagnostic_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
         let paid_tail = maybe_word_len >= 3
             && maybe_clause
                 .between_word_range(maybe_word_len - 3, maybe_word_len)
-                .is_some_and(|tail| {
-                    clause_matches_any_phrase(tail, COST_PAID_INSTEAD_TAIL_PHRASES)
-                });
+                .is_some_and(|tail| surface::exact_any(tail, COST_PAID_INSTEAD_TAIL_PHRASES));
         let unpaid_tail = maybe_word_len >= 4
             && maybe_clause
                 .between_word_range(maybe_word_len - 4, maybe_word_len)
-                .is_some_and(|tail| clause_matches_phrase(tail, COST_NOT_PAID_INSTEAD_TAIL_PHRASE));
+                .is_some_and(|tail| surface::exact(tail, COST_NOT_PAID_INSTEAD_TAIL_PHRASE));
         if paid_tail || unpaid_tail {
             display_tokens.truncate(instead_idx);
         }
     }
 
     let display_clause = LexedClause::new(&display_tokens);
-    if display_clause
-        .find_phrase_start(YOU_BOTH_OWN_AND_CONTROL_PHRASE)
-        .is_some()
-        && let Some(exile_word_idx) = display_clause.find_phrase_start(EXILE_THEM_PHRASE)
-        && let Some(exile_token_idx) = display_clause.token_index_for_word_index(exile_word_idx)
+    if surface::contains(display_clause, YOU_BOTH_OWN_AND_CONTROL_PHRASE)
+        && let Some(exile_word_idx) = surface::find(display_clause, EXILE_THEM_PHRASE)
+        && let Some(exile_token_idx) = display_clause
+            .words()
+            .token_span_for_words(exile_word_idx, exile_word_idx + 1)
+            .map(|range| range.start)
     {
         display_tokens.truncate(exile_token_idx);
     }
@@ -7054,13 +7090,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
     {
         let simple_words = non_article_token_word_refs(predicate_tokens);
-        if matches!(
-            simple_words.as_slice(),
-            ["this", "creature", "is", "suspected"]
-                | ["this", "permanent", "is", "suspected"]
-                | ["it", "is", "suspected"]
-                | ["its", "suspected"]
-        ) {
+        if [
+            &["this", "creature", "is", "suspected"][..],
+            &["this", "permanent", "is", "suspected"][..],
+            &["it", "is", "suspected"][..],
+            &["its", "suspected"][..],
+        ]
+        .iter()
+        .any(|expected| surface::exact_words(&simple_words, expected))
+        {
             return Ok(PredicateAst::SourceSuspected);
         }
     }
@@ -7092,6 +7130,13 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
     if let Some(predicate) = parse_stack_object_targets_object_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+
+    // Spell-context comparisons are exact typed predicates.  Parse them
+    // before broader control/object predicates can accept only the leading
+    // "you control ..." portion and discard the relative spell controller.
+    if let Some(predicate) = parse_spell_context_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
@@ -7367,9 +7412,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_paid_cost_label_predicate(predicate_tokens) {
-        return Ok(predicate);
-    }
-    if let Some(predicate) = parse_spell_context_predicate(predicate_tokens) {
         return Ok(predicate);
     }
     if let Some(predicate) = parse_mana_spent_capture_predicate(predicate_tokens) {
@@ -9018,6 +9060,14 @@ mod tests {
                     right: Value::Fixed(2),
                 },
             ),
+            (
+                "If that player had another land enter the battlefield under their control this turn",
+                PredicateAst::ValueComparison {
+                    left: Value::LandsEnteredBattlefieldThisTurn(PlayerFilter::IteratedPlayer),
+                    operator: ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(2),
+                },
+            ),
         ] {
             let tokens = lex_line(text, 0)?;
             let predicate_tokens = predicate_tokens_after_if(&tokens);
@@ -9042,6 +9092,10 @@ mod tests {
             ),
             (
                 "If you control more creatures than its controller",
+                PredicateAst::YouControlMoreCreaturesThanTargetSpellController,
+            ),
+            (
+                "If you control more creatures than that spell's controller",
                 PredicateAst::YouControlMoreCreaturesThanTargetSpellController,
             ),
         ] {
@@ -9282,6 +9336,7 @@ mod tests {
                 PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel("Tribute".into()))),
             ),
             ("If that was kicked", PredicateAst::TargetWasKicked),
+            ("If that spell was kicked", PredicateAst::TargetWasKicked),
         ] {
             let tokens = lex_line(text, 0)?;
             let predicate_tokens = predicate_tokens_after_if(&tokens);
@@ -10213,6 +10268,25 @@ mod tests {
 
             assert_eq!(parsed, expected, "{text}");
         }
+
+        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "Sarulf, Realm Eater",
+            || {
+                let tokens = lex_line("If Sarulf has one or more +1/+1 counters on it", 0)?;
+                let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+                let parsed = parse_predicate(&predicate_tokens)?;
+
+                assert_eq!(
+                    parsed,
+                    PredicateAst::SourceHasCounterAtLeast {
+                        counter_type: CounterType::PlusOnePlusOne,
+                        count: 1,
+                    }
+                );
+                Ok::<(), CardTextError>(())
+            },
+        )?;
         Ok(())
     }
 

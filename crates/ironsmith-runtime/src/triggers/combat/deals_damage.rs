@@ -15,6 +15,7 @@ pub struct DealsDamageTrigger {
     pub damaged_player: Option<PlayerFilter>,
     pub combat_only: bool,
     pub noncombat_only: bool,
+    pub source_surface: ironsmith_core::trigger_model::DamageSourceSurface,
 }
 
 impl DealsDamageTrigger {
@@ -24,6 +25,7 @@ impl DealsDamageTrigger {
             damaged_player: None,
             combat_only: false,
             noncombat_only: false,
+            source_surface: ironsmith_core::trigger_model::DamageSourceSurface::Filter,
         }
     }
 
@@ -33,15 +35,21 @@ impl DealsDamageTrigger {
             damaged_player: None,
             combat_only: true,
             noncombat_only: false,
+            source_surface: ironsmith_core::trigger_model::DamageSourceSurface::Filter,
         }
     }
 
-    pub fn noncombat_to_player(filter: ObjectFilter, damaged_player: PlayerFilter) -> Self {
+    pub fn noncombat_to_player(
+        filter: ObjectFilter,
+        damaged_player: PlayerFilter,
+        source_surface: ironsmith_core::trigger_model::DamageSourceSurface,
+    ) -> Self {
         Self {
             filter,
             damaged_player: Some(damaged_player),
             combat_only: false,
             noncombat_only: true,
+            source_surface,
         }
     }
 }
@@ -80,18 +88,22 @@ impl TriggerMatcher for DealsDamageTrigger {
     }
 
     fn display(&self) -> String {
-        let source_description = if self.filter == ObjectFilter::default() {
-            "a source".to_string()
-        } else {
-            self.filter.description()
-        };
+        let source_description =
+            if self.source_surface == ironsmith_core::trigger_model::DamageSourceSurface::Source {
+                generic_source_description(&self.filter)
+            } else if self.filter == ObjectFilter::default() {
+                "a source".to_string()
+            } else {
+                self.filter.description()
+            };
         if self.combat_only {
             format!("Whenever {} deals combat damage", source_description)
         } else if self.noncombat_only {
-            if self.damaged_player.is_some() {
+            if let Some(player) = &self.damaged_player {
                 format!(
-                    "Whenever {} deals noncombat damage to a player",
-                    source_description
+                    "Whenever {} deals noncombat damage to {}",
+                    source_description,
+                    player.description()
                 )
             } else {
                 format!("Whenever {} deals noncombat damage", source_description)
@@ -115,6 +127,21 @@ impl TriggerMatcher for DealsDamageTrigger {
     }
 }
 
+pub(super) fn generic_source_description(filter: &ObjectFilter) -> String {
+    let mut remaining = filter.clone();
+    let controller = remaining.controller.take();
+    if remaining != ObjectFilter::default() {
+        return filter.description();
+    }
+    match controller {
+        Some(PlayerFilter::You) => "a source you control".to_string(),
+        Some(PlayerFilter::Opponent) => "a source an opponent controls".to_string(),
+        Some(PlayerFilter::NotYou) => "a source you don't control".to_string(),
+        None | Some(PlayerFilter::Any) => "a source".to_string(),
+        _ => filter.description(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,5 +150,20 @@ mod tests {
     fn test_display() {
         let trigger = DealsDamageTrigger::new(ObjectFilter::creature());
         assert!(trigger.display().contains("deals damage"));
+    }
+
+    #[test]
+    fn generic_source_surface_and_opponent_recipient_are_preserved() {
+        let mut filter = ObjectFilter::default();
+        filter.controller = Some(PlayerFilter::You);
+        let trigger = DealsDamageTrigger::noncombat_to_player(
+            filter,
+            PlayerFilter::Opponent,
+            ironsmith_core::trigger_model::DamageSourceSurface::Source,
+        );
+        assert_eq!(
+            trigger.display(),
+            "Whenever a source you control deals noncombat damage to an opponent"
+        );
     }
 }

@@ -115,6 +115,8 @@ pub struct ChooseObjectsSpec {
     pub min: usize,
     /// Maximum number of objects to choose (None = unlimited).
     pub max: Option<usize>,
+    /// Optional aggregate characteristic bound for the complete selection.
+    pub aggregate_constraint: Option<crate::effect::ChoiceAggregateConstraint>,
     /// Whether the chooser may submit fewer than `min`.
     pub allow_partial_completion: bool,
     /// Whether the decision must be offered even when one required candidate exists.
@@ -138,6 +140,7 @@ impl ChooseObjectsSpec {
             candidates,
             min,
             max,
+            aggregate_constraint: None,
             allow_partial_completion: false,
             require_explicit_choice: false,
             hidden_card_visibility: DecisionHiddenCardVisibility::None,
@@ -151,6 +154,14 @@ impl ChooseObjectsSpec {
 
     pub fn require_explicit_choice(mut self) -> Self {
         self.require_explicit_choice = true;
+        self
+    }
+
+    pub fn with_aggregate_constraint(
+        mut self,
+        constraint: crate::effect::ChoiceAggregateConstraint,
+    ) -> Self {
+        self.aggregate_constraint = Some(constraint);
         self
     }
 
@@ -207,6 +218,11 @@ impl DecisionSpec for ChooseObjectsSpec {
             self.min,
             self.max,
         );
+        let ctx = if let Some(constraint) = self.aggregate_constraint {
+            ctx.with_aggregate_constraint(constraint)
+        } else {
+            ctx
+        };
         let ctx = if self.allow_partial_completion {
             ctx.allow_partial_completion()
         } else {

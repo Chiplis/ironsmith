@@ -8,7 +8,7 @@ fn validate_unbound_iterated_player(
     debug_repr: String,
     context: &str,
 ) -> Result<(), CardTextError> {
-    if super::str_contains(debug_repr.as_str(), "IteratedPlayer") {
+    if debug_repr.contains("IteratedPlayer") {
         return Err(CardTextError::InvariantViolation(format!(
             "{context} references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": {debug_repr}"
         )));

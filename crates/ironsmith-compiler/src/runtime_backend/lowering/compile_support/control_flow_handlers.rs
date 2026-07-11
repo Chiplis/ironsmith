@@ -776,6 +776,9 @@ pub(crate) fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> E
         IfResultPredicate::SearchedLibrary => EffectPredicate::SearchedLibrary,
         IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
         IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
+        IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
+            EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
+        }
         IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
         IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),
     }
@@ -863,12 +866,15 @@ pub(crate) fn compile_effects_in_iterated_player_context(
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let saved_frame = ctx.lowering_frame();
     let mut iterated_frame = saved_frame.clone();
-    iterated_frame.iterated_player = true;
     iterated_frame.last_effect_id = None;
-    iterated_frame.last_player_filter = Some(PlayerFilter::IteratedPlayer);
     if tagged_object.is_some() {
+        // A tagged-object loop establishes `__it__`, but it does not replace
+        // an outer player antecedent with an artificial iterated player.
         iterated_frame.last_object_tag = Some(IT_TAG.to_string());
         iterated_frame.last_it_choice_is_set = false;
+    } else {
+        iterated_frame.iterated_player = true;
+        iterated_frame.last_player_filter = Some(PlayerFilter::IteratedPlayer);
     }
 
     let mut id_gen = ctx.id_gen_context();
@@ -897,7 +903,9 @@ pub(crate) fn compile_effects_in_iterated_object_context(
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let saved_frame = ctx.lowering_frame();
     let mut iterated_frame = saved_frame.clone();
-    iterated_frame.iterated_player = true;
+    // Iterating objects establishes `__it__`, not an iterated player. Preserve
+    // an outer player iteration when one exists; otherwise contextual
+    // `that player` filters continue to resolve to the saved antecedent.
     iterated_frame.last_effect_id = None;
     iterated_frame.last_object_tag = Some(IT_TAG.to_string());
     iterated_frame.last_it_choice_is_set = false;
@@ -949,7 +957,7 @@ fn is_secret_choice_related_predicate(predicate: &PredicateAst) -> bool {
 }
 
 fn compiled_vote_option_uses_iterated_player(effects: &[Effect], choices: &[ChooseSpec]) -> bool {
-    str_contains(format!("{effects:?}{choices:?}").as_str(), "IteratedPlayer")
+    format!("{effects:?}{choices:?}").contains("IteratedPlayer")
 }
 
 pub(crate) fn compile_vote_sequence(
@@ -1125,11 +1133,14 @@ pub(crate) fn compile_vote_sequence(
                 if compiled_vote_option_uses_iterated_player(&repeat_effects, &repeat_choices) {
                     let (per_vote_effects, per_vote_choices) =
                         compile_effects_in_iterated_player_context(&option_effects_ast, ctx, None)?;
-                    if let Some(vote_option_idx) =
-                        find_index(vote_options.as_slice(), |vote_option| {
-                            vote_option.name.eq_ignore_ascii_case(option)
-                        })
-                    {
+                    let mut matching_vote_option = None;
+                    for (index, vote_option) in vote_options.iter().enumerate() {
+                        if vote_option.name.eq_ignore_ascii_case(option) {
+                            matching_vote_option = Some(index);
+                            break;
+                        }
+                    }
+                    if let Some(vote_option_idx) = matching_vote_option {
                         vote_options[vote_option_idx]
                             .effects_per_vote
                             .extend(per_vote_effects);

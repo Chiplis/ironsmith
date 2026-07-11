@@ -1,0 +1,270 @@
+use winnow::combinator::{alt, opt};
+use winnow::prelude::*;
+
+use crate::effect::ChoiceCount;
+use crate::runtime_backend::front_end::grammar::{leaf, permission_shapes, primitives};
+use crate::runtime_backend::front_end::lexer::{OwnedLexToken, trim_lexed_commas};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RestDestinationShape {
+    BottomOfLibrary,
+    Graveyard,
+    Hand,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FromAmongDestinationShape {
+    Battlefield,
+    Hand,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TaggedPutShape {
+    pub(crate) count: Option<ChoiceCount>,
+    pub(crate) rest_destination: Option<RestDestinationShape>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FromAmongPutShape<'a> {
+    pub(crate) count: ChoiceCount,
+    pub(crate) filter_tokens: &'a [OwnedLexToken],
+    pub(crate) destination: FromAmongDestinationShape,
+    pub(crate) rest_destination: Option<RestDestinationShape>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RevealedRemainderShape {
+    pub(crate) random_order: bool,
+}
+
+fn rest_head(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    for phrase in [
+        &["and", "the", "rest"][..],
+        &["and", "rest"][..],
+        &["then", "the", "rest"][..],
+        &["then", "rest"][..],
+    ] {
+        if let Some((_, _, tail)) = primitives::find_prefix(tokens, || primitives::phrase(phrase)) {
+            return Some(trim_lexed_commas(tail));
+        }
+    }
+    None
+}
+
+pub(crate) fn parse_rest_destination(tokens: &[OwnedLexToken]) -> Option<RestDestinationShape> {
+    let tail = rest_head(tokens)?;
+    if primitives::contains_word(tail, "bottom")
+        && (primitives::contains_word(tail, "library")
+            || primitives::contains_word(tail, "libraries"))
+    {
+        return Some(RestDestinationShape::BottomOfLibrary);
+    }
+    if primitives::contains_word(tail, "graveyard") || primitives::contains_word(tail, "graveyards")
+    {
+        return Some(RestDestinationShape::Graveyard);
+    }
+    if primitives::contains_word(tail, "hand") || primitives::contains_word(tail, "hands") {
+        return Some(RestDestinationShape::Hand);
+    }
+    None
+}
+
+fn strip_optional_put(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    primitives::parse_prefix(trim_lexed_commas(tokens), opt(primitives::kw("put")).void())
+        .map(|(_, rest)| trim_lexed_commas(rest))
+        .unwrap_or(tokens)
+}
+
+fn exact_looked_reference(tokens: &[OwnedLexToken]) -> bool {
+    permission_shapes::exact_tokens_any(
+        trim_lexed_commas(tokens),
+        &[
+            &["of", "them"],
+            &["them"],
+            &["of", "those", "card"],
+            &["of", "those", "cards"],
+            &["those", "card"],
+            &["those", "cards"],
+        ],
+    )
+}
+
+fn parse_count_and_reference(tokens: &[OwnedLexToken]) -> Option<ChoiceCount> {
+    let parsed = leaf::parse_leaf_choice_count_prefix_tokens(tokens)?;
+    let reference = tokens.get(parsed.consumed..)?;
+    exact_looked_reference(reference).then_some(parsed.count)
+}
+
+pub(crate) fn parse_tagged_into_hand_shape(tokens: &[OwnedLexToken]) -> Option<TaggedPutShape> {
+    let body = strip_optional_put(tokens);
+    let (into_index, _, destination) = primitives::find_prefix(body, || primitives::kw("into"))?;
+    if !(primitives::contains_word(destination, "hand")
+        || primitives::contains_word(destination, "hands"))
+    {
+        return None;
+    }
+    let head = trim_lexed_commas(body.get(..into_index)?);
+    let count = if permission_shapes::exact_tokens_any(head, &[&["it"], &["them"]]) {
+        None
+    } else {
+        Some(parse_count_and_reference(head)?)
+    };
+    Some(TaggedPutShape {
+        count,
+        rest_destination: parse_rest_destination(tokens),
+    })
+}
+
+pub(crate) fn parse_tagged_on_top_library_shape(tokens: &[OwnedLexToken]) -> Option<ChoiceCount> {
+    if parse_rest_destination(tokens) != Some(RestDestinationShape::BottomOfLibrary) {
+        return None;
+    }
+    let body = strip_optional_put(tokens);
+    let (on_index, _, destination) = primitives::find_prefix(body, || primitives::kw("on"))?;
+    let count = parse_count_and_reference(trim_lexed_commas(body.get(..on_index)?))?;
+    let (_, destination) = primitives::parse_prefix(
+        trim_lexed_commas(destination),
+        (
+            opt(primitives::kw("the")),
+            primitives::kw("top"),
+            opt(primitives::kw("of")),
+        )
+            .void(),
+    )?;
+    if !(primitives::contains_word(destination, "library")
+        || primitives::contains_word(destination, "libraries"))
+    {
+        return None;
+    }
+    Some(count)
+}
+
+pub(crate) fn parse_from_among_them_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<FromAmongPutShape<'_>> {
+    let tokens = trim_lexed_commas(tokens);
+    let (reference_index, _, after_reference) = primitives::find_prefix(tokens, || {
+        primitives::phrase(&["from", "among", "them"]).void()
+    })?;
+    let choice_tokens = strip_optional_put(trim_lexed_commas(tokens.get(..reference_index)?));
+    let (count, filter_tokens) =
+        if let Some(parsed) = leaf::parse_leaf_choice_count_prefix_tokens(choice_tokens) {
+            (
+                parsed.count,
+                trim_lexed_commas(choice_tokens.get(parsed.consumed..)?),
+            )
+        } else {
+            (ChoiceCount::up_to(1), choice_tokens)
+        };
+    if filter_tokens.is_empty() {
+        return None;
+    }
+    let after_reference = trim_lexed_commas(after_reference);
+    let destination =
+        if permission_shapes::prefix_tokens(after_reference, &["onto", "the", "battlefield"])
+            || permission_shapes::prefix_tokens(after_reference, &["onto", "battlefield"])
+        {
+            FromAmongDestinationShape::Battlefield
+        } else if primitives::contains_word(after_reference, "hand")
+            || primitives::contains_word(after_reference, "hands")
+        {
+            FromAmongDestinationShape::Hand
+        } else {
+            FromAmongDestinationShape::Other
+        };
+    Some(FromAmongPutShape {
+        count,
+        filter_tokens,
+        destination,
+        rest_destination: parse_rest_destination(tokens),
+    })
+}
+
+pub(crate) fn has_from_among_hand_surface(tokens: &[OwnedLexToken]) -> bool {
+    let Some((_, _, after_among)) =
+        primitives::find_prefix(tokens, || primitives::phrase(&["from", "among"]).void())
+    else {
+        return false;
+    };
+    primitives::contains_word(after_among, "hand")
+        || primitives::contains_word(after_among, "hands")
+}
+
+pub(crate) fn parse_all_exiled_into_hand_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    let tokens = trim_lexed_commas(tokens);
+    let (_, after_put) = primitives::parse_prefix(tokens, primitives::kw("put").void())?;
+    let (_, _) = primitives::parse_prefix(
+        after_put,
+        alt((primitives::kw("all"), primitives::kw("each"))).void(),
+    )?;
+    let (into_index, _, destination) =
+        primitives::find_prefix(after_put, || primitives::kw("into"))?;
+    let filter = trim_lexed_commas(after_put.get(..into_index)?);
+    if !primitives::contains_word(filter, "exiled")
+        || !(primitives::contains_word(filter, "card")
+            || primitives::contains_word(filter, "cards"))
+        || !(primitives::contains_word(destination, "hand")
+            || primitives::contains_word(destination, "hands"))
+    {
+        return None;
+    }
+    Some(filter)
+}
+
+pub(crate) fn parse_revealed_remainder_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<RevealedRemainderShape> {
+    for word in [
+        "rest", "cards", "revealed", "this", "way", "bottom", "library",
+    ] {
+        if !primitives::contains_word(tokens, word) {
+            return None;
+        }
+    }
+    Some(RevealedRemainderShape {
+        random_order: primitives::contains_word(tokens, "random"),
+    })
+}
+
+pub(crate) fn is_reorder_tagged_cards(tokens: &[OwnedLexToken]) -> bool {
+    primitives::contains_word(tokens, "back")
+        && primitives::contains_word(tokens, "any")
+        && primitives::contains_word(tokens, "order")
+        && (primitives::contains_word(tokens, "it") || primitives::contains_word(tokens, "them"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn parses_tagged_and_from_among_put_shapes() {
+        let tagged = lex_line(
+            "put two of them into your hand and the rest on the bottom of your library",
+            0,
+        )
+        .unwrap();
+        let shape = parse_tagged_into_hand_shape(&tagged).unwrap();
+        assert_eq!(
+            shape.rest_destination,
+            Some(RestDestinationShape::BottomOfLibrary)
+        );
+        assert!(shape.count.is_some());
+
+        let among = lex_line(
+            "up to one creature card from among them onto the battlefield and the rest into your hand",
+            0,
+        )
+        .unwrap();
+        let shape = parse_from_among_them_shape(&among).unwrap();
+        assert_eq!(shape.destination, FromAmongDestinationShape::Battlefield);
+        assert_eq!(shape.rest_destination, Some(RestDestinationShape::Hand));
+        assert!(is_reorder_tagged_cards(
+            &lex_line("put them back in any order", 0).unwrap()
+        ));
+    }
+}

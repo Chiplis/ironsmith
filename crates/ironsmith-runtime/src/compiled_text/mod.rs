@@ -1773,6 +1773,10 @@ fn normalize_chosen_creature_type_surface(line: &str) -> String {
         if !effect.contains("target ") {
             return line.to_string();
         }
+        let effect_lower = effect.to_ascii_lowercase();
+        if effect_lower.starts_with("x target ") || effect_lower.starts_with("up to x target ") {
+            return line.to_string();
+        }
         // With the leading "Choose a creature type" clause folded away, the
         // chosen-type back-reference reads as the single-sentence oracle
         // idiom "of the creature type of your choice".
@@ -2645,7 +2649,14 @@ mod tests {
                 "You choose a creature type, then return up to three target creature cards of the chosen type from your graveyard to your hand"
                     .to_string()
             ),
-            "Return up to three target creature cards of the chosen type from your graveyard to your hand."
+            "Return up to three target creature cards of the creature type of your choice from your graveyard to your hand."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Choose a creature type, then return X target creatures of the chosen type to their owners' hands"
+                    .to_string()
+            ),
+            "Choose a creature type, then return X target creatures of the chosen type to their owners' hands."
         );
         assert_eq!(
             finalize_ast_surface_line(

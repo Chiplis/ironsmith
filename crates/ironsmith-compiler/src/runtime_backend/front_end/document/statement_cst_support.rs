@@ -1,37 +1,20 @@
-use super::super::grammar::structure;
-use super::super::lex_patterns::LexPattern;
-use super::super::lexer::{
-    parser_token_word_refs, word_slice_contains_phrase, word_slice_starts_with,
+use super::super::grammar::effects::{
+    clause_dispatch_shapes::{self, DirectClauseShape},
+    followup_shapes,
 };
+use super::super::grammar::statement_shapes::{self, StatementForceShape};
+use super::super::grammar::structure;
 use super::*;
 
-const REVEAL_THIS_CARD_FROM_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["reveal", "this", "card", "from", "your", "hand"]),
-]);
-const DIE_ROLL_RESULT_ADJUSTMENT_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(&["after", "you", "roll", "a", "die"])]);
-
 fn is_die_roll_result_adjustment_statement(tokens: &[OwnedLexToken]) -> bool {
-    DIE_ROLL_RESULT_ADJUSTMENT_PREFIX_PATTERN.matches_prefix(LexedClause::new(tokens))
-        && contains_token_word_sequence(tokens, &["you", "may", "pay"])
-        && contains_token_word_sequence(tokens, &["if", "you", "do"])
-        && contains_token_word_sequence(
-            tokens,
-            &["increase", "or", "decrease", "the", "result", "by"],
-        )
-        && contains_token_word_sequence(tokens, &["do", "this", "only", "once", "each", "turn"])
+    statement_shapes::parse_die_roll_adjustment_tokens(tokens).is_some()
 }
 
 fn parse_any_player_no_one_does_statement(
     line: &PreprocessedLine,
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let sentences = normalize_statement_parse_sentences_lexed(&line.tokens);
-    let [may_sentence, no_one_sentence, _followup_sentence] = sentences.as_slice() else {
-        return Ok(None);
-    };
-    if !token_slice_starts_with_any(may_sentence, &[&["any", "player", "may"]])
-        || !token_slice_starts_with_any(no_one_sentence, &[&["if", "no", "one", "does"]])
-    {
+    if statement_shapes::parse_any_player_no_one_does_sentences(&sentences).is_none() {
         return Ok(None);
     }
 
@@ -49,38 +32,7 @@ fn parse_any_player_no_one_does_statement(
 }
 
 fn is_each_player_choose_unselected_bounce_then_draw_statement(tokens: &[OwnedLexToken]) -> bool {
-    let words = parser_token_word_refs(tokens);
-    word_slice_starts_with(
-        &words,
-        &[
-            "each",
-            "player",
-            "chooses",
-            "a",
-            "nonland",
-            "permanent",
-            "they",
-            "control",
-        ],
-    ) && word_slice_contains_phrase(
-        &words,
-        &[
-            "return",
-            "all",
-            "nonland",
-            "permanents",
-            "not",
-            "chosen",
-            "this",
-            "way",
-        ],
-    ) && word_slice_contains_phrase(
-        &words,
-        &[
-            "you", "draw", "a", "card", "for", "each", "opponent", "who", "has", "more", "cards",
-            "in", "their", "hand", "than", "you",
-        ],
-    )
+    statement_shapes::parse_each_player_choose_bounce_draw_tokens(tokens).is_some()
 }
 
 fn join_statement_parse_sentence_group(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
@@ -131,6 +83,14 @@ pub(super) fn parse_statement_line_cst(
     let static_probe = parse_static_ability_ast_line_lexed(&line.tokens)
         .ok()
         .flatten();
+    let persistent_static_modifier =
+        !matches!(line_family, Some(structure::StatementLineFamily::Vote))
+            && super::super::grammar::anthem_grants::parse_anthem_modifier_head(&line.tokens)
+                .is_some_and(|head| !head.has_target && !head.temporary);
+    if persistent_static_modifier {
+        return Ok(None);
+    }
+    let force_surface = statement_shapes::parse_statement_force_shape(&line.tokens);
     let force_statement = matches!(line_family, Some(structure::StatementLineFamily::Divvy))
         || matches!(
             line_family,
@@ -140,27 +100,16 @@ pub(super) fn parse_statement_line_cst(
                     | structure::StatementLineFamily::BidLife
             )
         )
-        || (contains_token_word_sequence(
-            &line.tokens,
-            &["chooses", "two", "of", "those", "cards"],
-        ) && contains_token_word_sequence(
-            &line.tokens,
-            &["shuffle", "the", "chosen", "cards"],
-        ) && contains_token_word_sequence(
-            &line.tokens,
-            &["put", "the", "rest", "onto", "the", "battlefield"],
-        ))
-        || (contains_token_word_sequence(
-            &line.tokens,
-            &[
-                "for", "as", "long", "as", "that", "card", "remains", "exiled",
-            ],
-        ) && contains_token_word_sequence(&line.tokens, &["more", "to", "cast"]))
-        || (token_slice_starts_with_any(&line.tokens, &[&["if"]])
-            && contains_token_word_sequence(&line.tokens, &["instead"])
+        || matches!(
+            force_surface,
+            Some(
+                StatementForceShape::DivvySelection
+                    | StatementForceShape::ExilePlayCost
+                    | StatementForceShape::GroupTurnDuration
+            )
+        )
+        || (force_surface == Some(StatementForceShape::ConditionalInstead)
             && static_probe.is_none())
-        || (token_slice_starts_with_any(&line.tokens, &[&["each"], &["all"]])
-            && contains_token_word_sequence(&line.tokens, &["until", "end", "of", "turn"]))
         || looks_like_statement_line_lexed(line);
     if !force_statement && static_probe.is_some() {
         return Ok(None);
@@ -201,11 +150,7 @@ pub(super) fn parse_statement_line_cst(
     ) {
         return Ok(None);
     }
-    if token_slice_starts_with_any(&line.tokens, &[&["the", "next", "time"]])
-        && contains_token_word_sequence(&line.tokens, &["source", "of", "your", "choice"])
-        && contains_token_word_sequence(&line.tokens, &["prevent", "that", "damage"])
-        && contains_token_word_sequence(&line.tokens, &["damage", "is", "prevented", "this", "way"])
-    {
+    if statement_shapes::parse_next_damage_prevention_tokens(&line.tokens).is_some() {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -228,10 +173,7 @@ pub(super) fn parse_statement_line_cst(
             }
             Err(err)
                 if looks_like_statement_line_lexed(line)
-                    || token_slice_starts_with_any(
-                        group_tokens,
-                        &[&["choose"], &["if"], &["reveal"]],
-                    ) =>
+                    || statement_shapes::has_statement_error_prefix(group_tokens) =>
             {
                 return Err(err);
             }
@@ -252,12 +194,7 @@ pub(super) fn parse_statement_line_cst(
 }
 
 fn looks_like_day_night_starts_day_as_enters_static_line(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_starts_with_any(tokens, &[&["if"]])
-        && contains_token_word_sequence(tokens, &["neither", "day", "nor", "night"])
-        && contains_token_word_sequence(tokens, &["it", "becomes", "day"])
-        && (contains_token_word_sequence(tokens, &["as", "this", "creature", "enters"])
-            || contains_token_word_sequence(tokens, &["as", "this", "permanent", "enters"])
-            || contains_token_word_sequence(tokens, &["as", "this", "object", "enters"]))
+    statement_shapes::parse_day_night_enters_tokens(tokens).is_some()
 }
 
 fn is_trigger_result_followup_line(line: &PreprocessedLine) -> bool {
@@ -458,13 +395,16 @@ fn first_trailing_static_sentence_idx(sentence_tokens: &[Vec<OwnedLexToken>]) ->
             .enumerate()
             .skip(1)
             .find_map(|(idx, sentence)| {
-                matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_))).then_some(idx)
+                (!followup_shapes::is_if_did_untap_source_followup(sentence)
+                    && followup_shapes::parse_cant_be_regenerated_followup(sentence).is_none()
+                    && clause_dispatch_shapes::parse_direct_clause_shape(sentence)
+                        != Some(DirectClauseShape::DamageCantBePrevented)
+                    && matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_))))
+                .then_some(idx)
             })?;
 
-    if !sentence_tokens[..first_static_idx]
-        .iter()
-        .all(|sentence| parse_effect_sentences_lexed(sentence).is_ok())
-    {
+    let effect_prefix = join_statement_parse_sentence_group(&sentence_tokens[..first_static_idx]);
+    if parse_effect_sentences_lexed(&effect_prefix).is_err() {
         return None;
     }
     if !sentence_tokens[first_static_idx..]
@@ -543,7 +483,7 @@ pub(super) fn parse_colon_nonactivation_statement_fallback(
         return Ok(None);
     };
 
-    if REVEAL_THIS_CARD_FROM_HAND_PATTERN.matches_clause(LexedClause::new(left_tokens)) {
+    if statement_shapes::parse_reveal_from_hand_tokens(left_tokens).is_some() {
         let left_line = rewrite_line_tokens(line, left_tokens);
         if let Some(statement) = parse_statement_line_cst(&left_line)? {
             return Ok(Some(statement));

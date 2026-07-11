@@ -1,17 +1,33 @@
 use crate::ability::ActivationTiming;
-use crate::cards::builders::CardTextError;
+use crate::cards::builders::{CardTextError, ParsedLineAst, ParsedRestrictions};
 
 use super::cst::{
     ActivatedLineCst, KeywordLineCst, LevelItemKindCst, RewriteLineCst, SagaChapterLineCst,
     StatementLineCst, StaticLineCst, TriggeredLineCst,
 };
 use super::ir::{
-    RewriteActivatedLine, RewriteKeywordLine, RewriteLevelHeader, RewriteLevelItem,
-    RewriteLevelItemKind, RewriteModalBlock, RewriteModalMode, RewriteSagaChapterLine,
-    RewriteSemanticItem, RewriteStatementLine, RewriteStaticLine, RewriteTriggeredLine,
+    RewriteKeywordLine, RewriteLevelHeader, RewriteLevelItem, RewriteLevelItemKind,
+    RewriteModalBlock, RewriteModalMode, RewriteSagaChapterLine, RewriteSemanticItem,
     RewriteUnsupportedLine,
 };
 use super::leaf::{ActivationCostCst, ActivationCostSegmentCst, lower_activation_cost_cst};
+use super::lexer::render_token_slice;
+use super::parser_support::split_tokens_for_parse;
+use super::util::join_sentences_with_period;
+
+fn parsed_line_item(
+    info: super::shared_types::LineInfo,
+    chunks: Vec<crate::cards::builders::LineAst>,
+    restrictions: ParsedRestrictions,
+) -> RewriteSemanticItem {
+    let semantic_facts = info.semantic_facts.clone();
+    RewriteSemanticItem::ParsedLine(ParsedLineAst {
+        info,
+        chunks,
+        restrictions,
+        semantic_facts,
+    })
+}
 
 fn activation_cost_cst_is_loyalty(cost: &ActivationCostCst) -> bool {
     if cost.is_loyalty_shorthand {
@@ -49,6 +65,7 @@ pub(crate) fn lower_non_metadata_rewrite_line_cst(
             kind: keyword.kind,
             parse_tokens: keyword.parse_tokens,
             full_parse_tokens: keyword.full_parse_tokens,
+            payload: keyword.payload,
         })),
         RewriteLineCst::Activated(activated) => lower_activated_line(activated, allow_unsupported),
         RewriteLineCst::Triggered(triggered) => lower_triggered_line(triggered),
@@ -94,53 +111,99 @@ fn lower_activated_line(
             return Err(err);
         }
     };
-    Ok(RewriteSemanticItem::Activated(RewriteActivatedLine {
-        info: activated.info,
+    let info = activated.info;
+    let parsed = super::semantic_line_parsing::parse_activated_line(
+        info.clone(),
         cost,
-        cost_parse_tokens: activated.cost_parse_tokens,
-        effect_text: activated.effect_text,
-        effect_parse_tokens: activated.effect_parse_tokens,
-        timing_hint: ActivationTiming::AnyTime,
-        is_loyalty_ability: activation_cost_cst_is_loyalty(&activated.cost),
-        presentation_label: activated.presentation_label,
-        chosen_option_label: activated.chosen_option_label,
-    }))
+        activated.cost_parse_tokens,
+        activated.effect_text,
+        activated.effect_parse_tokens,
+        ActivationTiming::AnyTime,
+        activation_cost_cst_is_loyalty(&activated.cost),
+        activated.presentation_label,
+        activated.chosen_option,
+    )?;
+    Ok(parsed_line_item(
+        info,
+        vec![parsed.chunk],
+        parsed.restrictions,
+    ))
 }
 
 fn lower_triggered_line(triggered: TriggeredLineCst) -> Result<RewriteSemanticItem, CardTextError> {
-    Ok(RewriteSemanticItem::Triggered(RewriteTriggeredLine {
-        info: triggered.info,
-        full_text: triggered.full_text,
-        full_parse_tokens: triggered.full_parse_tokens,
-        trigger_text: triggered.trigger_text,
-        trigger_parse_tokens: triggered.trigger_parse_tokens,
-        effect_text: triggered.effect_text,
-        effect_parse_tokens: triggered.effect_parse_tokens,
-        intervening_if: triggered.intervening_if,
-        max_triggers_per_turn: triggered.max_triggers_per_turn,
-        chosen_option_label: triggered.chosen_option_label,
-        presentation_label: triggered.presentation_label,
-    }))
+    let info = triggered.info;
+    let parsed = super::lower::apply_explicit_intervening_if_to_triggered_chunk(
+        super::semantic_line_parsing::parse_triggered_line(
+            info.clone(),
+            &triggered.full_text,
+            &triggered.full_parse_tokens,
+            &triggered.trigger_text,
+            &triggered.trigger_parse_tokens,
+            &triggered.effect_text,
+            &triggered.effect_parse_tokens,
+            triggered.intervening_if.clone(),
+            triggered.presentation.as_ref(),
+            triggered.max_triggers_per_turn,
+            triggered.chosen_option.as_ref(),
+        )?,
+        triggered.intervening_if,
+    )?;
+    Ok(parsed_line_item(
+        info,
+        vec![parsed],
+        ParsedRestrictions::default(),
+    ))
 }
 
 fn lower_static_line(static_line: StaticLineCst) -> Result<RewriteSemanticItem, CardTextError> {
-    Ok(RewriteSemanticItem::Static(RewriteStaticLine {
-        info: static_line.info,
-        text: static_line.text,
-        parse_tokens: static_line.parse_tokens,
-        chosen_option_label: static_line.chosen_option_label,
-    }))
+    let info = static_line.info;
+    if let Some(parsed) = static_line.parsed {
+        return Ok(parsed_line_item(
+            info,
+            vec![parsed],
+            ParsedRestrictions::default(),
+        ));
+    }
+    let (parsed_sentences, restrictions) = split_tokens_for_parse(&static_line.parse_tokens);
+    let chunks = if !restrictions.activation.is_empty() || !restrictions.trigger.is_empty() {
+        if parsed_sentences.is_empty() {
+            Vec::new()
+        } else {
+            let parsed_tokens = join_sentences_with_period(&parsed_sentences);
+            let parsed_text = render_token_slice(&parsed_tokens).trim().to_string();
+            vec![super::semantic_line_parsing::parse_static_line(
+                info.clone(),
+                &parsed_text,
+                &parsed_tokens,
+                static_line.chosen_option.as_ref(),
+            )?]
+        }
+    } else {
+        vec![super::semantic_line_parsing::parse_static_line(
+            info.clone(),
+            &static_line.text,
+            &static_line.parse_tokens,
+            static_line.chosen_option.as_ref(),
+        )?]
+    };
+    Ok(parsed_line_item(info, chunks, restrictions))
 }
 
 fn lower_statement_line(
     statement_line: StatementLineCst,
 ) -> Result<RewriteSemanticItem, CardTextError> {
-    Ok(RewriteSemanticItem::Statement(RewriteStatementLine {
-        info: statement_line.info,
-        text: statement_line.text,
-        parse_tokens: statement_line.parse_tokens,
-        parse_groups: statement_line.parse_groups,
-    }))
+    let info = statement_line.info;
+    let chunks = super::semantic_line_parsing::parse_statement_token_groups_to_chunks(
+        info.clone(),
+        &statement_line.text,
+        &statement_line.parse_tokens,
+        &statement_line.parse_groups,
+    )?;
+    Ok(parsed_line_item(
+        info,
+        chunks,
+        ParsedRestrictions::default(),
+    ))
 }
 
 fn lower_modal_block(
@@ -148,6 +211,7 @@ fn lower_modal_block(
 ) -> Result<RewriteSemanticItem, CardTextError> {
     Ok(RewriteSemanticItem::Modal(RewriteModalBlock {
         header: modal.header,
+        header_tokens: modal.header_tokens,
         modes: modal
             .modes
             .into_iter()

@@ -31,7 +31,9 @@ use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
-pub use ironsmith_core::effect::{ChoiceCount, EffectId, SearchSelectionMode};
+pub use ironsmith_core::effect::{
+    ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, EffectId, SearchSelectionMode,
+};
 pub use ironsmith_core::{
     Comparison, EffectPredicate, EventValueSpec, Until, ValueComparisonOperator,
 };
@@ -790,6 +792,13 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             }
             Self::ExcessDamageDealt => {
                 outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::ExcessDamageDealt))
+            }
+            Self::AffectedObjectMatchesCardType { card_type, negated } => {
+                outcome.affected_object_memory().is_some_and(|memories| {
+                    memories
+                        .iter()
+                        .any(|memory| memory.card_types.contains(card_type) != *negated)
+                })
             }
             Self::Value(cmp) => outcome.as_count().is_some_and(|n| cmp.evaluate(n)),
             Self::Chosen => {
@@ -3033,6 +3042,15 @@ impl Effect {
         Self::new(ExperienceCountersEffect::new(count, player))
     }
 
+    pub fn player_counters(
+        counter_type: crate::object::CounterType,
+        count: impl Into<Value>,
+        player: PlayerFilter,
+    ) -> Self {
+        use crate::effects::PlayerCountersEffect;
+        Self::new(PlayerCountersEffect::new(counter_type, count, player))
+    }
+
     /// Flip a coin for the specified player.
     pub fn flip_coin(player: PlayerFilter) -> Self {
         use crate::effects::FlipCoinEffect;
@@ -4503,6 +4521,39 @@ mod tests {
         assert!(EffectPredicate::SearchedLibrary.evaluate_outcome(&library_choice));
         assert!(!EffectPredicate::SearchedLibrary.evaluate_outcome(&graveyard_choice));
         assert!(!EffectPredicate::SearchedLibrary.evaluate_outcome(&EffectOutcome::resolved()));
+    }
+
+    #[test]
+    fn affected_object_card_type_predicate_handles_negation() {
+        let memory = OutcomeObjectMemory {
+            object_id: ObjectId::from_raw(41),
+            stable_id: crate::ids::StableId::from_raw(41),
+            controller: PlayerId::from_index(0),
+            owner: PlayerId::from_index(0),
+            zone: Zone::Exile,
+            power: None,
+            toughness: None,
+            mana_value: 3,
+            card_types: vec![CardType::Creature],
+            colors: ColorSet::COLORLESS,
+            subtypes: Vec::new(),
+            is_token: false,
+        };
+        let outcome = EffectOutcome::resolved().with_affected_object_memory(vec![memory]);
+        assert!(
+            EffectPredicate::AffectedObjectMatchesCardType {
+                card_type: CardType::Land,
+                negated: true,
+            }
+            .evaluate_outcome(&outcome)
+        );
+        assert!(
+            !EffectPredicate::AffectedObjectMatchesCardType {
+                card_type: CardType::Land,
+                negated: false,
+            }
+            .evaluate_outcome(&outcome)
+        );
     }
 
     #[test]

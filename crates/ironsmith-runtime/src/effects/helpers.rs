@@ -1834,12 +1834,7 @@ pub fn resolve_value(
             Ok(player_ids
                 .into_iter()
                 .filter_map(|player_id| game.player(player_id))
-                .map(|player| match counter_type {
-                    crate::object::CounterType::Poison => player.poison_counters,
-                    crate::object::CounterType::Energy => player.energy_counters,
-                    crate::object::CounterType::Experience => player.experience_counters,
-                    _ => 0,
-                } as i32)
+                .map(|player| player.counter_count(*counter_type) as i32)
                 .sum())
         }
         Value::CountersOnSource(counter_type) => {

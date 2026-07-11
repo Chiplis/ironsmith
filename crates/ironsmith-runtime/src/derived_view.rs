@@ -48,6 +48,7 @@ pub(crate) struct DerivedGameView<'a> {
     potential_mana: RefCell<FxMap<PlayerId, ManaPool>>,
     potential_mana_compute_ms: RefCell<f64>,
     black_mana_life_permission: RefCell<FxMap<PlayerId, bool>>,
+    pay_life_cast_or_activate_restriction: RefCell<FxMap<PlayerId, bool>>,
     granted_alternative_casts:
         RefCell<FxMap<(ObjectId, Zone, PlayerId), Vec<GrantedAlternativeCast>>>,
     granted_play_from: RefCell<FxMap<(ObjectId, Zone, PlayerId), Vec<GrantedPlayFrom>>>,
@@ -249,10 +250,6 @@ fn continuous_effect_can_change_minimum_total_spell_mana_presence(
     modification_can_change_minimum_total_spell_mana_presence(&effect.modification)
 }
 
-fn continuous_effect_can_change_pay_life_restriction_presence(effect: &ContinuousEffect) -> bool {
-    modification_can_change_pay_life_restriction_presence(&effect.modification)
-}
-
 fn modification_can_change_spell_cost_modifier_presence(modification: &Modification) -> bool {
     match modification {
         Modification::CopyOf { .. }
@@ -305,24 +302,6 @@ fn modification_can_change_minimum_total_spell_mana_presence(modification: &Modi
     }
 }
 
-fn modification_can_change_pay_life_restriction_presence(modification: &Modification) -> bool {
-    match modification {
-        Modification::CopyOf { .. }
-        | Modification::ChangeText { .. }
-        | Modification::SetTextBox(_) => true,
-        Modification::AddAbility(static_ability) => {
-            static_ability_forbids_paying_life_for_cast_or_activate(static_ability)
-        }
-        Modification::AddAbilityGeneric(ability) => {
-            ability_forbids_paying_life_for_cast_or_activate(ability)
-        }
-        Modification::SetAbilities(abilities) => abilities
-            .iter()
-            .any(ability_forbids_paying_life_for_cast_or_activate),
-        _ => false,
-    }
-}
-
 fn ability_has_spell_cost_modifier(ability: &Ability) -> bool {
     matches!(&ability.kind, AbilityKind::Static(static_ability)
         if static_ability_has_spell_cost_modifier(static_ability))
@@ -336,11 +315,6 @@ fn ability_has_activated_ability_cost_modifier(ability: &Ability) -> bool {
 fn ability_has_minimum_total_spell_mana(ability: &Ability) -> bool {
     matches!(&ability.kind, AbilityKind::Static(static_ability)
         if static_ability_has_minimum_total_spell_mana(static_ability))
-}
-
-fn ability_forbids_paying_life_for_cast_or_activate(ability: &Ability) -> bool {
-    matches!(&ability.kind, AbilityKind::Static(static_ability)
-        if static_ability_forbids_paying_life_for_cast_or_activate(static_ability))
 }
 
 fn static_ability_has_spell_cost_modifier(
@@ -363,12 +337,6 @@ fn static_ability_has_minimum_total_spell_mana(
     static_ability: &crate::static_abilities::StaticAbility,
 ) -> bool {
     static_ability.minimum_total_spell_mana().is_some()
-}
-
-fn static_ability_forbids_paying_life_for_cast_or_activate(
-    static_ability: &crate::static_abilities::StaticAbility,
-) -> bool {
-    static_ability.forbids_paying_life_for_cast_or_activate()
 }
 
 impl<'a> DerivedGameView<'a> {
@@ -409,6 +377,7 @@ impl<'a> DerivedGameView<'a> {
             potential_mana: RefCell::new(FxMap::default()),
             potential_mana_compute_ms: RefCell::new(0.0),
             black_mana_life_permission: RefCell::new(FxMap::default()),
+            pay_life_cast_or_activate_restriction: RefCell::new(FxMap::default()),
             granted_alternative_casts: RefCell::new(FxMap::default()),
             granted_play_from: RefCell::new(FxMap::default()),
             granted_static_ability_presence: RefCell::new(FxMap::default()),
@@ -448,6 +417,7 @@ impl<'a> DerivedGameView<'a> {
             potential_mana: RefCell::new(FxMap::default()),
             potential_mana_compute_ms: RefCell::new(0.0),
             black_mana_life_permission: RefCell::new(FxMap::default()),
+            pay_life_cast_or_activate_restriction: RefCell::new(FxMap::default()),
             granted_alternative_casts: RefCell::new(FxMap::default()),
             granted_play_from: RefCell::new(FxMap::default()),
             granted_static_ability_presence: RefCell::new(FxMap::default()),
@@ -755,7 +725,8 @@ impl<'a> DerivedGameView<'a> {
         reason: crate::costs::PaymentReason,
     ) -> bool {
         let mana_spend_policy = self.game.mana_spend_policy(player, source);
-        let allow_black_life = self.player_can_pay_black_with_life_for_reason(player, reason);
+        let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
+            && self.player_can_pay_black_with_life_for_reason(player, reason);
         let mut preview_pool = self.potential_mana(player);
         let (can_pay, life_to_pay) = preview_pool
             .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
@@ -785,6 +756,7 @@ impl<'a> DerivedGameView<'a> {
             return *cached;
         }
 
+        self.prewarm_characteristics(&self.game.battlefield);
         let result = self.game.battlefield.iter().copied().any(|perm_id| {
             self.current_controller(perm_id) == Some(payer)
                 && self.static_abilities_rc(perm_id).is_some_and(|abilities| {
@@ -809,6 +781,13 @@ impl<'a> DerivedGameView<'a> {
         }
 
         let mut analysis = SimpleBattlefieldManaAnalysis::default();
+
+        // This analysis may be requested immediately after a semantic mutation
+        // (most notably after a spell is moved to the stack to begin payment).
+        // In that state the view owns an explicit effect snapshot and individual
+        // `abilities_rc` lookups would each run the full layer system.  Batch the
+        // shared battlefield calculation once before classifying mana sources.
+        self.prewarm_characteristics(&self.game.battlefield);
 
         for &perm_id in &self.game.battlefield {
             let Some(perm) = self.game.object(perm_id) else {
@@ -1115,6 +1094,7 @@ impl<'a> DerivedGameView<'a> {
                 .filter(|&perm_id| self.permanent_printed_has_spell_cost_modifiers(perm_id))
                 .collect()
         } else {
+            self.prewarm_characteristics(&self.game.battlefield);
             self.game
                 .battlefield
                 .iter()
@@ -1139,6 +1119,7 @@ impl<'a> DerivedGameView<'a> {
                 .copied()
                 .any(|perm_id| self.permanent_printed_has_spell_cost_modifiers(perm_id))
         } else {
+            self.prewarm_characteristics(&self.game.battlefield);
             self.game
                 .battlefield
                 .iter()
@@ -1168,6 +1149,7 @@ impl<'a> DerivedGameView<'a> {
                 })
                 .collect()
         } else {
+            self.prewarm_characteristics(&self.game.battlefield);
             self.game
                 .battlefield
                 .iter()
@@ -1191,6 +1173,7 @@ impl<'a> DerivedGameView<'a> {
                     self.permanent_printed_has_activated_ability_cost_modifiers(perm_id)
                 })
             } else {
+                self.prewarm_characteristics(&self.game.battlefield);
                 self.game
                     .battlefield
                     .iter()
@@ -1226,6 +1209,7 @@ impl<'a> DerivedGameView<'a> {
             return minimum;
         }
 
+        self.prewarm_characteristics(&self.game.battlefield);
         for &perm_id in &self.game.battlefield {
             let Some(static_abilities) = self.static_abilities_rc(perm_id) else {
                 continue;
@@ -1247,42 +1231,26 @@ impl<'a> DerivedGameView<'a> {
         if self.game.player(player).is_none() {
             return false;
         }
-
-        if self.can_scan_printed_pay_life_restrictions() {
-            for &perm_id in &self.game.battlefield {
-                let Some(permanent) = self.game.object(perm_id) else {
-                    continue;
-                };
-                for ability in permanent.abilities.iter() {
-                    let AbilityKind::Static(static_ability) = &ability.kind else {
-                        continue;
-                    };
-                    if !ability.functions_in(&permanent.zone)
-                        || !static_ability.is_active(self.game, perm_id)
-                    {
-                        continue;
-                    }
-                    if static_ability.forbids_paying_life_for_cast_or_activate() {
-                        return true;
-                    }
-                }
-            }
-            return false;
+        if let Some(cached) = self
+            .pay_life_cast_or_activate_restriction
+            .borrow()
+            .get(&player)
+        {
+            return *cached;
         }
-
-        for &perm_id in &self.game.battlefield {
-            let Some(static_abilities) = self.static_abilities_rc(perm_id) else {
-                continue;
-            };
-            for static_ability in static_abilities.iter() {
-                if static_ability.is_active(self.game, perm_id)
-                    && static_ability.forbids_paying_life_for_cast_or_activate()
-                {
-                    return true;
-                }
-            }
-        }
-        false
+        let result = if self.use_game_characteristics_cache {
+            self.game.player_cant_pay_life_to_cast_or_activate(player)
+        } else {
+            self.game
+                .player_cant_pay_life_to_cast_or_activate_with_effects(
+                    player,
+                    self.all_effects.as_slice(),
+                )
+        };
+        self.pay_life_cast_or_activate_restriction
+            .borrow_mut()
+            .insert(player, result);
+        result
     }
 
     pub(crate) fn spell_has_legal_targets(
@@ -1349,13 +1317,6 @@ impl<'a> DerivedGameView<'a> {
             .all_effects
             .iter()
             .any(continuous_effect_can_change_minimum_total_spell_mana_presence)
-    }
-
-    fn can_scan_printed_pay_life_restrictions(&self) -> bool {
-        !self
-            .all_effects
-            .iter()
-            .any(continuous_effect_can_change_pay_life_restriction_presence)
     }
 
     fn permanent_printed_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
@@ -1714,6 +1675,57 @@ mod tests {
             battlefield_characteristic_scope(&game, &effects),
             BattlefieldCharacteristicScope::AllBattlefield,
         );
+    }
+
+    #[test]
+    fn explicit_effect_view_honors_unregistered_payment_restriction_grants() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let creature = CardBuilder::new(CardId::from_raw(20_001), "Restriction Target")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let target = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let effect = ContinuousEffect::new(
+            target,
+            alice,
+            EffectTarget::Specific(target),
+            Modification::AddAbility(
+                crate::static_abilities::StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate(),
+            ),
+        );
+        let view = DerivedGameView::from_effects(&game, vec![effect]);
+
+        assert!(view.player_cant_pay_life_to_cast_or_activate(alice));
+        assert!(
+            !game.player_cant_pay_life_to_cast_or_activate(alice),
+            "an explicit view must not install its effects into the underlying game"
+        );
+    }
+
+    #[test]
+    fn explicit_effect_view_honors_payment_restriction_removal() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let creature = CardBuilder::new(CardId::from_raw(20_002), "Restriction Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let target = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        game.object_mut(target)
+            .expect("restriction source should exist")
+            .abilities_mut()
+            .push(Ability::static_ability(
+                crate::static_abilities::StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate(),
+            ));
+        let effect = ContinuousEffect::new(
+            target,
+            alice,
+            EffectTarget::Specific(target),
+            Modification::RemoveAllAbilities,
+        );
+        let view = DerivedGameView::from_effects(&game, vec![effect]);
+
+        assert!(!view.player_cant_pay_life_to_cast_or_activate(alice));
+        assert!(game.player_cant_pay_life_to_cast_or_activate(alice));
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

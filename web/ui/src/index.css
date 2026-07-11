@@ -6711,6 +6711,12 @@ body {
   --bf-card-height: clamp(60px, 6.4vw, 101px);
 }
 
+.battlefield-row--dense {
+  align-content: start;
+  justify-content: center;
+  scrollbar-gutter: stable;
+}
+
 .battlefield-panel--opponents .battlefield-row {
   background: rgba(var(--player-accent-rgb, 216, 192, 124), 0.7);
 }
@@ -17073,6 +17079,11 @@ select::-ms-expand {
   .table-shared-action-slot .priority-inline-panel {
     align-items: stretch !important;
     justify-content: center !important;
+  }
+
+  .table-shared-action-slot .combat-inline-primary {
+    height: 38px !important;
+    min-height: 38px !important;
   }
 
   .table-shared-action-slot .action-strip-layout {

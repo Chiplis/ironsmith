@@ -325,4 +325,38 @@ mod tests {
             "draw-step trigger should fire on the next turn's draw step"
         );
     }
+
+    #[test]
+    fn scheduled_land_play_trigger_fires_for_the_matching_player() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let land = CardBuilder::new(CardId::from_raw(992), "Delayed Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = ScheduleDelayedTriggerEffect::new(
+            Trigger::player_plays_land(PlayerFilter::You, ObjectFilter::land()),
+            vec![Effect::draw(1)],
+            true,
+            Vec::new(),
+            PlayerFilter::You,
+        )
+        .until_end_of_turn();
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("schedule should resolve");
+
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::LandPlayedEvent::new(land_id, alice, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert_eq!(
+            crate::triggers::check_delayed_triggers(&mut game, &event).len(),
+            1,
+            "scheduled land-play trigger should fire for its controller"
+        );
+    }
 }

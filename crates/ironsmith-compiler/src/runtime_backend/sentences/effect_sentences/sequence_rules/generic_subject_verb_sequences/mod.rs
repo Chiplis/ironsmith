@@ -1,5 +1,6 @@
 use super::SentenceInput;
 
+pub(crate) mod exile_permission_followups;
 pub(crate) mod pairs;
 pub(crate) mod quads;
 pub(crate) mod triples;
@@ -13,15 +14,11 @@ use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::dispatch_entry::parse_consult_traversal_sentence;
-use crate::runtime_backend::front_end::lexer::{
-    LexedClause, word_slice_contains_all_words, word_slice_contains_any_word,
-    word_slice_contains_phrase, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_starts_with,
-};
+use crate::runtime_backend::grammar::effects::generic_sequence_shapes as sequence_grammar;
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::util::{
     helper_tag_for_tokens, mana_pips_from_token, non_article_token_word_refs,
-    token_index_for_word_index, trim_commas,
+    token_boundary_for_word, trim_commas,
 };
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
@@ -62,120 +59,6 @@ impl GenericSubjectVerbSequence {
     }
 }
 
-const FLASHBACK_UNTIL_END_TAIL: &[&str] = &["flashback", "until", "end", "of", "turn"];
-const FLASHBACK_COST_FOLLOWUPS: &[&[&str]] = &[
-    &[
-        "the",
-        "flashback",
-        "cost",
-        "is",
-        "equal",
-        "to",
-        "its",
-        "mana",
-        "cost",
-    ],
-    &[
-        "that",
-        "cards",
-        "flashback",
-        "cost",
-        "is",
-        "equal",
-        "to",
-        "its",
-        "mana",
-        "cost",
-    ],
-];
-
-const EXILE_TOP_CARD_OF_LIBRARY: &[&str] = &["exile", "top", "card", "of", "your", "library"];
-const ITERATIVE_LIBRARY_MAY_KEEP_UNLESS_DUPLICATE_NAME_CLAUSES: &[&[&str]] = &[
-    &[
-        "you", "may", "put", "that", "card", "into", "your", "hand", "unless", "it", "has", "same",
-        "name", "as", "another", "card", "exiled", "this", "way",
-    ],
-    &[
-        "you", "may", "put", "it", "into", "your", "hand", "unless", "it", "has", "same", "name",
-        "as", "another", "card", "exiled", "this", "way",
-    ],
-];
-const ITERATIVE_LIBRARY_REPEAT_UNTIL_KEEP_OR_DUPLICATE: &[&str] = &[
-    "repeat",
-    "this",
-    "process",
-    "until",
-    "you",
-    "put",
-    "card",
-    "into",
-    "your",
-    "hand",
-    "or",
-    "you",
-    "exile",
-    "two",
-    "cards",
-    "with",
-    "same",
-    "name",
-    "whichever",
-    "comes",
-    "first",
-];
-const STARTING_EACH_PLAYER_MAY_PAY_ANY_LIFE: &[&str] = &[
-    "starting", "with", "you", "each", "player", "may", "pay", "any", "amount", "of", "life",
-];
-const REPEAT_UNTIL_NO_ONE_PAYS_LIFE: &[&str] = &[
-    "repeat", "this", "process", "until", "no", "one", "pays", "life",
-];
-const EACH_PLAYER_CREATES_RATS_FOR_LIFE_PAID: &[&str] = &[
-    "each", "player", "creates", "1/1", "black", "rat", "creature", "token", "for", "each", "1",
-    "life", "they", "paid", "this", "way",
-];
-
-const EACH_PLAYER_SHUFFLE_REVEAL_PREFIX: &[&str] = &["each", "player", "shuffles", "all"];
-const EACH_PLAYER_SHUFFLE_REVEAL_REQUIRED_PHRASES: &[&[&str]] = &[
-    &["they", "own", "into", "their", "library"],
-    &[
-        "then", "reveals", "that", "many", "cards", "from", "the", "top", "of", "their", "library",
-    ],
-];
-const EACH_PLAYER_PUT_REVEALED_TYPES_PREFIX: &[&str] = &["each", "player", "puts", "all"];
-const EACH_PLAYER_PUT_REVEALED_TYPES_REQUIRED_PHRASES: &[&[&str]] = &[
-    &["revealed", "this", "way", "onto", "the", "battlefield"],
-    &["then", "does", "the", "same", "for"],
-    &["on", "the", "bottom", "of", "their", "library"],
-];
-
-const PREVENTED_DAMAGE_COUNTER_FOLLOWUP_PREFIX: &[&str] =
-    &["for", "each", "1", "damage", "prevented", "this", "way"];
-const PREVENTED_DAMAGE_COUNTER_FOLLOWUP_WORDS: &[&str] = &["put", "+1/+1", "counter", "on"];
-const SOURCE_TAPPED_DURATION_PHRASE: &[&str] = &["for", "as", "long", "as"];
-const SOURCE_TAPPED_DURATION_WORDS: &[&str] = &["remains", "tapped"];
-const SOURCE_TAPPED_DURATION_SOURCE_WORDS: &[&str] = &[
-    "this",
-    "thiss",
-    "source",
-    "artifact",
-    "creature",
-    "permanent",
-];
-
-fn non_article_tokens_eq(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    word_slice_eq(&non_article_token_word_refs(tokens), expected)
-}
-
-fn non_article_tokens_eq_any(tokens: &[OwnedLexToken], expected: &[&[&str]]) -> bool {
-    word_slice_eq_any(&non_article_token_word_refs(tokens), expected)
-}
-
-fn words_contain_all_phrases(words: &[&str], phrases: &[&[&str]]) -> bool {
-    phrases
-        .iter()
-        .all(|phrase| word_slice_contains_phrase(words, phrase))
-}
-
 fn effect_ast_is_destroy(effect: &EffectAst) -> bool {
     matches!(
         effect,
@@ -183,39 +66,6 @@ fn effect_ast_is_destroy(effect: &EffectAst) -> bool {
             action: SubjectVerbActionAst::Destroy { .. } | SubjectVerbActionAst::DestroyAll { .. },
             ..
         })
-    )
-}
-
-fn strip_and_exiles_that_card_tail(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let tail_start = word_slice_find_phrase_start(&words, &["and", "exiles", "that", "card"])
-        .or_else(|| word_slice_find_phrase_start(&words, &["and", "exile", "that", "card"]))?;
-    let token_idx = token_index_for_word_index(tokens, tail_start)?;
-    Some(trim_commas(&tokens[..token_idx]).to_vec())
-}
-
-fn sentence_puts_exiled_cards_to_battlefield_then_shuffle(tokens: &[OwnedLexToken]) -> bool {
-    let words = non_article_token_word_refs(tokens);
-    word_slice_contains_all_words(
-        &words,
-        &[
-            "players",
-            "put",
-            "exiled",
-            "cards",
-            "battlefield",
-            "shuffle",
-        ],
-    ) || word_slice_contains_all_words(
-        &words,
-        &[
-            "player",
-            "puts",
-            "exiled",
-            "cards",
-            "battlefield",
-            "shuffle",
-        ],
     )
 }
 
@@ -236,20 +86,12 @@ pub(crate) fn parse_destroy_for_each_destroyed_consult_exile_put_shuffle(
         return Ok(None);
     }
 
-    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    let Some((prefix_clause, consult_clause)) = second_clause.split_once_on_comma() else {
+    let Some(loop_shape) =
+        sequence_grammar::parse_destroy_consult_loop_shape(sentences[sentence_idx + 1].lowered())
+    else {
         return Ok(None);
     };
-    let prefix_words = non_article_token_word_refs(prefix_clause.tokens());
-    if !word_slice_starts_with(&prefix_words, &["for", "each"])
-        || !word_slice_contains_phrase(&prefix_words, &["destroyed", "this", "way"])
-    {
-        return Ok(None);
-    }
-    let Some(consult_tokens) = strip_and_exiles_that_card_tail(consult_clause.tokens()) else {
-        return Ok(None);
-    };
-    let Some(parts) = parse_consult_traversal_sentence(&consult_tokens)? else {
+    let Some(parts) = parse_consult_traversal_sentence(loop_shape.consult_tokens)? else {
         return Ok(None);
     };
     if !matches!(
@@ -263,7 +105,7 @@ pub(crate) fn parse_destroy_for_each_destroyed_consult_exile_put_shuffle(
     }
 
     let third_tokens = sentences[sentence_idx + 2].lowered();
-    if !sentence_puts_exiled_cards_to_battlefield_then_shuffle(third_tokens) {
+    if !sequence_grammar::parse_put_exiled_then_shuffle_shape(third_tokens) {
         return Ok(None);
     }
 
@@ -304,30 +146,13 @@ pub(crate) fn parse_parameterized_flashback_grant_sequence(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let _shape = GenericSubjectVerbSequence::parameterized_flashback_grant();
-    let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    let Some(gain_idx) = first_clause.find_word_any(&["gain", "gains"]) else {
+    let Some(shape) = sequence_grammar::parse_flashback_grant_shape(
+        sentences[sentence_idx].lowered(),
+        sentences[sentence_idx + 1].lowered(),
+    ) else {
         return Ok(None);
     };
-    let Some(flashback_tail) = first_clause.from_word(gain_idx + 1) else {
-        return Ok(None);
-    };
-    if !word_slice_eq(&flashback_tail.word_refs(), FLASHBACK_UNTIL_END_TAIL) {
-        return Ok(None);
-    }
-
-    let target_clause = first_clause
-        .before_word(gain_idx)
-        .unwrap_or_else(|| first_clause.before(0))
-        .trimmed();
-    if target_clause.is_empty() {
-        return Ok(None);
-    }
-    let target = effect_sentences::parse_target_phrase(target_clause.tokens())?;
-
-    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    if !word_slice_eq_any(&second_clause.word_refs(), FLASHBACK_COST_FOLLOWUPS) {
-        return Ok(None);
-    }
+    let target = effect_sentences::parse_target_phrase(shape.target_tokens)?;
 
     Ok(Some(vec![EffectAst::subject_verb_grant_to_target(
         target,
@@ -365,23 +190,10 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let _shape = GenericSubjectVerbSequence::iterative_library_procedure();
-    let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    if !non_article_tokens_eq(first_clause.tokens(), EXILE_TOP_CARD_OF_LIBRARY) {
-        return Ok(None);
-    }
-
-    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    if !non_article_tokens_eq_any(
-        second_clause.tokens(),
-        ITERATIVE_LIBRARY_MAY_KEEP_UNLESS_DUPLICATE_NAME_CLAUSES,
-    ) {
-        return Ok(None);
-    }
-
-    let third_clause = LexedClause::new(sentences[sentence_idx + 2].lowered()).trimmed();
-    if !non_article_tokens_eq(
-        third_clause.tokens(),
-        ITERATIVE_LIBRARY_REPEAT_UNTIL_KEEP_OR_DUPLICATE,
+    if !sequence_grammar::parse_iterative_library_sequence_shape(
+        sentences[sentence_idx].lowered(),
+        sentences[sentence_idx + 1].lowered(),
+        sentences[sentence_idx + 2].lowered(),
     ) {
         return Ok(None);
     }
@@ -426,20 +238,10 @@ pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    if !non_article_tokens_eq(first_clause.tokens(), STARTING_EACH_PLAYER_MAY_PAY_ANY_LIFE) {
-        return Ok(None);
-    }
-
-    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    if !non_article_tokens_eq(second_clause.tokens(), REPEAT_UNTIL_NO_ONE_PAYS_LIFE) {
-        return Ok(None);
-    }
-
-    let third_clause = LexedClause::new(sentences[sentence_idx + 2].lowered()).trimmed();
-    if !non_article_tokens_eq(
-        third_clause.tokens(),
-        EACH_PLAYER_CREATES_RATS_FOR_LIFE_PAID,
+    if !sequence_grammar::parse_each_player_pay_life_sequence_shape(
+        sentences[sentence_idx].lowered(),
+        sentences[sentence_idx + 1].lowered(),
+        sentences[sentence_idx + 2].lowered(),
     ) {
         return Ok(None);
     }
@@ -458,6 +260,10 @@ pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
                 PlayerAst::That,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "1/1 black Rat creature".to_string(),
+                    definition: crate::runtime_backend::grammar::token_definitions::parse_token_definition_shape_text(
+                        "1/1 black Rat creature",
+                    )
+                    .expect("closed-form Rat token definition must remain parseable"),
                     count: Value::PendingEffectMetric {
                         source: ironsmith_core::EffectMetricSource::Outcome,
                         metric: ironsmith_core::EffectMetric::Count,
@@ -483,58 +289,22 @@ pub(crate) fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    let first_words = first_clause.word_refs();
-    if !word_slice_starts_with(&first_words, EACH_PLAYER_SHUFFLE_REVEAL_PREFIX)
-        || !words_contain_all_phrases(&first_words, EACH_PLAYER_SHUFFLE_REVEAL_REQUIRED_PHRASES)
-    {
-        return Ok(None);
-    }
-
-    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    let second_words = second_clause.word_refs();
-    if !word_slice_starts_with(&second_words, EACH_PLAYER_PUT_REVEALED_TYPES_PREFIX)
-        || !words_contain_all_phrases(
-            &second_words,
-            EACH_PLAYER_PUT_REVEALED_TYPES_REQUIRED_PHRASES,
-        )
-    {
-        return Ok(None);
-    }
-
-    let Some(revealed_idx) = second_clause.find_phrase_start(&["revealed", "this", "way"]) else {
+    let Some(shape) = sequence_grammar::parse_each_player_reveal_types_shape(
+        sentences[sentence_idx].lowered(),
+        sentences[sentence_idx + 1].lowered(),
+    ) else {
         return Ok(None);
     };
-    let second_tokens = second_clause.tokens();
-    let Some(filter_start) = second_clause.token_index_for_word_index(3) else {
-        return Ok(None);
-    };
-    let Some(filter_end) = second_clause.token_index_for_word_index(revealed_idx) else {
-        return Ok(None);
-    };
-    let mut battlefield_filter =
-        parse_object_filter_lexed(&second_tokens[filter_start..filter_end], false)?;
+    let mut battlefield_filter = parse_object_filter_lexed(shape.battlefield_filter_tokens, false)?;
     battlefield_filter.zone = None;
 
-    if let Some(same_for_idx) = second_clause.find_phrase_start(&["same", "for"]) {
-        let extra_start_word = same_for_idx + 2;
-        let extra_end_word = second_clause
-            .after_words(extra_start_word)
-            .and_then(|tail| tail.find_phrase_start(&["then"]))
-            .map(|offset| extra_start_word + offset)
-            .unwrap_or(second_clause.word_len());
-        if extra_end_word > extra_start_word
-            && let Some(extra_start) = second_clause.token_index_for_word_index(extra_start_word)
-            && let Some(extra_end) = second_clause.token_index_for_word_index(extra_end_word)
-        {
-            let extra_filter =
-                parse_object_filter_lexed(&second_tokens[extra_start..extra_end], false)?;
-            for card_type in extra_filter.card_types {
-                crate::slice_primitives::push_unique(&mut battlefield_filter.card_types, card_type);
-            }
-            for subtype in extra_filter.subtypes {
-                crate::slice_primitives::push_unique(&mut battlefield_filter.subtypes, subtype);
-            }
+    if let Some(extra_tokens) = shape.extra_filter_tokens {
+        let extra_filter = parse_object_filter_lexed(extra_tokens, false)?;
+        for card_type in extra_filter.card_types {
+            crate::slice_primitives::push_unique(&mut battlefield_filter.card_types, card_type);
+        }
+        for subtype in extra_filter.subtypes {
+            crate::slice_primitives::push_unique(&mut battlefield_filter.subtypes, subtype);
         }
     }
 
@@ -625,23 +395,9 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
         _ => return Ok(None),
     };
 
-    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    let second_words = non_article_token_word_refs(second_clause.tokens());
-    if !word_slice_starts_with(&second_words, PREVENTED_DAMAGE_COUNTER_FOLLOWUP_PREFIX)
-        || !word_slice_contains_all_words(&second_words, PREVENTED_DAMAGE_COUNTER_FOLLOWUP_WORDS)
-    {
-        return Ok(None);
-    }
-
-    let Some(on_idx) = second_words.iter().position(|word| *word == "on") else {
-        return Ok(None);
-    };
-    let target_words = &second_words[on_idx + 1..];
-    let valid_target_tail = matches!(
-        target_words,
-        ["that", "creature"] | ["it"] | ["that", "permanent"] | ["that", "object"]
-    );
-    if !valid_target_tail {
+    if !sequence_grammar::parse_prevention_counter_followup_shape(
+        sentences[sentence_idx + 1].lowered(),
+    ) {
         return Ok(None);
     }
 
@@ -687,24 +443,9 @@ pub(crate) fn parse_damage_prevention_reflect_to_any_target_sequence(
         return Ok(None);
     };
 
-    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    let second_words = second_clause.word_refs();
-    let prefix = ["if", "damage", "is", "prevented", "this", "way"];
-    if !second_words.starts_with(&prefix) {
-        return Ok(None);
-    }
-    let Some(deals_idx) = second_words
-        .iter()
-        .position(|word| matches!(*word, "deal" | "deals"))
-    else {
-        return Ok(None);
-    };
-    if deals_idx <= prefix.len() {
-        return Ok(None);
-    }
-    if second_words.get(deals_idx + 1..)
-        != Some(&["that", "much", "damage", "to", "any", "target"][..])
-    {
+    if !sequence_grammar::parse_prevention_reflect_followup_shape(
+        sentences[sentence_idx + 1].lowered(),
+    ) {
         return Ok(None);
     }
 
@@ -805,19 +546,9 @@ pub(crate) fn parse_next_damage_prevention_exile_top_sequence(
         return Ok(None);
     }
 
-    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    let second_words = second_clause.word_refs();
-    let starts_with_exile_cards_from_top =
-        word_slice_starts_with(
-            &second_words,
-            &["exile", "cards", "from", "the", "top", "of"],
-        ) || word_slice_starts_with(&second_words, &["exile", "cards", "from", "top", "of"]);
-    if !starts_with_exile_cards_from_top
-        || !word_slice_contains_phrase(
-            &second_words,
-            &["equal", "to", "the", "damage", "prevented", "this", "way"],
-        )
-    {
+    if !sequence_grammar::parse_prevention_exile_top_followup_shape(
+        sentences[sentence_idx + 1].lowered(),
+    ) {
         return Ok(None);
     }
 
@@ -829,13 +560,6 @@ pub(crate) fn parse_next_damage_prevention_exile_top_sequence(
     ));
     Ok(Some(first_effects))
 }
-
-const THEY_DONT_UNTAP_DURING_PREFIXES: &[&[&str]] = &[
-    &["they", "dont", "untap", "during"],
-    &["they", "don't", "untap", "during"],
-    &["those", "permanents", "dont", "untap", "during"],
-    &["those", "permanents", "don't", "untap", "during"],
-];
 
 pub(crate) fn parse_tap_lock_sequence(
     sentences: &[SentenceInput],
@@ -856,27 +580,17 @@ pub(crate) fn parse_tap_lock_sequence(
         return Ok(None);
     };
 
-    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    let second_tokens = second_clause.tokens();
-    let starts_with_supported_pronoun_clause =
-        second_clause.starts_with_any(THEY_DONT_UNTAP_DURING_PREFIXES);
-    let second_words = second_clause.word_refs();
-    let has_source_tapped_duration =
-        word_slice_contains_phrase(&second_words, SOURCE_TAPPED_DURATION_PHRASE)
-            && word_slice_contains_all_words(&second_words, SOURCE_TAPPED_DURATION_WORDS)
-            && word_slice_contains_any_word(&second_words, SOURCE_TAPPED_DURATION_SOURCE_WORDS);
-    if !starts_with_supported_pronoun_clause || !has_source_tapped_duration {
+    let second_tokens = sentences[sentence_idx + 1].lowered();
+    if !sequence_grammar::parse_source_tapped_lock_shape(second_tokens) {
         return Ok(None);
     }
 
     let Some((duration, clause_tokens)) =
-        effect_sentences::parse_restriction_duration(&second_tokens)?
+        effect_sentences::parse_restriction_duration(second_tokens)?
     else {
         return Ok(None);
     };
-    let valid_untap_clause =
-        LexedClause::new(&clause_tokens).starts_with_any(THEY_DONT_UNTAP_DURING_PREFIXES);
-    if !valid_untap_clause {
+    if !sequence_grammar::parse_untap_clause_prefix_shape(&clause_tokens) {
         return Ok(None);
     }
 
@@ -902,70 +616,12 @@ pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
         return Ok(None);
     }
 
-    let upkeep_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    let pay_idx = if upkeep_clause.starts_with_any(&[
-        &[
-            "at",
-            "the",
-            "beginning",
-            "of",
-            "your",
-            "next",
-            "upkeep",
-            "pay",
-        ],
-        &[
-            "at",
-            "the",
-            "beginning",
-            "of",
-            "the",
-            "next",
-            "upkeep",
-            "pay",
-        ],
-    ]) {
-        7usize
-    } else {
+    let Some(shape) = sequence_grammar::parse_delayed_upkeep_payment_shape(
+        sentences[sentence_idx + 1].lowered(),
+        sentences[sentence_idx + 2].lowered(),
+    ) else {
         return Ok(None);
     };
-    let Some(pay_token_idx) = upkeep_clause.token_index_for_word_index(pay_idx) else {
-        return Ok(None);
-    };
-    let mana_clause = upkeep_clause.from(pay_token_idx + 1).trimmed();
-    let mana_tokens = mana_clause.tokens();
-    if mana_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let mut mana = Vec::<ManaSymbol>::new();
-    for token in mana_tokens {
-        if let Some(pips) = mana_pips_from_token(&token) {
-            mana.extend(pips);
-            continue;
-        }
-        let Some(word) = token.as_word() else {
-            continue;
-        };
-        if let Ok(generic) = word.parse::<u8>() {
-            mana.push(ManaSymbol::Generic(generic));
-            continue;
-        }
-        return Ok(None);
-    }
-    if mana.is_empty() {
-        return Ok(None);
-    }
-
-    let lose_clause = LexedClause::new(sentences[sentence_idx + 2].lowered()).trimmed();
-    let valid_lose_clause = lose_clause.matches_any_words(&[
-        &["if", "you", "dont", "you", "lose", "the", "game"],
-        &["if", "you", "don't", "you", "lose", "the", "game"],
-        &["if", "you", "do", "not", "you", "lose", "the", "game"],
-    ]);
-    if !valid_lose_clause {
-        return Ok(None);
-    }
 
     let mut effects = first_effects;
     effects.push(EffectAst::DelayedUntilNextUpkeep {
@@ -973,7 +629,7 @@ pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
         effects: vec![EffectAst::UnlessPays {
             effects: vec![EffectAst::subject_verb_lose_game(PlayerAst::You)],
             player: PlayerAst::You,
-            cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
+            cost: crate::cost::TotalCost::mana(shape.mana),
         }],
     });
     Ok(Some(effects))

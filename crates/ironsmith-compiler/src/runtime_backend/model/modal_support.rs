@@ -19,8 +19,8 @@ use super::grammar::structure::{
 use super::keyword_static::parse_value_binding_clause_lexed;
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{
-    OwnedLexToken, TokenKind, contains_token_word, find_token_any_word, lex_line,
-    render_token_slice, trim_lexed_commas,
+    OwnedLexToken, TokenKind, contains_token_word, find_token_any_word, render_token_slice,
+    trim_lexed_commas,
 };
 use super::modal_helpers::{replace_unbound_x_with_value, value_contains_unbound_x};
 
@@ -28,7 +28,7 @@ type ModalHeader = ParsedModalHeader;
 type ModalActivatedHeader = ParsedModalActivatedHeader;
 type ModalGate = ParsedModalGate;
 
-fn find_token_index(
+fn locate_token_index(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
 ) -> Option<usize> {
@@ -55,10 +55,12 @@ fn strip_leading_sign(text: &str) -> Option<&str> {
     None
 }
 
-pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextError> {
-    let tokens = lex_line(&info.normalized.normalized, info.line_index)?;
+pub(crate) fn parse_modal_header(
+    info: &LineInfo,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ModalHeader>, CardTextError> {
     let Some(choose_spec) = grammar::parse_all_with_display_line(
-        &tokens,
+        tokens,
         parse_modal_header_choose_spec,
         "modal-header",
         info.display_line_index,
@@ -66,7 +68,7 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
     else {
         return Ok(None);
     };
-    let modal_flags = scan_modal_header_flags(&tokens);
+    let modal_flags = scan_modal_header_flags(tokens);
     let choose_idx = choose_spec.choose_idx;
     let min = choose_spec.min;
     let max = choose_spec.max;
@@ -78,7 +80,7 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
         parse_x_is_value_clause(trim_lexed_commas(&tokens[x_clause_start..]))
     });
     let mut effect_start_idx = 0usize;
-    if let Some(colon_idx) = find_token_index(&tokens, |token| token.kind == TokenKind::Colon)
+    if let Some(colon_idx) = locate_token_index(tokens, |token| token.kind == TokenKind::Colon)
         .filter(|idx| *idx < choose_idx)
     {
         let cost_tokens = &tokens[..colon_idx];
@@ -126,7 +128,7 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
     }
 
     if activated.is_none()
-        && let Some(comma_idx) = find_token_index(&tokens, |token| token.kind == TokenKind::Comma)
+        && let Some(comma_idx) = locate_token_index(tokens, |token| token.kind == TokenKind::Comma)
         && choose_idx > comma_idx
     {
         let start_idx = if tokens.first().is_some_and(|token| {
@@ -151,6 +153,8 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
     Ok(Some(ModalHeader {
         min,
         max,
+        weighted_mode_points: super::grammar::modal::parse_modal_point_header_tokens(tokens)
+            .is_some(),
         random,
         same_mode_more_than_once: modal_flags.same_mode_more_than_once,
         mode_must_be_unchosen: modal_flags.mode_must_be_unchosen,
@@ -561,6 +565,9 @@ fn parse_modal_header_prefix_effects(
                 IfResultPredicate::SearchedLibrary => EffectPredicate::SearchedLibrary,
                 IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
                 IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
+                IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
+                    EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
+                }
                 IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
                 IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),
             };

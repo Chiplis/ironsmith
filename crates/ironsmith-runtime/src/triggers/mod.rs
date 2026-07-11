@@ -59,6 +59,7 @@ pub mod tokens;
 pub mod zone_changes;
 
 // Re-export core types
+pub(crate) use check::check_triggers_batch;
 pub use check::{
     ActiveStateTriggerKey, DelayedTrigger, TriggerIdentity, TriggerQueue, TriggeredAbilityEntry,
     TriggeredAbilitySourceKind, check_delayed_triggers, check_state_triggers, check_triggers,
@@ -234,6 +235,10 @@ impl Trigger {
 
     pub(crate) fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
         self.matcher.subscribed_kinds()
+    }
+
+    pub(crate) fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
+        self.matcher.source_must_match_event_object(event_kind)
     }
 
     /// Get the display text for this trigger.
@@ -706,7 +711,23 @@ impl Trigger {
 
     /// Create a "when [source-filter] deals damage to [target-filter]" trigger.
     pub fn deals_damage_to(source_filter: ObjectFilter, target_filter: ObjectFilter) -> Self {
-        Self::new(DealsDamageToTrigger::new(source_filter, target_filter))
+        Self::deals_damage_to_with_source_surface(
+            source_filter,
+            target_filter,
+            ironsmith_core::trigger_model::DamageSourceSurface::Filter,
+        )
+    }
+
+    pub fn deals_damage_to_with_source_surface(
+        source_filter: ObjectFilter,
+        target_filter: ObjectFilter,
+        source_surface: ironsmith_core::trigger_model::DamageSourceSurface,
+    ) -> Self {
+        Self::new(DealsDamageToTrigger::with_source_surface(
+            source_filter,
+            target_filter,
+            source_surface,
+        ))
     }
 
     /// Create a "when [filter] deals noncombat damage to [player]" trigger.
@@ -714,9 +735,22 @@ impl Trigger {
         filter: ObjectFilter,
         damaged_player: PlayerFilter,
     ) -> Self {
+        Self::deals_noncombat_damage_to_player_with_source_surface(
+            filter,
+            damaged_player,
+            ironsmith_core::trigger_model::DamageSourceSurface::Filter,
+        )
+    }
+
+    pub fn deals_noncombat_damage_to_player_with_source_surface(
+        filter: ObjectFilter,
+        damaged_player: PlayerFilter,
+        source_surface: ironsmith_core::trigger_model::DamageSourceSurface,
+    ) -> Self {
         Self::new(DealsDamageTrigger::noncombat_to_player(
             filter,
             damaged_player,
+            source_surface,
         ))
     }
 

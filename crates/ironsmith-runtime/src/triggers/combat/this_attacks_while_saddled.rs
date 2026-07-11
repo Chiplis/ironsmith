@@ -20,6 +20,14 @@ impl TriggerMatcher for ThisAttacksWhileSaddledTrigger {
         e.attacker == ctx.source_id && ctx.game.is_saddled(ctx.source_id)
     }
 
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::CreatureAttacked])
+    }
+
+    fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
+        event_kind == EventKind::CreatureAttacked
+    }
+
     fn display(&self) -> String {
         "Whenever this creature attacks while saddled".to_string()
     }

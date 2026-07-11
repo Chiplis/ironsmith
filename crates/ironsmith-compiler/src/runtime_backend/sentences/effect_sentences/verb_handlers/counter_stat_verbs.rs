@@ -1,7 +1,8 @@
+use crate::runtime_backend::grammar::effects::counter_stat_shapes as counter_grammar;
+
 const COUNTER_TARGET_WORDS: &[&str] = &["target", "targets"];
 const COUNTER_FROM_WORD: &str = "from";
 const COUNTER_AND_OR_WORDS: &[&str] = &["and", "or"];
-const COUNTER_FOR_EACH_PREFIX: &[&str] = &["for", "each"];
 const COUNTER_YOU_CONTROL_PREFIXES: &[&[&str]] = &[&["you", "control"], &["you", "controls"]];
 const COUNTER_YOU_DONT_CONTROL_PREFIXES: &[&[&str]] = &[
     &["you", "dont", "control"],
@@ -34,44 +35,6 @@ const COUNTER_NONCREATURE_SPELL_PREFIX: &[&str] = &["noncreature", "spell"];
 const COUNTER_COLORLESS_SPELL_PREFIX: &[&str] = &["colorless", "spell"];
 const COUNTER_ARTICLE_WORDS: &[&str] = &["a", "an", "the"];
 const COUNTER_SOURCE_OR_SOURCES_WORDS: &[&str] = &["source", "sources"];
-const COUNTER_PLUS_WORD: &str = "plus";
-const COUNTER_ADDITIONAL_WORD: &str = "additional";
-const COUNTERS_ON_SOURCE_REFERENCE_PHRASES: &[&[&str]] = &[
-    &["it"],
-    &["this"],
-    &["this", "artifact"],
-    &["this", "aura"],
-    &["this", "battle"],
-    &["this", "card"],
-    &["this", "creature"],
-    &["this", "enchantment"],
-    &["this", "land"],
-    &["this", "permanent"],
-    &["this", "planeswalker"],
-    &["this", "source"],
-];
-const COUNTERS_ON_TAGGED_REFERENCE_PHRASES: &[&[&str]] = &[
-    &["that"],
-    &["that", "creature"],
-    &["that", "permanent"],
-    &["that", "object"],
-    &["those"],
-    &["those", "creatures"],
-    &["those", "permanents"],
-];
-const REVEAL_TAGGED_REFERENCE_PHRASES: &[&[&str]] = &[
-    &["it"],
-    &["them"],
-    &["that"],
-    &["that", "card"],
-    &["those", "cards"],
-    &["those"],
-    &["this", "card"],
-    &["this"],
-];
-const REVEAL_IT_REFERENCE_PHRASES: &[&[&str]] = &[&["it"]];
-const REVEAL_HAND_OWNER_PHRASES: &[&[&str]] = &[&["your"], &["their"], &["his", "or", "her"]];
-const REVEAL_HAND_ZONE_WORDS: &[&str] = &["hand"];
 const PARTY_SIZE_EQUAL_TO_PREFIX: &[&str] = &[
     "equal",
     "to",
@@ -83,40 +46,14 @@ const PARTY_SIZE_EQUAL_TO_PREFIX: &[&str] = &[
     "your",
     "party",
 ];
-const EXPLICIT_TOP_CARD_PHRASES: &[&[&str]] = &[&["top", "card"], &["the", "top", "card"]];
 const THAT_MANY_TOP_CARDS_PREFIXES: &[&[&str]] = &[
     &["that", "many", "cards", "from", "the", "top", "of"],
     &["that", "many", "cards", "from", "top", "of"],
 ];
 const TOP_THE_TOP_PREFIXES: &[&[&str]] = &[&["the", "top"], &["top"]];
-const TOP_LIBRARY_OWNER_PHRASES: &[&[&str]] = &[&["your"], &["their"]];
 const TOP_LIBRARY_ZONE_WORDS: &[&str] = &["library", "libraries"];
 const WHERE_X_IS_PREFIX: &[&str] = &["where", "x", "is"];
-const NUMBER_OF_PREFIX: &[&str] = &["number", "of"];
-const THIS_WAY_PHRASE: &[&str] = &["this", "way"];
-const CHOSEN_WORD: &str = "chosen";
-const REVEAL_FROM_AMONG_WORDS: &[&str] = &["from", "among"];
-const REVEAL_FROM_AMONG_REFERENCES: &[&str] = &["them", "those"];
-const REVEAL_FULL_HAND_PHRASES: &[&[&str]] = &[
-    &["your", "hand"],
-    &["their", "hand"],
-    &["his", "or", "her", "hand"],
-];
-const TOP_LIBRARY_TAIL_PREFIXES: &[&[&str]] = &[
-    &["card", "of", "your", "library"],
-    &["card", "of", "your", "libraries"],
-    &["card", "of", "their", "library"],
-    &["card", "of", "their", "libraries"],
-    &["cards", "of", "your", "library"],
-    &["cards", "of", "your", "libraries"],
-    &["cards", "of", "their", "library"],
-    &["cards", "of", "their", "libraries"],
-];
-const REVEAL_OUTSIDE_GAME_PHRASE: &[&str] = &["outside", "game"];
-const REVEAL_FIRST_CARD_YOU_DRAW_PREFIX: &[&str] = &["the", "first", "card", "you", "draw"];
 const REVEAL_CARD_WORDS: &[&str] = &["card", "cards"];
-const IF_WORD: &str = "if";
-const IF_PHRASE: &[&str] = &["if"];
 const REVEAL_HAND_WORD: &str = "hand";
 const REVEAL_CARDS_WORD: &str = "cards";
 const REVEAL_HAND_WORDS: &[&str] = &[REVEAL_HAND_WORD];
@@ -127,270 +64,22 @@ const EQUAL_TO_PREFIX: &[&str] = &["equal", "to"];
 const FOR_EACH_PREFIX: &[&str] = &["for", "each"];
 const LIFE_EQUAL_TO_PREFIX: &[&str] = &["life", "equal", "to"];
 const THE_WORD: &str = "the";
-const HALF_WORD: &str = "half";
 const LIFE_WORD: &str = "life";
-const LOST_WORD: &str = "lost";
-const ROUNDED_DOWN_PHRASE: &[&str] = &["rounded", "down"];
-const REVEAL_HAND_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "zone",
-    LexCaptureKind::OneOf(REVEAL_HAND_WORDS),
-)]);
-const REVEAL_CARDS_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "card",
-    LexCaptureKind::OneOf(REVEAL_CARDS_WORDS),
-)]);
-const WHERE_X_IS_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::amount(
-    "where_x",
-    LexCaptureKind::OneOfPhrase(&[WHERE_X_IS_PREFIX]),
-)]);
-const COUNTERS_ON_SOURCE_REFERENCE_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "reference",
-        LexCaptureKind::OneOfPhrase(COUNTERS_ON_SOURCE_REFERENCE_PHRASES),
-    )]);
-const COUNTERS_ON_TAGGED_REFERENCE_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "reference",
-        LexCaptureKind::OneOfPhrase(COUNTERS_ON_TAGGED_REFERENCE_PHRASES),
-    )]);
 
-fn counter_words_start_with_any_at(words: &[&str], idx: usize, prefixes: &[&[&str]]) -> bool {
-    let Some(tail) = words.get(idx..) else {
-        return false;
-    };
-    let atoms = [LexPattern::modifier(
-        "prefix",
-        LexCaptureKind::OneOfPhrase(prefixes),
-    )];
-    LexPattern::new(&atoms)
-        .match_prefix_word_refs(tail)
-        .and_then(|matched| matched.capture_word_range("prefix"))
-        .is_some()
+fn counter_prefix_at(words: &[&str], idx: usize, prefixes: &[&[&str]]) -> bool {
+    counter_grammar::parse_prefix_at(words, idx, prefixes).is_some()
 }
 
-fn counter_words_start_with_any(words: &[&str], prefixes: &[&[&str]]) -> Option<usize> {
-    let atoms = [LexPattern::modifier(
-        "prefix",
-        LexCaptureKind::OneOfPhrase(prefixes),
-    )];
-    LexPattern::new(&atoms)
-        .match_prefix_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("prefix"))
-        .map(|range| range.end)
+fn counter_token_prefix_at(tokens: &[OwnedLexToken], idx: usize, prefix: &[&str]) -> bool {
+    counter_grammar::parse_token_prefix_at(tokens, idx, prefix).is_some()
 }
 
-fn counter_tokens_start_with_at(tokens: &[OwnedLexToken], idx: usize, prefix: &[&str]) -> bool {
-    crate::runtime_backend::lexer::token_slice_starts_with(&tokens[idx..], prefix)
+fn counter_word_choice(word: &str, choices: &[&str]) -> bool {
+    counter_grammar::parse_word(word, choices).is_some()
 }
 
-fn counter_words_contain_any(words: &[&str], choices: &[&str]) -> bool {
-    let atoms = [LexPattern::object("word", LexCaptureKind::OneOf(choices))];
-    LexPattern::new(&atoms)
-        .find_in_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("word"))
-        .is_some()
-}
-
-fn counter_words_contain_all(words: &[&str], required: &[&str]) -> bool {
-    required.iter().all(|word| word_slice_contains_word(words, word))
-}
-
-fn counter_words_find_word_index(words: &[&str], expected: &str) -> Option<usize> {
-    let expected_words = [expected];
-    let atoms = [LexPattern::object(
-        "word",
-        LexCaptureKind::OneOf(&expected_words),
-    )];
-    LexPattern::new(&atoms)
-        .find_in_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("word"))
-        .map(|range| range.start)
-}
-
-fn counter_words_start_with_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    let phrase_choices = [phrase];
-    let atoms = [LexPattern::modifier(
-        "prefix",
-        LexCaptureKind::OneOfPhrase(&phrase_choices),
-    )];
-    LexPattern::new(&atoms)
-        .match_prefix_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("prefix"))
-        .is_some()
-}
-
-
-fn counter_words_exact_pattern_matches(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> bool {
-    pattern
-        .match_word_refs(words)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .is_some()
-}
-
-fn counter_words_contain_pattern(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> bool {
-    pattern
-        .find_in_word_refs(words)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .is_some()
-}
-
-fn counter_words_find_pattern_start(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> Option<usize> {
-    pattern
-        .find_in_word_refs(words)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .map(|range| range.start)
-}
-
-const REVEAL_TAGGED_REFERENCE_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "reference",
-        LexCaptureKind::OneOfPhrase(REVEAL_TAGGED_REFERENCE_PHRASES),
-    )]);
-const REVEAL_OUTSIDE_GAME_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(REVEAL_OUTSIDE_GAME_PHRASE)]);
-const REVEAL_FIRST_CARD_YOU_DRAW_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(REVEAL_FIRST_CARD_YOU_DRAW_PREFIX)]);
-const REVEAL_CARD_THIS_WAY_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object("card", LexCaptureKind::OneOf(REVEAL_CARD_WORDS)),
-    LexPattern::tail("between", LexCaptureKind::UntilPhrase(THIS_WAY_PHRASE)),
-    LexPattern::phrase(THIS_WAY_PHRASE),
-]);
-const REVEAL_CONDITIONAL_IT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object(
-        "reference",
-        LexCaptureKind::OneOfPhrase(REVEAL_IT_REFERENCE_PHRASES),
-    ),
-    LexPattern::tail("condition", LexCaptureKind::UntilPhrase(IF_PHRASE)),
-    LexPattern::word(IF_WORD),
-]);
-const REVEAL_HAND_SOURCE_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::word(COUNTER_FROM_WORD),
-    LexPattern::subject(
-        "owner",
-        LexCaptureKind::OneOfPhrase(REVEAL_HAND_OWNER_PHRASES),
-    ),
-    LexPattern::object("zone", LexCaptureKind::OneOf(REVEAL_HAND_ZONE_WORDS)),
-]);
-const REVEAL_FROM_PREPOSITION_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::word(COUNTER_FROM_WORD)]);
-const REVEAL_TOP_LIBRARY_SOURCE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::modifier("top", LexCaptureKind::OneOfPhrase(TOP_THE_TOP_PREFIXES)),
-    LexPattern::object("card", LexCaptureKind::OneOf(REVEAL_CARD_WORDS)),
-    LexPattern::word("of"),
-    LexPattern::subject(
-        "owner",
-        LexCaptureKind::OneOfPhrase(TOP_LIBRARY_OWNER_PHRASES),
-    ),
-    LexPattern::object("zone", LexCaptureKind::OneOf(TOP_LIBRARY_ZONE_WORDS)),
-]);
-
-fn reveal_tagged_reference_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    REVEAL_TAGGED_REFERENCE_PATTERN
-        .match_word_refs(&words)
-        .and_then(|matched| matched.capture_word_range("reference"))
-        .is_some()
-}
-
-fn reveal_from_among_tagged_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    counter_words_contain_all(&words, REVEAL_FROM_AMONG_WORDS)
-        && counter_words_contain_any(&words, REVEAL_FROM_AMONG_REFERENCES)
-}
-
-fn reveal_outside_game_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    REVEAL_OUTSIDE_GAME_PATTERN.find_in_word_refs(&words).is_some()
-}
-
-fn reveal_first_card_you_draw_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    REVEAL_FIRST_CARD_YOU_DRAW_PATTERN
-        .match_prefix_word_refs(&words)
-        .is_some()
-}
-
-fn reveal_card_this_way_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    REVEAL_CARD_THIS_WAY_PATTERN
-        .find_in_word_refs(&words)
-        .and_then(|matched| {
-            matched
-                .capture_word_range("card")
-                .zip(matched.capture_word_range("between"))
-        })
-        .is_some()
-}
-
-fn reveal_conditional_it_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    REVEAL_CONDITIONAL_IT_PATTERN
-        .match_prefix_word_refs(&words)
-        .and_then(|matched| {
-            matched
-                .capture_word_range("reference")
-                .zip(matched.capture_word_range("condition"))
-        })
-        .is_some()
-}
-
-fn reveal_full_hand_source_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    word_slice_eq_any(&words, REVEAL_FULL_HAND_PHRASES)
-}
-
-fn reveal_hand_source_tail_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    REVEAL_HAND_SOURCE_TAIL_PATTERN
-        .find_in_word_refs(&words)
-        .and_then(|matched| {
-            matched
-                .capture_word_range("owner")
-                .zip(matched.capture_word_range("zone"))
-        })
-        .is_some()
-}
-
-fn reveal_from_preposition_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    REVEAL_FROM_PREPOSITION_PATTERN
-        .find_in_word_refs(&words)
-        .is_some()
-}
-
-fn reveal_explicit_top_card_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    word_slice_eq_any(&words, EXPLICIT_TOP_CARD_PHRASES)
-}
-
-fn reveal_top_library_source_matches(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    REVEAL_TOP_LIBRARY_SOURCE_PATTERN
-        .match_prefix_word_refs(&words)
-        .and_then(|matched| {
-            matched
-                .capture_word_range("top")
-                .zip(matched.capture_word_range("card"))
-                .zip(matched.capture_word_range("zone"))
-        })
-        .is_some()
-}
-
-fn reveal_library_tail_matches(tokens: &[OwnedLexToken]) -> bool {
-    let after_count_words = crate::runtime_backend::token_word_refs(tokens);
-    counter_words_start_with_any(&after_count_words, TOP_LIBRARY_TAIL_PREFIXES).is_some()
+fn counter_has_any_choice(words: &[&str], choices: &[&str]) -> bool {
+    counter_grammar::find_word(words, choices).is_some()
 }
 
 fn generic_mana_amount_from_group(group: &[ManaSymbol]) -> Option<i32> {
@@ -415,8 +104,8 @@ pub(crate) fn parse_counter_target_phrase(
     }
 
     let words = TokenWordView::new(tokens).word_refs();
-    if counter_words_contain_any(&words, COUNTER_ABILITY_MARKER_WORDS)
-        && counter_words_contain_any(&words, COUNTER_ACTIVATED_OR_TRIGGERED_MARKER_WORDS)
+    if counter_has_any_choice(&words, COUNTER_ABILITY_MARKER_WORDS)
+        && counter_has_any_choice(&words, COUNTER_ACTIVATED_OR_TRIGGERED_MARKER_WORDS)
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported counter-ability target clause (clause: '{}')",
@@ -439,19 +128,11 @@ fn parse_counter_ability_target_phrase(
     }
     let clause_words = crate::runtime_backend::token_word_refs(&clause_tokens);
     let is_controller_tail = |idx: usize| {
-        counter_words_start_with_any_at(&clause_words, idx, COUNTER_YOU_CONTROL_PREFIXES)
-            || counter_words_start_with_any_at(
-                &clause_words,
-                idx,
-                COUNTER_YOU_DONT_CONTROL_PREFIXES,
-            )
-            || counter_words_start_with_any_at(
-                &clause_words,
-                idx,
-                COUNTER_OPPONENTS_CONTROL_PREFIXES,
-            )
+        counter_prefix_at(&clause_words, idx, COUNTER_YOU_CONTROL_PREFIXES)
+            || counter_prefix_at(&clause_words, idx, COUNTER_YOU_DONT_CONTROL_PREFIXES)
+            || counter_prefix_at(&clause_words, idx, COUNTER_OPPONENTS_CONTROL_PREFIXES)
     };
-    if !counter_words_contain_any(&clause_words, COUNTER_ABILITY_MARKER_WORDS) {
+    if !counter_has_any_choice(&clause_words, COUNTER_ABILITY_MARKER_WORDS) {
         return Ok(None);
     }
 
@@ -465,14 +146,14 @@ fn parse_counter_ability_target_phrase(
     let explicit_target = clause_tokens.get(idx).is_some_and(|token| {
         token
             .as_word()
-            .is_some_and(|word| COUNTER_TARGET_WORDS.contains(&word))
+            .is_some_and(|word| counter_word_choice(word, COUNTER_TARGET_WORDS))
     });
     if explicit_target {
         idx += 1;
     } else if clause_tokens.get(idx).is_some_and(|token| {
         token
             .as_word()
-            .is_some_and(|word| COUNTER_ALL_OR_EACH_WORDS.contains(&word))
+            .is_some_and(|word| counter_word_choice(word, COUNTER_ALL_OR_EACH_WORDS))
     }) {
         idx += 1;
     } else {
@@ -508,12 +189,12 @@ fn parse_counter_ability_target_phrase(
             idx += 1;
             continue;
         };
-        if COUNTER_AND_OR_WORDS.contains(&word) {
+        if counter_word_choice(word, COUNTER_AND_OR_WORDS) {
             idx += 1;
             continue;
         }
 
-        if counter_tokens_start_with_at(
+        if counter_token_prefix_at(
             &clause_tokens,
             idx,
             COUNTER_ACTIVATED_OR_TRIGGERED_ABILITY_PREFIX,
@@ -529,7 +210,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
-        if counter_tokens_start_with_at(
+        if counter_token_prefix_at(
             &clause_tokens,
             idx,
             COUNTER_TRIGGERED_OR_ACTIVATED_ABILITY_PREFIX,
@@ -545,7 +226,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
-        if counter_tokens_start_with_at(&clause_tokens, idx, COUNTER_ACTIVATED_ABILITY_PREFIX) {
+        if counter_token_prefix_at(&clause_tokens, idx, COUNTER_ACTIVATED_ABILITY_PREFIX) {
             term_filters.push((
                 ObjectFilter::activated_ability(),
                 CounterTargetTerm::Ability,
@@ -554,7 +235,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
-        if counter_tokens_start_with_at(&clause_tokens, idx, COUNTER_TRIGGERED_ABILITY_PREFIX) {
+        if counter_token_prefix_at(&clause_tokens, idx, COUNTER_TRIGGERED_ABILITY_PREFIX) {
             let mut triggered = ObjectFilter::ability();
             triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
             term_filters.push((triggered, CounterTargetTerm::Ability));
@@ -562,7 +243,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
-        if counter_words_start_with_any_at(&clause_words, idx, COUNTER_ABILITY_PREFIXES) {
+        if counter_prefix_at(&clause_words, idx, COUNTER_ABILITY_PREFIXES) {
             term_filters.push((ObjectFilter::ability(), CounterTargetTerm::Ability));
             idx += 1;
             continue;
@@ -574,7 +255,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
-        if counter_tokens_start_with_at(&clause_tokens, idx, COUNTER_INSTANT_SPELL_PREFIX) {
+        if counter_token_prefix_at(&clause_tokens, idx, COUNTER_INSTANT_SPELL_PREFIX) {
             term_filters.push((
                 ObjectFilter::spell().with_type(CardType::Instant),
                 CounterTargetTerm::Spell,
@@ -583,7 +264,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
-        if counter_tokens_start_with_at(&clause_tokens, idx, COUNTER_SORCERY_SPELL_PREFIX) {
+        if counter_token_prefix_at(&clause_tokens, idx, COUNTER_SORCERY_SPELL_PREFIX) {
             term_filters.push((
                 ObjectFilter::spell().with_type(CardType::Sorcery),
                 CounterTargetTerm::Spell,
@@ -592,7 +273,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
-        if counter_tokens_start_with_at(&clause_tokens, idx, COUNTER_LEGENDARY_SPELL_PREFIX) {
+        if counter_token_prefix_at(&clause_tokens, idx, COUNTER_LEGENDARY_SPELL_PREFIX) {
             term_filters.push((
                 ObjectFilter::spell().with_supertype(Supertype::Legendary),
                 CounterTargetTerm::Spell,
@@ -601,7 +282,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
-        if counter_tokens_start_with_at(&clause_tokens, idx, COUNTER_NONCREATURE_SPELL_PREFIX) {
+        if counter_token_prefix_at(&clause_tokens, idx, COUNTER_NONCREATURE_SPELL_PREFIX) {
             let mut filter = ObjectFilter::noncreature_spell().in_zone(Zone::Stack);
             filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
             term_filters.push((filter, CounterTargetTerm::Spell));
@@ -609,7 +290,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
-        if counter_tokens_start_with_at(&clause_tokens, idx, COUNTER_COLORLESS_SPELL_PREFIX) {
+        if counter_token_prefix_at(&clause_tokens, idx, COUNTER_COLORLESS_SPELL_PREFIX) {
             term_filters.push((ObjectFilter::spell().colorless(), CounterTargetTerm::Spell));
             idx += 2;
             continue;
@@ -629,16 +310,16 @@ fn parse_counter_ability_target_phrase(
             idx += 1;
             continue;
         };
-        if COUNTER_AND_OR_WORDS.contains(&word) {
+        if counter_word_choice(word, COUNTER_AND_OR_WORDS) {
             idx += 1;
             continue;
         }
-        if counter_words_start_with_any_at(&clause_words, idx, COUNTER_YOU_CONTROL_PREFIXES) {
+        if counter_prefix_at(&clause_words, idx, COUNTER_YOU_CONTROL_PREFIXES) {
             controller_filter = Some(PlayerFilter::You);
             idx += 2;
             continue;
         }
-        if counter_words_start_with_any_at(&clause_words, idx, COUNTER_YOU_DONT_CONTROL_PREFIXES) {
+        if counter_prefix_at(&clause_words, idx, COUNTER_YOU_DONT_CONTROL_PREFIXES) {
             controller_filter = Some(PlayerFilter::NotYou);
             idx += if clause_tokens
                 .get(idx + 1)
@@ -650,7 +331,7 @@ fn parse_counter_ability_target_phrase(
             };
             continue;
         }
-        if counter_words_start_with_any_at(&clause_words, idx, COUNTER_OPPONENTS_CONTROL_PREFIXES) {
+        if counter_prefix_at(&clause_words, idx, COUNTER_OPPONENTS_CONTROL_PREFIXES) {
             controller_filter = Some(PlayerFilter::Opponent);
             idx += if clause_tokens
                 .get(idx)
@@ -672,7 +353,7 @@ fn parse_counter_ability_target_phrase(
             if clause_tokens.get(idx).is_some_and(|token| {
                 token
                     .as_word()
-                    .is_some_and(|word| COUNTER_ARTICLE_WORDS.contains(&word))
+                    .is_some_and(|word| counter_word_choice(word, COUNTER_ARTICLE_WORDS))
             }) {
                 idx += 1;
             }
@@ -684,17 +365,15 @@ fn parse_counter_ability_target_phrase(
                     idx += 1;
                     continue;
                 };
-                if COUNTER_SOURCE_OR_SOURCES_WORDS.contains(&type_word) {
+                if counter_word_choice(type_word, COUNTER_SOURCE_OR_SOURCES_WORDS) {
                     idx += 1;
                     break;
                 }
-                if COUNTER_AND_OR_WORDS.contains(&type_word) {
+                if counter_word_choice(type_word, COUNTER_AND_OR_WORDS) {
                     idx += 1;
                     continue;
                 }
-                let parsed = parse_card_type(type_word)
-                    .or_else(|| str_strip_suffix(type_word, "s").and_then(parse_card_type));
-                let Some(card_type) = parsed else {
+                let Some(card_type) = counter_grammar::parse_source_card_type(type_word) else {
                     return Ok(None);
                 };
                 source_types.push(card_type);
@@ -774,23 +453,12 @@ pub(crate) fn scale_value_multiplier(value: Value, multiplier: i32) -> Value {
 pub(crate) fn parse_counter_unless_additional_generic_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    if tokens
-        .first()
-        .is_none_or(|token| token.as_word() != Some(COUNTER_PLUS_WORD))
-    {
+    let Some(shape) = counter_grammar::parse_additional_payment_head(tokens) else {
         return Ok(None);
-    }
+    };
 
-    let after_an = 1 + usize::from(token_slice_at_is(tokens, 1, "an"));
-    if !tokens
-        .get(after_an)
-        .is_some_and(|token| token.as_word() == Some(COUNTER_ADDITIONAL_WORD))
-    {
-        return Ok(None);
-    }
-    let idx = after_an + 1;
-
-    let multiplier = if let Some(token) = tokens.get(idx) {
+    let multiplier = {
+        let token = shape.multiplier_token;
         if let Some(group) = mana_pips_from_token(token) {
             generic_mana_amount_from_group(&group).ok_or_else(|| {
                 CardTextError::ParseError(
@@ -813,15 +481,11 @@ pub(crate) fn parse_counter_unless_additional_generic_value(
                 )
             })?
         }
-    } else {
-        return Err(CardTextError::ParseError(
-            "missing additional mana symbol".to_string(),
-        ));
     };
 
-    let filter_tokens = trim_commas(&tokens[idx + 1..]);
+    let filter_tokens = trim_commas(shape.filter_tokens);
     let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
-    if !word_slice_starts_with(&filter_words, FOR_EACH_PREFIX) {
+    if counter_grammar::parse_prefix(&filter_words, &[FOR_EACH_PREFIX]).is_none() {
         return Err(CardTextError::ParseError(format!(
             "unsupported additional counter payment tail (clause: '{}')",
             crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -847,48 +511,36 @@ pub(crate) fn parse_reveal(
     // Many effects split "reveal it/that card/those cards" into a standalone clause.
     // The engine does not model hidden information, so this compiles to a semantic no-op
     // that still allows parsing and auditing to proceed.
-    if reveal_tagged_reference_matches(tokens) {
+    if counter_grammar::parse_reveal_reference(tokens).is_some() {
         return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
-    if reveal_from_among_tagged_matches(tokens) {
-        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
-    }
-    if reveal_outside_game_matches(tokens) {
-        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
-    }
-    if reveal_first_card_you_draw_matches(tokens) {
-        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
-    }
-    if reveal_card_this_way_matches(tokens) {
-        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
-    }
-    if reveal_conditional_it_matches(tokens) {
-        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
-    }
-    if counter_words_contain_pattern(&words, REVEAL_HAND_WORD_PATTERN, "zone") {
-        let is_full_hand_reveal = reveal_full_hand_source_matches(tokens);
+    if counter_grammar::find_word(&words, REVEAL_HAND_WORDS).is_some() {
+        let is_full_hand_reveal = counter_grammar::parse_reveal_full_hand(tokens).is_some();
         if !is_full_hand_reveal {
-            if reveal_from_preposition_matches(tokens) {
-                if let Some(equal_idx) = counter_words_find_word_index(&words, EQUAL_WORD) {
+            if counter_grammar::find_from_preposition(tokens).is_some() {
+                if let Some(equal_idx) = counter_grammar::find_word(&words, &[EQUAL_WORD]) {
                     let tail = &words[equal_idx..];
-                    let equal_token_idx =
-                        token_index_for_word_index(tokens, equal_idx).unwrap_or(equal_idx);
-                    let count_value = if word_slice_starts_with(tail, PARTY_SIZE_EQUAL_TO_PREFIX) {
-                        Some(Value::PartySize(PlayerFilter::You))
-                    } else if let Some(value) =
-                        parse_devotion_value_from_add_clause(&tokens[equal_token_idx..])?
-                    {
-                        Some(value)
-                    } else if let Some(value) =
-                        parse_equal_to_number_of_filter_value(&tokens[equal_token_idx..])
-                    {
-                        Some(value)
-                    } else {
-                        parse_dynamic_cost_modifier_value(&tokens[equal_token_idx..])?
-                    };
+                    let equal_token_idx = counter_grammar::word_token_boundary(tokens, equal_idx)
+                        .unwrap_or(equal_idx);
+                    let count_value =
+                        if counter_grammar::parse_prefix(tail, &[PARTY_SIZE_EQUAL_TO_PREFIX])
+                            .is_some()
+                        {
+                            Some(Value::PartySize(PlayerFilter::You))
+                        } else if let Some(value) =
+                            parse_devotion_value_from_add_clause(&tokens[equal_token_idx..])?
+                        {
+                            Some(value)
+                        } else if let Some(value) =
+                            parse_equal_to_number_of_filter_value(&tokens[equal_token_idx..])
+                        {
+                            Some(value)
+                        } else {
+                            parse_dynamic_cost_modifier_value(&tokens[equal_token_idx..])?
+                        };
                     if let Some(count_value) = count_value
-                        && counter_words_contain_any(&words, REVEAL_CARD_WORDS)
-                        && reveal_hand_source_tail_matches(tokens)
+                        && counter_grammar::find_word(&words, REVEAL_CARD_WORDS).is_some()
+                        && counter_grammar::find_reveal_hand_source(tokens).is_some()
                     {
                         return Ok(EffectAst::subject_verb_reveal_cards_from_hand(
                             player,
@@ -899,8 +551,8 @@ pub(crate) fn parse_reveal(
                     }
                 }
                 if let Some((count, _used)) = parse_number(tokens)
-                    && counter_words_contain_pattern(&words, REVEAL_CARDS_WORD_PATTERN, "card")
-                    && reveal_hand_source_tail_matches(tokens)
+                    && counter_grammar::find_word(&words, REVEAL_CARDS_WORDS).is_some()
+                    && counter_grammar::find_reveal_hand_source(tokens).is_some()
                 {
                     return Ok(EffectAst::subject_verb_reveal_cards_from_hand(
                         player,
@@ -919,18 +571,16 @@ pub(crate) fn parse_reveal(
         return Ok(EffectAst::subject_verb_reveal_hand(player));
     }
 
-    let has_card = words.iter().any(|word| matches!(*word, "card" | "cards"));
-    let has_library = words
-        .iter()
-        .any(|word| matches!(*word, "library" | "libraries"));
-    let top_library_source = reveal_top_library_source_matches(tokens);
-    let explicit_top_card = reveal_explicit_top_card_matches(tokens)
+    let has_card = counter_grammar::find_word(&words, REVEAL_CARD_WORDS).is_some();
+    let has_library = counter_grammar::find_word(&words, TOP_LIBRARY_ZONE_WORDS).is_some();
+    let top_library_source = counter_grammar::parse_top_library_source(tokens).is_some();
+    let explicit_top_card = counter_grammar::parse_explicit_top_card(tokens).is_some()
         || (top_library_source
-            || (counter_words_start_with_any(&words, TOP_THE_TOP_PREFIXES).is_some()
+            || (counter_grammar::parse_prefix(&words, TOP_THE_TOP_PREFIXES).is_some()
                 && has_card
                 && has_library));
     let top_library_reveal = top_library_source
-        || counter_words_start_with_any(&words, TOP_THE_TOP_PREFIXES).is_some_and(|_| has_library);
+        || counter_grammar::parse_prefix(&words, TOP_THE_TOP_PREFIXES).is_some_and(|_| has_library);
 
     if (!has_card && !top_library_reveal)
         || (!has_library && !explicit_top_card && !top_library_reveal)
@@ -941,7 +591,7 @@ pub(crate) fn parse_reveal(
         )));
     }
 
-    if counter_words_start_with_any(&words, THAT_MANY_TOP_CARDS_PREFIXES).is_some() {
+    if counter_grammar::parse_prefix(&words, THAT_MANY_TOP_CARDS_PREFIXES).is_some() {
         return Ok(EffectAst::subject_verb_reveal_top_cards(
             player,
             Value::PendingEffectMetric {
@@ -952,18 +602,20 @@ pub(crate) fn parse_reveal(
         ));
     }
 
-    let top_prefix_len = counter_words_start_with_any(&words, TOP_THE_TOP_PREFIXES);
-    if let Some(prefix_len) = top_prefix_len
-        && let Some(count_token_idx) = token_index_for_word_index(tokens, prefix_len)
+    let top_prefix = counter_grammar::parse_prefix(&words, TOP_THE_TOP_PREFIXES);
+    if let Some(prefix) = top_prefix
+        && let Some(count_token_idx) = counter_grammar::word_token_boundary(tokens, prefix.end)
         && let Some((mut count, used)) = parse_value(&tokens[count_token_idx..])
     {
         let after_count = &tokens[count_token_idx + used..];
-        let top_library_tail = reveal_library_tail_matches(after_count);
+        let top_library_tail = counter_grammar::parse_library_tail(after_count).is_some();
         if top_library_tail {
             if count == Value::X
                 && let Some(where_word_idx) =
-                    counter_words_find_pattern_start(&words, WHERE_X_IS_PATTERN, "where_x")
-                && let Some(where_token_idx) = token_index_for_word_index(tokens, where_word_idx)
+                    counter_grammar::find_phrase(&words, &[WHERE_X_IS_PREFIX])
+                        .map(|shape| shape.start)
+                && let Some(where_token_idx) =
+                    counter_grammar::word_token_boundary(tokens, where_word_idx)
                 && let Some(where_value) =
                     parse_prior_effect_count_binding_clause(&tokens[where_token_idx..])
                         .or_else(|| parse_value_binding_clause(&tokens[where_token_idx..]))
@@ -984,45 +636,7 @@ pub(crate) fn parse_reveal(
 }
 
 fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let tokens = trim_commas(tokens);
-    let word_view = TokenWordView::new(&tokens);
-    let words = word_view.word_refs();
-    if !word_slice_starts_with(&words, WHERE_X_IS_PREFIX) {
-        return None;
-    }
-
-    let mut idx = 3usize;
-    if words.get(idx).copied() == Some(THE_WORD) {
-        idx += 1;
-    }
-    if !word_slice_starts_with(&words[idx..], NUMBER_OF_PREFIX) {
-        return None;
-    }
-
-    let object_words = &words[idx + 2..];
-    let references_this_way = word_slice_contains_phrase(object_words, THIS_WAY_PHRASE);
-    let references_memory_action = object_words.iter().any(|word| {
-        matches!(
-            *word,
-            "chosen"
-                | "destroyed"
-                | "discarded"
-                | "exiled"
-                | "milled"
-                | "revealed"
-                | "sacrificed"
-                | "searched"
-        )
-    });
-    if !references_this_way && !references_memory_action {
-        return None;
-    }
-
-    let source = if word_slice_contains_word(object_words, CHOSEN_WORD) {
-        ironsmith_core::EffectMetricSource::ChosenObjects
-    } else {
-        ironsmith_core::EffectMetricSource::AffectedObjects
-    };
+    let source = counter_grammar::parse_prior_effect_count_source(trim_commas(tokens).as_slice())?;
     Some(Value::PendingEffectMetric {
         source,
         metric: ironsmith_core::EffectMetric::Count,
@@ -1034,7 +648,7 @@ pub(crate) fn parse_life_amount(
     amount_kind: &str,
 ) -> Result<(Value, usize), CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if word_slice_eq(&clause_words, THAT_MUCH_LIFE_WORDS) {
+    if counter_grammar::parse_exact(&clause_words, &[THAT_MUCH_LIFE_WORDS]).is_some() {
         // "that much life" binds to the triggering event amount.
         return Ok((Value::EventValue(EventValueSpec::Amount), 2));
     }
@@ -1051,7 +665,7 @@ pub(crate) fn parse_life_equal_to_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !word_slice_starts_with(&clause_words, LIFE_EQUAL_TO_PREFIX) {
+    if counter_grammar::parse_prefix(&clause_words, &[LIFE_EQUAL_TO_PREFIX]).is_none() {
         return Ok(None);
     }
 
@@ -1070,104 +684,36 @@ pub(crate) fn parse_life_equal_to_value(
     if let Some(value) = parse_equal_to_aggregate_filter_value(amount_tokens) {
         return Ok(Some(value));
     }
-    if matches!(
-        amount_words.as_slice(),
-        ["equal", "to", "the", "life", "lost", "this", "way"]
-            | ["equal", "to", "life", "lost", "this", "way"]
-            | [
-                "equal", "to", "the", "amount", "of", "life", "lost", "this", "way"
-            ]
-            | ["equal", "to", "amount", "of", "life", "lost", "this", "way"]
-    ) {
-        return Ok(Some(Value::EventValue(EventValueSpec::LifeAmount)));
-    }
-    if matches!(
-        amount_words.as_slice(),
-        ["equal", "to", "the", "damage", "prevented", "this", "way"]
-            | ["equal", "to", "damage", "prevented", "this", "way"]
-            | [
-                "equal",
-                "to",
-                "the",
-                "amount",
-                "of",
-                "damage",
-                "prevented",
-                "this",
-                "way"
-            ]
-            | [
-                "equal",
-                "to",
-                "amount",
-                "of",
-                "damage",
-                "prevented",
-                "this",
-                "way"
-            ]
-    ) {
-        return Ok(Some(Value::EventValue(EventValueSpec::Amount)));
-    }
-    if matches!(
-        amount_words.as_slice(),
-        [
-            "equal", "to", "the", "total", "life", "lost", "by", "all", "players", "this", "turn"
-        ] | [
-            "equal", "to", "total", "life", "lost", "by", "all", "players", "this", "turn"
-        ] | [
-            "equal", "to", "the", "total", "amount", "of", "life", "lost", "by", "all", "players",
-            "this", "turn"
-        ] | [
-            "equal", "to", "total", "amount", "of", "life", "lost", "by", "all", "players", "this",
-            "turn"
-        ]
-    ) {
-        return Ok(Some(Value::LifeLostThisTurn(PlayerFilter::Any)));
-    }
-    if matches!(
-        amount_words.as_slice(),
-        [
-            "equal", "to", "the", "life", "that", "player", "lost", "this", "turn"
-        ] | [
-            "equal", "to", "life", "that", "player", "lost", "this", "turn"
-        ] | [
-            "equal", "to", "the", "amount", "of", "life", "that", "player", "lost", "this", "turn"
-        ] | [
-            "equal", "to", "amount", "of", "life", "that", "player", "lost", "this", "turn"
-        ]
-    ) {
-        return Ok(Some(Value::LifeLostThisTurn(PlayerFilter::IteratedPlayer)));
-    }
-    if matches!(
-        amount_words.as_slice(),
-        [
-            "equal", "to", "the", "damage", "already", "dealt", "to", "that", "player", "this",
-            "turn"
-        ] | [
-            "equal", "to", "damage", "already", "dealt", "to", "that", "player", "this", "turn"
-        ] | [
-            "equal", "to", "the", "amount", "of", "damage", "already", "dealt", "to", "that",
-            "player", "this", "turn"
-        ] | [
-            "equal", "to", "amount", "of", "damage", "already", "dealt", "to", "that", "player",
-            "this", "turn"
-        ]
-    ) {
-        return Ok(Some(Value::DamageDealtToPlayersThisTurn(
-            PlayerFilter::target_player(),
-        )));
+    if let Some(surface) = counter_grammar::parse_life_equal_surface(&amount_words) {
+        let value = match surface {
+            counter_grammar::LifeEqualSurface::LifeLostThisWay => {
+                Value::EventValue(EventValueSpec::LifeAmount)
+            }
+            counter_grammar::LifeEqualSurface::DamagePreventedThisWay => {
+                Value::EventValue(EventValueSpec::Amount)
+            }
+            counter_grammar::LifeEqualSurface::AllPlayersLifeLostThisTurn => {
+                Value::LifeLostThisTurn(PlayerFilter::Any)
+            }
+            counter_grammar::LifeEqualSurface::IteratedPlayerLifeLostThisTurn => {
+                Value::LifeLostThisTurn(PlayerFilter::IteratedPlayer)
+            }
+            counter_grammar::LifeEqualSurface::TargetPlayerDamageThisTurn => {
+                Value::DamageDealtToPlayersThisTurn(PlayerFilter::target_player())
+            }
+        };
+        return Ok(Some(value));
     }
     if let Some(value) = parse_dynamic_cost_modifier_value(amount_tokens)? {
         return Ok(Some(value));
     }
-    if counter_words_start_with_phrase(&amount_words, EQUAL_TO_PREFIX) {
+    if counter_grammar::parse_prefix(&amount_words, &[EQUAL_TO_PREFIX]).is_some() {
         let value_tokens = &amount_tokens[2..];
         let mut value_words = crate::runtime_backend::token_word_refs(value_tokens);
 
         let parse_stat_of_target =
             |stat_words: &[&str], constructor: fn(Box<ChooseSpec>) -> Value| {
-                if counter_words_start_with_phrase(&value_words, stat_words) {
+                if counter_grammar::parse_prefix(&value_words, &[stat_words]).is_some() {
                     let target_tokens = &value_tokens[stat_words.len()..];
                     if let Ok(target) = parse_target_phrase(target_tokens) {
                         let spec = crate::runtime_backend::references::reference_helpers::choose_spec_for_target(&target);
@@ -1196,7 +742,7 @@ pub(crate) fn parse_life_equal_to_value(
         {
             return Ok(Some(value));
         }
-        if let Some(value) = parse_possessive_target_stat_value(value_tokens, &value_words) {
+        if let Some(value) = parse_possessive_target_stat_value(value_tokens) {
             return Ok(Some(value));
         }
         if let Some(value) = parse_life_total_as_turn_began_value(&value_words) {
@@ -1226,7 +772,7 @@ pub(crate) fn parse_life_equal_to_value(
             (&["toughness", "of"][..], &["toughness"][..]),
             (&["mana", "value", "of"][..], &["mana", "value"][..]),
         ] {
-            if counter_words_start_with_phrase(&value_words, prefix) {
+            if counter_grammar::parse_prefix(&value_words, &[prefix]).is_some() {
                 let mut reordered = value_words[prefix.len()..].to_vec();
                 reordered.extend_from_slice(stat_words);
                 if let Some((value, used)) =
@@ -1247,55 +793,21 @@ pub(crate) fn parse_life_equal_to_value(
     )))
 }
 
-fn parse_possessive_target_stat_value(tokens: &[OwnedLexToken], words: &[&str]) -> Option<Value> {
-    let (stat_len, constructor): (usize, fn(Box<ChooseSpec>) -> Value) = match words {
-        [.., "power"] => (1, Value::PowerOf),
-        [.., "toughness"] => (1, Value::ToughnessOf),
-        [.., "mana", "value"] => (2, Value::ManaValueOf),
-        _ => return None,
+fn parse_possessive_target_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let shape = counter_grammar::parse_possessive_target_stat(tokens)?;
+    let constructor: fn(Box<ChooseSpec>) -> Value = match shape.stat {
+        counter_grammar::TargetStatKind::Power => Value::PowerOf,
+        counter_grammar::TargetStatKind::Toughness => Value::ToughnessOf,
+        counter_grammar::TargetStatKind::ManaValue => Value::ManaValueOf,
     };
-    let target_len = tokens.len().checked_sub(stat_len)?;
-    if target_len == 0 {
-        return None;
-    }
-
-    let mut target_tokens = tokens[..target_len].to_vec();
-    let possessive = target_tokens.last_mut()?;
-    let word = possessive.as_word()?;
-    let base = word
-        .strip_suffix("'s")
-        .or_else(|| word.strip_suffix("’s"))
-        .or_else(|| word.strip_suffix("‘s"))?
-        .to_string();
-    if base.is_empty() || !possessive.replace_word(base) {
-        return None;
-    }
-
-    let target = parse_target_phrase(&target_tokens).ok()?;
+    let target = parse_target_phrase(&shape.target_tokens).ok()?;
     let spec =
         crate::runtime_backend::references::reference_helpers::choose_spec_for_target(&target);
     Some(constructor(Box::new(spec)))
 }
 
 fn parse_life_total_as_turn_began_value(words: &[&str]) -> Option<Value> {
-    let tail = ["life", "total", "as", "the", "turn", "began"];
-    if words.len() <= tail.len() || !words.ends_with(&tail) {
-        return None;
-    }
-
-    let subject = &words[..words.len() - tail.len()];
-    let player = match subject {
-        ["your"] | ["you"] => PlayerFilter::You,
-        ["that", "player"] | ["that", "player's"] => PlayerFilter::IteratedPlayer,
-        ["target", "player"] | ["target", "player's"] => PlayerFilter::target_player(),
-        ["target", "opponent"] | ["target", "opponent's"] => PlayerFilter::target_opponent(),
-        ["opponent"] | ["opponent's"] | ["an", "opponent"] | ["an", "opponent's"] => {
-            PlayerFilter::Opponent
-        }
-        ["each", "opponent"] | ["each", "opponent's"] => PlayerFilter::Opponent,
-        _ => return None,
-    };
-    Some(Value::LifeTotalAsTurnBegan(player))
+    counter_grammar::parse_life_total_as_turn_began_words(words)
 }
 
 pub(crate) fn parse_life_amount_from_trailing(
@@ -1344,43 +856,24 @@ pub(crate) fn parse_life_amount_from_trailing(
 }
 
 fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if !word_slice_starts_with(&words, COUNTER_FOR_EACH_PREFIX) {
-        return None;
-    }
-    let counter_idx = find_index(words.as_slice(), |word| {
-        *word == "counter" || *word == "counters"
-    })?;
-    if counter_idx <= 2 || !words.get(counter_idx + 1).is_some_and(|word| *word == "on") {
-        return None;
-    }
-
-    let counter_type =
-        crate::runtime_backend::parse_counter_type_from_tokens(&tokens[2..=counter_idx]);
-    let reference = &words[counter_idx + 2..];
-    if counter_words_exact_pattern_matches(
-        reference,
-        COUNTERS_ON_SOURCE_REFERENCE_PATTERN,
-        "reference",
-    ) {
-        return Some(match counter_type {
-            Some(counter_type) => Value::CountersOnSource(counter_type),
-            None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
-        });
-    }
-
-    if counter_words_exact_pattern_matches(
-        reference,
-        COUNTERS_ON_TAGGED_REFERENCE_PATTERN,
-        "reference",
-    ) {
-        return Some(Value::CountersOn(
+    match counter_grammar::parse_counter_reference(tokens)? {
+        counter_grammar::CounterReferenceShape::Source {
+            counter_type_tokens,
+        } => {
+            let counter_type =
+                crate::runtime_backend::parse_counter_type_from_tokens(counter_type_tokens);
+            Some(match counter_type {
+                Some(counter_type) => Value::CountersOnSource(counter_type),
+                None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+            })
+        }
+        counter_grammar::CounterReferenceShape::Tagged {
+            counter_type_tokens,
+        } => Some(Value::CountersOn(
             Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
-            counter_type,
-        ));
+            crate::runtime_backend::parse_counter_type_from_tokens(counter_type_tokens),
+        )),
     }
-
-    None
 }
 
 pub(crate) fn validate_life_keyword(rest: &[OwnedLexToken]) -> Result<(), CardTextError> {
@@ -1437,16 +930,9 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
 
 fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !clause_words.first().is_some_and(|word| *word == HALF_WORD)
-        || !word_slice_contains_word(&clause_words, LIFE_WORD)
-        || word_slice_contains_word(&clause_words, LOST_WORD)
-    {
-        return None;
-    }
-
+    let shape = counter_grammar::parse_half_life(&clause_words)?;
     let player_filter = player_filter_for_life_reference(player)?;
-    let rounded_down = word_slice_contains_phrase(&clause_words, ROUNDED_DOWN_PHRASE);
-    if rounded_down {
+    if shape.rounded_down {
         Some(Value::HalfLifeTotalRoundedDown(player_filter))
     } else {
         Some(Value::HalfLifeTotalRoundedUp(player_filter))

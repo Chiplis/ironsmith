@@ -132,12 +132,23 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::this_deals_combat_damage_to(filter)
         }
         TriggerSpec::DealsDamage(filter) => Trigger::deals_damage(filter),
+        TriggerSpec::DealsDamageTo {
+            source,
+            target,
+            source_surface,
+        } => Trigger::deals_damage_to_with_source_surface(source, target, source_surface),
         TriggerSpec::DealsDamageToPlayer { source, player } => {
             Trigger::deals_damage_to_player(source, player)
         }
-        TriggerSpec::DealsNoncombatDamageToPlayer { source, player } => {
-            Trigger::deals_noncombat_damage_to_player(source, player)
-        }
+        TriggerSpec::DealsNoncombatDamageToPlayer {
+            source,
+            player,
+            source_surface,
+        } => Trigger::deals_noncombat_damage_to_player_with_source_surface(
+            source,
+            player,
+            source_surface,
+        ),
         TriggerSpec::DealsCombatDamage(filter) => Trigger::deals_combat_damage(filter),
         TriggerSpec::DealsCombatDamageTo { source, target } => {
             Trigger::deals_combat_damage_to(source, target)
@@ -372,6 +383,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             from_not_hand,
         ),
         TriggerSpec::SpellCopied { filter, copier } => Trigger::spell_copied(filter, copier),
+        TriggerSpec::SpellCountered { filter, controller } => {
+            Trigger::spell_countered(filter, controller)
+        }
         TriggerSpec::EntersBattlefield {
             mut filter,
             cause_filter,
@@ -546,6 +560,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         TriggerSpec::WithIntro { trigger, .. } => trigger_binds_iterated_player(trigger),
         TriggerSpec::SpellCast { .. }
         | TriggerSpec::SpellCopied { .. }
+        | TriggerSpec::SpellCountered { .. }
         | TriggerSpec::PlayerLosesLife(_)
         | TriggerSpec::OpponentsEachLoseExactLife { .. }
         | TriggerSpec::PlayerLosesGame(_)
@@ -622,6 +637,13 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
                 Some(PlayerFilter::ControllerOf(ObjectRef::tagged(TagKey::from(
                     "triggering",
                 ))))
+            }
+        }
+        TriggerSpec::SpellCountered { controller, .. } => {
+            if *controller == PlayerFilter::Any {
+                Some(PlayerFilter::IteratedPlayer)
+            } else {
+                Some(controller.clone())
             }
         }
         TriggerSpec::SpellCopied { copier, .. } => {
@@ -746,6 +768,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::ThisDealsDamageToPlayer { .. }
             | TriggerSpec::DealsDamage(_)
+            | TriggerSpec::DealsDamageTo { .. }
             | TriggerSpec::DealsDamageToPlayer { .. }
             | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
             | TriggerSpec::ThisDealsCombatDamage

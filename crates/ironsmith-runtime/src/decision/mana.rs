@@ -2,6 +2,12 @@ use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::filter::ObjectFilterExt as _;
 
+pub(crate) fn mana_cost_has_black_symbol(cost: &crate::mana::ManaCost) -> bool {
+    cost.pips()
+        .iter()
+        .any(|pip| pip.contains(&crate::mana::ManaSymbol::Black))
+}
+
 fn with_source_exiled_tagged_objects(
     game: &GameState,
     mut ctx: crate::filter::FilterContext,
@@ -557,11 +563,11 @@ fn spell_view_for_cost_filter_match(
     }
 
     if let Some(method) = method.as_ref()
-        && method.name().eq_ignore_ascii_case("Prototype")
+        && let Some(power_toughness) = method.prototype_power_toughness()
         && let Some(cost) = method.mana_cost()
     {
         let mut view = spell.clone();
-        if view.apply_prototype_cast_overlay(cost.clone()) {
+        if view.apply_prototype_cast_overlay(cost.clone(), power_toughness) {
             return Some(view);
         }
     }
@@ -1487,8 +1493,11 @@ fn mana_cost_can_be_paid_with_view(
     let mana_spend_policy = game.mana_spend_policy(player, Some(spell_id));
     let allow_any_color_for_obvious = mana_spend_policy.has_any_color_spending()
         || game.has_source_filtered_mana_spend_permission(player, Some(spell_id));
-    let allow_black_life = view
-        .player_can_pay_black_with_life_for_reason(player, crate::costs::PaymentReason::CastSpell);
+    let allow_black_life = mana_cost_has_black_symbol(cost)
+        && view.player_can_pay_black_with_life_for_reason(
+            player,
+            crate::costs::PaymentReason::CastSpell,
+        );
     !mana_cost_is_obviously_unpayable(
         &potential,
         cost,
@@ -1999,10 +2008,11 @@ pub(crate) fn can_cast_with_cost_with_context(
         let mana_spend_policy = game.mana_spend_policy(player, Some(spell_id));
         let allow_any_color_for_obvious = mana_spend_policy.has_any_color_spending()
             || game.has_source_filtered_mana_spend_permission(player, Some(spell_id));
-        let allow_black_life = view.player_can_pay_black_with_life_for_reason(
-            player,
-            crate::costs::PaymentReason::CastSpell,
-        );
+        let allow_black_life = mana_cost_has_black_symbol(&adjusted)
+            && view.player_can_pay_black_with_life_for_reason(
+                player,
+                crate::costs::PaymentReason::CastSpell,
+            );
         if mana_cost_is_obviously_unpayable(
             &potential,
             &adjusted,
@@ -3732,19 +3742,32 @@ fn can_pay_mana_cost_with_available_sources(
 
     let mut pips = expand_mana_cost_to_unit_pips(cost, x_value, allow_black_life);
     pips.sort_by_key(|pip| pip_payment_sort_key(pip));
+    let has_life_payment_option = pips
+        .iter()
+        .flatten()
+        .any(|symbol| matches!(symbol, ManaSymbol::Life(_)));
+    let max_life_payment = if has_life_payment_option
+        && game.can_lose_life(player)
+        && (!reason.is_cast_or_ability_payment()
+            || !game.player_cant_pay_life_to_cast_or_activate(player))
+    {
+        u32::try_from(player_obj.life).unwrap_or(0)
+    } else {
+        0
+    };
 
     let sources = available_mana_sources_for_payment(game, player, view);
     if sources.len() > 128 {
         return can_pay_expanded_pips_large_source_count(
             game,
             player,
-            reason,
             &pips,
             0,
             player_obj.mana_pool.clone(),
             &sources,
             &mut vec![false; sources.len()],
             0,
+            max_life_payment,
             mana_spend_policy,
             source,
         );
@@ -3754,13 +3777,13 @@ fn can_pay_mana_cost_with_available_sources(
     can_pay_expanded_pips(
         game,
         player,
-        reason,
         &pips,
         0,
         player_obj.mana_pool.clone(),
         &sources,
         0,
         0,
+        max_life_payment,
         mana_spend_policy,
         source,
         &mut failed_states,
@@ -4044,19 +4067,19 @@ fn combine_mana_output_options(
 fn can_pay_expanded_pips(
     game: &GameState,
     player: PlayerId,
-    reason: crate::costs::PaymentReason,
     pips: &[Vec<ManaSymbol>],
     pip_index: usize,
     pool: crate::player::ManaPool,
     sources: &[AvailableManaSource],
     used_sources_mask: u128,
     life_to_pay: u32,
+    max_life_payment: u32,
     mana_spend_policy: &crate::player::ManaSpendPolicy,
     payment_source: Option<ObjectId>,
     failed_states: &mut std::collections::HashSet<ManaPaymentSearchKey>,
 ) -> bool {
     if pip_index >= pips.len() {
-        return game.can_pay_life_with_reason(player, life_to_pay, reason);
+        return life_to_pay <= max_life_payment;
     }
 
     let key = ManaPaymentSearchKey::new(pip_index, &pool, life_to_pay, used_sources_mask);
@@ -4068,17 +4091,17 @@ fn can_pay_expanded_pips(
     for &symbol in pip {
         if let ManaSymbol::Life(amount) = symbol {
             let next_life = life_to_pay.saturating_add(amount as u32);
-            if game.can_pay_life_with_reason(player, next_life, reason)
+            if next_life <= max_life_payment
                 && can_pay_expanded_pips(
                     game,
                     player,
-                    reason,
                     pips,
                     pip_index + 1,
                     pool.clone(),
                     sources,
                     used_sources_mask,
                     next_life,
+                    max_life_payment,
                     mana_spend_policy,
                     payment_source,
                     failed_states,
@@ -4094,13 +4117,13 @@ fn can_pay_expanded_pips(
             && can_pay_expanded_pips(
                 game,
                 player,
-                reason,
                 pips,
                 pip_index + 1,
                 pool_after,
                 sources,
                 used_sources_mask,
                 life_to_pay,
+                max_life_payment,
                 mana_spend_policy,
                 payment_source,
                 failed_states,
@@ -4129,13 +4152,13 @@ fn can_pay_expanded_pips(
                     let can_pay_rest = can_pay_expanded_pips(
                         game,
                         player,
-                        reason,
                         pips,
                         pip_index + 1,
                         combined_pool,
                         sources,
                         used_sources_mask | source_mask,
                         life_to_pay,
+                        max_life_payment,
                         mana_spend_policy,
                         payment_source,
                         failed_states,
@@ -4156,35 +4179,35 @@ fn can_pay_expanded_pips(
 fn can_pay_expanded_pips_large_source_count(
     game: &GameState,
     player: PlayerId,
-    reason: crate::costs::PaymentReason,
     pips: &[Vec<ManaSymbol>],
     pip_index: usize,
     pool: crate::player::ManaPool,
     sources: &[AvailableManaSource],
     used_sources: &mut [bool],
     life_to_pay: u32,
+    max_life_payment: u32,
     mana_spend_policy: &crate::player::ManaSpendPolicy,
     payment_source: Option<ObjectId>,
 ) -> bool {
     if pip_index >= pips.len() {
-        return game.can_pay_life_with_reason(player, life_to_pay, reason);
+        return life_to_pay <= max_life_payment;
     }
 
     let pip = &pips[pip_index];
     for &symbol in pip {
         if let ManaSymbol::Life(amount) = symbol {
             let next_life = life_to_pay.saturating_add(amount as u32);
-            if game.can_pay_life_with_reason(player, next_life, reason)
+            if next_life <= max_life_payment
                 && can_pay_expanded_pips_large_source_count(
                     game,
                     player,
-                    reason,
                     pips,
                     pip_index + 1,
                     pool.clone(),
                     sources,
                     used_sources,
                     next_life,
+                    max_life_payment,
                     mana_spend_policy,
                     payment_source,
                 )
@@ -4199,13 +4222,13 @@ fn can_pay_expanded_pips_large_source_count(
             && can_pay_expanded_pips_large_source_count(
                 game,
                 player,
-                reason,
                 pips,
                 pip_index + 1,
                 pool_after,
                 sources,
                 used_sources,
                 life_to_pay,
+                max_life_payment,
                 mana_spend_policy,
                 payment_source,
             )
@@ -4233,13 +4256,13 @@ fn can_pay_expanded_pips_large_source_count(
                     let can_pay_rest = can_pay_expanded_pips_large_source_count(
                         game,
                         player,
-                        reason,
                         pips,
                         pip_index + 1,
                         combined_pool,
                         sources,
                         used_sources,
                         life_to_pay,
+                        max_life_payment,
                         mana_spend_policy,
                         payment_source,
                     );
@@ -5105,6 +5128,53 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
+
+    #[test]
+    fn mana_search_uses_snapshotted_life_capacity_in_both_source_count_paths() {
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let policy = game.mana_spend_policy(alice, None);
+        let pips = vec![vec![ManaSymbol::Life(2)]];
+        let pool = crate::player::ManaPool::default();
+        let sources = Vec::<AvailableManaSource>::new();
+
+        let small_search = |max_life_payment| {
+            can_pay_expanded_pips(
+                &game,
+                alice,
+                &pips,
+                0,
+                pool.clone(),
+                &sources,
+                0,
+                0,
+                max_life_payment,
+                &policy,
+                None,
+                &mut std::collections::HashSet::new(),
+            )
+        };
+        let large_search = |max_life_payment| {
+            can_pay_expanded_pips_large_source_count(
+                &game,
+                alice,
+                &pips,
+                0,
+                pool.clone(),
+                &sources,
+                &mut [],
+                0,
+                max_life_payment,
+                &policy,
+                None,
+            )
+        };
+
+        assert!(!small_search(1));
+        assert!(small_search(2));
+        assert!(!large_search(1));
+        assert!(large_search(2));
+    }
 
     #[cfg(ironsmith_runtime_parser_tests)]
     fn cavern_hoard_dragon_definition() -> crate::cards::CardDefinition {

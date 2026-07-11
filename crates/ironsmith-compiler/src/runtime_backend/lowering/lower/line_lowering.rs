@@ -7,10 +7,9 @@ use crate::runtime_backend::activation_and_restrictions::last_created_token_info
 use crate::runtime_backend::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut,
 };
-use crate::runtime_backend::lexer::{
-    OwnedLexToken, TokenKind, find_token_word_sequence_span, lex_line, parser_token_word_refs,
-    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_starts_with,
-    word_slice_starts_with_any,
+use crate::runtime_backend::shared_types::{
+    LineSemanticFacts, StatementConditionIntro, StatementLineSemanticFacts,
+    StatementReplacementSurfaceKind,
 };
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
@@ -25,17 +24,9 @@ struct LineChunkLoweringInput<'a> {
     state: &'a mut RewriteLoweredCardState,
     parsed: NormalizedLineChunk,
     info: &'a LineInfo,
+    semantic_facts: &'a LineSemanticFacts,
     allow_unsupported: bool,
     annotations: &'a mut ParseAnnotations,
-}
-
-const CREATURE_TYPE_OF_YOUR_CHOICE_PHRASE: &[&str] = &["creature", "type", "of", "your", "choice"];
-
-fn token_words_contain_all_phrases(tokens: &[OwnedLexToken], phrases: &[&[&str]]) -> bool {
-    let words = parser_token_word_refs(tokens);
-    phrases
-        .iter()
-        .all(|phrase| word_slice_contains_phrase(&words, phrase))
 }
 
 fn conditional_self_replacement_followup(
@@ -79,6 +70,74 @@ fn retarget_replacement_effects(
             } else {
                 super::rewrite_replacement_effect_target(&effect, previous_target).unwrap_or(effect)
             }
+        })
+        .collect()
+}
+
+fn condition_controlled_filter(condition: &crate::effect::Condition) -> Option<&ObjectFilter> {
+    match condition {
+        crate::effect::Condition::PlayerControls { filter, .. }
+        | crate::effect::Condition::PlayerControlsExactly { filter, .. }
+        | crate::effect::Condition::PlayerControlsMost { filter, .. }
+        | crate::effect::Condition::PlayerControlsMoreThanEachOtherPlayer { filter, .. }
+        | crate::effect::Condition::PlayerControlsMoreThanYou { filter, .. } => Some(filter),
+        crate::effect::Condition::And(left, right) | crate::effect::Condition::Or(left, right) => {
+            condition_controlled_filter(left).or_else(|| condition_controlled_filter(right))
+        }
+        crate::effect::Condition::Not(inner) => condition_controlled_filter(inner),
+        _ => None,
+    }
+}
+
+fn choose_spec_object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => choose_spec_object_filter(spec),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => Some(filter),
+        _ => None,
+    }
+}
+
+fn retarget_damage_matching_condition_filter(
+    effect: crate::effect::Effect,
+    previous_target: &ChooseSpec,
+    condition_filter: &ObjectFilter,
+) -> crate::effect::Effect {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        let rewritten_inner = retarget_damage_matching_condition_filter(
+            (*tagged.effect).clone(),
+            previous_target,
+            condition_filter,
+        );
+        return crate::effect::Effect::new(crate::effects::TaggedEffect::new(
+            tagged.tag.clone(),
+            rewritten_inner,
+        ));
+    }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>()
+        && choose_spec_object_filter(&damage.target)
+            .is_some_and(|target| target == condition_filter)
+    {
+        return crate::effect::Effect::deal_damage(damage.amount.clone(), previous_target.clone());
+    }
+    effect
+}
+
+fn retarget_replacement_effects_with_condition(
+    effects: Vec<crate::effect::Effect>,
+    previous_target: &ChooseSpec,
+    condition: &crate::effect::Condition,
+) -> Vec<crate::effect::Effect> {
+    let effects = retarget_replacement_effects(effects, previous_target);
+    let Some(condition_filter) = condition_controlled_filter(condition) else {
+        return effects;
+    };
+    effects
+        .into_iter()
+        .map(|effect| {
+            retarget_damage_matching_condition_filter(effect, previous_target, condition_filter)
         })
         .collect()
 }
@@ -157,20 +216,36 @@ fn retarget_source_move_to_damaged_death_card(triggered: &mut crate::ability::Tr
 
 fn rewrite_prior_token_placeholder_effect(
     effect: &mut EffectAst,
-    token_info: &(String, PlayerAst),
+    token_info: &(
+        String,
+        crate::runtime_backend::token_definition::TokenDefinitionSpec,
+        PlayerAst,
+    ),
 ) {
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::CreateTokenWithMods { name, player, .. } =
-            &mut subject_verb.action
+        && let SubjectVerbActionAst::CreateTokenWithMods {
+            name,
+            definition,
+            player,
+            ..
+        } = &mut subject_verb.action
         && matches!(name.as_str(), "of those" | "those")
     {
         *name = token_info.0.clone();
-        *player = token_info.1;
-        subject_verb.subject.player = token_info.1;
+        *definition = token_info.1.clone();
+        *player = token_info.2;
+        subject_verb.subject.player = token_info.2;
     }
 }
 
-fn rewrite_prior_token_placeholders(effects: &mut [EffectAst], token_info: &(String, PlayerAst)) {
+fn rewrite_prior_token_placeholders(
+    effects: &mut [EffectAst],
+    token_info: &(
+        String,
+        crate::runtime_backend::token_definition::TokenDefinitionSpec,
+        PlayerAst,
+    ),
+) {
     for effect in effects {
         rewrite_prior_token_placeholder_effect(effect, token_info);
         for_each_nested_effects_mut(effect, true, |nested| {
@@ -188,6 +263,7 @@ fn rewrite_prior_token_placeholder_effect_from_template(
     let (template_action, template_player) = template;
     let SubjectVerbActionAst::CreateTokenWithMods {
         name: template_name,
+        definition: template_definition,
         dynamic_power_toughness: template_dynamic_power_toughness,
         player: template_action_player,
         attached_to: template_attached_to,
@@ -207,6 +283,7 @@ fn rewrite_prior_token_placeholder_effect_from_template(
     if let EffectAst::SubjectVerb(subject_verb) = effect
         && let SubjectVerbActionAst::CreateTokenWithMods {
             name,
+            definition,
             dynamic_power_toughness,
             player,
             attached_to,
@@ -223,6 +300,7 @@ fn rewrite_prior_token_placeholder_effect_from_template(
         && matches!(name.as_str(), "of those" | "those")
     {
         *name = template_name.clone();
+        *definition = template_definition.clone();
         *dynamic_power_toughness = template_dynamic_power_toughness.clone();
         *player = *template_action_player;
         *attached_to = template_attached_to.clone();
@@ -315,24 +393,14 @@ fn token_template_before_prior_token_placeholder(
 }
 
 fn compile_trailing_instead_if_condition(
-    tokens: &[OwnedLexToken],
+    predicate: Option<&PredicateAst>,
     prepared: &super::super::effect_pipeline::PreparedEffectsForLowering,
 ) -> Result<Option<crate::effect::Condition>, CardTextError> {
-    let Some(instead_idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
-        (token.is_word("instead") && tokens.get(idx + 1).is_some_and(|next| next.is_word("if")))
-            .then_some(idx)
-    }) else {
-        return Ok(None);
-    };
-    let Some(predicate) =
-        crate::runtime_backend::grammar::structure::parse_trailing_instead_if_predicate_lexed(
-            &tokens[instead_idx..],
-        )
-    else {
+    let Some(predicate) = predicate else {
         return Ok(None);
     };
     compile_condition_from_predicate_ast_with_env(
-        &predicate,
+        predicate,
         &prepared.initial_env,
         prepared.imports.last_object_tag.as_ref(),
     )
@@ -357,13 +425,10 @@ fn with_chosen_creature_type_filter(effect: crate::effect::Effect) -> crate::eff
 }
 
 fn creature_type_choice_program(
-    tokens: &[OwnedLexToken],
+    facts: &StatementLineSemanticFacts,
     compiled: &crate::resolution::ResolutionProgram,
 ) -> Option<crate::resolution::ResolutionProgram> {
-    let words = parser_token_word_refs(tokens);
-    let has_choice_phrase = word_slice_contains_phrase(&words, CREATURE_TYPE_OF_YOUR_CHOICE_PHRASE);
-    let has_get = word_slice_contains_any_word(&words, &["get", "gets"]);
-    if !has_choice_phrase || !has_get {
+    if !facts.creature_type_choice_buff {
         return None;
     }
     let effects = compiled.to_vec();
@@ -476,9 +541,9 @@ fn optional_search_to_battlefield_rewrite(
 
 fn attach_morbid_search_to_battlefield_self_replacement(
     builder: &mut CardDefinitionBuilder,
-    normalized_tokens: &[OwnedLexToken],
+    facts: &StatementLineSemanticFacts,
 ) -> bool {
-    if !tokens_mention_morbid_search_to_battlefield_replacement(normalized_tokens) {
+    if !facts.has_replacement_surface(StatementReplacementSurfaceKind::MorbidSearchToBattlefield) {
         return false;
     }
     let Some(existing) = builder.spell_effect.as_mut() else {
@@ -506,9 +571,10 @@ fn attach_morbid_search_to_battlefield_self_replacement(
 
 fn back_for_seconds_style_replacement_program(
     compiled: &[crate::effect::Effect],
-    normalized_tokens: &[OwnedLexToken],
+    facts: &StatementLineSemanticFacts,
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !tokens_mention_bargained_return_to_battlefield_replacement(normalized_tokens) {
+    if !facts.has_replacement_surface(StatementReplacementSurfaceKind::BargainedReturnToBattlefield)
+    {
         return None;
     }
     let (default_effects, return_effect, condition) = match compiled {
@@ -554,9 +620,10 @@ fn back_for_seconds_style_replacement_program(
 fn attach_back_for_seconds_style_replacement(
     builder: &mut CardDefinitionBuilder,
     compiled: &[crate::effect::Effect],
-    normalized_tokens: &[OwnedLexToken],
+    facts: &StatementLineSemanticFacts,
 ) -> bool {
-    if !tokens_mention_bargained_return_to_battlefield_replacement(normalized_tokens) {
+    if !facts.has_replacement_surface(StatementReplacementSurfaceKind::BargainedReturnToBattlefield)
+    {
         return false;
     }
     let [followup] = compiled else {
@@ -588,9 +655,9 @@ fn attach_back_for_seconds_style_replacement(
 
 fn kicked_count_override_self_replacement_program(
     compiled: &[crate::effect::Effect],
-    normalized_tokens: &[OwnedLexToken],
+    facts: &StatementLineSemanticFacts,
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !tokens_mention_kicked_count_override_replacement(normalized_tokens) {
+    if !facts.has_replacement_surface(StatementReplacementSurfaceKind::KickedCountOverride) {
         return None;
     }
     let [look_effect, conditional_effect] = compiled else {
@@ -626,7 +693,6 @@ fn kicked_count_override_self_replacement_program(
 
 fn kicked_multi_zone_search_to_battlefield_program(
     compiled: &[crate::effect::Effect],
-    _normalized_tokens: &[OwnedLexToken],
 ) -> Option<crate::resolution::ResolutionProgram> {
     let [choose, reveal, move_to_hand, shuffle, conditional] = compiled else {
         return None;
@@ -634,7 +700,7 @@ fn kicked_multi_zone_search_to_battlefield_program(
     let choose_search = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     if !choose_search.is_search
         || choose_primary_zone_for_kicked_multi_zone_search(choose_search) != Some(Zone::Library)
-        || !choose_search.additional_zones.contains(&Zone::Graveyard)
+        || !zone_list_includes(&choose_search.additional_zones, Zone::Graveyard)
     {
         return None;
     }
@@ -745,9 +811,10 @@ fn rewrite_tagged_hand_move_to_battlefield(
 fn attach_kicked_multi_zone_search_to_battlefield_replacement(
     builder: &mut CardDefinitionBuilder,
     compiled: &[crate::effect::Effect],
-    normalized_tokens: &[OwnedLexToken],
+    facts: &StatementLineSemanticFacts,
 ) -> bool {
-    if !tokens_mention_kicked_multi_zone_to_battlefield_followup(normalized_tokens) {
+    if !facts.has_replacement_surface(StatementReplacementSurfaceKind::KickedMultiZoneToBattlefield)
+    {
         return false;
     }
     let [conditional] = compiled else {
@@ -774,7 +841,7 @@ fn attach_kicked_multi_zone_search_to_battlefield_replacement(
     };
     if !choose.is_search
         || choose_primary_zone_for_kicked_multi_zone_search(choose) != Some(Zone::Library)
-        || !choose.additional_zones.contains(&Zone::Graveyard)
+        || !zone_list_includes(&choose.additional_zones, Zone::Graveyard)
     {
         return false;
     }
@@ -808,11 +875,20 @@ fn choose_primary_zone_for_kicked_multi_zone_search(
     choose.zone
 }
 
+fn zone_list_includes(zones: &[Zone], expected: Zone) -> bool {
+    for zone in zones {
+        if *zone == expected {
+            return true;
+        }
+    }
+    false
+}
+
 fn clash_win_optional_top_replacement_program(
     compiled: &[crate::effect::Effect],
-    normalized_tokens: &[OwnedLexToken],
+    facts: &StatementLineSemanticFacts,
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !tokens_mention_clash_win_top_replacement(normalized_tokens) {
+    if !facts.has_replacement_surface(StatementReplacementSurfaceKind::ClashWinTopOfLibrary) {
         return None;
     }
     let [clash_effect, return_with_id_effect, followup] = compiled else {
@@ -857,75 +933,12 @@ fn clash_win_optional_top_replacement_program(
     ]))
 }
 
-fn tokens_mention_morbid_search_to_battlefield_replacement(tokens: &[OwnedLexToken]) -> bool {
-    token_words_contain_all_phrases(
-        tokens,
-        &[
-            PUT_THAT_CARD_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
-            CREATURE_DIED_THIS_TURN_PHRASE,
-        ],
-    )
-}
-
-fn tokens_mention_bargained_return_to_battlefield_replacement(tokens: &[OwnedLexToken]) -> bool {
-    token_words_contain_all_phrases(
-        tokens,
-        &[
-            IF_THIS_SPELL_WAS_BARGAINED_PHRASE,
-            ONE_OF_THOSE_CARDS_MV_FOUR_OR_LESS_PHRASE,
-            ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
-        ],
-    )
-}
-
-fn tokens_mention_kicked_count_override_replacement(tokens: &[OwnedLexToken]) -> bool {
-    token_words_contain_all_phrases(
-        tokens,
-        &[
-            PUT_TWO_OF_THOSE_CARDS_INTO_YOUR_HAND_INSTEAD_PHRASE,
-            PUT_ONE_OF_THOSE_CARDS_INTO_YOUR_HAND_PHRASE,
-        ],
-    )
-}
-
-fn tokens_mention_kicked_multi_zone_to_battlefield_followup(tokens: &[OwnedLexToken]) -> bool {
-    token_words_contain_all_phrases(
-        tokens,
-        &[
-            IF_THIS_SPELL_WAS_KICKED_PHRASE,
-            PUT_THOSE_CARDS_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
-        ],
-    )
-}
-
-fn tokens_mention_clash_win_top_replacement(tokens: &[OwnedLexToken]) -> bool {
-    let words = parser_token_word_refs(tokens);
-    if token_words_contain_all_phrases(
-        tokens,
-        &[
-            CLASH_WITH_AN_OPPONENT_PHRASE,
-            IF_YOU_WIN_PHRASE,
-            ON_TOP_OF_OWNERS_LIBRARY_INSTEAD_PHRASE,
-        ],
-    ) {
-        return true;
-    }
-
-    word_slice_contains_phrase(&words, CLASH_WITH_AN_OPPONENT_PHRASE)
-        && word_slice_contains_phrase(&words, IF_YOU_WIN_PHRASE)
-        && word_slice_contains_any_word(&words, &["top"])
-        && word_slice_contains_any_word(&words, &["library"])
-        && word_slice_contains_any_word(&words, &["instead"])
-        && words
-            .iter()
-            .any(|word| matches!(*word, "owner" | "owners" | "owner's"))
-}
-
 pub(super) fn rewrite_apply_line_ast(
     builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
     parsed: NormalizedLineChunk,
     info: &LineInfo,
+    semantic_facts: &LineSemanticFacts,
     allow_unsupported: bool,
     annotations: &mut ParseAnnotations,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
@@ -936,6 +949,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -946,6 +960,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -956,6 +971,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -966,6 +982,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -976,6 +993,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -986,6 +1004,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -996,6 +1015,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -1006,6 +1026,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -1016,6 +1037,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -1026,6 +1048,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -1036,6 +1059,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -1046,6 +1070,7 @@ pub(super) fn rewrite_apply_line_ast(
                 state,
                 parsed,
                 info,
+                semantic_facts,
                 allow_unsupported,
                 annotations,
             })
@@ -1058,6 +1083,7 @@ fn lower_abilities_chunk(
 ) -> Result<CardDefinitionBuilder, CardTextError> {
     let LineChunkLoweringInput {
         mut builder,
+        state,
         parsed,
         ..
     } = input;
@@ -1066,19 +1092,26 @@ fn lower_abilities_chunk(
     };
 
     for action in actions {
-        builder = builder.apply_keyword_action(action);
+        match action {
+            crate::payload::KeywordAction::Backup(amount) => {
+                state.pending_backups.push(PendingBackup {
+                    ability_boundary: builder.abilities.len(),
+                    amount,
+                });
+            }
+            crate::payload::KeywordAction::Cipher => state.pending_cipher = true,
+            action => builder = builder.apply_keyword_action(action),
+        }
     }
     Ok(builder)
 }
 
 fn compile_static_ability_with_zones(
     ability: crate::static_abilities::StaticAbility,
-    info: &LineInfo,
+    facts: &crate::runtime_backend::shared_types::StaticLineSemanticFacts,
 ) -> Ability {
-    let ability = rewrite_self_spell_cost_modifier(ability, info);
+    let ability = rewrite_self_spell_cost_modifier(ability, facts);
     let mut compiled = Ability::static_ability(ability);
-    let normalized_tokens =
-        lex_line(info.normalized.normalized.as_str(), info.line_index).unwrap_or_default();
     if let AbilityKind::Static(static_ability) = &compiled.kind
         && super::uses_spell_only_functional_zones(static_ability)
     {
@@ -1105,7 +1138,10 @@ fn compile_static_ability_with_zones(
         ]);
     }
     if let AbilityKind::Static(static_ability) = &compiled.kind
-        && super::uses_referenced_ability_functional_zones(static_ability, &normalized_tokens)
+        && super::uses_referenced_ability_functional_zones(
+            static_ability,
+            facts.references_this_ability_cost,
+        )
     {
         compiled = compiled.in_zones(vec![
             Zone::Battlefield,
@@ -1117,27 +1153,24 @@ fn compile_static_ability_with_zones(
             Zone::Command,
         ]);
     }
-    if let Some(zones) = super::infer_static_ability_functional_zones(&normalized_tokens) {
-        compiled = compiled.in_zones(zones);
+    if let Some(zones) = &facts.explicit_functional_zones {
+        compiled = compiled.in_zones(zones.clone());
     }
     compiled
 }
 
 fn rewrite_self_spell_cost_modifier(
     ability: crate::static_abilities::StaticAbility,
-    info: &LineInfo,
+    facts: &crate::runtime_backend::shared_types::StaticLineSemanticFacts,
 ) -> crate::static_abilities::StaticAbility {
-    let Ok(tokens) = lex_line(info.normalized.normalized.as_str(), info.line_index) else {
+    let Some(parsed_surface) = facts.this_spell_cost else {
         return ability;
     };
-    if !tokens_start_with_this_spell_cost(&tokens) {
-        return ability;
-    }
 
     match &ability.payload {
         ironsmith_core::StaticAbilityPayload::CostReduction(reduction) => {
             let mut amount = reduction.amount.clone();
-            if let Some(cap) = extract_cost_reduction_cap_from_tokens(&tokens) {
+            if let Some(cap) = parsed_surface.reduction_cap {
                 amount = crate::effect::Value::Min(
                     Box::new(amount),
                     Box::new(crate::effect::Value::Fixed(cap)),
@@ -1162,19 +1195,6 @@ fn rewrite_self_spell_cost_modifier(
     }
 }
 
-fn tokens_start_with_this_spell_cost(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_starts_with_any(&parser_token_word_refs(tokens), THIS_SPELL_COST_PREFIXES)
-}
-
-fn extract_cost_reduction_cap_from_tokens(tokens: &[OwnedLexToken]) -> Option<i32> {
-    let (_, tail_start) = find_token_word_sequence_span(tokens, &["by", "more", "than"])?;
-    tokens[tail_start..].iter().find_map(|token| {
-        (token.kind == TokenKind::ManaGroup)
-            .then(|| token.mana_group_inner()?.parse::<i32>().ok())
-            .flatten()
-    })
-}
-
 fn lower_static_ability_chunk(
     input: LineChunkLoweringInput<'_>,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
@@ -1182,6 +1202,7 @@ fn lower_static_ability_chunk(
         mut builder,
         parsed,
         info,
+        semantic_facts,
         allow_unsupported,
         ..
     } = input;
@@ -1206,7 +1227,10 @@ fn lower_static_ability_chunk(
         }
         Err(err) => return Err(err),
     };
-    Ok(builder.with_ability(compile_static_ability_with_zones(ability, info)))
+    Ok(builder.with_ability(compile_static_ability_with_zones(
+        ability,
+        &semantic_facts.static_ability,
+    )))
 }
 
 fn lower_static_abilities_chunk(
@@ -1216,6 +1240,7 @@ fn lower_static_abilities_chunk(
         mut builder,
         parsed,
         info,
+        semantic_facts,
         allow_unsupported,
         ..
     } = input;
@@ -1248,7 +1273,10 @@ fn lower_static_abilities_chunk(
     };
     lowered_abilities.extend(abilities);
     for ability in lowered_abilities {
-        builder = builder.with_ability(compile_static_ability_with_zones(ability, info));
+        builder = builder.with_ability(compile_static_ability_with_zones(
+            ability,
+            &semantic_facts.static_ability,
+        ));
     }
     Ok(builder)
 }
@@ -1288,6 +1316,7 @@ fn lower_statement_chunk(
         state,
         parsed,
         info,
+        semantic_facts,
         allow_unsupported,
         ..
     } = input;
@@ -1361,53 +1390,51 @@ fn lower_statement_chunk(
     let compiled = lowered.effects;
     state.latest_spell_exports = lowered.exports;
 
-    let normalized_tokens =
-        lex_line(info.normalized.normalized.as_str(), info.line_index).unwrap_or_default();
-    let instead_semantics = super::classify_instead_followup_tokens(&normalized_tokens);
+    let statement_facts = &semantic_facts.statement;
+    let instead_semantics = statement_facts.instead_followup.semantics;
     let trailing_instead_if_condition = if matches!(
         instead_semantics,
         crate::cards::builders::InsteadSemantics::SelfReplacement
     ) {
-        compile_trailing_instead_if_condition(&normalized_tokens, &prepared)?
+        compile_trailing_instead_if_condition(
+            statement_facts.trailing_instead_if_predicate.as_ref(),
+            &prepared,
+        )?
     } else {
         None
     };
-    if let Some(program) = back_for_seconds_style_replacement_program(&compiled, &normalized_tokens)
+    if let Some(program) = back_for_seconds_style_replacement_program(&compiled, statement_facts) {
+        builder.spell_effect = Some(program);
+        return Ok(builder);
+    }
+    if attach_back_for_seconds_style_replacement(&mut builder, &compiled, statement_facts) {
+        return Ok(builder);
+    }
+    if let Some(program) =
+        kicked_count_override_self_replacement_program(&compiled, statement_facts)
     {
         builder.spell_effect = Some(program);
         return Ok(builder);
     }
-    if attach_back_for_seconds_style_replacement(&mut builder, &compiled, &normalized_tokens) {
-        return Ok(builder);
-    }
-    if let Some(program) =
-        kicked_count_override_self_replacement_program(&compiled, &normalized_tokens)
-    {
-        builder.spell_effect = Some(program);
-        return Ok(builder);
-    }
-    if let Some(program) =
-        kicked_multi_zone_search_to_battlefield_program(&compiled, &normalized_tokens)
-    {
+    if let Some(program) = kicked_multi_zone_search_to_battlefield_program(&compiled) {
         builder.spell_effect = Some(program);
         return Ok(builder);
     }
     if attach_kicked_multi_zone_search_to_battlefield_replacement(
         &mut builder,
         &compiled,
-        &normalized_tokens,
+        statement_facts,
     ) {
         return Ok(builder);
     }
-    if let Some(program) = clash_win_optional_top_replacement_program(&compiled, &normalized_tokens)
-    {
+    if let Some(program) = clash_win_optional_top_replacement_program(&compiled, statement_facts) {
         builder.spell_effect = Some(program);
         return Ok(builder);
     }
-    if attach_morbid_search_to_battlefield_self_replacement(&mut builder, &normalized_tokens) {
+    if attach_morbid_search_to_battlefield_self_replacement(&mut builder, statement_facts) {
         return Ok(builder);
     }
-    if let Some(program) = creature_type_choice_program(&normalized_tokens, &compiled) {
+    if let Some(program) = creature_type_choice_program(statement_facts, &compiled) {
         builder.spell_effect = Some(program);
         return Ok(builder);
     }
@@ -1422,8 +1449,11 @@ fn lower_statement_chunk(
         let previous = compiled[0].clone();
         let mut replacement = replacement;
         if let Some(previous_target) = super::extract_previous_replacement_target(&previous) {
-            replacement.if_true =
-                retarget_replacement_effects(replacement.if_true, &previous_target);
+            replacement.if_true = retarget_replacement_effects_with_condition(
+                replacement.if_true,
+                &previous_target,
+                &replacement.condition,
+            );
         }
         let mut spell_effect = crate::resolution::ResolutionProgram::from_effects(vec![previous]);
         let Some(segment) = spell_effect.last_segment_mut() else {
@@ -1455,8 +1485,11 @@ fn lower_statement_chunk(
             .and_then(super::extract_previous_replacement_target)
             .or_else(|| super::extract_previous_replacement_target(&compiled[0]))
         {
-            replacement.if_true =
-                retarget_replacement_effects(replacement.if_true, &previous_target);
+            replacement.if_true = retarget_replacement_effects_with_condition(
+                replacement.if_true,
+                &previous_target,
+                &replacement.condition,
+            );
         }
         let Some(segment) = existing.last_segment_mut() else {
             return Err(CardTextError::InvariantViolation(
@@ -1481,8 +1514,11 @@ fn lower_statement_chunk(
         let previous = compiled[0].clone();
         let mut replacement_effects = vec![compiled[1].clone()];
         if let Some(previous_target) = super::extract_previous_replacement_target(&previous) {
-            replacement_effects =
-                retarget_replacement_effects(replacement_effects, &previous_target);
+            replacement_effects = retarget_replacement_effects_with_condition(
+                replacement_effects,
+                &previous_target,
+                &condition,
+            );
         }
         replacement_effects =
             unwrap_matching_conditional_replacement_effects(replacement_effects, &condition);
@@ -1515,8 +1551,11 @@ fn lower_statement_chunk(
             .and_then(super::extract_previous_replacement_target)
             .or_else(|| super::extract_previous_replacement_target(&compiled[0]))
         {
-            replacement_effects =
-                retarget_replacement_effects(replacement_effects, &previous_target);
+            replacement_effects = retarget_replacement_effects_with_condition(
+                replacement_effects,
+                &previous_target,
+                &condition,
+            );
         }
         replacement_effects =
             unwrap_matching_conditional_replacement_effects(replacement_effects, &condition);
@@ -1546,8 +1585,11 @@ fn lower_statement_chunk(
             .last()
             .and_then(super::extract_previous_replacement_target)
         {
-            replacement_effects =
-                retarget_replacement_effects(replacement_effects, &previous_target);
+            replacement_effects = retarget_replacement_effects_with_condition(
+                replacement_effects,
+                &previous_target,
+                &condition,
+            );
         }
         replacement_effects =
             unwrap_matching_conditional_replacement_effects(replacement_effects, &condition);
@@ -1575,8 +1617,11 @@ fn lower_statement_chunk(
             .last()
             .and_then(super::extract_previous_replacement_target)
         {
-            replacement.replacement_effects =
-                retarget_replacement_effects(replacement.replacement_effects, &previous_target);
+            replacement.replacement_effects = retarget_replacement_effects_with_condition(
+                replacement.replacement_effects,
+                &previous_target,
+                &replacement.condition,
+            );
         }
         let Some(segment) = existing.last_segment_mut() else {
             return Err(CardTextError::InvariantViolation(
@@ -1591,7 +1636,11 @@ fn lower_statement_chunk(
         crate::cards::builders::InsteadSemantics::SelfReplacement
     ) && compiled.len() == 1
         && builder.spell_effect.is_none()
-        && (tokens_start_with_if(&normalized_tokens)
+        && ((statement_facts.instead_followup.conditional_intro
+            && matches!(
+                statement_facts.leading_condition_intro,
+                Some(StatementConditionIntro::If)
+            ))
             || conditional_self_replacement_followup(&compiled[0])
                 .is_some_and(|replacement| replacement.if_false.is_empty()))
     {
@@ -1659,10 +1708,6 @@ fn lower_statement_chunk(
         builder.spell_effect = Some(compiled);
     }
     Ok(builder)
-}
-
-fn tokens_start_with_if(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_starts_with(&parser_token_word_refs(tokens), &["if"])
 }
 
 fn lower_additional_cost_chunk(
@@ -1985,6 +2030,23 @@ fn lower_alternative_casting_method_chunk(
     Ok(builder)
 }
 
+fn trigger_frequency_condition_from_facts(
+    max_triggers_per_turn: Option<u32>,
+    facts: &crate::runtime_backend::shared_types::TriggerFrequencyFacts,
+) -> Option<crate::ConditionExpr> {
+    max_triggers_per_turn.map(|limit| {
+        if limit == 1 && facts.first_time_each_or_this_turn && facts.becomes_crewed {
+            crate::ConditionExpr::SourceFirstCrewedThisTurn
+        } else if limit == 1 && facts.first_time_each_or_this_turn {
+            crate::ConditionExpr::FirstTimeThisTurn
+        } else if facts.do_this_limit_each_turn.is_some() {
+            crate::ConditionExpr::DoThisMaxTimesEachTurn(limit)
+        } else {
+            crate::ConditionExpr::MaxTimesEachTurn(limit)
+        }
+    })
+}
+
 fn lower_triggered_chunk(
     input: LineChunkLoweringInput<'_>,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
@@ -1993,6 +2055,7 @@ fn lower_triggered_chunk(
         state,
         parsed,
         info,
+        semantic_facts,
         allow_unsupported,
         ..
     } = input;
@@ -2009,17 +2072,14 @@ fn lower_triggered_chunk(
         &trigger,
         TriggerSpec::Either(_, right) if matches!(**right, TriggerSpec::HauntedCreatureDies)
     ) || matches!(&trigger, TriggerSpec::HauntedCreatureDies);
-    let normalized_tokens =
-        lex_line(info.normalized.normalized.as_str(), info.line_index).unwrap_or_default();
-    let functional_zones =
-        super::infer_triggered_ability_functional_zones(&trigger, &normalized_tokens);
-    let mut intervening_if = crate::runtime_backend::trigger_frequency_condition(
-        Some(info.raw_line.as_str()),
-        max_triggers_per_turn,
+    let trigger_facts = &semantic_facts.triggered_ability;
+    let functional_zones = super::infer_triggered_ability_functional_zones_from_facts(
+        &trigger,
+        &trigger_facts.functional_zones,
     );
-    let trigger_surface_tokens =
-        lex_line(info.normalized.original.as_str(), info.line_index).unwrap_or_default();
-    if tokens_mention_becomes_tapped_during_your_turn(&trigger_surface_tokens) {
+    let mut intervening_if =
+        trigger_frequency_condition_from_facts(max_triggers_per_turn, &trigger_facts.frequency);
+    if trigger_facts.becomes_tapped_during_your_turn {
         let condition = crate::ConditionExpr::YourTurn;
         intervening_if = Some(match intervening_if {
             Some(existing) => crate::ConditionExpr::And(Box::new(condition), Box::new(existing)),
@@ -2050,13 +2110,6 @@ fn lower_triggered_chunk(
         }
         Err(err) => return Err(err),
     };
-    if let Some(surface_count) = do_this_frequency_surface_from_tokens(&trigger_surface_tokens)
-        && let AbilityKind::Triggered(triggered) = parsed.kind_mut()
-        && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(surface_count))
-    {
-        triggered.intervening_if =
-            Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(surface_count));
-    }
     if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
         retarget_source_move_to_damaged_death_card(triggered);
     }

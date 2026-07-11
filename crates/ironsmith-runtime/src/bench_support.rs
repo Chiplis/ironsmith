@@ -549,9 +549,7 @@ pub fn aura_grant_probe() {
         obj.attachments.push(role);
     }
     game.refresh_continuous_state();
-    let chars2 = game
-        .calculated_characteristics(bear2)
-        .expect("bear2 chars");
+    let chars2 = game.calculated_characteristics(bear2).expect("bear2 chars");
     eprintln!(
         "role-enchanted creature P/T: {:?}/{:?} (expected 1/1)",
         chars2.power, chars2.toughness
@@ -572,10 +570,9 @@ pub fn aura_grant_probe() {
     let bob = PlayerId::from_index(1);
     let bob_creature = game.create_object_from_definition(&creature_def, bob, Zone::Battlefield);
     let ffav = game.create_object_from_definition(&aura_def, alice, Zone::Battlefield);
-    assert!(game.attach_object_to_target(
-        ffav,
-        crate::object::AttachmentTarget::Object(bob_creature)
-    ));
+    assert!(
+        game.attach_object_to_target(ffav, crate::object::AttachmentTarget::Object(bob_creature))
+    );
     game.set_monarch(Some(alice));
     game.tap(bob_creature);
     game.turn.active_player = bob;

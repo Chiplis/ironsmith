@@ -456,6 +456,8 @@ pub struct SelectObjectsContext {
     pub min: usize,
     /// Maximum objects to select (None = unlimited).
     pub max: Option<usize>,
+    /// Optional aggregate characteristic bound for the complete selection.
+    pub aggregate_constraint: Option<crate::effect::ChoiceAggregateConstraint>,
     /// Whether the chooser may stop short of `min` after seeing the candidates.
     ///
     /// Used for hidden-zone searches where "fail to find" means the player can
@@ -489,6 +491,7 @@ impl SelectObjectsContext {
             candidates,
             min,
             max,
+            aggregate_constraint: None,
             allow_partial_completion: false,
             require_explicit_choice: false,
             selection_identity: SelectionIdentity::StableId,
@@ -504,6 +507,14 @@ impl SelectObjectsContext {
 
     pub fn require_explicit_choice(mut self) -> Self {
         self.require_explicit_choice = true;
+        self
+    }
+
+    pub fn with_aggregate_constraint(
+        mut self,
+        constraint: crate::effect::ChoiceAggregateConstraint,
+    ) -> Self {
+        self.aggregate_constraint = Some(constraint);
         self
     }
 

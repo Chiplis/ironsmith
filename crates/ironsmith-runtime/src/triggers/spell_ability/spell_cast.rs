@@ -1,5 +1,6 @@
 //! "Whenever [player] casts [spell]" trigger.
 
+use crate::color::{Color, ColorSet};
 use crate::events::EventKind;
 use crate::events::spells::SpellCastEvent;
 use crate::filter::ObjectFilterExt as _;
@@ -405,6 +406,16 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         return base_text;
     }
 
+    if let Some(required_colors) = filter.required_colors {
+        let mut base_filter = filter.clone();
+        base_filter.required_colors = None;
+        let base_text = describe_spell_filter(&base_filter);
+        let color_names = ordered_color_names(required_colors);
+        if color_names.len() >= 2 {
+            return format!("{base_text} that's both {}", color_names.join(" and "));
+        }
+    }
+
     if filter.zone == Some(Zone::Graveyard) {
         let owner_text = match filter.owner.as_ref().unwrap_or(&PlayerFilter::Any) {
             PlayerFilter::You => "your",
@@ -480,6 +491,35 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     }
 }
 
+fn ordered_color_names(colors: ColorSet) -> Vec<&'static str> {
+    const CONVENTIONAL_PAIRS: [(Color, Color); 10] = [
+        (Color::White, Color::Blue),
+        (Color::Blue, Color::Black),
+        (Color::Black, Color::Red),
+        (Color::Red, Color::Green),
+        (Color::Green, Color::White),
+        (Color::White, Color::Black),
+        (Color::Blue, Color::Red),
+        (Color::Black, Color::Green),
+        (Color::Red, Color::White),
+        (Color::Green, Color::Blue),
+    ];
+
+    if colors.count() == 2
+        && let Some((first, second)) = CONVENTIONAL_PAIRS
+            .into_iter()
+            .find(|(first, second)| colors.contains(*first) && colors.contains(*second))
+    {
+        return vec![first.name(), second.name()];
+    }
+
+    Color::ALL
+        .into_iter()
+        .filter(|color| colors.contains(*color))
+        .map(Color::name)
+        .collect()
+}
+
 fn strip_leading_spell_article(text: &str) -> &str {
     text.strip_prefix("a ")
         .or_else(|| text.strip_prefix("an "))
@@ -527,6 +567,33 @@ mod tests {
         let trigger =
             SpellCastTrigger::new(Some(ObjectFilter::noncreature_spell()), PlayerFilter::You);
         assert_eq!(trigger.display(), "Whenever you cast a noncreature spell");
+    }
+
+    #[test]
+    fn test_display_spell_requiring_both_colors() {
+        for (colors, expected) in [
+            (
+                ColorSet::RED.with(Color::White),
+                "Whenever you cast a spell that's both red and white",
+            ),
+            (
+                ColorSet::WHITE.with(Color::Black),
+                "Whenever you cast a spell that's both white and black",
+            ),
+            (
+                ColorSet::GREEN.with(Color::Blue),
+                "Whenever you cast a spell that's both green and blue",
+            ),
+            (
+                ColorSet::BLACK.with(Color::Green),
+                "Whenever you cast a spell that's both black and green",
+            ),
+        ] {
+            let mut filter = ObjectFilter::spell();
+            filter.required_colors = Some(colors);
+            let trigger = SpellCastTrigger::new(Some(filter), PlayerFilter::You);
+            assert_eq!(trigger.display(), expected);
+        }
     }
 
     #[test]

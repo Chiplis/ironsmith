@@ -92,6 +92,7 @@ fn materialize_trailing_self_replacement(
             predicate,
             if_true,
             if_false,
+            ..
         },
         prefix_effects,
     )) = prepared.effects.split_last()
@@ -368,6 +369,24 @@ fn fold_local_zone_rewrite_self_replacements(effects: Vec<Effect>) -> Vec<Effect
     let mut idx = 0usize;
 
     while idx < effects.len() {
+        if idx + 1 < effects.len()
+            && let Some(with_id) = effects[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(delayed) = with_id
+                .effect
+                .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+            && let Some(if_effect) = effects[idx + 1].downcast_ref::<crate::effects::IfEffect>()
+            && if_effect.condition == with_id.id
+            && let [inner_effect] = delayed.effects.as_slice()
+        {
+            let mut delayed = delayed.clone();
+            delayed.effects = vec![
+                Effect::with_id(with_id.id.0, inner_effect.clone()),
+                effects[idx + 1].clone(),
+            ];
+            rewritten.push(Effect::new(delayed));
+            idx += 2;
+            continue;
+        }
         if idx + 1 < effects.len()
             && let Some(with_id) = effects[idx].downcast_ref::<crate::effects::WithIdEffect>()
             && let Some(if_effect) = effects[idx + 1].downcast_ref::<crate::effects::IfEffect>()

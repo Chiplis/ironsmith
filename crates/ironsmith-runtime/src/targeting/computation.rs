@@ -783,6 +783,7 @@ fn compute_player_or_planeswalker_targets_with_view(
     let mut targets =
         compute_player_targets(game, player_filter, caster, source_id, source_snapshot);
 
+    view.prewarm_characteristics(&game.battlefield);
     for &obj_id in &game.battlefield {
         let Some(obj) = game.object(obj_id) else {
             continue;
@@ -832,6 +833,7 @@ fn compute_any_targets_with_view(
     }
 
     // All creatures, planeswalkers, and battles on the battlefield
+    view.prewarm_characteristics(&game.battlefield);
     for &obj_id in &game.battlefield {
         if let Some(obj) = game.object(obj_id) {
             if !view.object_has_card_type(obj_id, CardType::Creature)
@@ -970,6 +972,13 @@ fn compute_object_targets_with_view(
     }
 
     let candidate_ids = view.candidate_ids_for_filter_with_context(filter, &filter_ctx);
+    // Target selection commonly follows a zone change (for example, moving a
+    // spell from hand to the stack), while continuous state is deliberately
+    // still dirty.  Without a batch prewarm, every candidate below performs
+    // its own full layer calculation against the same effect set.  On wide
+    // boards that turns a single-target spell into one full-board continuous
+    // calculation per possible target.
+    view.prewarm_characteristics(&candidate_ids);
     for object_id in candidate_ids {
         let Some(object) = game.object(object_id) else {
             continue;

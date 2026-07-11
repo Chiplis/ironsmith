@@ -3,7 +3,7 @@ pub use ironsmith_core::{
     AttachedChosenLandwalkGrant, AttackCostCondition, AttackingGroupAttackCondition,
     CantAttackUnlessConditionSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
     CopyActivatedAbilities, CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost,
-    CostReduction, CostReductionManaCost, DefendingPlayerAttackCondition,
+    CostReduction, CostReductionManaCost, CounterRemovalFollowUp, DefendingPlayerAttackCondition,
     EnterAsCopyLinkedExilePairSpec, GraveyardCountMetric, LandwalkKind, ManaSpendPermission,
     OptionalLifeAdditionalCost, PregameActionKind, PregameBeginOnBattlefieldSpec,
     RemoveCardTypesForFilter, SetColorsForFilter, StaticAbilityId, ThisSpellCastRestrictionKind,

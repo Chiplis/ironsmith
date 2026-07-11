@@ -18,11 +18,18 @@ pub(crate) fn try_merge_modal_into_remove_mode(
         return false;
     }
 
-    let Some(remove_mode_idx) = find_index(choose_mode.modes.as_slice(), |mode| {
-        lex_line(mode.source_text.as_str(), 0)
-            .ok()
-            .is_some_and(|tokens| tokens_start_with_remove(&tokens))
-    }) else {
+    let mut remove_mode_idx = None;
+    for (index, mode) in choose_mode.modes.iter().enumerate() {
+        if mode
+            .effects
+            .iter()
+            .any(|effect| effect.as_remove_counters().is_some())
+        {
+            remove_mode_idx = Some(index);
+            break;
+        }
+    }
+    let Some(remove_mode_idx) = remove_mode_idx else {
         effects.push(last_effect);
         return false;
     };
@@ -63,89 +70,6 @@ pub(crate) fn try_merge_modal_into_remove_mode(
     true
 }
 
-fn header_mentions_modal_point_cost(text: &str) -> bool {
-    lex_line(text, 0)
-        .ok()
-        .is_some_and(|tokens| header_mentions_modal_point_cost_lexed(&tokens))
-}
-
-fn header_mentions_modal_point_cost_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let has_pawprint_cost = tokens
-        .iter()
-        .any(|token| pawprint_modal_label_count(token).is_some());
-    has_pawprint_cost
-        && word_slice_contains_phrase(&token_word_refs(tokens), &["worth", "of", "modes"])
-}
-
-fn parse_leading_modal_point_cost(text: &str) -> Option<u32> {
-    let mut rest = text.trim_start();
-    if let Some(stripped) = rest
-        .strip_prefix('•')
-        .or_else(|| rest.strip_prefix('-'))
-        .or_else(|| rest.strip_prefix('—'))
-    {
-        rest = stripped.trim_start();
-    }
-
-    let mut count = 0u32;
-    loop {
-        let trimmed = rest.trim_start();
-        if !trimmed
-            .get(..3)
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("{p}"))
-        {
-            rest = trimmed;
-            break;
-        }
-        count += 1;
-        rest = &trimmed[3..];
-    }
-    if count == 0 {
-        return None;
-    }
-    let rest = rest.trim_start();
-    (rest.starts_with('—') || rest.starts_with('–') || rest.starts_with('-')).then_some(count)
-}
-
-fn parse_leading_modal_point_cost_lexed(text: &str) -> Option<u32> {
-    let tokens = lex_line(text, 0).ok()?;
-    let mut count = 0u32;
-    let mut idx = 0usize;
-    if tokens
-        .get(idx)
-        .is_some_and(|token| matches!(token.kind, TokenKind::Bullet | TokenKind::Dash))
-    {
-        idx += 1;
-    }
-    while let Some(point_count) = tokens.get(idx).and_then(pawprint_modal_label_count) {
-        count += point_count;
-        idx += 1;
-    }
-    if count == 0 {
-        return None;
-    }
-    tokens
-        .get(idx)
-        .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
-        .then_some(count)
-}
-
-fn pawprint_modal_label_count(token: &OwnedLexToken) -> Option<u32> {
-    match token.kind {
-        TokenKind::ManaGroup => {
-            let mut rest = token.parser_text();
-            let mut count = 0u32;
-            while let Some(stripped) = rest.strip_prefix("{p}") {
-                count += 1;
-                rest = stripped;
-            }
-            (count > 0 && rest.is_empty()).then_some(count)
-        }
-        TokenKind::Word if token.parser_text() == "p" => Some(1),
-        _ => None,
-    }
-}
-
 pub(crate) fn rewrite_lower_parsed_modal(
     mut builder: CardDefinitionBuilder,
     pending_modal: NormalizedModalAst,
@@ -159,6 +83,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
     let crate::cards::builders::ParsedModalHeader {
         min: header_min,
         max: header_max,
+        weighted_mode_points,
         random: random_mode_choice,
         same_mode_more_than_once,
         mode_must_be_unchosen,
@@ -204,15 +129,10 @@ pub(crate) fn rewrite_lower_parsed_modal(
         }
     };
 
-    let mut weighted_mode_points = header_mentions_modal_point_cost(line_text.as_str());
     let mut compiled_modes = Vec::new();
     let mut mode_point_costs = Vec::new();
     for mode in modes {
-        let point_cost = mode
-            .point_cost
-            .or_else(|| parse_leading_modal_point_cost_lexed(mode.info.raw_line.as_str()))
-            .or_else(|| parse_leading_modal_point_cost(mode.info.raw_line.as_str()))
-            .unwrap_or(1);
+        let point_cost = mode.point_cost.unwrap_or(1);
         let effects = match rewrite_lower_prepared_statement_effects(&mode.prepared) {
             Ok(lowered) => lowered.effects,
             Err(err) if allow_unsupported => {
@@ -231,7 +151,8 @@ pub(crate) fn rewrite_lower_parsed_modal(
         });
         mode_point_costs.push(point_cost);
     }
-    weighted_mode_points |= mode_point_costs.iter().any(|point_cost| *point_cost != 1);
+    let weighted_mode_points =
+        weighted_mode_points || mode_point_costs.iter().any(|point_cost| *point_cost != 1);
 
     if compiled_modes.is_empty() {
         return Ok(builder);

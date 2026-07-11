@@ -29,20 +29,18 @@ use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrit
 use super::lexer::{
     LexedClause, OwnedLexToken, TokenKind, contains_token_kind, token_slice_at_is,
     token_slice_at_is_any, token_slice_first_is, token_slice_first_is_any, token_slice_first_kind,
-    token_slice_starts_with, token_slice_starts_with_at, word_slice_at_is, word_slice_at_is_any,
-    word_slice_contains_all_words, word_slice_contains_any_phrase,
-    word_slice_contains_any_phrase_or_empty, word_slice_contains_any_word,
-    word_slice_contains_phrase, word_slice_contains_phrase_or_empty, word_slice_contains_word,
-    word_slice_ends_with, word_slice_ends_with_any, word_slice_eq, word_slice_eq_any,
-    word_slice_find_phrase_start_or_zero, word_slice_first_is, word_slice_first_is_any,
-    word_slice_last_is, word_slice_starts_with, word_slice_starts_with_any,
-    word_slice_starts_with_at,
+    tokens_start_with, tokens_start_with_at, word_slice_at_is, word_slice_at_is_any, word_slice_eq,
+    word_slice_eq_any, word_slice_find_phrase_start_or_zero, word_slice_first_is,
+    word_slice_first_is_any, word_slice_last_is, words_end_with, words_end_with_any, words_have,
+    words_have_all, words_have_any, words_have_any_phrase, words_have_any_phrase_or_empty,
+    words_have_phrase, words_have_phrase_or_empty, words_start_with, words_start_with_any,
+    words_start_with_at,
 };
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::token_primitives::{
-    contains_window, find_index, find_index_with, find_window_by, find_window_index,
-    lexed_head_words, rfind_index, slice_contains, slice_ends_with, slice_starts_with,
-    slice_strip_prefix, slice_strip_suffix, str_strip_prefix, str_strip_suffix,
+    contains_window, find_window_by, items_end_with, items_have, items_start_with,
+    lexed_head_words, locate_index, locate_index_with, locate_last_index, locate_window_index,
+    slice_strip_prefix, slice_strip_suffix,
 };
 use super::util::{
     current_source_reference_name, cycling_keyword_root, is_source_reference_words,
@@ -52,7 +50,7 @@ use super::util::{
     parse_greater_than_or_equal_quantity_prefix_words, parse_non_type, parse_number,
     parse_number_word_u32, parse_subject, parse_target_count_range_prefix, parse_target_phrase,
     parse_value_expr_words, source_reference_surface_for_span, source_reference_surface_for_words,
-    span_from_tokens, this_source_surface_for_words, token_index_for_word_index, trim_commas,
+    span_from_tokens, this_source_surface_for_words, token_boundary_for_word, trim_commas,
     word_is_cycling_keyword_marker, words,
 };
 #[allow(unused_imports)]

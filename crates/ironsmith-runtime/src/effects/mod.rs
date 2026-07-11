@@ -178,11 +178,11 @@ pub use player::{
     GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
     IncreaseSpeedEffect, LoseTheGameEffect, MayCastMatchingSpellWithoutPayingManaCostEffect,
-    PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect, PoisonCountersEffect, ReduceSpeedEffect,
-    RingTemptsYouEffect, RollDiceChooseResultEffect, RollDieEffect, SkipCombatPhasesEffect,
-    SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
-    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect,
-    VentureIntoDungeonEffect, WinTheGameEffect,
+    PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect, PlayerCountersEffect,
+    PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect, RollDiceChooseResultEffect,
+    RollDieEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect,
+    SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
+    TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,

@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 pub enum LibraryConsultStopRule {
     FirstMatch,
     MatchCount(u32),
+    FirstMatchOrExposedCount(u32),
 }
 
 impl LibraryConsultStopRule {
@@ -21,6 +22,14 @@ impl LibraryConsultStopRule {
         match self {
             Self::FirstMatch => 1,
             Self::MatchCount(count) => *count,
+            Self::FirstMatchOrExposedCount(_) => 1,
+        }
+    }
+
+    fn max_exposed(&self) -> Option<usize> {
+        match self {
+            Self::FirstMatchOrExposedCount(count) => Some(*count as usize),
+            _ => None,
         }
     }
 }
@@ -80,7 +89,8 @@ pub fn execute_library_consult(
     }
 
     let required_matches = stop_rule.required_matches() as usize;
-    if required_matches == 0 {
+    let max_exposed = stop_rule.max_exposed();
+    if required_matches == 0 || max_exposed == Some(0) {
         return Ok(LibraryConsultResult::default());
     }
 
@@ -117,6 +127,9 @@ pub fn execute_library_consult(
                     if result.matched_snapshots.len() >= required_matches {
                         break;
                     }
+                }
+                if max_exposed.is_some_and(|maximum| result.exposed_snapshots.len() >= maximum) {
+                    break;
                 }
             }
 
@@ -155,6 +168,9 @@ pub fn execute_library_consult(
                 if result.matched_snapshots.len() >= required_matches {
                     break;
                 }
+            }
+            if max_exposed.is_some_and(|maximum| result.exposed_snapshots.len() >= maximum) {
+                break;
             }
         },
     }
@@ -509,6 +525,48 @@ mod tests {
             game.object(bottom).expect("bottom card exists").zone,
             Zone::Library
         );
+    }
+
+    #[test]
+    fn reveal_consult_first_match_or_count_stops_at_exposed_card_cap() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        game.create_object_from_card(
+            &make_library_card("Bottom Artifact", vec![CardType::Artifact]),
+            alice,
+            Zone::Library,
+        );
+        let second = game.create_object_from_card(
+            &make_library_card("Second Land", vec![CardType::Land]),
+            alice,
+            Zone::Library,
+        );
+        let first = game.create_object_from_card(
+            &make_library_card("Top Creature", vec![CardType::Creature]),
+            alice,
+            Zone::Library,
+        );
+
+        let ctx = ExecutionContext::new_default(ObjectId::from_raw(1001), alice);
+        let mut dm = AutoPassDecisionMaker;
+        let mut ctx = ctx.with_decision_maker(&mut dm);
+
+        let result = execute_library_consult(
+            &mut game,
+            &mut ctx,
+            alice,
+            LibraryConsultMode::Reveal,
+            LibraryConsultStopRule::FirstMatchOrExposedCount(2),
+            Some(&TagKey::from("all")),
+            Some(&TagKey::from("match")),
+            |object, _| object.card_types.contains(&CardType::Artifact),
+        )
+        .expect("bounded reveal consult should execute");
+
+        assert_eq!(result.exposed_object_ids, vec![first, second]);
+        assert!(result.matched_snapshots.is_empty());
+        assert_eq!(snapshot_ids(&ctx, "all"), vec![first, second]);
+        assert!(ctx.get_tagged_all("match").is_none());
     }
 
     #[test]

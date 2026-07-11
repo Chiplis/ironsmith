@@ -38,6 +38,24 @@ fn scoped_collection_zones() -> Vec<Zone> {
     ]
 }
 
+fn record_exiled_collection_choice(
+    ctx: &mut EffectLoweringContext,
+    tag: &TagKey,
+    count: &ChoiceCount,
+) {
+    if !is_sentence_helper_exiled_collection_tag(tag.as_str()) {
+        return;
+    }
+    let appends_to_existing = ctx.last_exiled_collection_tag.as_deref() == Some(tag.as_str());
+    let current_choice_is_plural = count.max.map_or(true, |max| max > 1);
+    ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+    ctx.last_exiled_collection_is_plural = if appends_to_existing {
+        true
+    } else {
+        current_choice_is_plural
+    };
+}
+
 fn filter_references_tagged_collection(filter: &ObjectFilter, tag: &str) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
         constraint.tag.as_str() == tag
@@ -72,6 +90,37 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
+        EffectAst::ChooseObjectsWithAggregateConstraint {
+            filter,
+            count,
+            player,
+            tag,
+            constraint,
+        } => {
+            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let chooser = subject.clone_player_filter();
+            let mut resolved_filter = if matches!(player, PlayerAst::Implicit) {
+                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
+            } else {
+                subject.bind_battlefield_filter_with_default_controller(filter, ctx)?
+            };
+            if !matches!(chooser, PlayerFilter::ChosenPlayer) {
+                preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
+            }
+            let mut effects = subject.target_prelude();
+            effects.push(Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    resolved_filter,
+                    *count,
+                    chooser.clone(),
+                    tag.clone(),
+                )
+                .with_aggregate_constraint(*constraint),
+            ));
+            ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_player_filter = Some(chooser);
+            (effects, subject.into_choices())
+        }
         EffectAst::ChooseObjects {
             filter,
             count,
@@ -79,7 +128,15 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             player,
             tag,
         } => {
-            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let subject = if *player == PlayerAst::That
+                && ctx.iterated_player
+                && let Some(chooser) = ctx.last_player_filter.clone()
+                && matches!(chooser, PlayerFilter::TaggedPlayer(_))
+            {
+                LoweredSubject::from_resolved(chooser, Vec::new()).as_role(SubjectRole::Chooser)
+            } else {
+                LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?
+            };
             let chooser = subject.clone_player_filter();
             let references_revealed_hand = filter.zone == Some(Zone::Hand)
                 && filter.owner.is_none()
@@ -120,13 +177,22 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 resolved_filter.zone = None;
             }
             normalize_hand_or_graveyard_cross_zone_filter(&mut resolved_filter);
-            let chooses_revealed_pool = ctx.last_revealed_tag.as_deref().is_some_and(|tag| {
+            let chooses_revealed_pool =
                 resolved_filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == tag
-                        && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
-                })
-            });
-            if chooses_revealed_pool && resolved_filter.zone.is_none() {
+                    matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                        && (is_revealed_collection_tag(constraint.tag.as_str())
+                            || ctx
+                                .last_revealed_tag
+                                .as_deref()
+                                .is_some_and(|tag| constraint.tag.as_str() == tag))
+                });
+            let chooses_revealed_library_pool = chooses_revealed_pool
+                && (ctx.last_revealed_zone == Some(Zone::Library)
+                    || (ctx.last_revealed_zone.is_none()
+                        && resolved_filter.zone == Some(Zone::Library)));
+            if chooses_revealed_library_pool {
+                resolved_filter.zone = None;
+            } else if chooses_revealed_pool && resolved_filter.zone.is_none() {
                 resolved_filter.zone = ctx.last_revealed_zone;
             }
             if chooses_revealed_pool
@@ -206,10 +272,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             }
             ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
             ctx.last_object_tag = Some(tag.as_str().to_string());
-            if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
-                ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
-                ctx.last_exiled_collection_is_plural = count.max.map_or(true, |max| max > 1);
-            }
+            record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }
@@ -235,10 +298,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             );
             ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
             ctx.last_object_tag = Some(tag.as_str().to_string());
-            if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
-                ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
-                ctx.last_exiled_collection_is_plural = count.max.map_or(true, |max| max > 1);
-            }
+            record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }
@@ -267,10 +327,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let effects = subject.prepend_target_prelude_if_needed(Effect::new(choose_effect));
             ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
             ctx.last_object_tag = Some(tag.as_str().to_string());
-            if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
-                ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
-                ctx.last_exiled_collection_is_plural = count.max.map_or(true, |max| max > 1);
-            }
+            record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(chooser);
             (effects, subject.into_choices())
         }
@@ -314,7 +371,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             if !matches!(chooser, PlayerFilter::ChosenPlayer) {
                 preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
             }
-            if slice_contains(zones.as_slice(), &Zone::Battlefield)
+            if zones.iter().any(|zone| *zone == Zone::Battlefield)
                 && resolved_filter.controller.is_none()
                 && resolved_filter.owner.is_none()
                 && resolved_filter.tagged_constraints.is_empty()
@@ -325,7 +382,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 .unwrap_or_else(|| chooser.clone());
             let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
             let default_search =
-                slice_contains(zones.as_slice(), &Zone::Library) && !chooses_tagged_pool;
+                zones.iter().any(|zone| *zone == Zone::Library) && !chooses_tagged_pool;
             let count_value = count_value
                 .as_ref()
                 .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))

@@ -3,9 +3,9 @@ use crate::effects::{
     PutCountersEffect, SearchLibrarySlotsEffect, VillainousChoiceEffect, WithIdEffect,
 };
 pub use ironsmith_core::{
-    ChoiceCount, Comparison, Condition, DelayedTriggerSpec, EffectId, EffectMode as CoreEffectMode,
-    EffectPredicate, EventValueSpec, ManaSpendPermission, Restriction, SearchSelectionMode, Until,
-    Value, ValueComparisonOperator,
+    ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, Comparison, Condition,
+    DelayedTriggerSpec, EffectId, EffectMode as CoreEffectMode, EffectPredicate, EventValueSpec,
+    ManaSpendPermission, Restriction, SearchSelectionMode, Until, Value, ValueComparisonOperator,
 };
 use std::any::Any;
 use std::fmt::Debug;

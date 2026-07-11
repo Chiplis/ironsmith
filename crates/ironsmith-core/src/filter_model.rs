@@ -1,7 +1,7 @@
 use crate::{
-    CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, EffectMetric, ObjectId,
-    PlayerId, SourceReferenceSurface, StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone,
-    effect_model::EventValueSpec,
+    CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, EffectMetric,
+    KeywordActionKind, ObjectId, PlayerId, SourceReferenceSurface, StaticAbilityId, Subtype,
+    Supertype, TagKey, Value, Zone, effect_model::EventValueSpec,
 };
 
 /// A reference to an object for use in filters and effects.
@@ -390,6 +390,7 @@ pub struct ObjectFilter {
     pub supertypes: Vec<Supertype>,
     pub excluded_supertypes: Vec<Supertype>,
     pub colors: Option<ColorSet>,
+    pub required_colors: Option<ColorSet>,
     pub chosen_color: bool,
     pub chosen_land_type: bool,
     pub chosen_creature_type: bool,
@@ -405,6 +406,7 @@ pub struct ObjectFilter {
     pub historic: bool,
     pub nonhistoric: bool,
     pub modified: bool,
+    pub sticker: Option<KeywordActionKind>,
     pub token: bool,
     pub nontoken: bool,
     pub face_down: Option<bool>,
@@ -504,6 +506,7 @@ impl ObjectFilter {
             || !self.supertypes.is_empty()
             || !self.excluded_supertypes.is_empty()
             || self.colors.is_some()
+            || self.required_colors.is_some()
             || self.chosen_color
             || self.chosen_land_type
             || self.chosen_creature_type
@@ -519,6 +522,7 @@ impl ObjectFilter {
             || self.historic
             || self.nonhistoric
             || self.modified
+            || self.sticker.is_some()
             || self.enlist_eligible
             || self.attached_to_player.is_some()
             || self.surveilled_this_turn
@@ -1409,7 +1413,27 @@ impl ObjectFilter {
                 "face-up".to_string()
             });
         }
-        if let Some(colors) = self.colors {
+        if let Some(colors) = self.required_colors {
+            let mut color_words = Vec::new();
+            if colors.contains(Color::White) {
+                color_words.push("white");
+            }
+            if colors.contains(Color::Blue) {
+                color_words.push("blue");
+            }
+            if colors.contains(Color::Black) {
+                color_words.push("black");
+            }
+            if colors.contains(Color::Red) {
+                color_words.push("red");
+            }
+            if colors.contains(Color::Green) {
+                color_words.push("green");
+            }
+            if !color_words.is_empty() {
+                parts.push(format!("both {}", color_words.join(" and ")));
+            }
+        } else if let Some(colors) = self.colors {
             if colors.contains_all(Color::ALL.into_iter().collect::<ColorSet>()) {
                 parts.push("colored".to_string());
             } else {
@@ -1436,6 +1460,16 @@ impl ObjectFilter {
         }
         if self.chosen_color {
             post_noun_qualifiers.push("of the chosen color".to_string());
+        }
+        if let Some(sticker) = self.sticker {
+            let sticker = match sticker {
+                KeywordActionKind::ArtSticker => "an art sticker",
+                KeywordActionKind::AbilitySticker => "an ability sticker",
+                KeywordActionKind::PowerToughnessSticker => "a power and toughness sticker",
+                KeywordActionKind::NameSticker => "a name sticker",
+                _ => "a sticker",
+            };
+            post_noun_qualifiers.push(format!("with {sticker} on it"));
         }
         if self.chosen_land_type {
             post_noun_qualifiers.push("of the chosen land type".to_string());
@@ -1542,6 +1576,12 @@ impl ObjectFilter {
                         post_noun_qualifiers.push(
                             "that shares a card type with a card exiled with this permanent"
                                 .to_string(),
+                        );
+                        continue;
+                    }
+                    if constraint.tag.as_str().starts_with("sacrificed_") {
+                        post_noun_qualifiers.push(
+                            "that shares a card type with the sacrificed permanent".to_string(),
                         );
                         continue;
                     }
@@ -2626,6 +2666,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
         Wither => Some("wither"),
         Infect => Some("infect"),
         Changeling => Some("changeling"),
+        Cascade => Some("cascade"),
         _ => None,
     }
 }

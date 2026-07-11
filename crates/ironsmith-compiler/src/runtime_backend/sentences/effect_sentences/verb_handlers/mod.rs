@@ -15,6 +15,10 @@ use crate::zone::Zone;
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
 use super::super::activation_helpers::parse_add_mana;
+use super::super::grammar::effects::resource_shapes::{
+    self as resource_grammar, ResourceLookHandFollowup, ResourceLookObjectKind, ResourceLookShape,
+    ResourceShuffleShape,
+};
 use super::super::grammar::primitives::{self as grammar, TokenWordView, contains_word};
 use super::super::grammar::structure::{
     parse_trailing_if_predicate_lexed, parse_trailing_instead_if_predicate_lexed,
@@ -25,16 +29,15 @@ use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
     parse_value_binding_clause,
 };
-use super::super::lex_patterns::{LexCaptureKind, LexPattern};
 use super::super::lexer::{
     LexedClause, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
-    token_slice_first_is_any, token_slice_starts_with, word_slice_contains_any_phrase,
-    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_word,
-    word_slice_ends_with_any, word_slice_eq, word_slice_eq_any, word_slice_find_any_phrase_start,
-    word_slice_find_phrase_start, word_slice_starts_with, word_slice_starts_with_any,
+    token_slice_first_is_any, tokens_start_with, word_slice_eq, word_slice_eq_any,
+    word_slice_find_any_phrase_start, word_slice_find_phrase_start, words_end_with_any, words_have,
+    words_have_any, words_have_any_phrase, words_have_phrase, words_start_with,
+    words_start_with_any,
 };
 use super::super::object_filters::parse_object_filter;
-use super::super::token_primitives::{find_index, find_window_by, rfind_index, str_strip_suffix};
+use super::super::token_primitives::{find_window_by, items_have, locate_index, locate_last_index};
 use super::super::util::{
     comparison_to_strict_at_least_threshold, is_article, is_source_reference_words,
     mana_pips_from_token, parse_card_type, parse_choice_count_before_target_prefix,
@@ -42,7 +45,7 @@ use super::super::util::{
     parse_number_word_u32, parse_quantity_comparison_prefix, parse_target_count_range_prefix,
     parse_target_phrase, parse_value, parse_value_expr_words, replace_unbound_x_with_value,
     source_choose_spec_for_surface, source_reference_surface_for_words, span_from_tokens,
-    strip_leading_article_word_refs, this_source_surface_for_words, token_index_for_word_index,
+    strip_leading_article_word_refs, this_source_surface_for_words, token_boundary_for_word,
     trim_commas, value_contains_unbound_x, words, wrap_target_count,
 };
 use super::super::value_helpers::{

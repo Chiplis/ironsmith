@@ -1,21 +1,13 @@
+use super::super::grammar::effects as search_grammar;
 use super::super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::super::grammar::values::parse_value_comparison_tokens;
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, TokenKind, contains_token_word, find_token_word_sequence_span,
-    lex_line, token_slice_starts_with_at, token_word_refs, trim_lexed_commas,
-    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_eq, word_slice_eq_any,
-    word_slice_find_any_phrase_start, word_slice_find_phrase_start, word_slice_find_word_where,
-    word_slice_starts_with, word_slice_starts_with_any,
+    OwnedLexToken, find_token_word_sequence_span, token_word_refs, trim_lexed_commas,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
-use super::super::token_primitives::{
-    find_index as find_token_index, parse_simple_restriction_duration_prefix,
-    parse_simple_restriction_duration_suffix, rfind_index as rfind_token_index,
-};
 use super::super::util::{
-    helper_tag_for_tokens, is_article, parse_number, parse_number_word_u32, parse_subject,
-    parse_target_phrase, parse_zone_word, possessive_normalized_word_refs, span_from_tokens,
-    strip_leading_token_words_any, token_index_for_word_index, trim_commas, words,
+    helper_tag_for_tokens, parse_number, parse_number_word_u32, parse_subject, parse_target_phrase,
+    span_from_tokens, strip_leading_token_words_any, trim_commas,
 };
 use super::sentence_helpers::*;
 use super::{
@@ -41,81 +33,6 @@ pub(crate) enum SearchLibraryManaConstraint {
     OneOf(Vec<u32>),
 }
 
-const SEARCH_FROM_THE_TOP_TAIL: &[&str] = &["from", "the", "top"];
-const SEARCH_OR_WORD: &str = "or";
-const SEARCH_FOR_AS_LONG_AS_PHRASE: &[&str] = &["for", "as", "long", "as"];
-const SEARCH_THIS_TURN_PHRASE: &[&str] = &["this", "turn"];
-const SEARCH_SHUFFLE_WORDS: &[&str] = &["shuffle", "shuffles"];
-const SEARCH_MAY_WORD: &str = "may";
-const SEARCH_EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"], &["each", "players"]];
-const SEARCH_INTO_WORD: &str = "into";
-const SEARCH_LIBRARY_WORDS: &[&str] = &["library", "libraries"];
-const SEARCH_SOURCE_AND_GRAVEYARD_PREFIXES: &[&[&str]] = &[
-    &["this", "artifact", "and"],
-    &["this", "permanent", "and"],
-    &["this", "card", "and"],
-];
-const SEARCH_OWNER_OF_PREFIX: &[&str] = &["the", "owner", "of"];
-const SEARCH_SECOND_ZONE_SKIP_WORDS: &[&str] = &["all", "cards", "from"];
-const SEARCH_HAND_OR_GRAVEYARD_ZONE_WORDS: &[&str] = &["hand", "hands", "graveyard", "graveyards"];
-const SEARCH_TARGET_OR_YOUR_OWNER_PHRASES: &[&[&str]] = &[
-    &["target", "player"],
-    &["target", "players"],
-    &["target", "opponent"],
-    &["target", "opponents"],
-    &["your"],
-];
-const SEARCH_EXILE_WORDS: &[&str] = &["exile", "exiles"];
-const SEARCH_EXILED_THIS_WAY_PHRASE: &[&str] = &["exiled", "this", "way"];
-const SEARCH_EXILED_WITH_THIS_PHRASE: &[&str] = &["exiled", "with", "this"];
-const SEARCH_THEN_PUTS_ALL_PERMANENT_CARDS_PHRASE: &[&str] =
-    &["then", "puts", "all", "permanent", "cards"];
-const SEARCH_AMONG_THEM_ONTO_BATTLEFIELD_PHRASES: &[&[&str]] = &[
-    &["among", "them", "onto", "battlefield"],
-    &["among", "them", "onto", "the", "battlefield"],
-];
-const SEARCH_DESTROYED_THIS_WAY_PHRASE: &[&str] = &["destroyed", "this", "way"];
-const SEARCH_DIED_THIS_WAY_PHRASE: &[&str] = &["died", "this", "way"];
-const SEARCH_PUT_INTO_GRAVEYARD_THIS_WAY_PHRASES: &[&[&str]] = &[
-    &["put", "into", "a", "graveyard", "this", "way"],
-    &["put", "into", "graveyard", "this", "way"],
-    &["put", "into", "their", "graveyard", "this", "way"],
-    &["put", "into", "its", "graveyard", "this", "way"],
-];
-const SEARCH_REVEAL_UNTIL_CONTROLLER_REVEALS_PREFIX: &[&str] = &[
-    "its",
-    "controller",
-    "reveals",
-    "cards",
-    "from",
-    "the",
-    "top",
-    "of",
-    "their",
-    "library",
-    "until",
-    "they",
-    "reveal",
-];
-const SEARCH_PUTS_THAT_CARD_ONTO_BATTLEFIELD_PHRASE: &[&str] =
-    &["puts", "that", "card", "onto", "the", "battlefield"];
-const SEARCH_THEN_SHUFFLES_PHRASE: &[&str] = &["then", "shuffles"];
-const SEARCH_THEN_PUTS_REST_BOTTOM_PHRASE: &[&str] =
-    &["then", "puts", "the", "rest", "on", "the", "bottom"];
-const SEARCH_TARGET_PLAYER_PREFIX: &[&str] = &["target", "player"];
-const SEARCH_TARGET_PLAYERS_PREFIX: &[&str] = &["target", "players"];
-const SEARCH_TARGET_OPPONENT_PREFIX: &[&str] = &["target", "opponent"];
-const SEARCH_TARGET_OPPONENTS_PREFIX: &[&str] = &["target", "opponents"];
-const SEARCH_TARGET_PLAYER_OR_OPPONENT_PHRASES: &[&[&str]] = &[
-    SEARCH_TARGET_OPPONENT_PREFIX,
-    SEARCH_TARGET_OPPONENTS_PREFIX,
-    SEARCH_TARGET_PLAYER_PREFIX,
-    SEARCH_TARGET_PLAYERS_PREFIX,
-];
-const SEARCH_CONTROL_ACTION_WORDS: &[&str] = &["control", "controls"];
-const SEARCH_CREATURE_CONTROL_SUBJECT_PHRASES: &[&[&str]] = &[&["they"], &["that", "player"]];
-const SEARCH_GRAVEYARD_OWNER_WORDS: &[&str] = &["their"];
-const SEARCH_GRAVEYARD_ZONE_WORDS: &[&str] = &["graveyard", "graveyards"];
 const SEARCH_ENCHANT_WORD: &str = "enchant";
 const SEARCH_EARTHBEND_WORD: &str = "earthbend";
 
@@ -124,16 +41,6 @@ struct SearchZonePairClause {
     owner: PlayerFilter,
     first_zone: Zone,
     second_zone: Zone,
-}
-
-fn search_token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
-    token.as_word().is_some() && token.parser_text() == expected
-}
-
-fn search_token_is_any_word(token: &OwnedLexToken, expected: &[&str]) -> bool {
-    token
-        .as_word()
-        .is_some_and(|_| expected.contains(&token.parser_text()))
 }
 
 fn segment_starts_effect_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -153,74 +60,7 @@ pub(crate) fn parse_search_library_sentence(
 
 #[allow(dead_code)]
 pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
-    let mut idx = 0usize;
-    while idx + 3 < words.len() {
-        if word_slice_eq(&words[idx + 1..idx + 4], SEARCH_FROM_THE_TOP_TAIL) {
-            return true;
-        }
-        idx += 1;
-    }
-    false
-}
-
-fn is_source_reference_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    [
-        "this",
-        "thiss",
-        "source",
-        "artifact",
-        "creature",
-        "permanent",
-    ]
-    .iter()
-    .any(|word| contains_token_word(tokens, word))
-}
-
-fn is_as_long_as_you_control_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word(tokens, "you")
-        && contains_token_word(tokens, "control")
-        && is_source_reference_duration_tokens(tokens)
-}
-
-fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_contains_phrase(&token_word_refs(tokens), SEARCH_FOR_AS_LONG_AS_PHRASE)
-        && contains_token_word(tokens, "remains")
-        && contains_token_word(tokens, "tapped")
-        && is_source_reference_duration_tokens(tokens)
-}
-
-fn is_source_remains_battlefield_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_contains_phrase(&token_word_refs(tokens), SEARCH_FOR_AS_LONG_AS_PHRASE)
-        && contains_token_word(tokens, "remains")
-        && contains_token_word(tokens, "battlefield")
-        && is_source_reference_duration_tokens(tokens)
-}
-
-fn remove_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut cleaned = Vec::new();
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if token_slice_starts_with_at(tokens, idx, &["this", "turn"]) {
-            idx += 2;
-            continue;
-        }
-        cleaned.push(tokens[idx].clone());
-        idx += 1;
-    }
-    cleaned
-}
-
-#[allow(dead_code)]
-pub(crate) fn zone_slice_contains(zones: &[Zone], expected: Zone) -> bool {
-    zones.iter().any(|zone| *zone == expected)
-}
-
-fn card_type_slice_contains(card_types: &[CardType], expected: CardType) -> bool {
-    card_types.iter().any(|card_type| *card_type == expected)
-}
-
-fn word_has_fragment(word: &str, fragment: &str) -> bool {
-    word.match_indices(fragment).next().is_some()
+    search_grammar::search_library_has_unsupported_top_position_probe(words)
 }
 
 pub(crate) fn parse_search_library_disjunction_filter(
@@ -255,69 +95,10 @@ pub(crate) fn parse_search_library_disjunction_filter(
 pub(crate) fn parse_restriction_duration_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::effect::Until, Vec<OwnedLexToken>)>, CardTextError> {
-    use crate::effect::Until;
-
-    if tokens.is_empty() {
-        return Ok(None);
-    }
-
-    if let Some((duration, rest)) = parse_simple_restriction_duration_prefix(tokens) {
-        return Ok(Some((duration, trim_lexed_commas(rest).to_vec())));
-    }
-
-    if token_word_refs(tokens).len() < 2 {
-        return Ok(None);
-    }
-
-    if grammar::parse_prefix(tokens, grammar::phrase(&["for", "as", "long", "as"])).is_some() {
-        if !is_as_long_as_you_control_duration_tokens(tokens) {
-            return Ok(None);
-        }
-        let Some((_before, after)) =
-            grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-        else {
-            return Err(CardTextError::ParseError(
-                "missing comma after duration prefix".to_string(),
-            ));
-        };
-        let remainder = trim_lexed_commas(after).to_vec();
-        return Ok(Some((Until::YouStopControllingThis, remainder)));
-    }
-
-    if let Some((rest, duration)) = parse_simple_restriction_duration_suffix(tokens) {
-        let remainder = trim_lexed_commas(rest).to_vec();
-        if !remainder.is_empty() {
-            return Ok(Some((duration, remainder)));
-        }
-    }
-
-    if let Some((token_idx, _)) =
-        find_token_word_sequence_span(tokens, &["for", "as", "long", "as"])
-    {
-        let suffix_tokens = &tokens[token_idx..];
-        if is_source_remains_tapped_duration_tokens(suffix_tokens) {
-            let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
-            return Ok(Some((Until::SourceUntaps, remainder)));
-        }
-        if is_source_remains_battlefield_duration_tokens(suffix_tokens) {
-            let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
-            return Ok(Some((Until::ThisLeavesTheBattlefield, remainder)));
-        }
-        if is_as_long_as_you_control_duration_tokens(suffix_tokens) {
-            let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
-            return Ok(Some((Until::YouStopControllingThis, remainder)));
-        }
-    }
-
-    if word_slice_contains_phrase(&token_word_refs(tokens), SEARCH_THIS_TURN_PHRASE) {
-        let cleaned = remove_this_turn_tokens(tokens);
-        let remainder = trim_lexed_commas(&cleaned).to_vec();
-        if !remainder.is_empty() {
-            return Ok(Some((Until::EndOfTurn, remainder)));
-        }
-    }
-
-    Ok(None)
+    Ok(
+        search_grammar::parse_search_restriction_duration_shape_lexed(tokens)?
+            .map(|shape| (shape.duration, shape.remainder)),
+    )
 }
 
 #[allow(dead_code)]
@@ -358,7 +139,7 @@ pub(crate) fn extract_search_library_mana_constraint(
         let [left, middle, right] = clause_tokens else {
             return None;
         };
-        if !search_token_is_word(middle, SEARCH_OR_WORD) {
+        if !search_grammar::search_library_token_is_or(middle) {
             return None;
         }
         SearchLibraryManaConstraint::OneOf(vec![
@@ -431,33 +212,7 @@ pub(crate) fn split_search_same_name_reference_filter(
 
 #[allow(dead_code)]
 pub(crate) fn is_same_name_that_reference_words(words: &[&str]) -> bool {
-    matches!(
-        words,
-        ["that", "card"]
-            | ["that", "cards"]
-            | ["that", "creature"]
-            | ["that", "creatures"]
-            | ["that", "artifact"]
-            | ["that", "artifacts"]
-            | ["that", "enchantment"]
-            | ["that", "enchantments"]
-            | ["that", "land"]
-            | ["that", "lands"]
-            | ["that", "permanent"]
-            | ["that", "permanents"]
-            | ["that", "spell"]
-            | ["that", "spells"]
-            | ["that", "object"]
-            | ["that", "objects"]
-            | ["those", "cards"]
-            | ["those", "creatures"]
-            | ["those", "artifacts"]
-            | ["those", "enchantments"]
-            | ["those", "lands"]
-            | ["those", "permanents"]
-            | ["those", "spells"]
-            | ["those", "objects"]
-    )
+    search_grammar::is_same_name_that_reference_words(words)
 }
 
 pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
@@ -472,7 +227,10 @@ pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
                 | Subtype::Forest
                 | Subtype::Desert
         )
-    }) && !card_type_slice_contains(&filter.card_types, CardType::Land)
+    }) && !filter
+        .card_types
+        .iter()
+        .any(|card_type| *card_type == CardType::Land)
     {
         filter.card_types.push(CardType::Land);
     }
@@ -485,49 +243,12 @@ pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
 pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let trimmed_tokens = trim_commas(tokens);
-    let clause_tokens = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
-    if clause_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let clause_words = token_word_refs(&clause_tokens);
-    if !clause_words
-        .iter()
-        .any(|word| SEARCH_SHUFFLE_WORDS.contains(word))
-        || !grammar::contains_word(&clause_tokens, "graveyard")
-        || !grammar::contains_word(&clause_tokens, "library")
-    {
-        return Ok(None);
-    }
-
-    let Some(shuffle_idx) = find_token_index(&clause_tokens, |token| {
-        search_token_is_any_word(token, SEARCH_SHUFFLE_WORDS)
-    }) else {
+    let Some(shape) = search_grammar::parse_shuffle_graveyard_shape_lexed(tokens) else {
         return Ok(None);
     };
-
-    // Keep this primitive focused on shuffle-led clauses so we don't swallow
-    // earlier effects in chains like "... then shuffle your graveyard ...".
-    if shuffle_idx > 3 {
-        return Ok(None);
-    }
-
-    let mut subject_tokens = trim_commas(&clause_tokens[..shuffle_idx]);
-    let optional_shuffle = subject_tokens
-        .last()
-        .is_some_and(|token| search_token_is_word(token, SEARCH_MAY_WORD));
-    if optional_shuffle {
-        subject_tokens.pop();
-    }
-    let each_player_subject = {
-        let subject_words = token_word_refs(&subject_tokens);
-        word_slice_starts_with_any(&subject_words, SEARCH_EACH_PLAYER_PREFIXES)
-    };
+    let subject_tokens = shape.subject_tokens;
+    let optional_shuffle = shape.optional_shuffle;
+    let each_player_subject = shape.each_player_subject;
     let subject = if subject_tokens.is_empty() {
         SubjectAst::Player(PlayerAst::You)
     } else if each_player_subject {
@@ -540,33 +261,8 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         SubjectAst::This => return Ok(None),
     };
 
-    let body_tokens = trim_commas(&clause_tokens[shuffle_idx + 1..]);
-    if body_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let Some(into_idx) = find_token_index(&body_tokens, |token| {
-        search_token_is_word(token, SEARCH_INTO_WORD)
-    }) else {
-        return Ok(None);
-    };
-    if into_idx == 0 {
-        return Ok(None);
-    }
-
-    let destination_tokens = trim_commas(&body_tokens[into_idx + 1..]);
-    let destination_words = token_word_refs(&destination_tokens);
-    if !grammar::contains_word(&destination_tokens, "library") {
-        return Ok(None);
-    }
-    let owner_library_destination = destination_words
-        .iter()
-        .any(|word| word_has_fragment(word, "owner"));
-    let trailing_tokens = find_token_index(&destination_tokens, |token| {
-        search_token_is_any_word(token, SEARCH_LIBRARY_WORDS)
-    })
-    .map(|idx| trim_commas(&destination_tokens[idx + 1..]).to_vec())
-    .unwrap_or_default();
+    let owner_library_destination = shape.owner_library_destination;
+    let trailing_tokens = shape.trailing_tokens.to_vec();
     let append_trailing =
         |mut effects: Vec<EffectAst>| -> Result<Option<Vec<EffectAst>>, CardTextError> {
             if trailing_tokens.is_empty() {
@@ -597,21 +293,12 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         }
     };
 
-    let target_tokens = trim_commas(&body_tokens[..into_idx]);
-    if target_tokens.is_empty() {
-        return Ok(None);
-    }
-    let target_words = token_word_refs(&target_tokens);
-    if !grammar::contains_word(&target_tokens, "graveyard") {
-        return Ok(None);
-    }
-
-    let has_target_selector = grammar::contains_word(&target_tokens, "target");
+    let target_tokens = shape.target_tokens;
+    let has_target_selector = shape.has_target_selector;
     if !has_target_selector {
         let mut effects = Vec::new();
-        let has_source_and_graveyard_clause =
-            word_slice_starts_with_any(&target_words, SEARCH_SOURCE_AND_GRAVEYARD_PREFIXES);
-        let has_hand_clause = grammar::contains_word(&target_tokens, "hand");
+        let has_source_and_graveyard_clause = shape.has_source_and_graveyard_clause;
+        let has_hand_clause = shape.has_hand_clause;
         if has_source_and_graveyard_clause {
             effects.push(EffectAst::subject_verb_move_to_zone(
                 TargetAst::Source(None),
@@ -657,47 +344,14 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
 pub(crate) fn parse_shuffle_object_into_library_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let trimmed_tokens = trim_commas(tokens);
-    let clause_tokens = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
-    if clause_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let clause_words = token_word_refs(&clause_tokens);
-    if !clause_words
-        .iter()
-        .any(|word| SEARCH_SHUFFLE_WORDS.contains(word))
-        || !grammar::contains_word(&clause_tokens, "library")
-        || grammar::contains_word(&clause_tokens, "graveyard")
-    {
-        return Ok(None);
-    }
-
-    let Some(shuffle_idx) = find_token_index(&clause_tokens, |token| {
-        search_token_is_any_word(token, SEARCH_SHUFFLE_WORDS)
-    }) else {
+    let Some(shape) = search_grammar::parse_shuffle_object_shape_lexed(tokens) else {
         return Ok(None);
     };
-
-    let subject_tokens = trim_commas(&clause_tokens[..shuffle_idx]);
-    let owner_of_subject_target = {
-        let subject_words = token_word_refs(&subject_tokens);
-        if word_slice_starts_with(&subject_words, SEARCH_OWNER_OF_PREFIX) {
-            let Some(target_start) = token_index_for_word_index(&subject_tokens, 3) else {
-                return Ok(None);
-            };
-            Some(parse_target_phrase(&subject_tokens[target_start..])?)
-        } else {
-            None
-        }
-    };
-    if shuffle_idx > 3 && owner_of_subject_target.is_none() {
-        return Ok(None);
-    }
+    let subject_tokens = shape.subject_tokens;
+    let owner_of_subject_target = shape
+        .owner_subject_target_tokens
+        .map(parse_target_phrase)
+        .transpose()?;
 
     let subject = if owner_of_subject_target.is_some() {
         SubjectAst::Player(PlayerAst::ItsOwner)
@@ -711,25 +365,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
         SubjectAst::This => return Ok(None),
     };
 
-    let body_tokens = trim_commas(&clause_tokens[shuffle_idx + 1..]);
-    let Some(into_idx) = find_token_index(&body_tokens, |token| {
-        search_token_is_word(token, SEARCH_INTO_WORD)
-    }) else {
-        return Ok(None);
-    };
-    if into_idx == 0 {
-        return Ok(None);
-    }
-
-    let destination_tokens = trim_commas(&body_tokens[into_idx + 1..]);
-    if !grammar::contains_word(&destination_tokens, "library") {
-        return Ok(None);
-    }
-    let trailing_tokens = find_token_index(&destination_tokens, |token| {
-        search_token_is_any_word(token, SEARCH_LIBRARY_WORDS)
-    })
-    .map(|idx| trim_commas(&destination_tokens[idx + 1..]).to_vec())
-    .unwrap_or_default();
+    let trailing_tokens = shape.trailing_tokens.to_vec();
     let append_trailing =
         |mut effects: Vec<EffectAst>| -> Result<Option<Vec<EffectAst>>, CardTextError> {
             if trailing_tokens.is_empty() {
@@ -747,16 +383,9 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
             Ok(Some(effects))
         };
 
-    let target_tokens = trim_commas(&body_tokens[..into_idx]);
-    if target_tokens.is_empty() {
-        return Ok(None);
-    }
-    let target_words = token_word_refs(&target_tokens);
+    let target_tokens = shape.target_tokens;
     if let Some(target) = owner_of_subject_target {
-        if matches!(
-            target_words.as_slice(),
-            ["it"] | ["them"] | ["that"] | ["that", "object"] | ["that", "card"]
-        ) {
+        if shape.reference == search_grammar::SearchShuffleObjectReference::SingularBackReference {
             if !trailing_tokens.is_empty() {
                 return append_trailing(vec![
                     EffectAst::subject_verb_move_to_zone(
@@ -782,10 +411,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
         return Ok(None);
     }
     if matches!(subject, SubjectAst::Player(PlayerAst::ItsOwner))
-        && matches!(
-            target_words.as_slice(),
-            ["them"] | ["those", "cards"] | ["those", "objects"] | ["those"]
-        )
+        && shape.reference == search_grammar::SearchShuffleObjectReference::PluralTaggedReference
     {
         return append_trailing(vec![EffectAst::ForEachTagged {
             tag: TagKey::from(IT_TAG),
@@ -826,7 +452,7 @@ pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
         return Ok(None);
     }
 
-    if grammar::words_match_prefix(&clause_tokens, &["exile", "all", "cards", "from"]).is_none() {
+    if grammar::match_word_prefix(&clause_tokens, &["exile", "all", "cards", "from"]).is_none() {
         return Ok(None);
     }
     if !grammar::contains_word(&clause_tokens, "hand")
@@ -857,110 +483,23 @@ pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
 fn parse_search_exile_all_cards_zone_pair(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchZonePairClause> {
-    let clause = LexedClause::new(tokens);
-    let clause_words = clause.word_refs();
-    if !word_slice_starts_with(&clause_words, &["exile", "all", "cards", "from"]) {
-        return None;
-    }
-    let body = &clause_words[4..];
-    let first_zone_idx = word_slice_find_word_where(&clause_words[4..], |word| {
-        SEARCH_HAND_OR_GRAVEYARD_ZONE_WORDS.contains(&word)
-    })?;
-    if first_zone_idx == 0 {
-        return None;
-    }
-    let owner_words = possessive_normalized_word_refs(&body[..first_zone_idx]);
-    let owner = search_hand_graveyard_owner_from_words(&owner_words)?;
-    let first_zone_word = body[first_zone_idx];
-    let first_zone = parse_zone_word(first_zone_word)?;
-    if !matches!(first_zone, Zone::Hand | Zone::Graveyard) {
-        return None;
-    }
-    if body.get(first_zone_idx + 1) != Some(&"and") {
-        return None;
-    }
-
-    let second_zone_words = &body[first_zone_idx + 2..];
-    let mut second_zone_idx = 0usize;
-    while second_zone_words
-        .get(second_zone_idx)
-        .is_some_and(|word| SEARCH_SECOND_ZONE_SKIP_WORDS.contains(word))
-    {
-        second_zone_idx += 1;
-    }
-    let second_zone_word = second_zone_words.get(second_zone_idx)?;
-    if second_zone_words.len() != second_zone_idx + 1 {
-        return None;
-    }
-    let second_zone = parse_zone_word(second_zone_word)?;
-    if !matches!(second_zone, Zone::Hand | Zone::Graveyard) || second_zone == first_zone {
-        return None;
-    }
-
-    Some(SearchZonePairClause {
-        owner,
-        first_zone,
-        second_zone,
+    search_grammar::parse_search_exile_zone_pair_shape_lexed(tokens).map(|shape| {
+        SearchZonePairClause {
+            owner: shape.owner,
+            first_zone: shape.first_zone,
+            second_zone: shape.second_zone,
+        }
     })
-}
-
-fn search_hand_graveyard_owner_from_words(owner_words: &[&str]) -> Option<PlayerFilter> {
-    if !word_slice_eq_any(&owner_words, SEARCH_TARGET_OR_YOUR_OWNER_PHRASES) {
-        return None;
-    }
-    if word_slice_starts_with(owner_words, SEARCH_TARGET_PLAYER_PREFIX)
-        || word_slice_starts_with(owner_words, SEARCH_TARGET_PLAYERS_PREFIX)
-    {
-        Some(PlayerFilter::target_player())
-    } else if word_slice_starts_with(owner_words, SEARCH_TARGET_OPPONENT_PREFIX)
-        || word_slice_starts_with(owner_words, SEARCH_TARGET_OPPONENTS_PREFIX)
-    {
-        Some(PlayerFilter::target_opponent())
-    } else {
-        Some(PlayerFilter::You)
-    }
 }
 
 pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_tokens = trim_commas(tokens);
-    let clause = LexedClause::new(&clause_tokens);
-    let clause_words = clause.word_refs();
-    let Some((subject_prefix, subject_len)) =
-        word_slice_find_any_phrase_start(&clause_words, SEARCH_TARGET_PLAYER_OR_OPPONENT_PHRASES)
-            .filter(|&(_, idx)| idx == 0)
-            .map(|(phrase, _)| (phrase, phrase.len()))
-    else {
+    let Some(shape) = search_grammar::parse_target_exile_bundle_shape_lexed(tokens) else {
         return Ok(None);
     };
-    let after_subject = &clause_words[subject_len..];
-    if !after_subject
-        .first()
-        .is_some_and(|word| SEARCH_EXILE_WORDS.contains(word))
-    {
-        return Ok(None);
-    }
-    let after_action = &after_subject[1..];
-    let Some(and_idx) = word_slice_find_phrase_start(after_action, &["and"]) else {
-        return Ok(None);
-    };
-    let creature_words = &after_action[..and_idx];
-    let graveyard_words = &after_action[and_idx + 1..];
-    if creature_words.is_empty() || graveyard_words.is_empty() {
-        return Ok(None);
-    }
-    let Some((subject_player, subject_filter)) =
-        search_target_player_or_opponent_from_clause(subject_prefix)
-    else {
-        return Ok(None);
-    };
-    if !search_creature_controlled_by_player_clause_matches(creature_words) {
-        return Ok(None);
-    }
-    if !search_their_graveyard_matches(graveyard_words) {
-        return Ok(None);
-    }
+    let subject_player = shape.player;
+    let subject_filter = shape.filter;
 
     let mut creature_filter = ObjectFilter::creature();
     creature_filter.controller = Some(subject_filter.clone());
@@ -981,76 +520,18 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
     ]))
 }
 
-fn search_target_player_or_opponent_from_clause(
-    words: &[&str],
-) -> Option<(PlayerAst, PlayerFilter)> {
-    if word_slice_starts_with(words, SEARCH_TARGET_OPPONENT_PREFIX) {
-        Some((PlayerAst::TargetOpponent, PlayerFilter::target_opponent()))
-    } else if word_slice_starts_with(words, SEARCH_TARGET_PLAYER_PREFIX) {
-        Some((PlayerAst::Target, PlayerFilter::target_player()))
-    } else {
-        None
-    }
-}
-
-fn search_creature_controlled_by_player_clause_matches(words: &[&str]) -> bool {
-    let words = if words.first().is_some_and(|word| is_article(word)) {
-        &words[1..]
-    } else {
-        words
-    };
-    // object="creature" subject=<they|that player> action=<control|controls>
-    let Some(rest) = words.strip_prefix(&["creature"]) else {
-        return false;
-    };
-    let Some((subject_phrase, subject_idx)) =
-        word_slice_find_any_phrase_start(rest, SEARCH_CREATURE_CONTROL_SUBJECT_PHRASES)
-    else {
-        return false;
-    };
-    if subject_idx != 0 {
-        return false;
-    }
-    let after_subject = &rest[subject_phrase.len()..];
-    after_subject.len() == 1 && SEARCH_CONTROL_ACTION_WORDS.contains(&after_subject[0])
-}
-
-fn search_their_graveyard_matches(words: &[&str]) -> bool {
-    // subject=<their> object=<graveyard|graveyards>
-    words.len() == 2
-        && SEARCH_GRAVEYARD_OWNER_WORDS.contains(&words[0])
-        && SEARCH_GRAVEYARD_ZONE_WORDS.contains(&words[1])
-}
-
 pub(crate) fn parse_for_each_exiled_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
+    let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
+        return Ok(None);
+    };
+    if shape.kind != search_grammar::SearchForEachWayKind::Exiled {
         return Ok(None);
     }
     let words_all = token_word_refs(tokens);
-    let refers_to_exiled = word_slice_contains_phrase(&words_all, SEARCH_EXILED_THIS_WAY_PHRASE)
-        || grammar::words_match_prefix(tokens, &["for", "each", "of", "those", "creatures"])
-            .is_some();
-    if !refers_to_exiled {
-        return Ok(None);
-    }
-    if grammar::words_match_prefix(
-        tokens,
-        &["for", "each", "permanent", "exiled", "this", "way"],
-    )
-    .is_some()
-        && grammar::contains_word(tokens, "shares")
-        && grammar::contains_word(tokens, "card")
-        && grammar::contains_word(tokens, "type")
-        && grammar::contains_word(tokens, "library")
-        && grammar::contains_word(tokens, "battlefield")
-        // "then shuffles" tails keep the explicit its-controller consult
-        // shape handled below (the remainder is shuffled away, not bottomed).
-        && !grammar::contains_word(tokens, "shuffles")
-    {
-        let filter_tokens = lex_line("a permanent that shares a card type with it", 0)?;
-        let filter = parse_object_filter_lexed(&filter_tokens, false)?;
+    if shape.permanent_card_type_consult {
+        let filter = ObjectFilter::permanent().shares_card_type_with_tagged(IT_TAG);
         let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
         let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 
@@ -1083,103 +564,61 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
         }]));
     }
 
-    let (_before, after_comma) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-        .ok_or_else(|| {
+    let effect_tokens = shape.effect_tokens.ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing comma after 'for each ... exiled this way' clause (clause: '{}')",
             words_all.join(" ")
         ))
     })?;
-    let effect_tokens = trim_commas(after_comma);
     if effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing effect after 'for each ... exiled this way' clause (clause: '{}')",
             words_all.join(" ")
         )));
     }
-    let effect_clause = LexedClause::new(&effect_tokens);
-    if let Some(after_prefix) =
-        effect_clause.strip_prefix_clause(SEARCH_REVEAL_UNTIL_CONTROLLER_REVEALS_PREFIX)
-        && let Some((filter_clause, put_tail)) =
-            after_prefix.split_once_before_phrase(SEARCH_PUTS_THAT_CARD_ONTO_BATTLEFIELD_PHRASE)
-        && put_tail.contains_phrase(SEARCH_THEN_SHUFFLES_PHRASE)
-    {
-        let reveal_filter_tokens = filter_clause.trimmed_tokens();
-        if !reveal_filter_tokens.is_empty() {
-            let filter = parse_object_filter_lexed(reveal_filter_tokens, false)?;
-            let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
-            let matched_tag = helper_tag_for_tokens(tokens, "chosen");
-
-            return Ok(Some(vec![EffectAst::ForEachTagged {
-                tag: crate::tag::SOURCE_EXILED_TAG.into(),
-                effects: vec![
-                    EffectAst::subject_verb_consult_top_of_library(
-                        PlayerAst::ItsController,
-                        LibraryConsultModeAst::Reveal,
-                        filter,
-                        LibraryConsultStopRuleAst::FirstMatch,
-                        revealed_tag,
-                        matched_tag.clone(),
-                    ),
-                    EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(matched_tag, None),
-                        Zone::Battlefield,
-                        false,
-                        ReturnControllerAst::Preserve,
-                        false,
-                        None,
-                    ),
-                    EffectAst::subject_verb(
-                        SubjectVerbRoleAst::LibraryOwner,
-                        PlayerAst::ItsController,
-                        SubjectVerbActionAst::ShuffleLibrary,
-                    ),
-                ],
-            }]));
-        }
+    if let Some(consult) = search_grammar::parse_search_exiled_consult_shape_lexed(effect_tokens) {
+        let filter = parse_object_filter_lexed(consult.filter_tokens, false)?;
+        let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
+        let matched_tag = helper_tag_for_tokens(tokens, "chosen");
+        let finish = match consult.finish {
+            search_grammar::SearchExiledConsultFinish::Shuffle => EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::ItsController,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ),
+            search_grammar::SearchExiledConsultFinish::PutRestOnBottom => {
+                EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                    revealed_tag.clone(),
+                    Some(matched_tag.clone()),
+                    LibraryBottomOrderAst::Random,
+                    PlayerAst::ItsController,
+                )
+            }
+        };
+        return Ok(Some(vec![EffectAst::ForEachTagged {
+            tag: crate::tag::SOURCE_EXILED_TAG.into(),
+            effects: vec![
+                EffectAst::subject_verb_consult_top_of_library(
+                    PlayerAst::ItsController,
+                    LibraryConsultModeAst::Reveal,
+                    filter,
+                    LibraryConsultStopRuleAst::FirstMatch,
+                    revealed_tag,
+                    matched_tag.clone(),
+                ),
+                EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(matched_tag, None),
+                    Zone::Battlefield,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                ),
+                finish,
+            ],
+        }]));
     }
-    if let Some(after_prefix) =
-        effect_clause.strip_prefix_clause(SEARCH_REVEAL_UNTIL_CONTROLLER_REVEALS_PREFIX)
-        && let Some((filter_clause, put_tail)) =
-            after_prefix.split_once_before_phrase(SEARCH_PUTS_THAT_CARD_ONTO_BATTLEFIELD_PHRASE)
-        && put_tail.contains_phrase(SEARCH_THEN_PUTS_REST_BOTTOM_PHRASE)
-    {
-        let reveal_filter_tokens = filter_clause.trimmed_tokens();
-        if !reveal_filter_tokens.is_empty() {
-            let filter = parse_object_filter_lexed(reveal_filter_tokens, false)?;
-            let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
-            let matched_tag = helper_tag_for_tokens(tokens, "chosen");
-
-            return Ok(Some(vec![EffectAst::ForEachTagged {
-                tag: crate::tag::SOURCE_EXILED_TAG.into(),
-                effects: vec![
-                    EffectAst::subject_verb_consult_top_of_library(
-                        PlayerAst::ItsController,
-                        LibraryConsultModeAst::Reveal,
-                        filter,
-                        LibraryConsultStopRuleAst::FirstMatch,
-                        revealed_tag.clone(),
-                        matched_tag.clone(),
-                    ),
-                    EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(matched_tag.clone(), None),
-                        Zone::Battlefield,
-                        false,
-                        ReturnControllerAst::Preserve,
-                        false,
-                        None,
-                    ),
-                    EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-                        revealed_tag,
-                        Some(matched_tag),
-                        LibraryBottomOrderAst::Random,
-                        PlayerAst::ItsController,
-                    ),
-                ],
-            }]));
-        }
-    }
-    let effects = parse_effect_chain(&effect_tokens)?;
+    let effects = parse_effect_chain(effect_tokens)?;
     if effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "empty effect after 'for each ... exiled this way' clause (clause: '{}')",
@@ -1196,25 +635,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
 pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let starts_with_each_player_turns_face_up = grammar::words_match_prefix(
-        tokens,
-        &["each", "player", "turns", "face", "up", "all", "cards"],
-    )
-    .is_some();
-    if !starts_with_each_player_turns_face_up {
-        return Ok(None);
-    }
-    let token_words = token_word_refs(tokens);
-    let has_exiled_with_this =
-        word_slice_contains_phrase(&token_words, SEARCH_EXILED_WITH_THIS_PHRASE);
-    if !has_exiled_with_this {
-        return Ok(None);
-    }
-    let has_puts_all_permanent_cards =
-        word_slice_contains_phrase(&token_words, SEARCH_THEN_PUTS_ALL_PERMANENT_CARDS_PHRASE);
-    let has_among_them_onto_battlefield =
-        word_slice_contains_any_phrase(&token_words, SEARCH_AMONG_THEM_ONTO_BATTLEFIELD_PHRASES);
-    if !has_puts_all_permanent_cards || !has_among_them_onto_battlefield {
+    if !search_grammar::search_each_player_exiled_permanents_shape_lexed(tokens) {
         return Ok(None);
     }
 
@@ -1246,32 +667,26 @@ pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
 pub(crate) fn parse_for_each_destroyed_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
+    let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
+        return Ok(None);
+    };
+    if shape.kind != search_grammar::SearchForEachWayKind::DestroyedOrDied {
         return Ok(None);
     }
     let words_all = token_word_refs(tokens);
-    let refers_to_destroyed =
-        word_slice_contains_phrase(&words_all, SEARCH_DESTROYED_THIS_WAY_PHRASE);
-    let refers_to_died = word_slice_contains_phrase(&words_all, SEARCH_DIED_THIS_WAY_PHRASE);
-    if !refers_to_destroyed && !refers_to_died {
-        return Ok(None);
-    }
-
-    let (_before, after_comma) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-        .ok_or_else(|| {
+    let effect_tokens = shape.effect_tokens.ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing comma after 'for each ... this way' clause (clause: '{}')",
             words_all.join(" ")
         ))
     })?;
-    let effect_tokens = trim_commas(after_comma);
     if effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing effect after 'for each ... this way' clause (clause: '{}')",
             words_all.join(" ")
         )));
     }
-    let effects = parse_effect_chain(&effect_tokens)?;
+    let effects = parse_effect_chain(effect_tokens)?;
     if effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "empty effect after 'for each ... this way' clause (clause: '{}')",
@@ -1288,31 +703,25 @@ pub(crate) fn parse_for_each_destroyed_this_way_sentence(
 pub(crate) fn parse_for_each_put_into_graveyard_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
+    let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
+        return Ok(None);
+    };
+    if shape.kind != search_grammar::SearchForEachWayKind::PutIntoGraveyard {
         return Ok(None);
     }
-    let token_words = token_word_refs(tokens);
-    let refers_to_graveyard =
-        word_slice_contains_any_phrase(&token_words, SEARCH_PUT_INTO_GRAVEYARD_THIS_WAY_PHRASES);
-    if !refers_to_graveyard {
-        return Ok(None);
-    }
-
-    let (_before, after_comma) = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-        .ok_or_else(|| {
+    let effect_tokens = shape.effect_tokens.ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing comma after 'for each ... this way' clause (clause: '{}')",
             token_word_refs(tokens).join(" ")
         ))
     })?;
-    let effect_tokens = trim_commas(after_comma);
     if effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing effect after 'for each ... this way' clause (clause: '{}')",
             token_word_refs(tokens).join(" ")
         )));
     }
-    let effects = parse_effect_chain(&effect_tokens)?;
+    let effects = parse_effect_chain(effect_tokens)?;
     if effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "empty effect after 'for each ... this way' clause (clause: '{}')",

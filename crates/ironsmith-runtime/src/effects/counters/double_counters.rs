@@ -28,16 +28,11 @@ fn player_counter_counts(
     let player = game
         .player(player_id)
         .ok_or(ExecutionError::PlayerNotFound(player_id))?;
-    let candidates = [
-        (CounterType::Poison, player.poison_counters),
-        (CounterType::Energy, player.energy_counters),
-        (CounterType::Experience, player.experience_counters),
-    ];
-    Ok(candidates
+    Ok(player
+        .counter_types_with_counters()
         .into_iter()
-        .filter(|(candidate, count)| {
-            *count > 0 && counter_type.is_none_or(|wanted| wanted == *candidate)
-        })
+        .filter(|candidate| counter_type.is_none_or(|wanted| wanted == *candidate))
+        .map(|candidate| (candidate, player.counter_count(candidate)))
         .collect())
 }
 

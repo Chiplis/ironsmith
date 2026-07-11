@@ -32,6 +32,8 @@ const COMPACT_SCROLL_COLUMN_MAX_WIDTH = 200;
 const ABSOLUTE_MIN_CARD_WIDTH = 10;
 const ABSOLUTE_MIN_CARD_HEIGHT = 14;
 const EMPTY_PAPER_SLOT_COLUMNS = 6;
+const DENSE_BATTLEFIELD_THRESHOLD = 48;
+const DENSE_BATTLEFIELD_MAX_COLUMNS = 24;
 const MOBILE_OBJECT_LONG_PRESS_MS = 380;
 const MOBILE_LONG_PRESS_SUPPRESS_WINDOW_MS = 700;
 const MOBILE_LONG_PRESS_MOVE_CANCEL_DISTANCE_SQ = 16 * 16;
@@ -46,6 +48,12 @@ function buildPaperRowGroups(battlefieldSide, buckets, options = {}) {
   const singleRow = options.singleRow === true;
   const mobileBattleMode = options.mobileBattleMode || "default";
   const minSlotsPerRow = Math.max(1, Number(options.minSlotsPerRow) || EMPTY_PAPER_SLOT_COLUMNS);
+  const denseLayout = options.denseLayout === true;
+  const rowsForCardCount = (cardCount, fallbackRows = 1) => (
+    denseLayout
+      ? Math.max(fallbackRows, Math.ceil(cardCount / DENSE_BATTLEFIELD_MAX_COLUMNS))
+      : fallbackRows
+  );
   if (singleRow) {
     return [
       { id: "main", lanes: ALL_PAPER_LANES, rowCount: 1, minSlotsPerRow },
@@ -67,6 +75,23 @@ function buildPaperRowGroups(battlefieldSide, buckets, options = {}) {
   const backCount = PAPER_BACK_LANES.reduce((total, lane) => total + ((buckets.get(lane) || []).length), 0);
   const shouldSplitOpponentRows = battlefieldSide === "top"
     && (frontCount > EMPTY_PAPER_SLOT_COLUMNS || backCount > EMPTY_PAPER_SLOT_COLUMNS);
+
+  if (denseLayout) {
+    return [
+      {
+        id: "front",
+        lanes: PAPER_FRONT_LANES,
+        rowCount: rowsForCardCount(frontCount),
+        minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS,
+      },
+      {
+        id: "back",
+        lanes: PAPER_BACK_LANES,
+        rowCount: rowsForCardCount(backCount),
+        minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS,
+      },
+    ];
+  }
 
   return shouldSplitOpponentRows
     ? [
@@ -871,6 +896,8 @@ export default function BattlefieldRow({
     ),
     [activeLayoutHolds, cards]
   );
+  const usesDensePaperLayout = isPaperBattlefieldLayout
+    && layoutCards.length > DENSE_BATTLEFIELD_THRESHOLD;
   const computedPaperLayout = useMemo(
     () => buildPaperBattlefieldLayout(layoutCards, battlefieldSide, alignStart, {
       singleRow: paperLayoutMode === "single-row",
@@ -881,8 +908,9 @@ export default function BattlefieldRow({
             ? "bottom-dense"
             : "default",
       minSlotsPerRow: paperMinSlotsPerRow,
+      denseLayout: usesDensePaperLayout,
     }),
-    [alignStart, battlefieldSide, layoutCards, paperLayoutMode, paperMinSlotsPerRow]
+    [alignStart, battlefieldSide, layoutCards, paperLayoutMode, paperMinSlotsPerRow, usesDensePaperLayout]
   );
   const shouldFreezePaperLayout = isPaperBattlefieldLayout && activeLayoutHolds.length > 0;
   const frozenSourcePaperLayout = useMemo(
@@ -897,10 +925,11 @@ export default function BattlefieldRow({
                 ? "bottom-dense"
                 : "default",
           minSlotsPerRow: paperMinSlotsPerRow,
+          denseLayout: usesDensePaperLayout,
         })
         : null
     ),
-    [alignStart, battlefieldSide, paperLayoutMode, paperMinSlotsPerRow, shouldFreezePaperLayout]
+    [alignStart, battlefieldSide, paperLayoutMode, paperMinSlotsPerRow, shouldFreezePaperLayout, usesDensePaperLayout]
   );
   const paperLayout = useMemo(
     () => (
@@ -1007,7 +1036,7 @@ export default function BattlefieldRow({
   const syncOverflowMode = useCallback((layout) => {
     const row = rowRef.current;
     if (!row) return;
-    if (!allowVerticalScroll || !layout) {
+    if ((!allowVerticalScroll && !usesDensePaperLayout) || !layout) {
       row.style.overflowY = "visible";
       row.style.overflowX = "visible";
       row.style.overscrollBehaviorY = "";
@@ -1016,7 +1045,7 @@ export default function BattlefieldRow({
     row.style.overflowY = "auto";
     row.style.overflowX = "hidden";
     row.style.overscrollBehaviorY = "contain";
-  }, [allowVerticalScroll]);
+  }, [allowVerticalScroll, usesDensePaperLayout]);
   const handleGhostDone = useCallback((ghostKey) => {
     setGhosts((existing) => existing.filter((entry) => entry.key !== ghostKey));
   }, []);
@@ -1149,7 +1178,11 @@ export default function BattlefieldRow({
           ) / (1 + (MOBILE_BOTTOM_MIN_VISIBLE_BACK_ROW_RATIO * MOBILE_BOTTOM_BACK_ROW_SCALE))
         ) * aspect
         : Infinity;
-      const cardWidth = Math.floor(Math.min(widthLimit, heightLimit, bottomOcclusionWidthLimit));
+      const cardWidth = Math.floor(Math.min(
+        widthLimit,
+        usesDensePaperLayout ? Infinity : heightLimit,
+        bottomOcclusionWidthLimit
+      ));
       const cardHeight = Math.floor(cardWidth / aspect);
       if (Number.isFinite(cardWidth) && Number.isFinite(cardHeight)) {
         best = {
@@ -1313,6 +1346,7 @@ export default function BattlefieldRow({
     paperLayout.rowCount,
     shouldFreezePaperLayout,
     syncOverflowMode,
+    usesDensePaperLayout,
   ]);
 
   const scheduleFitCards = useCallback((force = false) => {
@@ -1899,7 +1933,7 @@ export default function BattlefieldRow({
   return (
     <div
       ref={rowRef}
-      className={`battlefield-row ${displayCards.length === 0 ? "battlefield-row-empty" : ""} ${alignStart ? "battlefield-row--align-start" : ""} ${isMobileBattleBottomLayout ? "battlefield-row--mobile-bottom-inline-fit" : ""} ${shouldFreezePaperLayout ? "battlefield-row--layout-freeze" : ""} relative grid gap-1.5 content-start justify-center min-h-0 h-full`}
+      className={`battlefield-row ${displayCards.length === 0 ? "battlefield-row-empty" : ""} ${alignStart ? "battlefield-row--align-start" : ""} ${isMobileBattleBottomLayout ? "battlefield-row--mobile-bottom-inline-fit" : ""} ${shouldFreezePaperLayout ? "battlefield-row--layout-freeze" : ""} ${usesDensePaperLayout ? "battlefield-row--dense" : ""} relative grid gap-1.5 content-start justify-center min-h-0 h-full`}
       data-bf-side={battlefieldSide}
       onClick={handleRowClickFallback}
       style={{

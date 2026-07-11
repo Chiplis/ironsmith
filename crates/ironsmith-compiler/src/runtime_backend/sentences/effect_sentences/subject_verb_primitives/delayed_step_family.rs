@@ -1,502 +1,53 @@
 use super::*;
-use crate::runtime_backend::front_end::lex_patterns::{
-    LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
-};
+use crate::runtime_backend::front_end::grammar::effects::delayed_step_shapes as delayed_grammar;
 
-const ALL_CREATURE_TYPES_SEQUENCE: &[LexPatternAtom<'static>] = &[LexPattern::phrase(&[
-    "all", "creature", "types", "until", "end", "of", "turn",
-])];
-const EVERY_CREATURE_TYPE_SEQUENCE: &[LexPatternAtom<'static>] = &[LexPattern::phrase(&[
-    "every", "creature", "type", "until", "end", "of", "turn",
-])];
-const CREATURE_TYPE_TAIL_SEQUENCES: &[&[LexPatternAtom<'static>]] =
-    &[ALL_CREATURE_TYPES_SEQUENCE, EVERY_CREATURE_TYPE_SEQUENCE];
-pub(crate) const GAINS_OR_LOSES_ALL_CREATURE_TYPES_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
-    LexPattern::role_capture(
-        "subject",
-        LexCaptureRole::Subject,
-        LexCaptureKind::UntilAnyPhrase(&[&["gain"], &["gains"], &["lose"], &["loses"]]),
-    ),
-    LexPattern::role_capture(
-        "verb",
-        LexCaptureRole::Action,
-        LexCaptureKind::OneOf(&["gain", "gains", "lose", "loses"]),
-    ),
-    LexPattern::any_sequence(CREATURE_TYPE_TAIL_SEQUENCES),
-];
-const REPEAT_IF_WIN_SEQUENCE: &[LexPatternAtom<'static>] = &[LexPattern::phrase(&[
-    "if", "you", "win", "repeat", "this", "process",
-])];
-pub(crate) const LOSE_DRAW_CLASH_REPEAT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
-    LexPattern::phrase(&["you", "lose"]),
-    LexPattern::role_capture("life", LexCaptureRole::Amount, LexCaptureKind::WordCount(1)),
-    LexPattern::phrase(&["life", "and", "draw"]),
-    LexPattern::capture("draw", LexCaptureKind::WordCount(1)),
-    LexPattern::any_word(&["card", "cards"]),
-    LexPattern::phrase(&["then", "clash", "with", "an", "opponent"]),
-    LexPattern::optional(REPEAT_IF_WIN_SEQUENCE),
-];
-pub(crate) const DELAYED_NEXT_STEP_UNLESS_PAYS_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
-    LexPattern::role_capture(
-        "effect",
-        LexCaptureRole::Action,
-        LexCaptureKind::UntilPhrase(&["unless"]),
-    ),
-    LexPattern::word("unless"),
-    LexPattern::role_capture("payment", LexCaptureRole::Tail, LexCaptureKind::Rest),
-];
-pub(crate) const SEARCH_DELAYED_NEXT_UPKEEP_LOSE_GAME_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
-    LexPattern::word("search"),
-    LexPattern::role_capture(
-        "search_effect",
-        LexCaptureRole::Action,
-        LexCaptureKind::UntilPhrase(&["at", "the", "beginning"]),
-    ),
-    LexPattern::phrase(&["at", "the", "beginning"]),
-    LexPattern::role_capture(
-        "upkeep_and_loss",
-        LexCaptureRole::Tail,
-        LexCaptureKind::Rest,
-    ),
-];
-const DELAYED_LOSE_GAME_UNLESS_PAID_WORDS: &[&[&str]] = &[
-    &["if", "you", "dont", "you", "lose", "the", "game"],
-    &["if", "you", "do", "not", "you", "lose", "the", "game"],
-    &["if", "you", "don't", "you", "lose", "the", "game"],
-];
-const DELAYED_PLAYER_PREFIX_YOU: &[&str] = &["you"];
-const DELAYED_PLAYER_YOU_PHRASES: &[&[&str]] = &[DELAYED_PLAYER_PREFIX_YOU];
-const DELAYED_PLAYER_TARGET_OPPONENT_PHRASES: &[&[&str]] =
-    &[&["target", "opponent"], &["target", "opponents"]];
-const DELAYED_PLAYER_TARGET_PHRASES: &[&[&str]] = &[&["target", "player"], &["target", "players"]];
-const DELAYED_PLAYER_ANY_PHRASES: &[&[&str]] = &[&["any", "player"], &["any", "players"]];
-const DELAYED_PLAYER_THEY_PHRASES: &[&[&str]] = &[&["they"]];
-const DELAYED_PLAYER_DEFENDING_PHRASES: &[&[&str]] =
-    &[&["defending", "player"], &["defending", "players"]];
-const DELAYED_PLAYER_THAT_PHRASES: &[&[&str]] = &[&["that", "player"], &["that", "players"]];
-const DELAYED_PLAYER_ITS_CONTROLLER_PHRASES: &[&[&str]] =
-    &[&["its", "controller"], &["their", "controller"]];
-const DELAYED_PLAYER_ITS_OWNER_PHRASES: &[&[&str]] = &[&["its", "owner"], &["their", "owner"]];
-const DELAYED_PAY_OR_PAYS_WORDS: &[&str] = &["pay", "pays"];
-const DELAYED_DRAW_OR_DRAWS_WORDS: &[&str] = &["draw", "draws"];
-const DELAYED_DISCARD_OR_DISCARDS_WORDS: &[&str] = &["discard", "discards"];
-const DELAYED_SACRIFICE_OR_SACRIFICES_WORDS: &[&str] = &["sacrifice", "sacrifices"];
-const DELAYED_REFERRED_OBJECT_NOUN_WORDS: &[&str] = &[
-    "ability",
-    "abilitys",
-    "card",
-    "cards",
-    "creature",
-    "creatures",
-    "object",
-    "objects",
-    "permanent",
-    "permanents",
-    "planeswalker",
-    "planeswalkers",
-    "source",
-    "sources",
-    "spell",
-    "spells",
-];
-const DELAYED_REFERRED_PERMANENT_NOUN_WORDS: &[&str] = &[
-    "card",
-    "cards",
-    "creature",
-    "creatures",
-    "object",
-    "objects",
-    "permanent",
-    "permanents",
-    "planeswalker",
-    "planeswalkers",
-    "source",
-    "sources",
-    "spell",
-    "spells",
-];
-const DELAYED_CONTROLLER_OR_CONTROLLERS_WORDS: &[&str] = &["controller", "controllers"];
-const DELAYED_OWNER_OR_OWNERS_WORDS: &[&str] = &["owner", "owners"];
 const DELAYED_MECHANIC_CHOOSE_ONE_OF_THEM_WORDS: &[&str] = &["you", "choose", "one", "of", "them"];
 const DELAYED_VENTURE_DUNGEON_WORDS: &[&str] = &["venture", "into", "the", "dungeon"];
 const DELAYED_STILL_LAND_WORDS: &[&[&str]] = &[
     &["its", "still", "a", "land"],
     &["it", "still", "a", "land"],
 ];
-const DELAYED_CAST_OR_PLAY_WORDS: &[&str] = &[
-    "may", "cast", "casts", "casting", "play", "plays", "playing", "played",
-];
-const DELAYED_REMAINS_WORDS: &[&str] = &["remains"];
-const DELAYED_TAPPED_WORDS: &[&str] = &["tapped"];
-const DELAYED_MANA_COST_WORDS: &[&str] = &["cost", "costs"];
-const DELAYED_STILL_WORDS: &[&str] = &["still"];
-const DELAYED_NEGATED_BE_PREFIXES: &[&[&str]] = &[&["is", "not"], &["are", "not"]];
-const DELAYED_CONTRACTION_NEGATED_BE_WORDS: &[&str] = &["isnt", "isn't", "arent", "aren't"];
-const DELAYED_BE_WORDS: &[&str] = &["is", "are", "s", "’s"];
-const DELAYED_UNTIL_END_OF_TURN_TAIL: &[&str] = &["until", "end", "of", "turn"];
-const DELAYED_NOT_ARTICLE_PREFIXES: &[&[&str]] = &[&["not", "a"], &["not", "an"]];
-const DELAYED_NOT_PREFIX: &[&str] = &["not"];
-const DELAYED_ARTICLE_WORDS: &[&str] = &["a", "an", "the"];
-const DELAYED_GET_WORDS: &[&str] = &["get", "gets"];
-const DELAYED_ADDITION_OTHER_TYPES_TAILS: &[&[&str]] = &[
-    &["in", "addition", "to", "its", "other", "types"],
-    &["in", "addition", "to", "their", "other", "types"],
-    &["in", "addition", "to", "its", "other", "type"],
-    &["in", "addition", "to", "their", "other", "type"],
-];
-const DELAYED_IT_OR_THAT_CREATURE_PHRASES: &[&[&str]] = &[&["it"], &["that", "creature"]];
-const DELAYED_TAGGED_CREATURE_REFERENCE_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "reference",
-        LexCaptureKind::OneOfPhrase(DELAYED_IT_OR_THAT_CREATURE_PHRASES),
-    )]);
-const DELAYED_THAT_PLAYER_OR_OBJECT_CONTROLLER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["that", "player", "or", "that"]),
-    LexPattern::object(
-        "object",
-        LexCaptureKind::OneOf(DELAYED_REFERRED_OBJECT_NOUN_WORDS),
-    ),
-    LexPattern::subject(
-        "controller",
-        LexCaptureKind::OneOf(DELAYED_CONTROLLER_OR_CONTROLLERS_WORDS),
-    ),
-]);
-const DELAYED_THAT_OBJECT_CONTROLLER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::word("that"),
-    LexPattern::object(
-        "object",
-        LexCaptureKind::OneOf(DELAYED_REFERRED_OBJECT_NOUN_WORDS),
-    ),
-    LexPattern::subject(
-        "controller",
-        LexCaptureKind::OneOf(DELAYED_CONTROLLER_OR_CONTROLLERS_WORDS),
-    ),
-]);
-const DELAYED_THAT_OBJECT_OWNER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::word("that"),
-    LexPattern::object(
-        "object",
-        LexCaptureKind::OneOf(DELAYED_REFERRED_OBJECT_NOUN_WORDS),
-    ),
-    LexPattern::subject(
-        "owner",
-        LexCaptureKind::OneOf(DELAYED_OWNER_OR_OWNERS_WORDS),
-    ),
-]);
-const DELAYED_THAT_PERMANENT_CONTROLLER_OR_PLAYER_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[
-        LexPattern::word("that"),
-        LexPattern::object(
-            "object",
-            LexCaptureKind::OneOf(DELAYED_REFERRED_PERMANENT_NOUN_WORDS),
-        ),
-        LexPattern::subject(
-            "controller",
-            LexCaptureKind::OneOf(DELAYED_CONTROLLER_OR_CONTROLLERS_WORDS),
-        ),
-        LexPattern::phrase(&["or", "that", "player"]),
-    ]);
-const DELAYED_CAST_OR_PLAY_ACTION_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::action(
-        "action",
-        LexCaptureKind::OneOf(DELAYED_CAST_OR_PLAY_WORDS),
-    )]);
-const DELAYED_MECHANIC_CHOOSE_ONE_OF_THEM_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(
-        DELAYED_MECHANIC_CHOOSE_ONE_OF_THEM_WORDS,
-    )]);
-const DELAYED_VENTURE_DUNGEON_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(DELAYED_VENTURE_DUNGEON_WORDS)]);
-const DELAYED_STILL_LAND_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "still_land",
-    LexCaptureKind::OneOfPhrase(DELAYED_STILL_LAND_WORDS),
-)]);
-const DELAYED_REMAINS_MARKER_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::condition(
-        "remains",
-        LexCaptureKind::OneOf(DELAYED_REMAINS_WORDS),
-    )]);
-const DELAYED_TAPPED_MARKER_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "tapped",
-        LexCaptureKind::OneOf(DELAYED_TAPPED_WORDS),
-    )]);
-const DELAYED_PAY_ACTION_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
-    "action",
-    LexCaptureKind::OneOf(DELAYED_PAY_OR_PAYS_WORDS),
-)]);
-const DELAYED_DRAW_ACTION_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
-    "action",
-    LexCaptureKind::OneOf(DELAYED_DRAW_OR_DRAWS_WORDS),
-)]);
-const DELAYED_DISCARD_ACTION_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
-    "action",
-    LexCaptureKind::OneOf(DELAYED_DISCARD_OR_DISCARDS_WORDS),
-)]);
-const DELAYED_SACRIFICE_ACTION_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::action(
-        "action",
-        LexCaptureKind::OneOf(DELAYED_SACRIFICE_OR_SACRIFICES_WORDS),
-    )]);
-const DELAYED_MANA_COST_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::word("mana"),
-    LexPattern::object("cost", LexCaptureKind::OneOf(DELAYED_MANA_COST_WORDS)),
-]);
-const DELAYED_STILL_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "still",
-    LexCaptureKind::OneOf(DELAYED_STILL_WORDS),
-)]);
-const DELAYED_BE_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::condition(
-    "be",
-    LexCaptureKind::OneOf(DELAYED_BE_WORDS),
-)]);
-const DELAYED_NOT_ARTICLE_PREFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::condition(
-        "not_article",
-        LexCaptureKind::OneOfPhrase(DELAYED_NOT_ARTICLE_PREFIXES),
-    )]);
-const DELAYED_NOT_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::condition(
-    "not",
-    LexCaptureKind::OneOf(DELAYED_NOT_PREFIX),
-)]);
-const DELAYED_UNTIL_END_OF_TURN_SUFFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "duration",
-        LexCaptureKind::OneOfPhrase(&[DELAYED_UNTIL_END_OF_TURN_TAIL]),
-    )]);
-const DELAYED_ADDITION_OTHER_TYPES_SUFFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "addition",
-        LexCaptureKind::OneOfPhrase(DELAYED_ADDITION_OTHER_TYPES_TAILS),
-    )]);
-
-struct DelayedPlayerPrefixEntry {
-    phrases: &'static [&'static [&'static str]],
-    player: PlayerAst,
-}
-
-struct DelayedDynamicPlayerPrefixEntry {
-    pattern: LexPattern<'static>,
-    capture: &'static str,
-    player: PlayerAst,
-}
-
-const DELAYED_STATIC_PLAYER_PREFIXES: &[DelayedPlayerPrefixEntry] = &[
-    DelayedPlayerPrefixEntry {
-        phrases: DELAYED_PLAYER_YOU_PHRASES,
-        player: PlayerAst::You,
-    },
-    DelayedPlayerPrefixEntry {
-        phrases: DELAYED_PLAYER_TARGET_OPPONENT_PHRASES,
-        player: PlayerAst::TargetOpponent,
-    },
-    DelayedPlayerPrefixEntry {
-        phrases: DELAYED_PLAYER_TARGET_PHRASES,
-        player: PlayerAst::Target,
-    },
-    DelayedPlayerPrefixEntry {
-        phrases: DELAYED_PLAYER_ANY_PHRASES,
-        player: PlayerAst::Any,
-    },
-    DelayedPlayerPrefixEntry {
-        phrases: DELAYED_PLAYER_THEY_PHRASES,
-        player: PlayerAst::That,
-    },
-    DelayedPlayerPrefixEntry {
-        phrases: DELAYED_PLAYER_DEFENDING_PHRASES,
-        player: PlayerAst::Defending,
-    },
-    DelayedPlayerPrefixEntry {
-        phrases: DELAYED_PLAYER_THAT_PHRASES,
-        player: PlayerAst::That,
-    },
-    DelayedPlayerPrefixEntry {
-        phrases: DELAYED_PLAYER_ITS_CONTROLLER_PHRASES,
-        player: PlayerAst::ItsController,
-    },
-    DelayedPlayerPrefixEntry {
-        phrases: DELAYED_PLAYER_ITS_OWNER_PHRASES,
-        player: PlayerAst::ItsOwner,
-    },
-];
-
-const DELAYED_DYNAMIC_PLAYER_PREFIXES: &[DelayedDynamicPlayerPrefixEntry] = &[
-    DelayedDynamicPlayerPrefixEntry {
-        pattern: DELAYED_THAT_PLAYER_OR_OBJECT_CONTROLLER_PATTERN,
-        capture: "controller",
-        player: PlayerAst::ThatPlayerOrTargetController,
-    },
-    DelayedDynamicPlayerPrefixEntry {
-        pattern: DELAYED_THAT_OBJECT_CONTROLLER_PATTERN,
-        capture: "controller",
-        player: PlayerAst::ItsController,
-    },
-    DelayedDynamicPlayerPrefixEntry {
-        pattern: DELAYED_THAT_OBJECT_OWNER_PATTERN,
-        capture: "owner",
-        player: PlayerAst::ItsOwner,
-    },
-    DelayedDynamicPlayerPrefixEntry {
-        pattern: DELAYED_THAT_PERMANENT_CONTROLLER_OR_PLAYER_PATTERN,
-        capture: "controller",
-        player: PlayerAst::ThatPlayerOrTargetController,
-    },
-];
-
-fn parse_delayed_static_player_prefix(words: &[&str]) -> Option<(PlayerAst, usize)> {
-    DELAYED_STATIC_PLAYER_PREFIXES.iter().find_map(|entry| {
-        let atoms = [LexPattern::subject(
-            "player",
-            LexCaptureKind::OneOfPhrase(entry.phrases),
-        )];
-        LexPattern::new(&atoms)
-            .match_prefix_word_refs(words)
-            .and_then(|matched| matched.capture_word_range("player"))
-            .map(|range| (entry.player, range.end))
-    })
-}
-
-fn parse_delayed_static_player_exact(words: &[&str]) -> Option<(PlayerAst, usize)> {
-    let prefix = words;
-    if word_slice_eq(prefix, DELAYED_PLAYER_PREFIX_YOU) {
-        return Some((PlayerAst::You, DELAYED_PLAYER_PREFIX_YOU.len()));
-    }
-    DELAYED_STATIC_PLAYER_PREFIXES.iter().find_map(|entry| {
-        let atoms = [LexPattern::subject(
-            "player",
-            LexCaptureKind::OneOfPhrase(entry.phrases),
-        )];
-        LexPattern::new(&atoms)
-            .match_word_refs(words)
-            .and_then(|matched| matched.capture_word_range("player"))
-            .map(|range| (entry.player, range.end))
-    })
-}
-
-fn parse_delayed_dynamic_player_prefix(words: &[&str]) -> Option<(PlayerAst, usize)> {
-    DELAYED_DYNAMIC_PLAYER_PREFIXES.iter().find_map(|entry| {
-        entry
-            .pattern
-            .match_prefix_word_refs(words)
-            .filter(|matched| matched.capture_word_range(entry.capture).is_some())
-            .map(|matched| (entry.player, matched.word_range.end))
-    })
-}
-
 fn parse_delayed_player_prefix(words: &[&str]) -> Option<(PlayerAst, usize)> {
-    parse_delayed_static_player_prefix(words).or_else(|| parse_delayed_dynamic_player_prefix(words))
+    delayed_grammar::parse_delayed_player_prefix_words(words, false)
 }
 
 fn parse_delayed_player_before_pay(words: &[&str]) -> Option<(PlayerAst, usize)> {
-    parse_delayed_static_player_exact(words).or_else(|| parse_delayed_dynamic_player_prefix(words))
-}
-
-fn delayed_tagged_creature_reference_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    clause
-        .match_pattern(DELAYED_TAGGED_CREATURE_REFERENCE_PATTERN)
-        .and_then(|matched| matched.capture_word_range("reference"))
-        .is_some()
+    delayed_grammar::parse_delayed_player_prefix_words(words, true)
 }
 
 fn delayed_lose_game_unless_paid_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    let lose_words = clause.word_refs();
-    word_slice_eq_any(&lose_words, DELAYED_LOSE_GAME_UNLESS_PAID_WORDS)
+    delayed_grammar::is_delayed_lose_game_unless_paid_shape(clause.tokens())
 }
 
 fn delayed_clause_mentions_cast_or_play_action(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    let words = clause.word_refs();
-    DELAYED_CAST_OR_PLAY_ACTION_PATTERN
-        .find_in_word_refs(&words)
-        .and_then(|matched| matched.capture_word_range("action"))
-        .is_some()
+    delayed_grammar::delayed_action_shape(
+        clause.tokens(),
+        delayed_grammar::DelayedActionShape::CastOrPlay,
+        false,
+    )
 }
 
-fn delayed_clause_exactly_matches(pattern: LexPattern<'static>, words: &[&str]) -> bool {
-    pattern.match_word_refs(words).is_some()
-}
-
-fn delayed_clause_starts_with_mechanic_marker<'p>(
+fn delayed_clause_starts_with_mechanic_marker(
     clause: SubjectVerbPrimitiveClause<'_>,
-    marker_prefixes: &'p [&'p [&'p str]],
+    marker_prefixes: &'static [&'static [&'static str]],
 ) -> bool {
-    let atoms = [LexPattern::modifier(
-        "marker",
-        LexCaptureKind::OneOfPhrase(marker_prefixes),
-    )];
-    let words = clause.word_refs();
-    LexPattern::new(&atoms)
-        .match_prefix_word_refs(&words)
-        .and_then(|matched| matched.capture_word_range("marker"))
-        .is_some()
+    delayed_grammar::delayed_starts_any_shape(clause.tokens(), marker_prefixes)
 }
 
 fn delayed_clause_mentions_remains_tapped(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    let words = clause.word_refs();
-    DELAYED_REMAINS_MARKER_PATTERN
-        .find_in_word_refs(&words)
-        .and_then(|matched| matched.capture_word_range("remains"))
-        .is_some()
-        && DELAYED_TAPPED_MARKER_PATTERN
-            .find_in_word_refs(&words)
-            .and_then(|matched| matched.capture_word_range("tapped"))
-            .is_some()
+    delayed_grammar::delayed_mentions_remains_tapped_shape(clause.tokens())
 }
 
 fn delayed_clause_starts_with_action(
     clause: SubjectVerbPrimitiveClause<'_>,
-    pattern: LexPattern<'static>,
+    action: delayed_grammar::DelayedActionShape,
 ) -> bool {
-    let words = clause.word_refs();
-    pattern
-        .find_in_word_refs(&words)
-        .and_then(|matched| matched.capture_word_range("action"))
-        .is_some_and(|range| range.start == 0)
+    delayed_grammar::delayed_action_shape(clause.tokens(), action, true)
 }
 
 fn delayed_clause_mentions_mana_cost(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    let words = clause.word_refs();
-    DELAYED_MANA_COST_PATTERN
-        .find_in_word_refs(&words)
-        .and_then(|matched| matched.capture_word_range("cost"))
-        .is_some()
+    delayed_grammar::delayed_mentions_mana_cost_shape(clause.tokens())
 }
-
-fn delayed_word_prefix_len(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> Option<usize> {
-    pattern
-        .match_prefix_word_refs(words)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .filter(|range| range.start == 0)
-        .map(|range| range.end - range.start)
-}
-
-fn delayed_word_suffix_len(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> Option<usize> {
-    (0..words.len()).find_map(|start| {
-        let suffix = &words[start..];
-        pattern
-            .match_word_refs(suffix)
-            .and_then(|matched| matched.capture_word_range(capture))
-            .map(|range| range.end - range.start)
-    })
-}
-
-const DELAYED_IF_YOU_WIN_REPEAT_PREFIX: &[&str] = &["if", "you", "win"];
-const DELAYED_LOSE_DRAW_CLASH_PREFIX: &[&str] = &["you", "lose"];
-const DELAYED_CREATURE_TYPES_EOT_TAILS: &[&[&str]] = &[
-    &["all", "creature", "types", "until", "end", "of", "turn"],
-    &["every", "creature", "type", "until", "end", "of", "turn"],
-];
-const NEXT_END_STEP_PREFIXES: &[&[&str]] = &[
-    &["at", "the", "beginning", "of", "the", "next", "end", "step"],
-    &["at", "the", "beginning", "of", "next", "end", "step"],
-];
 
 pub(super) fn wrap_delayed_next_step_unless_pays(
     step: DelayedNextStepKind,
@@ -618,10 +169,10 @@ pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
     }
 
     let (leading_segments, final_segment) = segments.split_at(segments.len() - 1);
-    if let Some((_, after_timing)) =
-        final_segment[0].strip_any_prefix_clause(NEXT_END_STEP_PREFIXES)
+    if let Some(after_timing) =
+        delayed_grammar::parse_next_end_step_prefix_remainder(final_segment[0].tokens())
     {
-        let timing_clause = after_timing.trimmed();
+        let timing_clause = SubjectVerbPrimitiveClause::new(after_timing).trimmed();
         if timing_clause.is_empty() {
             return Ok(None);
         }
@@ -636,11 +187,8 @@ pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
         if delayed_effects.is_empty() {
             return Ok(None);
         }
-        let delayed_words = delayed_effect_clause.word_refs();
-        let delayed_refs_it = matches!(
-            delayed_words.as_slice(),
-            ["sacrifice", "it"] | ["sacrifice", "that", "card"] | ["sacrifice", "that", "token"]
-        );
+        let delayed_refs_it =
+            delayed_grammar::delayed_referential_sacrifice_shape(delayed_effect_clause.tokens());
         let Some(mut unless_effect) = try_build_unless(delayed_effects, timing_clause, unless_idx)?
         else {
             return Ok(None);
@@ -730,54 +278,18 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
     } else {
         (Vec::new(), segments[0], segments[1])
     };
-    let pay_idx = if upkeep_clause
-        .strip_prefix(&[
-            "at",
-            "the",
-            "beginning",
-            "of",
-            "your",
-            "next",
-            "upkeep",
-            "pay",
-        ])
-        .is_some()
-    {
-        7usize
-    } else if upkeep_clause
-        .strip_prefix(&[
-            "at",
-            "the",
-            "beginning",
-            "of",
-            "the",
-            "next",
-            "upkeep",
-            "pay",
-        ])
-        .is_some()
-    {
-        8usize
-    } else {
+    let Some(payment_shape) =
+        delayed_grammar::parse_delayed_upkeep_payment_shape(upkeep_clause.tokens())
+    else {
         return Ok(None);
     };
-
-    let Some(mana_clause) = upkeep_clause.after_words(pay_idx + 1) else {
-        return Ok(None);
-    };
-    if mana_clause.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing mana payment in delayed next-upkeep clause (clause: '{}')",
-            upkeep_clause.text()
-        )));
-    }
 
     let mana = {
         use super::super::super::grammar::primitives as grammar;
         use super::super::super::lexer::LexStream;
         use winnow::prelude::*;
 
-        let mut stream = LexStream::new(mana_clause.tokens());
+        let mut stream = LexStream::new(payment_shape.mana_tokens);
         grammar::collect_mana_symbols
             .parse_next(&mut stream)
             .map_err(|_| {
@@ -880,9 +392,13 @@ fn parse_unless_sacrifice_or_pay_cost(
     let left_clause = SubjectVerbPrimitiveClause::new(&action_clause.tokens()[..or_idx]).trimmed();
     let right_clause =
         SubjectVerbPrimitiveClause::new(&action_clause.tokens()[or_idx + 1..]).trimmed();
-    if !delayed_clause_starts_with_action(left_clause, DELAYED_SACRIFICE_ACTION_PATTERN)
-        || !delayed_clause_starts_with_action(right_clause, DELAYED_PAY_ACTION_PATTERN)
-    {
+    if !delayed_clause_starts_with_action(
+        left_clause,
+        delayed_grammar::DelayedActionShape::Sacrifice,
+    ) || !delayed_clause_starts_with_action(
+        right_clause,
+        delayed_grammar::DelayedActionShape::Pay,
+    ) {
         return Ok(None);
     }
     let Some(sacrifice_cost) = parse_unless_sacrifice_clause_as_cost(left_clause)? else {
@@ -906,7 +422,7 @@ pub(crate) fn try_build_unless(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let after_clause = clause.from(unless_idx + 1).trimmed();
     let after_words = after_clause.words().to_word_refs();
-    let pay_word_idx = after_clause.find_word_any(&["pay", "pays"]);
+    let payment_shape = delayed_grammar::split_delayed_payment_action_shape(after_clause.tokens());
 
     if let Some((player, cost)) = parse_unless_sacrifice_or_pay_cost(after_clause)? {
         return Ok(Some(EffectAst::UnlessPays {
@@ -917,17 +433,17 @@ pub(crate) fn try_build_unless(
     }
 
     // Determine the player from the "unless" clause
-    let Some((player, action_word_start)) = (if let Some(pay_idx) = pay_word_idx {
-        parse_delayed_player_before_pay(&after_words[..pay_idx])
-            .map(|(player, _)| (player, pay_idx))
+    let Some((player, action_word_start)) = (if let Some(shape) = payment_shape {
+        let player_words = LexedClause::new(shape.player_tokens).word_refs();
+        parse_delayed_player_before_pay(&player_words).map(|(player, _)| (player, 0))
     } else {
         parse_delayed_player_prefix(&after_words)
     }) else {
         return Ok(None);
     };
 
-    let action_clause = if let Some(pay_idx) = pay_word_idx {
-        after_clause.from_word(pay_idx)
+    let action_clause = if let Some(shape) = payment_shape {
+        Some(SubjectVerbPrimitiveClause::new(shape.action_tokens))
     } else {
         after_clause.after_words(action_word_start)
     }
@@ -936,14 +452,17 @@ pub(crate) fn try_build_unless(
     let action_word_storage = action_clause.words();
     let action_words = action_word_storage.to_word_refs();
 
-    if delayed_clause_starts_with_action(action_clause, DELAYED_PAY_ACTION_PATTERN) {
+    if delayed_clause_starts_with_action(action_clause, delayed_grammar::DelayedActionShape::Pay) {
         if delayed_clause_mentions_mana_cost(action_clause) {
             return Err(CardTextError::ParseError(format!(
                 "unsupported unless-payment mana-cost clause (clause: '{}')",
                 clause.text()
             )));
         }
-    } else if delayed_clause_starts_with_action(action_clause, DELAYED_DRAW_ACTION_PATTERN) {
+    } else if delayed_clause_starts_with_action(
+        action_clause,
+        delayed_grammar::DelayedActionShape::Draw,
+    ) {
         return Err(CardTextError::ParseError(format!(
             "unsupported non-cost unless action (clause: '{}')",
             clause.text()
@@ -1062,10 +581,12 @@ pub(crate) fn try_build_unless(
         }
     }
 
-    if delayed_clause_starts_with_action(action_clause, DELAYED_DISCARD_ACTION_PATTERN)
-        && let Ok(mut alternative) =
-            super::super::zone_handlers::parse_discard(action_clause.tokens(), None)
-                .map(|effect| vec![effect])
+    if delayed_clause_starts_with_action(
+        action_clause,
+        delayed_grammar::DelayedActionShape::Discard,
+    ) && let Ok(mut alternative) =
+        super::super::zone_handlers::parse_discard(action_clause.tokens(), None)
+            .map(|effect| vec![effect])
     {
         for effect in &mut alternative {
             bind_unless_player_context(effect, player);
@@ -1153,125 +674,24 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
         return Ok(None);
     }
 
-    let clause_words = clause.word_refs();
-    if delayed_clause_exactly_matches(DELAYED_MECHANIC_CHOOSE_ONE_OF_THEM_PATTERN, &clause_words) {
+    if delayed_grammar::delayed_exact_shape(
+        clause.tokens(),
+        DELAYED_MECHANIC_CHOOSE_ONE_OF_THEM_WORDS,
+    ) {
         return Ok(None);
     }
-    if delayed_clause_exactly_matches(DELAYED_VENTURE_DUNGEON_PATTERN, &clause_words) {
+    if delayed_grammar::delayed_exact_shape(clause.tokens(), DELAYED_VENTURE_DUNGEON_WORDS) {
         return Ok(Some(vec![EffectAst::subject_verb_venture_into_dungeon(
             crate::cards::builders::PlayerAst::You,
             false,
         )]));
     }
 
-    let is_match = delayed_clause_exactly_matches(DELAYED_STILL_LAND_PATTERN, &clause_words)
+    let is_match = DELAYED_STILL_LAND_WORDS
+        .iter()
+        .any(|phrase| delayed_grammar::delayed_exact_shape(clause.tokens(), phrase))
         || delayed_clause_starts_with_mechanic_marker(clause, &MECHANIC_MARKER_PREFIXES[..3])
-        || clause
-            .strip_prefix(&[
-                "chooses",
-                "any",
-                "number",
-                "of",
-                "creatures",
-                "they",
-                "control",
-            ])
-            .is_some()
-        || clause
-            .strip_prefix(&[
-                "each",
-                "player",
-                "chooses",
-                "any",
-                "number",
-                "of",
-                "creatures",
-                "they",
-                "control",
-            ])
-            .is_some()
-        || clause
-            .strip_prefix(&["an", "opponent", "chooses", "one", "of", "those", "piles"])
-            .is_some()
-        || clause
-            .strip_prefix(&["put", "that", "pile", "into", "your", "hand"])
-            .is_some()
-        || clause
-            .strip_prefix(&["cast", "that", "card", "for", "as", "long", "as"])
-            .is_some()
-        || clause
-            .strip_prefix(&[
-                "until", "end", "of", "turn", "this", "creature", "loses", "prevent", "all",
-                "damage",
-            ])
-            .is_some()
-        || clause
-            .strip_prefix(&[
-                "until",
-                "end",
-                "of",
-                "turn",
-                "target",
-                "creature",
-                "loses",
-                "all",
-                "abilities",
-                "and",
-                "has",
-                "base",
-                "power",
-                "and",
-                "toughness",
-            ])
-            .is_some()
-        || clause
-            .strip_prefix(&["for", "each", "1", "damage", "prevented", "this", "way"])
-            .is_some()
-        || clause
-            .strip_prefix(&[
-                "for", "each", "card", "less", "than", "two", "a", "player", "draws", "this", "way",
-            ])
-            .is_some()
-        || clause
-            .strip_prefix(&["this", "deals", "4", "damage", "if", "there", "are"])
-            .is_some()
-        || clause
-            .strip_prefix(&[
-                "this", "deals", "4", "damage", "instead", "if", "there", "are",
-            ])
-            .is_some()
-        || clause
-            .strip_prefix(&[
-                "that", "spell", "deals", "damage", "to", "each", "opponent", "equal", "to",
-            ])
-            .is_some()
-        || clause
-            .strip_prefix(&[
-                "the", "next", "spell", "you", "cast", "this", "turn", "costs",
-            ])
-            .is_some()
-        || clause
-            .strip_prefix(&[
-                "that",
-                "creature",
-                "attacks",
-                "during",
-                "its",
-                "controllers",
-                "next",
-                "combat",
-                "phase",
-                "if",
-                "able",
-            ])
-            .is_some()
-        || clause
-            .strip_prefix(&[
-                "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to", "target",
-                "creature", "you", "control", "by", "a", "source", "of", "your", "choice", "is",
-                "dealt", "to", "another", "target", "creature", "instead",
-            ])
-            .is_some()
+        || delayed_grammar::is_known_fallback_marker_shape(clause.tokens())
         || (delayed_clause_starts_with_mechanic_marker(clause, &MECHANIC_MARKER_PREFIXES[3..])
             && delayed_clause_mentions_remains_tapped(clause));
     if !is_match {
@@ -1286,29 +706,17 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
 pub(crate) fn parse_sentence_implicit_become_clause(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some((target, rest_clause)) = clause.strip_prefix_value_clause(&[
-        (&["this", "permanent"], TargetAst::Source(None)),
-        (&["this", "creature"], TargetAst::Source(None)),
-        (&["this", "land"], TargetAst::Source(None)),
-        (&["this"], TargetAst::Source(None)),
-        (
-            &["each", "of", "them"],
-            TargetAst::Tagged(TagKey::from(IT_TAG), None),
-        ),
-        (&["they're"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
-        (&["they’re"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
-        (&["theyre"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
-        (
-            &["they", "are"],
-            TargetAst::Tagged(TagKey::from(IT_TAG), None),
-        ),
-        (&["they"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
-        (&["its"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
-        (&["it"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
-    ]) else {
+    let Some(subject_shape) = delayed_grammar::parse_implicit_become_subject_shape(clause.tokens())
+    else {
         return Ok(None);
     };
-    let rest_clause = rest_clause.trimmed();
+    let target = match subject_shape.kind {
+        delayed_grammar::ImplicitBecomeSubjectKind::Source => TargetAst::Source(None),
+        delayed_grammar::ImplicitBecomeSubjectKind::Tagged => {
+            TargetAst::Tagged(TagKey::from(IT_TAG), None)
+        }
+    };
+    let rest_clause = SubjectVerbPrimitiveClause::new(subject_shape.remainder_tokens).trimmed();
     let (mut duration, duration_remainder_clause) =
         if let Some((duration, remainder)) = parse_restriction_duration(rest_clause.tokens())? {
             (duration, SubjectVerbPrimitiveOwnedClause::new(remainder))
@@ -1319,42 +727,13 @@ pub(crate) fn parse_sentence_implicit_become_clause(
             )
         };
     let mut rest_words = duration_remainder_clause.as_clause().trimmed_word_refs();
-    if let Some(prefix_len) =
-        delayed_word_prefix_len(&rest_words, DELAYED_STILL_PREFIX_PATTERN, "still")
-    {
-        rest_words.drain(..prefix_len);
-    }
+    let prefix_shape = delayed_grammar::parse_implicit_become_prefix_words(&rest_words);
+    rest_words.drain(..prefix_shape.consumed);
     if rest_words.is_empty() {
         return Ok(None);
     }
-
-    let negated = if word_slice_starts_with_any(&rest_words, DELAYED_NEGATED_BE_PREFIXES) {
-        let prefix_len = DELAYED_NEGATED_BE_PREFIXES
-            .iter()
-            .find(|prefix| word_slice_starts_with(&rest_words, prefix))
-            .map(|prefix| prefix.len())
-            .unwrap_or(0);
-        rest_words.drain(..prefix_len);
-        true
-    } else if rest_words
-        .first()
-        .is_some_and(|word| DELAYED_CONTRACTION_NEGATED_BE_WORDS.contains(word))
-    {
-        rest_words.drain(..1);
-        true
-    } else {
-        if let Some(prefix_len) =
-            delayed_word_prefix_len(&rest_words, DELAYED_BE_PREFIX_PATTERN, "be")
-        {
-            rest_words.drain(..prefix_len);
-        }
-        false
-    };
-    if let Some(suffix_len) = delayed_word_suffix_len(
-        &rest_words,
-        DELAYED_UNTIL_END_OF_TURN_SUFFIX_PATTERN,
-        "duration",
-    ) {
+    let negated = prefix_shape.negated;
+    if let Some(suffix_len) = delayed_grammar::delayed_until_eot_suffix_len(&rest_words) {
         duration = Until::EndOfTurn;
         let new_len = rest_words.len().saturating_sub(suffix_len);
         rest_words.truncate(new_len);
@@ -1363,31 +742,10 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         return Ok(None);
     }
 
-    let negative_type_words = if negated {
-        if rest_words
-            .first()
-            .copied()
-            .is_some_and(|word| DELAYED_ARTICLE_WORDS.contains(&word))
-        {
-            Some(&rest_words[1..])
-        } else {
-            Some(&rest_words[..])
-        }
-    } else if let Some(prefix_len) = delayed_word_prefix_len(
-        &rest_words,
-        DELAYED_NOT_ARTICLE_PREFIX_PATTERN,
-        "not_article",
-    ) && rest_words.len() > prefix_len
-    {
-        Some(&rest_words[prefix_len..])
-    } else if let Some(prefix_len) =
-        delayed_word_prefix_len(&rest_words, DELAYED_NOT_PREFIX_PATTERN, "not")
-        && rest_words.len() > prefix_len
-    {
-        Some(&rest_words[prefix_len..])
-    } else {
-        None
-    };
+    let negative_type_words =
+        delayed_grammar::delayed_negative_type_prefix_len(&rest_words, negated)
+            .filter(|prefix_len| rest_words.len() > *prefix_len || negated)
+            .map(|prefix_len| &rest_words[prefix_len..]);
     if let Some(type_words) = negative_type_words {
         let mut card_types = Vec::new();
         let mut all_card_types = true;
@@ -1408,15 +766,12 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         }
     }
 
-    let addition_tail_len = delayed_word_suffix_len(
-        &rest_words,
-        DELAYED_ADDITION_OTHER_TYPES_SUFFIX_PATTERN,
-        "addition",
-    );
+    let addition_tail_len = delayed_grammar::delayed_addition_other_types_suffix_len(&rest_words);
 
     let body_words = if rest_words
         .first()
-        .is_some_and(|word| DELAYED_ARTICLE_WORDS.contains(word))
+        .copied()
+        .is_some_and(delayed_grammar::delayed_article_shape)
     {
         &rest_words[1..]
     } else {
@@ -1546,57 +901,16 @@ pub(crate) fn parse_sentence_implicit_become_clause(
 pub(crate) fn parse_sentence_gains_or_loses_all_creature_types(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = clause.word_refs();
-    let ends_with_creature_types_eot_tail =
-        DELAYED_CREATURE_TYPES_EOT_TAILS.iter().any(|expected| {
-            let tail = &words[words.len().saturating_sub(expected.len())..];
-            word_slice_eq_any(tail, DELAYED_CREATURE_TYPES_EOT_TAILS)
-        });
-    if !ends_with_creature_types_eot_tail {
-        return Ok(None);
-    }
-    let pattern = LexPattern::new(GAINS_OR_LOSES_ALL_CREATURE_TYPES_PATTERN_ATOMS);
-    let Some(matched) = clause.match_pattern(pattern) else {
+    let Some(shape) = delayed_grammar::parse_delayed_creature_types_shape(clause.tokens()) else {
         return Ok(None);
     };
-    parse_sentence_gains_or_loses_all_creature_types_matched(clause, &matched)
-}
-
-pub(crate) fn parse_sentence_gains_or_loses_all_creature_types_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(subject_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Subject) else {
-        return Ok(None);
-    };
-    let Some(verb_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Action) else {
-        return Ok(None);
-    };
-    let verb_words = verb_clause.word_refs();
-    let is_gain = matches!(verb_words.as_slice(), ["gain"] | ["gains"]);
-    let subject_words = subject_clause.word_refs();
-
-    if !is_gain
-        && let Some(get_word_idx) = subject_words
-            .iter()
-            .position(|word| DELAYED_GET_WORDS.contains(word))
+    if !shape.gain
+        && let Some(pump) = delayed_grammar::parse_delayed_losing_pump_shape(shape.subject_tokens)
     {
-        let Some(modifier_word) = subject_words.get(get_word_idx + 1).copied() else {
+        let Ok((power, toughness)) = parse_pt_modifier_values(pump.modifier) else {
             return Ok(None);
         };
-        let Ok((power, toughness)) = parse_pt_modifier_values(modifier_word) else {
-            return Ok(None);
-        };
-        let Some(target_clause) = subject_clause
-            .before_word(get_word_idx)
-            .map(SubjectVerbPrimitiveClause::trimmed)
-        else {
-            return Ok(None);
-        };
-        if target_clause.is_empty() {
-            return Ok(None);
-        }
-        let target = parse_target_phrase(target_clause.tokens())?;
+        let target = parse_target_phrase(pump.target_tokens)?;
         return Ok(Some(vec![
             EffectAst::subject_verb_pump(power, toughness, target.clone(), Until::EndOfTurn, None),
             EffectAst::subject_verb_remove_all_subtypes_of_family(
@@ -1607,12 +921,12 @@ pub(crate) fn parse_sentence_gains_or_loses_all_creature_types_matched(
         ]));
     }
 
-    let target = if delayed_tagged_creature_reference_matches(subject_clause) {
+    let target = if delayed_grammar::delayed_tagged_creature_reference_shape(shape.subject_tokens) {
         TargetAst::Tagged(TagKey::from(IT_TAG), None)
     } else {
-        parse_target_phrase(subject_clause.trimmed().tokens())?
+        parse_target_phrase(shape.subject_tokens)?
     };
-    let effect = if is_gain {
+    let effect = if shape.gain {
         EffectAst::subject_verb_add_all_subtypes_of_family(
             target,
             crate::types::SubtypeFamily::Creature,
@@ -1628,41 +942,10 @@ pub(crate) fn parse_sentence_gains_or_loses_all_creature_types_matched(
     Ok(Some(vec![effect]))
 }
 
-fn fixed_count_word(word: &str) -> Option<i32> {
-    ironsmith_core::parse_cardinal_word(word).and_then(|value| value.try_into().ok())
-}
-
 pub(crate) fn parse_sentence_lose_draw_clash_repeat_process(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let body_words_vec = clause.word_refs();
-    let body_words = body_words_vec.as_slice();
-    if !word_slice_starts_with(body_words, DELAYED_LOSE_DRAW_CLASH_PREFIX) {
-        return Ok(None);
-    }
-    let pattern = LexPattern::new(LOSE_DRAW_CLASH_REPEAT_PATTERN_ATOMS);
-    let Some(matched) = clause.match_pattern(pattern) else {
-        return Ok(None);
-    };
-    parse_sentence_lose_draw_clash_repeat_process_matched(clause, &matched)
-}
-
-pub(crate) fn parse_sentence_lose_draw_clash_repeat_process_matched(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    matched: &LexPatternMatch<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(life_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Amount) else {
-        return Ok(None);
-    };
-    let Some(draw_clause) = clause.pattern_capture(matched, "draw") else {
-        return Ok(None);
-    };
-    let life_words = life_clause.word_refs();
-    let draw_words = draw_clause.word_refs();
-    let Some(life_count) = life_words.first().and_then(|word| fixed_count_word(word)) else {
-        return Ok(None);
-    };
-    let Some(draw_count) = draw_words.first().and_then(|word| fixed_count_word(word)) else {
+    let Some(shape) = delayed_grammar::parse_lose_draw_clash_shape(clause.tokens()) else {
         return Ok(None);
     };
 
@@ -1671,20 +954,19 @@ pub(crate) fn parse_sentence_lose_draw_clash_repeat_process_matched(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
             SubjectVerbActionAst::LoseLife {
-                amount: Value::Fixed(life_count),
+                amount: Value::Fixed(shape.life_count),
             },
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
             SubjectVerbActionAst::Draw {
-                count: Value::Fixed(draw_count),
+                count: Value::Fixed(shape.draw_count),
             },
         ),
         EffectAst::subject_verb_clash(ClashOpponentAst::Opponent),
     ];
-    let words = clause.word_refs();
-    if word_slice_find_phrase_start(&words, DELAYED_IF_YOU_WIN_REPEAT_PREFIX).is_none() {
+    if !shape.repeat_if_win {
         return Ok(Some(effects));
     }
 

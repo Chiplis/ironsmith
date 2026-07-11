@@ -66,12 +66,12 @@ pub(crate) fn resolve_non_target_player_filter(
             }
         }
         PlayerAst::That => {
-            if let Some(filter) = refs.known_last_player_filter()
+            if refs.iterated_player {
+                Ok(PlayerFilter::IteratedPlayer)
+            } else if let Some(filter) = refs.known_last_player_filter()
                 && !filter.mentions_iterated_player()
             {
                 Ok(filter.clone())
-            } else if refs.iterated_player {
-                Ok(PlayerFilter::IteratedPlayer)
             } else if let Some(filter) = refs.known_last_player_filter() {
                 Ok(filter.clone())
             } else {
@@ -393,9 +393,6 @@ pub(crate) fn resolve_it_tag(
             && resolved == ObjectFilter::default()
             && let Some(player_filter) = refs.known_last_player_filter().cloned()
         {
-            if std::env::var("IRONSMITH_DEBUG_IT").is_ok() {
-                eprintln!("DEBUG resolve_it_tag hand-fallback: refs={refs:?}");
-            }
             resolved.zone = Some(Zone::Hand);
             resolved.owner = Some(player_filter);
             return Ok(resolved);
@@ -625,12 +622,6 @@ pub(crate) fn resolve_choose_spec_it_tag(
                 return Ok(ChooseSpec::Source);
             }
             if let Some(player_filter) = refs.known_last_player_filter().cloned() {
-                if std::env::var("IRONSMITH_DEBUG_IT").is_ok() {
-                    eprintln!(
-                        "DEBUG resolve_choose_spec_it_tag hand-fallback: refs={refs:?}\n{}",
-                        std::backtrace::Backtrace::force_capture()
-                    );
-                }
                 let filter = ObjectFilter {
                     zone: Some(Zone::Hand),
                     owner: Some(player_filter),

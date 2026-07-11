@@ -2479,6 +2479,11 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         // Color check
+        if let Some(required_colors) = self.required_colors
+            && !object_colors.contains_all(required_colors)
+        {
+            return false;
+        }
         if let Some(required_colors) = &self.colors {
             if required_colors.intersection(object_colors).is_empty() {
                 return false;
@@ -2906,6 +2911,12 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if let Some(sticker) = self.sticker
+            && game.sticker_count_on_object(object.id, sticker, None) == 0
+        {
+            return false;
+        }
+
         if let Some(subject) = layered_subject {
             self.matches_shared_tail(subject, ctx, game, stack_entry)
         } else {
@@ -3161,6 +3172,11 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         // Color check
+        if let Some(required_colors) = self.required_colors
+            && !snapshot.colors.contains_all(required_colors)
+        {
+            return false;
+        }
         if let Some(required_colors) = &self.colors
             && required_colors.intersection(snapshot.colors).is_empty()
         {
@@ -3510,6 +3526,12 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if let Some(sticker) = self.sticker
+            && game.sticker_count_on_object(snapshot.object_id, sticker, None) == 0
+        {
+            return false;
+        }
+
         self.matches_shared_tail(snapshot, ctx, game, None)
     }
 
@@ -3734,7 +3756,27 @@ impl ObjectFilterExt for ObjectFilter {
                 "face-up".to_string()
             });
         }
-        if let Some(colors) = self.colors {
+        if let Some(colors) = self.required_colors {
+            let mut color_words = Vec::new();
+            if colors.contains(Color::White) {
+                color_words.push("white");
+            }
+            if colors.contains(Color::Blue) {
+                color_words.push("blue");
+            }
+            if colors.contains(Color::Black) {
+                color_words.push("black");
+            }
+            if colors.contains(Color::Red) {
+                color_words.push("red");
+            }
+            if colors.contains(Color::Green) {
+                color_words.push("green");
+            }
+            if !color_words.is_empty() {
+                parts.push(format!("both {}", color_words.join(" and ")));
+            }
+        } else if let Some(colors) = self.colors {
             if colors.contains_all(
                 crate::color::Color::ALL
                     .into_iter()
@@ -3765,6 +3807,18 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.chosen_color {
             post_noun_qualifiers.push("of the chosen color".to_string());
+        }
+        if let Some(sticker) = self.sticker {
+            let sticker = match sticker {
+                crate::events::KeywordActionKind::ArtSticker => "an art sticker",
+                crate::events::KeywordActionKind::AbilitySticker => "an ability sticker",
+                crate::events::KeywordActionKind::PowerToughnessSticker => {
+                    "a power and toughness sticker"
+                }
+                crate::events::KeywordActionKind::NameSticker => "a name sticker",
+                _ => "a sticker",
+            };
+            post_noun_qualifiers.push(format!("with {sticker} on it"));
         }
         if self.chosen_creature_type {
             post_noun_qualifiers.push("of the chosen type".to_string());
@@ -3868,6 +3922,12 @@ impl ObjectFilterExt for ObjectFilter {
                         post_noun_qualifiers.push(
                             "that shares a card type with a card exiled with this permanent"
                                 .to_string(),
+                        );
+                        continue;
+                    }
+                    if constraint.tag.as_str().starts_with("sacrificed_") {
+                        post_noun_qualifiers.push(
+                            "that shares a card type with the sacrificed permanent".to_string(),
                         );
                         continue;
                     }
@@ -5370,6 +5430,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
         Wither => Some("wither"),
         Infect => Some("infect"),
         Changeling => Some("changeling"),
+        Cascade => Some("cascade"),
         _ => None,
     }
 }
@@ -5878,6 +5939,58 @@ mod tests {
         let filter =
             ObjectFilter::creature().with_colors(ColorSet::from_color(crate::color::Color::Blue));
         assert_eq!(filter.description(), "blue creature");
+    }
+
+    #[test]
+    fn required_colors_match_all_members_and_render_as_both() {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::ids::CardId;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let blue = ColorSet::BLUE;
+        let blue_black = blue.union(ColorSet::BLACK);
+        let blue_creature = CardBuilder::new(CardId::from_raw(1), "Blue")
+            .card_types(vec![CardType::Creature])
+            .color_indicator(blue)
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let both_creature = CardBuilder::new(CardId::from_raw(2), "Both")
+            .card_types(vec![CardType::Creature])
+            .color_indicator(blue_black)
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let blue_id = game.create_object_from_card(&blue_creature, alice, Zone::Battlefield);
+        let both_id = game.create_object_from_card(&both_creature, alice, Zone::Battlefield);
+        let mut filter = ObjectFilter::creature();
+        filter.required_colors = Some(blue_black);
+        let ctx = FilterContext::new(alice);
+
+        assert!(!filter.matches(game.object(blue_id).unwrap(), &ctx, &game));
+        assert!(filter.matches(game.object(both_id).unwrap(), &ctx, &game));
+        assert_eq!(filter.description(), "both blue and black creature");
+    }
+
+    #[test]
+    fn sticker_filter_uses_stable_object_annotation() {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::ids::CardId;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(3), "Sticker target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let object_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let mut filter = ObjectFilter::creature();
+        filter.sticker = Some(crate::events::KeywordActionKind::ArtSticker);
+        let ctx = FilterContext::new(alice);
+
+        assert!(!filter.matches(game.object(object_id).unwrap(), &ctx, &game));
+        game.put_sticker_on_object(object_id, crate::events::KeywordActionKind::ArtSticker);
+        assert!(filter.matches(game.object(object_id).unwrap(), &ctx, &game));
+        assert_eq!(filter.description(), "creature with an art sticker on it");
     }
 
     #[test]

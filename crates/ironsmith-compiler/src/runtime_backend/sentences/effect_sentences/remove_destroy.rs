@@ -1,695 +1,378 @@
 use super::*;
-use crate::runtime_backend::effect_sentences::SubjectVerbPrimitiveClause;
-use crate::runtime_backend::lexer::{
-    token_slice_at_is, token_slice_first_is, token_slice_first_is_any, token_slice_starts_with,
-    token_slice_words_eq, token_slice_words_eq_any, word_slice_contains_any_phrase,
-    word_slice_contains_phrase, word_slice_ends_with_any, word_slice_find_phrase_start,
-    word_slice_first_is_any,
-};
-use crate::runtime_backend::util::{
-    parse_choice_count_before_target_prefix, parse_filter_counter_constraint_words,
-};
-
-const FROM_WORD: &str = "from";
-const COMBAT_WORDS: &[&str] = &["combat"];
-const COUNTER_OR_COUNTERS_WORDS: &[&str] = &["counter", "counters"];
-const WITH_WORD: &str = "with";
-const AT_WORD: &str = "at";
-const COMBAT_HISTORY_DESTROY_PHRASES: &[&[&str]] = &[
-    &["was", "blocked"],
-    &["was", "blocking"],
-    &["blocking", "it"],
-    &["blocked", "it"],
-    &["it", "blocked"],
-];
-const ATTACHED_WORD: &str = "attached";
-const TO_WORD: &str = "to";
-const ATTACHED_SUPPORTED_TARGET_WORDS: &[&[&str]] = &[&["you"], &["it"]];
-const ATTACHED_FILTER_TRAILING_BE_WORDS: &[&str] = &["that", "were", "was", "is", "are"];
-const ATTACHED_TIMING_TAIL_WORDS: &[&str] =
-    &["at", "beginning", "end", "combat", "turn", "step", "until"];
-const CHOSEN_THIS_WAY_SUFFIXES: &[&[&str]] = &[
-    &["chosen", "this", "way"],
-    &["that", "were", "chosen", "this", "way"],
-    &["that", "was", "chosen", "this", "way"],
-];
-const EXCEPT_WORD: &str = "except";
-const IF_WORD: &str = "if";
-const INSTEAD_WORD: &str = "instead";
-const AND_WORD: &str = "and";
-const CANT_WORDS: &[&str] = &["cant", "can't", "cannot"];
-const ATTACK_OR_BLOCK_WORDS: &[&str] = &["attack", "attacks", "block", "blocks"];
-const NO_WORD: &str = "no";
-const ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
-const TARGET_WORD: &str = "target";
-const BLOCKED_WORD: &str = "blocked";
-const DEALT_DAMAGE_THIS_TURN_TAIL: &[&str] = &["that", "was", "dealt", "damage", "this", "turn"];
-const DEALT_DAMAGE_THIS_TURN_FILTER_TAILS: &[&[&str]] = &[
-    &["that", "was", "dealt", "damage", "this", "turn"],
-    &["that", "were", "dealt", "damage", "this", "turn"],
-];
-const THAT_DEALT_DAMAGE_TO_PHRASE: &[&str] = &["that", "dealt", "damage", "to"];
-const END_OF_COMBAT_PHRASE: &[&str] = &["end", "of", "combat"];
-
-fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
-    token.as_word().is_some_and(|word| word == expected)
-}
-
-fn token_is_any_word(token: &OwnedLexToken, expected: &[&str]) -> bool {
-    token.as_word().is_some_and(|word| expected.contains(&word))
-}
-
-fn has_trailing_cant_attack_or_block_clause(words: &[&str]) -> bool {
-    words.iter().enumerate().any(|(idx, word)| {
-        if !CANT_WORDS.contains(word) {
-            return false;
-        }
-        let tail = &words[idx + 1..];
-        tail.iter()
-            .any(|tail_word| ATTACK_OR_BLOCK_WORDS.contains(tail_word))
-            && tail.windows(2).any(|window| window == ["this", "turn"])
-    })
-}
+use crate::runtime_backend::front_end::grammar::effects::remove_destroy_shapes as shapes;
+use crate::runtime_backend::util::parse_filter_counter_constraint_words;
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(words.as_slice(), ["all", "of", "them"]) {
-        return Ok(EffectAst::subject_verb_remove_all_of_them_counters_from_source());
-    }
+    let shape = shapes::parse_remove_clause_shape(tokens).map_err(|error| match error {
+        shapes::RemoveShapeError::MissingAmount => CardTextError::ParseError(format!(
+            "missing counter removal amount (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )),
+        shapes::RemoveShapeError::MissingCounterKeyword => {
+            CardTextError::ParseError("missing counter keyword".to_string())
+        }
+    })?;
 
-    if let Some(from_idx) = find_index(tokens, |token| token_is_word(token, FROM_WORD)) {
-        if token_slice_words_eq(&tokens[from_idx + 1..], COMBAT_WORDS) {
-            let target_tokens = trim_commas(&tokens[..from_idx]);
+    match shape {
+        shapes::RemoveClauseShape::AllOfThem => {
+            Ok(EffectAst::subject_verb_remove_all_of_them_counters_from_source())
+        }
+        shapes::RemoveClauseShape::FromCombat { target_tokens } => {
             if target_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "missing remove-from-combat target (clause: '{}')",
                     crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
-            let target = parse_target_phrase(&target_tokens)?;
-            return Ok(EffectAst::subject_verb_remove_from_combat(target));
+            Ok(EffectAst::subject_verb_remove_from_combat(
+                parse_target_phrase(target_tokens)?,
+            ))
         }
-    }
-
-    if token_slice_first_is(tokens, "all")
-        && let Some(counter_idx) = find_index(tokens, |token: &OwnedLexToken| {
-            token_is_any_word(token, COUNTER_OR_COUNTERS_WORDS)
-        })
-        && counter_idx > 0
-    {
-        let counter_descriptor = trim_commas(&tokens[1..counter_idx]);
-        let counter_type = parse_counter_type_from_descriptor_tokens(&counter_descriptor);
-        let mut target_tokens = trim_commas(&tokens[counter_idx + 1..]);
-        if token_slice_first_is(&target_tokens, "from") {
-            target_tokens = trim_commas(&target_tokens[1..]);
+        shapes::RemoveClauseShape::AllCounters {
+            counter_descriptor,
+            target_tokens,
+            source_like_target,
+        } => {
+            let counter_type = parse_counter_type_from_descriptor_tokens(counter_descriptor);
+            let target = if source_like_target {
+                TargetAst::Source(span_from_tokens(target_tokens))
+            } else {
+                parse_target_phrase(target_tokens)?
+            };
+            let amount = match (&target, counter_type) {
+                (TargetAst::Source(_), Some(counter_type)) => Value::CountersOnSource(counter_type),
+                (TargetAst::Source(_), None) => {
+                    Value::CountersOn(Box::new(ChooseSpec::Source), None)
+                }
+                _ => Value::CountersOn(Box::new(ChooseSpec::Source), counter_type),
+            };
+            Ok(EffectAst::subject_verb_remove_up_to_any_counters(
+                amount,
+                target,
+                counter_type,
+                false,
+            ))
         }
-
-        let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-        let source_like_target = matches!(
-            target_words.as_slice(),
-            ["it"]
-                | ["this"]
-                | ["this", "creature"]
-                | ["this", "artifact"]
-                | ["this", "enchantment"]
-                | ["this", "permanent"]
-                | ["this", "card"]
-        );
-        let target = if source_like_target {
-            TargetAst::Source(span_from_tokens(&target_tokens))
-        } else {
-            parse_target_phrase(&target_tokens)?
-        };
-        let amount = match (&target, counter_type) {
-            (TargetAst::Source(_), Some(counter_type)) => Value::CountersOnSource(counter_type),
-            (TargetAst::Source(_), None) => Value::CountersOn(Box::new(ChooseSpec::Source), None),
-            _ => Value::CountersOn(Box::new(ChooseSpec::Source), counter_type),
-        };
-        return Ok(EffectAst::subject_verb_remove_up_to_any_counters(
+        shapes::RemoveClauseShape::Counters {
             amount,
-            target,
-            counter_type,
-            false,
-        ));
-    }
-
-    let mut idx = 0;
-    let mut up_to = false;
-    if token_slice_at_is(tokens, idx, "up") && token_slice_at_is(tokens, idx + 1, "to") {
-        up_to = true;
-        idx += 2;
-    }
-
-    let (amount, used) = parse_value(&tokens[idx..]).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing counter removal amount (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
-        ))
-    })?;
-    idx += used;
-
-    let counter_idx = find_index(&tokens[idx..], |token: &OwnedLexToken| {
-        token_is_any_word(token, COUNTER_OR_COUNTERS_WORDS)
-    })
-    .map(|offset| idx + offset)
-    .ok_or_else(|| CardTextError::ParseError("missing counter keyword".to_string()))?;
-    let counter_descriptor = trim_commas(&tokens[idx..counter_idx]);
-    let counter_type = parse_counter_type_from_descriptor_tokens(&counter_descriptor);
-    if counter_idx >= tokens.len() {
-        return Err(CardTextError::ParseError(
-            "missing counter keyword".to_string(),
-        ));
-    }
-    idx = counter_idx + 1;
-
-    if token_slice_at_is(tokens, idx, "from") {
-        idx += 1;
-    }
-
-    let target_tokens = trim_commas(&tokens[idx..]);
-    if token_slice_first_is_any(&target_tokens, &["each", "all"]) {
-        let filter = parse_object_filter(&target_tokens[1..], false)?;
-        return Ok(EffectAst::subject_verb_remove_counters_all(
-            amount,
-            filter,
-            counter_type,
             up_to,
-        ));
-    }
-
-    let for_each_idx = find_window_by(&target_tokens, 2, |window: &[OwnedLexToken]| {
-        token_slice_starts_with(window, &["for", "each"])
-    });
-    if let Some(for_each_idx) = for_each_idx {
-        let base_target_tokens = trim_commas(&target_tokens[..for_each_idx]);
-        let count_filter_tokens = trim_commas(&target_tokens[for_each_idx + 2..]);
-        if !base_target_tokens.is_empty() && !count_filter_tokens.is_empty() {
-            if let (Ok(target), Ok(count_filter)) = (
-                parse_target_phrase(&base_target_tokens),
-                parse_object_filter(&count_filter_tokens, false),
-            ) {
-                return Ok(EffectAst::ForEachObject {
-                    filter: count_filter,
-                    effects: vec![EffectAst::subject_verb_remove_up_to_any_counters(
+            counter_descriptor,
+            destination,
+        } => {
+            let counter_type = parse_counter_type_from_descriptor_tokens(counter_descriptor);
+            match destination {
+                shapes::RemoveCounterDestination::All { filter_tokens } => {
+                    let filter = parse_object_filter(filter_tokens, false)?;
+                    Ok(EffectAst::subject_verb_remove_counters_all(
+                        amount,
+                        filter,
+                        counter_type,
+                        up_to,
+                    ))
+                }
+                shapes::RemoveCounterDestination::ForEach {
+                    target_tokens,
+                    count_filter_tokens,
+                    fallback_target_tokens,
+                } => {
+                    if let (Ok(target), Ok(count_filter)) = (
+                        parse_target_phrase(target_tokens),
+                        parse_object_filter(count_filter_tokens, false),
+                    ) {
+                        return Ok(EffectAst::ForEachObject {
+                            filter: count_filter,
+                            effects: vec![EffectAst::subject_verb_remove_up_to_any_counters(
+                                amount,
+                                target,
+                                counter_type,
+                                up_to,
+                            )],
+                        });
+                    }
+                    let target = parse_target_phrase(fallback_target_tokens)?;
+                    Ok(EffectAst::subject_verb_remove_up_to_any_counters(
                         amount,
                         target,
                         counter_type,
                         up_to,
-                    )],
-                });
+                    ))
+                }
+                shapes::RemoveCounterDestination::Single { target_tokens } => {
+                    let target = parse_target_phrase(target_tokens)?;
+                    Ok(EffectAst::subject_verb_remove_up_to_any_counters(
+                        amount,
+                        target,
+                        counter_type,
+                        up_to,
+                    ))
+                }
             }
         }
     }
-
-    let target_tokens = trim_commas(&tokens[idx..]);
-    let target = parse_target_phrase(&target_tokens)?;
-
-    Ok(EffectAst::subject_verb_remove_up_to_any_counters(
-        amount,
-        target,
-        counter_type,
-        up_to,
-    ))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedDestroyTimingAst {
-    EndOfCombat,
-    NextEndStep,
-}
-
-pub(crate) fn parse_delayed_destroy_timing_words(
-    words: &[&str],
-) -> Option<DelayedDestroyTimingAst> {
-    if matches!(
-        words,
-        ["at", "end", "of", "combat"] | ["at", "the", "end", "of", "combat"]
-    ) {
-        return Some(DelayedDestroyTimingAst::EndOfCombat);
-    }
-
-    if matches!(
-        words,
-        ["at", "beginning", "of", "next", "end", "step"]
-            | ["at", "beginning", "of", "the", "next", "end", "step"]
-            | ["at", "the", "beginning", "of", "next", "end", "step"]
-            | ["at", "the", "beginning", "of", "the", "next", "end", "step"]
-    ) {
-        return Some(DelayedDestroyTimingAst::NextEndStep);
-    }
-
-    None
-}
-
-pub(crate) fn wrap_destroy_with_delayed_timing(
+fn wrap_destroy_with_delayed_timing(
     effect: EffectAst,
-    timing: Option<DelayedDestroyTimingAst>,
+    timing: Option<shapes::DelayedDestroyTimingShape>,
 ) -> EffectAst {
-    let Some(timing) = timing else {
-        return effect;
-    };
-
     match timing {
-        DelayedDestroyTimingAst::EndOfCombat => EffectAst::DelayedUntilEndOfCombat {
-            effects: vec![effect],
-        },
-        DelayedDestroyTimingAst::NextEndStep => EffectAst::DelayedUntilNextEndStep {
-            player: PlayerFilter::Any,
-            effects: vec![effect],
-        },
+        None => effect,
+        Some(shapes::DelayedDestroyTimingShape::EndOfCombat) => {
+            EffectAst::DelayedUntilEndOfCombat {
+                effects: vec![effect],
+            }
+        }
+        Some(shapes::DelayedDestroyTimingShape::NextEndStep) => {
+            EffectAst::DelayedUntilNextEndStep {
+                player: PlayerFilter::Any,
+                effects: vec![effect],
+            }
+        }
     }
 }
 
 fn parse_destroy_all_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, CardTextError> {
-    if let Some(with_idx) = find_index(tokens, |token: &OwnedLexToken| {
-        token_is_word(token, WITH_WORD)
-    }) {
-        let base_tokens = trim_commas(&tokens[..with_idx]);
-        let tail_words = crate::runtime_backend::token_word_refs(&tokens[with_idx + 1..]);
-        if !base_tokens.is_empty()
-            && tail_words.first().is_some_and(|word| *word == NO_WORD)
-            && let Some((counter_constraint, consumed)) =
-                parse_filter_counter_constraint_words(&tail_words[1..])
-            && consumed == tail_words.len().saturating_sub(1)
-        {
-            let mut filter = parse_object_filter(&base_tokens, false)?;
-            filter.without_counter = Some(counter_constraint);
-            return Ok(filter);
-        }
-        if !base_tokens.is_empty()
-            && let Some((counter_constraint, consumed)) =
-                parse_filter_counter_constraint_words(&tail_words)
+    if let Some(shape) = shapes::parse_destroy_counter_constraint_shape(tokens) {
+        let tail_words = crate::runtime_backend::token_word_refs(shape.constraint_tokens);
+        if let Some((counter_constraint, consumed)) =
+            parse_filter_counter_constraint_words(&tail_words)
             && consumed == tail_words.len()
         {
-            let mut filter = parse_object_filter(&base_tokens, false)?;
-            filter.with_counter = Some(counter_constraint);
+            let mut filter = parse_object_filter(shape.base_tokens, false)?;
+            match shape.kind {
+                shapes::DestroyCounterConstraintKind::With => {
+                    filter.with_counter = Some(counter_constraint);
+                }
+                shapes::DestroyCounterConstraintKind::Without => {
+                    filter.without_counter = Some(counter_constraint);
+                }
+            }
             return Ok(filter);
         }
     }
-
     parse_object_filter(tokens, false)
 }
 
-fn parse_destroy_all_combat_history_filter(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<ObjectFilter>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(suffix_len) = DEALT_DAMAGE_THIS_TURN_FILTER_TAILS
-        .iter()
-        .find_map(|suffix| {
-            (words.len() > suffix.len() && words[words.len() - suffix.len()..] == **suffix)
-                .then_some(suffix.len())
-        })
-    else {
-        return Ok(None);
-    };
-
-    let base_word_len = words.len() - suffix_len;
-    let token_cutoff = token_index_for_word_index(tokens, base_word_len).unwrap_or(tokens.len());
-    let base_tokens = trim_commas(&tokens[..token_cutoff]);
-    if base_tokens.is_empty() {
-        return Ok(None);
+fn lower_combat_history_target(
+    shape: shapes::DestroyCombatHistoryShape<'_>,
+) -> Result<Option<TargetAst>, CardTextError> {
+    match shape {
+        shapes::DestroyCombatHistoryShape::DealtDamageThisTurn { target_tokens } => {
+            let target = parse_target_phrase(target_tokens)?;
+            let TargetAst::Object(mut filter, target_span, it_span) = target else {
+                return Ok(None);
+            };
+            filter.was_dealt_damage_this_turn = true;
+            Ok(Some(TargetAst::Object(filter, target_span, it_span)))
+        }
+        shapes::DestroyCombatHistoryShape::DealtDamageToPlayerThisTurn {
+            target_tokens,
+            player_tokens,
+        } => {
+            let TargetAst::Player(player, _) = parse_target_phrase(player_tokens)? else {
+                return Ok(None);
+            };
+            let target = parse_target_phrase(target_tokens)?;
+            let TargetAst::Object(mut filter, target_span, it_span) = target else {
+                return Ok(None);
+            };
+            filter.dealt_damage_to_player_this_turn = Some(player);
+            Ok(Some(TargetAst::Object(filter, target_span, it_span)))
+        }
     }
+}
 
-    let mut filter = parse_destroy_all_filter(&base_tokens)?;
-    filter.was_dealt_damage_this_turn = true;
-    Ok(Some(filter))
+fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectAst, CardTextError> {
+    match shape {
+        shapes::DestroyAllShape::DealtDamageThisTurn { filter_tokens } => {
+            let mut filter = parse_destroy_all_filter(filter_tokens)?;
+            filter.was_dealt_damage_this_turn = true;
+            Ok(EffectAst::subject_verb_destroy_all(filter))
+        }
+        shapes::DestroyAllShape::AttachedTo {
+            filter_tokens,
+            target_tokens,
+        } => Ok(EffectAst::subject_verb_destroy_all_attached_to(
+            parse_object_filter(filter_tokens, false)?,
+            parse_target_phrase(target_tokens)?,
+        )),
+        shapes::DestroyAllShape::ExceptFor {
+            filter_tokens,
+            exception_tokens,
+        } => {
+            let mut filter = parse_object_filter(filter_tokens, false)?;
+            let exception_filter = parse_object_filter(exception_tokens, false)?;
+            apply_except_filter_exclusions(&mut filter, &exception_filter);
+            Ok(EffectAst::subject_verb_destroy_all(filter))
+        }
+        shapes::DestroyAllShape::ChosenColor { filter_tokens } => {
+            let filter = parse_object_filter(filter_tokens, false)?;
+            Ok(EffectAst::subject_verb_destroy_all_of_chosen_color(
+                filter, false,
+            ))
+        }
+        shapes::DestroyAllShape::ChosenThisWay {
+            filter_tokens,
+            relation,
+        } => {
+            let relation = match relation {
+                shapes::TaggedDestroyRelation::Matching => TaggedOpbjectRelation::IsTaggedObject,
+                shapes::TaggedDestroyRelation::ExceptMatching => {
+                    TaggedOpbjectRelation::IsNotTaggedObject
+                }
+            };
+            let filter = parse_object_filter(filter_tokens, false)?
+                .match_tagged(TagKey::from(IT_TAG), relation);
+            Ok(EffectAst::subject_verb_destroy_all(filter))
+        }
+        shapes::DestroyAllShape::Plain { filter_tokens } => Ok(
+            EffectAst::subject_verb_destroy_all(parse_destroy_all_filter(filter_tokens)?),
+        ),
+    }
 }
 
 pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    let original_clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let mut delayed_timing = None;
-    let mut timing_cut_word_idx = original_clause_words.len();
-    for word_idx in 0..original_clause_words.len() {
-        if original_clause_words[word_idx] != AT_WORD {
-            continue;
-        }
-        if let Some(timing) = parse_delayed_destroy_timing_words(&original_clause_words[word_idx..])
-        {
-            delayed_timing = Some(timing);
-            timing_cut_word_idx = word_idx;
-            break;
-        }
-    }
-
-    let core_tokens = if timing_cut_word_idx < original_clause_words.len() {
-        let token_cutoff =
-            token_index_for_word_index(tokens, timing_cut_word_idx).unwrap_or(tokens.len());
-        trim_commas(&tokens[..token_cutoff])
-    } else {
-        trim_commas(tokens)
-    };
-    let clause_words = crate::runtime_backend::token_word_refs(&core_tokens);
-    if clause_words.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing destroy target before delayed timing clause (clause: '{}')",
-            original_clause_words.join(" ")
-        )));
-    }
-
-    if delayed_timing.is_none()
-        && (word_slice_contains_phrase(
-            &crate::runtime_backend::token_word_refs(tokens),
-            END_OF_COMBAT_PHRASE,
-        ) || (grammar::contains_word(tokens, "beginning")
-            && grammar::contains_word(tokens, "end")))
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported delayed destroy timing clause (clause: '{}')",
-            original_clause_words.join(" ")
-        )));
-    }
-    if let Some(target) = parse_destroy_combat_history_target(&core_tokens)? {
-        return Ok(wrap_destroy_with_delayed_timing(
-            EffectAst::subject_verb_destroy(target),
-            delayed_timing,
-        ));
-    }
-    if word_slice_first_is_any(&clause_words, ALL_OR_EACH_WORDS)
-        && let Some(filter) = parse_destroy_all_combat_history_filter(&core_tokens[1..])?
-    {
-        return Ok(wrap_destroy_with_delayed_timing(
-            EffectAst::subject_verb_destroy_all(filter),
-            delayed_timing,
-        ));
-    }
-    let has_combat_history = (grammar::contains_word(&core_tokens, "dealt")
-        && grammar::contains_word(&core_tokens, "damage")
-        && grammar::contains_word(&core_tokens, "turn"))
-        || word_slice_contains_any_phrase(
-            &crate::runtime_backend::token_word_refs(&core_tokens),
-            COMBAT_HISTORY_DESTROY_PHRASES,
-        );
-    if has_combat_history {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported combat-history destroy clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-    if word_slice_first_is_any(&clause_words, ALL_OR_EACH_WORDS) {
-        if let Some(attached_idx) = find_index(&core_tokens, |token: &OwnedLexToken| {
-            token_is_word(token, ATTACHED_WORD)
-        }) && core_tokens
-            .get(attached_idx + 1)
-            .is_some_and(|token| token_is_word(token, TO_WORD))
-            && attached_idx > 1
-        {
-            let mut filter_tokens = trim_commas(&core_tokens[1..attached_idx]).to_vec();
-            while filter_tokens
-                .last()
-                .and_then(OwnedLexToken::as_word)
-                .is_some_and(|word| ATTACHED_FILTER_TRAILING_BE_WORDS.contains(&word))
-            {
-                filter_tokens.pop();
-            }
-            let target_tokens = trim_commas(&core_tokens[attached_idx + 2..]);
-            let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-            let has_timing_tail = target_words
-                .iter()
-                .any(|word| ATTACHED_TIMING_TAIL_WORDS.contains(word));
-            let supported_target = grammar::words_match_prefix(&target_tokens, &["target"])
-                .is_some()
-                || token_slice_words_eq_any(&target_tokens, ATTACHED_SUPPORTED_TARGET_WORDS)
-                || grammar::words_match_any_prefix(&target_tokens, ATTACHED_REFERENCE_PREFIXES)
-                    .is_some();
-            if !filter_tokens.is_empty()
-                && !target_tokens.is_empty()
-                && supported_target
-                && !has_timing_tail
-            {
-                let filter = parse_object_filter(&filter_tokens, false)?;
-                let target = parse_target_phrase(&target_tokens)?;
-                return Ok(wrap_destroy_with_delayed_timing(
-                    EffectAst::subject_verb_destroy_all_attached_to(filter, target),
-                    delayed_timing,
-                ));
-            }
-        }
-        if let Some(except_for_idx) =
-            find_window_by(&core_tokens, 2, |window: &[OwnedLexToken]| {
-                token_slice_starts_with(window, &["except", "for"])
-            })
-            && except_for_idx > 1
-        {
-            let base_filter_tokens = trim_commas(&core_tokens[1..except_for_idx]);
-            let exception_tokens = trim_commas(&core_tokens[except_for_idx + 2..]);
-            if !base_filter_tokens.is_empty() && !exception_tokens.is_empty() {
-                let mut filter = parse_object_filter(&base_filter_tokens, false)?;
-                let exception_filter = parse_object_filter(&exception_tokens, false)?;
-                apply_except_filter_exclusions(&mut filter, &exception_filter);
-                return Ok(wrap_destroy_with_delayed_timing(
-                    EffectAst::subject_verb_destroy_all(filter),
-                    delayed_timing,
-                ));
-            }
-        }
-        let filter_tokens = &core_tokens[1..];
-        if let Some((choice_idx, consumed)) =
-            find_color_choice_phrase(SubjectVerbPrimitiveClause::new(filter_tokens))
-        {
-            let base_filter_tokens = trim_commas(&filter_tokens[..choice_idx]);
-            let trailing = trim_commas(&filter_tokens[choice_idx + consumed..]);
-            if !trailing.is_empty() {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported trailing color-choice destroy-all clause (clause: '{}')",
-                    clause_words.join(" ")
-                )));
-            }
-            if base_filter_tokens.is_empty() {
-                return Err(CardTextError::ParseError(format!(
-                    "missing destroy-all filter before color-choice clause (clause: '{}')",
-                    clause_words.join(" ")
-                )));
-            }
-            let filter = parse_object_filter(&base_filter_tokens, false)?;
-            return Ok(wrap_destroy_with_delayed_timing(
-                EffectAst::subject_verb_destroy_all_of_chosen_color(filter, false),
-                delayed_timing,
-            ));
-        }
-        let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
-        if word_slice_ends_with_any(&filter_words, CHOSEN_THIS_WAY_SUFFIXES)
-            && let Some(suffix_len) = CHOSEN_THIS_WAY_SUFFIXES.iter().find_map(|suffix| {
-                (filter_words.len() >= suffix.len()
-                    && filter_words[filter_words.len() - suffix.len()..] == **suffix)
-                    .then_some(suffix.len())
-            })
-        {
-            let cutoff = filter_words.len() - suffix_len;
-            let token_cutoff = if cutoff == 0 {
-                0
-            } else {
-                token_index_for_word_index(filter_tokens, cutoff).unwrap_or(filter_tokens.len())
-            };
-            let base_filter_tokens = trim_commas(&filter_tokens[..token_cutoff]);
-            let mut filter = parse_object_filter(&base_filter_tokens, false)?;
-            let relation = if let Some(except_idx) = find_index(&base_filter_tokens, |token| {
-                token_is_word(token, EXCEPT_WORD)
-            }) {
-                let base_before_except = trim_commas(&base_filter_tokens[..except_idx]);
-                if base_before_except.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing destroy-all filter before except clause (clause: '{}')",
-                        clause_words.join(" ")
-                    )));
-                }
-                filter = parse_object_filter(&base_before_except, false)?;
-                TaggedOpbjectRelation::IsNotTaggedObject
-            } else {
-                TaggedOpbjectRelation::IsTaggedObject
-            };
-            filter = filter.match_tagged(TagKey::from(IT_TAG), relation);
-            return Ok(wrap_destroy_with_delayed_timing(
-                EffectAst::subject_verb_destroy_all(filter),
-                delayed_timing,
-            ));
-        }
-
-        let filter = parse_destroy_all_filter(filter_tokens)?;
-        return Ok(wrap_destroy_with_delayed_timing(
-            EffectAst::subject_verb_destroy_all(filter),
-            delayed_timing,
-        ));
-    }
-
-    if grammar::contains_word(&core_tokens, "unless") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported destroy-unless clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-    if has_trailing_cant_attack_or_block_clause(&clause_words) {
-        return Err(CardTextError::ParseError(format!(
-            "compound destroy plus attack/block restriction should be parsed as an effect chain (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-
-    if let Some(if_idx) = find_index(&core_tokens, |token: &OwnedLexToken| {
-        token_is_word(token, IF_WORD)
-    }) {
-        let mut target_tokens = trim_commas(&core_tokens[..if_idx]).to_vec();
-        while target_tokens
-            .last()
-            .is_some_and(|token| token_is_word(token, INSTEAD_WORD))
-        {
-            target_tokens.pop();
-        }
-        let target_tokens = trim_commas(&target_tokens);
-        if target_tokens.is_empty() {
+    let original_clause = crate::runtime_backend::token_word_refs(tokens).join(" ");
+    let shape = shapes::parse_destroy_clause_shape(tokens);
+    let timing = shape.timing;
+    let effect = match shape.kind {
+        shapes::DestroyClauseKind::Empty => {
             return Err(CardTextError::ParseError(format!(
-                "unsupported conditional destroy clause (clause: '{}')",
-                clause_words.join(" ")
+                "missing destroy target before delayed timing clause (clause: '{original_clause}')"
             )));
         }
-
-        let target = parse_target_phrase(&target_tokens)?;
-        let predicate_tail = parse_conditional_predicate_tail_lexed(&core_tokens[if_idx + 1..])
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported conditional destroy clause (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
-
-        return Ok(match predicate_tail {
-            ConditionalPredicateTailSpec::InsteadIf {
-                base_predicate,
-                outer_predicate,
-            } => wrap_destroy_with_delayed_timing(
-                EffectAst::Conditional {
+        shapes::DestroyClauseKind::UnsupportedDelayedTiming => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported delayed destroy timing clause (clause: '{original_clause}')"
+            )));
+        }
+        shapes::DestroyClauseKind::CombatHistory(combat_shape) => {
+            let Some(target) = lower_combat_history_target(combat_shape)? else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported combat-history destroy clause (clause: '{original_clause}')"
+                )));
+            };
+            EffectAst::subject_verb_destroy(target)
+        }
+        shapes::DestroyClauseKind::UnsupportedCombatHistory => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported combat-history destroy clause (clause: '{original_clause}')"
+            )));
+        }
+        shapes::DestroyClauseKind::All(all_shape) => lower_destroy_all_shape(all_shape)?,
+        shapes::DestroyClauseKind::UnlessTargetSetPredicate {
+            target_tokens,
+            predicate,
+        } => {
+            let predicate = match predicate {
+                crate::runtime_backend::grammar::conditions::TargetSetPredicateAst::DifferentColorSets => {
+                    PredicateAst::TargetObjectsHaveDifferentColorSets
+                }
+            };
+            EffectAst::Conditional {
+                predicate: PredicateAst::Not(Box::new(predicate)),
+                if_true: vec![EffectAst::subject_verb_destroy(parse_target_phrase(
+                    target_tokens,
+                )?)],
+                if_false: Vec::new(),
+            }
+        }
+        shapes::DestroyClauseKind::UnlessPays {
+            target_tokens,
+            payment,
+        } => {
+            let target = parse_target_phrase(target_tokens)?;
+            let player = match crate::runtime_backend::util::parse_subject(payment.player_tokens) {
+                SubjectAst::Player(player) => player,
+                _ => PlayerAst::Implicit,
+            };
+            let cost = match payment.kind {
+                crate::runtime_backend::grammar::effects::UnlessPaymentKind::LifeEqualToItsToughness => {
+                    let value = Value::ToughnessOf(Box::new(
+                        crate::runtime_backend::reference_helpers::choose_spec_for_target(&target),
+                    ));
+                    crate::cost::TotalCost::from_cost(crate::costs::Cost::life(value))
+                }
+                crate::runtime_backend::grammar::effects::UnlessPaymentKind::Cost => {
+                    crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
+                        payment.payment_tokens,
+                    )?
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported destroy-unless payment (clause: '{original_clause}')"
+                        ))
+                    })?
+                }
+            };
+            EffectAst::UnlessPays {
+                effects: vec![EffectAst::subject_verb_destroy(target)],
+                player,
+                cost,
+            }
+        }
+        shapes::DestroyClauseKind::UnsupportedUnless => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported destroy-unless clause (clause: '{original_clause}')"
+            )));
+        }
+        shapes::DestroyClauseKind::TrailingAttackOrBlockRestriction => {
+            return Err(CardTextError::ParseError(format!(
+                "compound destroy plus attack/block restriction should be parsed as an effect chain (clause: '{original_clause}')"
+            )));
+        }
+        shapes::DestroyClauseKind::Conditional {
+            target_tokens,
+            predicate_tokens,
+        } => {
+            let target = parse_target_phrase(target_tokens)?;
+            let predicate_tail = parse_conditional_predicate_tail_lexed(predicate_tokens)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported conditional destroy clause (clause: '{original_clause}')"
+                    ))
+                })?;
+            match predicate_tail {
+                ConditionalPredicateTailSpec::InsteadIf {
+                    base_predicate,
+                    outer_predicate,
+                } => EffectAst::Conditional {
                     predicate: outer_predicate,
                     if_true: vec![EffectAst::Conditional {
                         predicate: base_predicate,
-                        if_true: vec![EffectAst::subject_verb_destroy(target.clone())],
+                        if_true: vec![EffectAst::subject_verb_destroy(target)],
                         if_false: Vec::new(),
                     }],
                     if_false: Vec::new(),
                 },
-                delayed_timing,
-            ),
-            ConditionalPredicateTailSpec::Plain(predicate) => wrap_destroy_with_delayed_timing(
-                EffectAst::Conditional {
+                ConditionalPredicateTailSpec::Plain(predicate) => EffectAst::Conditional {
                     predicate,
                     if_true: vec![EffectAst::subject_verb_destroy(target)],
                     if_false: Vec::new(),
                 },
-                delayed_timing,
-            ),
-        });
-    }
-    if let Some(and_idx) = find_index(&core_tokens, |token: &OwnedLexToken| {
-        token_is_word(token, AND_WORD)
-    }) {
-        let tail_slice = &core_tokens[and_idx + 1..];
-        let starts_multi_target = tail_slice
-            .first()
-            .is_some_and(|t| token_is_word(t, TARGET_WORD))
-            || parse_choice_count_before_target_prefix(tail_slice).is_some();
-        if starts_multi_target {
+            }
+        }
+        shapes::DestroyClauseKind::UnsupportedConditional => {
             return Err(CardTextError::ParseError(format!(
-                "unsupported multi-target destroy clause (clause: '{}')",
-                clause_words.join(" ")
+                "unsupported conditional destroy clause (clause: '{original_clause}')"
             )));
         }
-    }
-
-    if grammar::words_match_any_prefix(&core_tokens, TARGET_BLOCKED_PREFIXES).is_some() {
-        let mut target_tokens = core_tokens.to_vec();
-        if let Some(blocked_idx) = find_index(&target_tokens, |token: &OwnedLexToken| {
-            token_is_word(token, BLOCKED_WORD)
-        }) {
-            target_tokens.remove(blocked_idx);
+        shapes::DestroyClauseKind::MultiTarget => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported multi-target destroy clause (clause: '{original_clause}')"
+            )));
         }
-        let target = parse_target_phrase(&target_tokens)?;
-        return Ok(wrap_destroy_with_delayed_timing(
-            EffectAst::Conditional {
-                predicate: PredicateAst::TargetIsBlocked,
-                if_true: vec![EffectAst::subject_verb_destroy(target)],
-                if_false: Vec::new(),
-            },
-            delayed_timing,
-        ));
-    }
-
-    let target = parse_target_phrase(&core_tokens)?;
-    Ok(wrap_destroy_with_delayed_timing(
-        EffectAst::subject_verb_destroy(target),
-        delayed_timing,
-    ))
-}
-
-pub(crate) fn parse_destroy_combat_history_target(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<TargetAst>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if let Some(target) =
-        parse_destroy_target_dealt_damage_to_player_this_turn(tokens, &clause_words)?
-    {
-        return Ok(Some(target));
-    }
-    let Some(that_idx) = word_slice_find_phrase_start(&clause_words, DEALT_DAMAGE_THIS_TURN_TAIL)
-    else {
-        return Ok(None);
+        shapes::DestroyClauseKind::Blocked { target_tokens } => EffectAst::Conditional {
+            predicate: PredicateAst::TargetIsBlocked,
+            if_true: vec![EffectAst::subject_verb_destroy(parse_target_phrase(
+                &target_tokens,
+            )?)],
+            if_false: Vec::new(),
+        },
+        shapes::DestroyClauseKind::Plain { target_tokens } => {
+            EffectAst::subject_verb_destroy(parse_target_phrase(target_tokens)?)
+        }
     };
-    if that_idx == 0 || that_idx + 6 != clause_words.len() {
-        return Ok(None);
-    }
-    let target_cutoff = token_index_for_word_index(tokens, that_idx).unwrap_or(tokens.len());
-    let target_tokens = trim_commas(&tokens[..target_cutoff]);
-    if target_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let target = parse_target_phrase(&target_tokens)?;
-    let TargetAst::Object(mut filter, target_span, it_span) = target else {
-        return Ok(None);
-    };
-    filter.was_dealt_damage_this_turn = true;
-    Ok(Some(TargetAst::Object(filter, target_span, it_span)))
-}
-
-fn parse_destroy_target_dealt_damage_to_player_this_turn(
-    tokens: &[OwnedLexToken],
-    clause_words: &[&str],
-) -> Result<Option<TargetAst>, CardTextError> {
-    let Some(that_idx) = word_slice_find_phrase_start(clause_words, THAT_DEALT_DAMAGE_TO_PHRASE)
-    else {
-        return Ok(None);
-    };
-    if that_idx == 0
-        || clause_words.len() < that_idx + 7
-        || !matches!(clause_words[clause_words.len() - 2..], ["this", "turn"])
-    {
-        return Ok(None);
-    }
-
-    let player_start_word_idx = that_idx + 4;
-    let player_end_word_idx = clause_words.len() - 2;
-    if player_start_word_idx >= player_end_word_idx {
-        return Ok(None);
-    }
-
-    let target_cutoff = token_index_for_word_index(tokens, that_idx).unwrap_or(tokens.len());
-    let player_start =
-        token_index_for_word_index(tokens, player_start_word_idx).unwrap_or(tokens.len());
-    let player_end =
-        token_index_for_word_index(tokens, player_end_word_idx).unwrap_or(tokens.len());
-    let target_tokens = trim_commas(&tokens[..target_cutoff]);
-    let player_tokens = trim_commas(&tokens[player_start..player_end]);
-    if target_tokens.is_empty() || player_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let TargetAst::Player(player, _) = parse_target_phrase(&player_tokens)? else {
-        return Ok(None);
-    };
-    let target = parse_target_phrase(&target_tokens)?;
-    let TargetAst::Object(mut filter, target_span, it_span) = target else {
-        return Ok(None);
-    };
-    filter.dealt_damage_to_player_this_turn = Some(player);
-    Ok(Some(TargetAst::Object(filter, target_span, it_span)))
+    Ok(wrap_destroy_with_delayed_timing(effect, timing))
 }
 
 pub(crate) fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception: &ObjectFilter) {
@@ -699,12 +382,12 @@ pub(crate) fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception:
         .copied()
         .chain(exception.all_card_types.iter().copied())
     {
-        if !slice_contains(&base.excluded_card_types, &card_type) {
+        if !base.excluded_card_types.contains(&card_type) {
             base.excluded_card_types.push(card_type);
         }
     }
     for subtype in exception.subtypes.iter().copied() {
-        if !slice_contains(&base.excluded_subtypes, &subtype) {
+        if !base.excluded_subtypes.contains(&subtype) {
             base.excluded_subtypes.push(subtype);
         }
     }

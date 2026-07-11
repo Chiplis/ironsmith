@@ -1,13 +1,14 @@
 use super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
-    OwnedLexToken, TokenKind, contains_token_word, find_token_word_sequence_span,
-    token_slice_starts_with_at, token_word_refs, trim_lexed_commas, word_slice_contains_phrase,
-    word_slice_starts_with, word_slice_starts_with_any,
+    OwnedLexToken, TokenKind, contains_token_word, find_token_word_sequence_span, token_word_refs,
+    tokens_start_with_at, trim_lexed_commas, words_have_phrase, words_start_with,
+    words_start_with_any,
 };
 use super::object_filters::parse_object_filter;
 use super::token_primitives::{
-    parse_simple_restriction_duration_prefix, parse_simple_restriction_duration_suffix,
+    find_window_by, items_have, parse_simple_restriction_duration_prefix,
+    parse_simple_restriction_duration_suffix,
 };
 use super::util::{parse_number, trim_commas};
 use crate::cards::builders::CardTextError;
@@ -25,57 +26,19 @@ pub(crate) enum SearchLibraryManaConstraint {
 }
 
 pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
-    words
-        .windows(4)
-        .any(|window| window[1] == "from" && window[2] == "the" && window[3] == "top")
+    find_window_by(words, 4, |window| {
+        window[1] == "from" && window[2] == "the" && window[3] == "top"
+    })
+    .is_some()
 }
 
-fn is_source_reference_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    [
-        "this",
-        "thiss",
-        "source",
-        "artifact",
-        "creature",
-        "permanent",
-    ]
-    .iter()
-    .any(|word| contains_token_word(tokens, word))
-}
-
-fn is_as_long_as_you_control_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word(tokens, "you")
-        && contains_token_word(tokens, "control")
-        && is_source_reference_duration_tokens(tokens)
-}
-
-fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_contains_phrase(&token_word_refs(tokens), &["for", "as", "long", "as"])
-        && contains_token_word(tokens, "remains")
-        && contains_token_word(tokens, "tapped")
-        && is_source_reference_duration_tokens(tokens)
-}
-
-fn remove_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut cleaned = Vec::new();
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if token_slice_starts_with_at(tokens, idx, &["this", "turn"]) {
-            idx += 2;
-            continue;
+fn card_type_set_includes(card_types: &[CardType], expected: CardType) -> bool {
+    for card_type in card_types {
+        if *card_type == expected {
+            return true;
         }
-        cleaned.push(tokens[idx].clone());
-        idx += 1;
     }
-    cleaned
-}
-
-pub(crate) fn zone_slice_contains(zones: &[Zone], expected: Zone) -> bool {
-    zones.iter().any(|zone| *zone == expected)
-}
-
-fn card_type_slice_contains(card_types: &[CardType], expected: CardType) -> bool {
-    card_types.iter().any(|card_type| *card_type == expected)
+    false
 }
 
 pub(crate) fn parse_search_library_disjunction_filter(
@@ -125,7 +88,10 @@ pub(crate) fn parse_restriction_duration_lexed(
     }
 
     if grammar::parse_prefix(tokens, grammar::phrase(&["for", "as", "long", "as"])).is_some() {
-        if !is_as_long_as_you_control_duration_tokens(tokens) {
+        if !matches!(
+            super::grammar::leaf::parse_leaf_conditional_duration_kind_tokens(tokens),
+            Some(super::grammar::leaf::LeafConditionalDurationKind::YouControlSource)
+        ) {
             return Ok(None);
         }
         let Some((_before, after)) =
@@ -150,7 +116,10 @@ pub(crate) fn parse_restriction_duration_lexed(
         find_token_word_sequence_span(tokens, &["for", "as", "long", "as"])
     {
         let suffix_tokens = &tokens[token_idx..];
-        if is_source_remains_tapped_duration_tokens(suffix_tokens) {
+        if matches!(
+            super::grammar::leaf::parse_leaf_conditional_duration_kind_tokens(suffix_tokens),
+            Some(super::grammar::leaf::LeafConditionalDurationKind::SourceRemainsTapped)
+        ) {
             let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
             if !remainder.is_empty() {
                 return Ok(Some((Until::SourceUntaps, remainder)));
@@ -158,7 +127,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         }
     }
 
-    let cleaned_tokens = remove_this_turn_tokens(tokens);
+    let cleaned_tokens = super::grammar::leaf::strip_leaf_this_turn_tokens(tokens);
     if let Some((rest, duration)) = parse_simple_restriction_duration_suffix(&cleaned_tokens) {
         let remainder = trim_lexed_commas(rest).to_vec();
         if !remainder.is_empty() {
@@ -303,33 +272,7 @@ pub(crate) fn split_search_different_name_reference_filter(
 }
 
 pub(crate) fn is_same_name_that_reference_words(words: &[&str]) -> bool {
-    matches!(
-        words,
-        ["that", "card"]
-            | ["that", "cards"]
-            | ["that", "creature"]
-            | ["that", "creatures"]
-            | ["that", "artifact"]
-            | ["that", "artifacts"]
-            | ["that", "enchantment"]
-            | ["that", "enchantments"]
-            | ["that", "land"]
-            | ["that", "lands"]
-            | ["that", "permanent"]
-            | ["that", "permanents"]
-            | ["that", "spell"]
-            | ["that", "spells"]
-            | ["that", "object"]
-            | ["that", "objects"]
-            | ["those", "cards"]
-            | ["those", "creatures"]
-            | ["those", "artifacts"]
-            | ["those", "enchantments"]
-            | ["those", "lands"]
-            | ["those", "permanents"]
-            | ["those", "spells"]
-            | ["those", "objects"]
-    )
+    super::grammar::effects::is_same_name_that_reference_words(words)
 }
 
 pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
@@ -344,7 +287,7 @@ pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
                 | Subtype::Forest
                 | Subtype::Desert
         )
-    }) && !card_type_slice_contains(&filter.card_types, CardType::Land)
+    }) && !card_type_set_includes(&filter.card_types, CardType::Land)
     {
         filter.card_types.push(CardType::Land);
     }

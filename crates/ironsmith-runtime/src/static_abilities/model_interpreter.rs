@@ -1554,7 +1554,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
                 counter_type,
                 amount,
-            } => StaticAbility::prevent_damage_to_self_remove_counter(*counter_type, *amount),
+                follow_up,
+            } => StaticAbility::prevent_damage_to_self_remove_counter_with_follow_up(
+                *counter_type,
+                amount.clone(),
+                *follow_up,
+            ),
             ironsmith_core::StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
                 counter_type,
                 display,

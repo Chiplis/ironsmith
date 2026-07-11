@@ -716,12 +716,17 @@ pub fn declare_blockers(
 
     propagate_banding_blocks(combat, &mut blockers_by_attacker);
 
-    if let Some(max_blockers) = max_creatures_can_block_each_combat(game)
-        && blocker_counts.len() > max_blockers
+    let blocking_creature_count = blocker_counts.len();
+    // With no declared blockers, every global "at most N creatures can
+    // block" restriction is vacuously satisfied. Avoid deriving the static
+    // abilities of the whole battlefield just to rediscover that fact.
+    if blocking_creature_count > 0
+        && let Some(max_blockers) = max_creatures_can_block_each_combat(game)
+        && blocking_creature_count > max_blockers
     {
         return Err(CombatError::TooManyBlockingCreatures {
             maximum: max_blockers,
-            provided: blocker_counts.len(),
+            provided: blocking_creature_count,
         });
     }
 
@@ -1250,6 +1255,50 @@ mod tests {
 
         declare_blockers(&mut game, &mut combat, Vec::new())
             .expect("no block should be required when no creature can block");
+    }
+
+    #[test]
+    fn empty_blocker_declaration_skips_global_blocker_limit_scan() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature = creature_card("Large Board Creature", 2, 2);
+        let ids = (0..64)
+            .map(|_| game.create_object_from_card(&creature, alice, Zone::Battlefield))
+            .collect::<Vec<_>>();
+        game.effect_store
+            .continuous_effects
+            .add_effect(crate::continuous::ContinuousEffect::new(
+                ids[0],
+                alice,
+                crate::continuous::EffectTarget::AllCreatures,
+                crate::continuous::Modification::ModifyPowerToughness {
+                    power: 1,
+                    toughness: 1,
+                },
+            ));
+        game.refresh_continuous_state();
+        let before = game.work_counters();
+        let mut combat = CombatState {
+            attackers: vec![AttackerInfo {
+                creature: ids[0],
+                target: AttackTarget::Player(bob),
+            }],
+            ..CombatState::default()
+        };
+
+        declare_blockers(&game, &mut combat, Vec::new())
+            .expect("an empty blocker declaration is always within an upper limit");
+
+        let after = game.work_counters();
+        assert_eq!(
+            after.characteristics_full_recomputes, before.characteristics_full_recomputes,
+            "zero blockers should not derive every battlefield object's abilities"
+        );
+        assert_eq!(
+            after.dependency_sorts, before.dependency_sorts,
+            "zero blockers should not run per-object dependency sorting"
+        );
     }
 
     #[test]

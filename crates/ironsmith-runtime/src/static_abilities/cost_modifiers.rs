@@ -251,7 +251,12 @@ fn is_domain_cost_reduction(value: &Value, condition: &ThisSpellCostCondition) -
 
 fn describe_types_among_scope(filter: &ObjectFilter) -> String {
     let description = filter.description();
-    for (singular, plural) in [("a creature", "creatures"), ("a land", "lands")] {
+    for (singular, plural) in [
+        ("a creature", "creatures"),
+        ("a land", "lands"),
+        ("a card", "cards"),
+        ("card", "cards"),
+    ] {
         if description == singular {
             return plural.to_string();
         }
@@ -391,6 +396,13 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             "{1}".to_string(),
             Some(format!(
                 "for each creature type among {}",
+                describe_types_among_scope(filter)
+            )),
+        ),
+        Value::CardTypesAmong(filter) => (
+            "{1}".to_string(),
+            Some(format!(
+                "for each card type among {}",
                 describe_types_among_scope(filter)
             )),
         ),
@@ -868,6 +880,8 @@ fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
         || !filter.excluded_card_types.is_empty()
         || !filter.subtypes.is_empty()
         || filter.colors.is_some()
+        || filter.required_colors.is_some()
+        || filter.sticker.is_some()
         || filter.power.is_some()
         || filter.toughness.is_some()
         || filter.mana_value.is_some()
@@ -2410,6 +2424,24 @@ mod tests {
     fn this_spell_cost_reduction_display_keeps_dynamic_tail() {
         let reduction =
             ThisSpellCostReduction::new(Value::CardTypesInGraveyard(PlayerFilter::You), Always);
+
+        assert_eq!(
+            reduction.display(),
+            "This spell costs {1} less to cast for each card type among cards in your graveyard"
+        );
+    }
+
+    #[test]
+    fn this_spell_cost_reduction_display_keeps_typed_card_types_among_scope() {
+        let reduction = ThisSpellCostReduction::new(
+            Value::CardTypesAmong(
+                ObjectFilter::default()
+                    .in_zone(crate::zone::Zone::Graveyard)
+                    .owned_by(PlayerFilter::You)
+                    .single_graveyard(),
+            ),
+            Always,
+        );
 
         assert_eq!(
             reduction.display(),

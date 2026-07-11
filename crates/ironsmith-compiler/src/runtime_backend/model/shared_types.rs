@@ -2,8 +2,10 @@ use std::ops::{Deref, DerefMut};
 
 use crate::effect::EffectId;
 use crate::filter::PlayerFilter;
+use crate::runtime_backend::front_end::lexer::OwnedLexToken;
 use crate::zone::Zone;
 
+use super::ast::PredicateAst;
 use super::reference_model::ReferenceEnv;
 
 const SENTENCE_HELPER_TAG_PREFIX: &str = "__sentence_helper_";
@@ -24,12 +26,119 @@ pub(crate) struct NormalizedLine {
     pub(crate) char_map: Vec<usize>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct LineSemanticFacts {
+    pub(crate) static_ability: StaticLineSemanticFacts,
+    pub(crate) statement: StatementLineSemanticFacts,
+    pub(crate) triggered_ability: TriggeredLineSemanticFacts,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct StatementLineSemanticFacts {
+    pub(crate) instead_followup: InsteadFollowupFacts,
+    pub(crate) trailing_instead_if_predicate: Option<PredicateAst>,
+    pub(crate) replacement_surfaces: Vec<StatementReplacementSurfaceKind>,
+    pub(crate) creature_type_choice_buff: bool,
+    pub(crate) leading_condition_intro: Option<StatementConditionIntro>,
+}
+
+impl Default for StatementLineSemanticFacts {
+    fn default() -> Self {
+        Self {
+            instead_followup: InsteadFollowupFacts::default(),
+            trailing_instead_if_predicate: None,
+            replacement_surfaces: Vec::new(),
+            creature_type_choice_buff: false,
+            leading_condition_intro: None,
+        }
+    }
+}
+
+impl StatementLineSemanticFacts {
+    pub(crate) fn has_replacement_surface(
+        &self,
+        expected: StatementReplacementSurfaceKind,
+    ) -> bool {
+        self.replacement_surfaces.contains(&expected)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct InsteadFollowupFacts {
+    pub(crate) semantics: crate::cards::builders::InsteadSemantics,
+    pub(crate) conditional_intro: bool,
+}
+
+impl Default for InsteadFollowupFacts {
+    fn default() -> Self {
+        Self {
+            semantics: crate::cards::builders::InsteadSemantics::NonReplacement,
+            conditional_intro: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StatementConditionIntro {
+    If,
+    Unless,
+    AsLongAs,
+    ForAsLongAs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StatementReplacementSurfaceKind {
+    BargainedReturnToBattlefield,
+    KickedCountOverride,
+    KickedMultiZoneToBattlefield,
+    ClashWinTopOfLibrary,
+    MorbidSearchToBattlefield,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct StaticLineSemanticFacts {
+    pub(crate) explicit_functional_zones: Option<Vec<Zone>>,
+    pub(crate) references_this_ability_cost: bool,
+    pub(crate) this_spell_cost: Option<ThisSpellCostFacts>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ThisSpellCostFacts {
+    pub(crate) reduction_cap: Option<i32>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct TriggeredLineSemanticFacts {
+    pub(crate) intro_surface: Option<super::ast::TriggerIntroSurfaceAst>,
+    pub(crate) functional_zones: TriggerFunctionalZoneFacts,
+    pub(crate) becomes_tapped_during_your_turn: bool,
+    pub(crate) frequency: TriggerFrequencyFacts,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct TriggerFunctionalZoneFacts {
+    pub(crate) explicit_zone: Option<Zone>,
+    pub(crate) returns_self_from_graveyard: bool,
+    pub(crate) discards_this_card: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct TriggerFrequencyFacts {
+    pub(crate) first_time_each_or_this_turn: bool,
+    pub(crate) becomes_crewed: bool,
+    pub(crate) do_this_limit_each_turn: Option<u32>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct LineInfo {
     pub(crate) line_index: usize,
     pub(crate) display_line_index: usize,
     pub(crate) raw_line: String,
+    /// Tokens for the original source line, retained by the front end so later
+    /// stages never need to lex presentation text again.
+    pub(crate) source_tokens: Vec<OwnedLexToken>,
     pub(crate) normalized: NormalizedLine,
+    pub(crate) semantic_facts: LineSemanticFacts,
 }
 
 #[derive(Debug, Clone, Default)]

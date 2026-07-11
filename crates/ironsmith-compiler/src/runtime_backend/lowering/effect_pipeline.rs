@@ -1,11 +1,13 @@
 use crate::TagKey;
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::ParseAnnotations;
-use crate::cards::builders::{CardDefinitionBuilder, EffectAst, KeywordAction, PredicateAst};
+use crate::cards::builders::{
+    CardDefinition, CardDefinitionBuilder, EffectAst, KeywordAction, PredicateAst,
+};
 use crate::cost::OptionalCost;
 
-use super::LineInfo;
 use super::ast::{StaticAbilityAst, TriggerSpec};
+use super::ir::DocumentSemanticFacts;
 use super::reference_model::{
     AnnotatedEffectSequence, ReferenceEnv, ReferenceExports, ReferenceImports,
 };
@@ -13,6 +15,7 @@ use super::semantic::{
     GiftTimingAst, ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst, ParsedModalHeader,
     ParsedRestrictions,
 };
+use super::shared_types::{LineInfo, LineSemanticFacts};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EffectPreludeTag {
@@ -126,6 +129,7 @@ pub(crate) struct NormalizedLineAst {
     pub(crate) info: LineInfo,
     pub(crate) chunks: Vec<NormalizedLineChunk>,
     pub(crate) restrictions: ParsedRestrictions,
+    pub(crate) semantic_facts: LineSemanticFacts,
 }
 
 #[derive(Debug, Clone)]
@@ -136,10 +140,22 @@ pub(crate) enum NormalizedCardItem {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ParsedOverloadBranch {
+    pub(crate) items: Vec<ParsedCardItem>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NormalizedOverloadBranch {
+    pub(crate) items: Vec<NormalizedCardItem>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct NormalizedCardAst {
     pub(crate) builder: CardDefinitionBuilder,
     pub(crate) annotations: ParseAnnotations,
     pub(crate) items: Vec<NormalizedCardItem>,
+    pub(crate) overload_branch: Option<NormalizedOverloadBranch>,
+    pub(crate) semantic_facts: DocumentSemanticFacts,
     pub(crate) allow_unsupported: bool,
 }
 
@@ -148,5 +164,14 @@ pub(crate) struct ParsedCardAst {
     pub(crate) builder: CardDefinitionBuilder,
     pub(crate) annotations: ParseAnnotations,
     pub(crate) items: Vec<ParsedCardItem>,
+    pub(crate) overload_branch: Option<ParsedOverloadBranch>,
+    pub(crate) semantic_facts: DocumentSemanticFacts,
     pub(crate) allow_unsupported: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LoweredCardDocument {
+    pub(crate) definition: CardDefinition,
+    pub(crate) annotations: ParseAnnotations,
+    pub(crate) semantic_facts: DocumentSemanticFacts,
 }

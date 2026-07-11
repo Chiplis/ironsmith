@@ -1,0 +1,201 @@
+use winnow::combinator::alt;
+use winnow::error::ModalResult as WResult;
+use winnow::prelude::*;
+
+use super::super::super::lexer::{LexStream, OwnedLexToken};
+use super::super::primitives;
+use super::subjects::{
+    AttachedSubject, parse_attached_subject_lexed, semantic_finish, semantic_kw, semantic_phrase,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AttachedCombatRestrictionKind {
+    CantAttack,
+    CantBlock,
+    CantAttackOrBlock,
+    CantBeBlocked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AttachedCombatRestrictionSpec {
+    pub(crate) subject: AttachedSubject,
+    pub(crate) kind: AttachedCombatRestrictionKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AttachedTapAbilitySubject {
+    EnchantedCreature,
+    EnchantedPermanent,
+    EquippedCreature,
+}
+
+impl AttachedTapAbilitySubject {
+    pub(crate) fn display(self) -> &'static str {
+        match self {
+            Self::EnchantedCreature => "enchanted creature",
+            Self::EnchantedPermanent => "enchanted permanent",
+            Self::EquippedCreature => "equipped creature",
+        }
+    }
+}
+
+pub(crate) fn parse_attached_combat_restriction_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<AttachedCombatRestrictionSpec> {
+    primitives::parse_all(
+        tokens,
+        parse_attached_combat_restriction_lexed,
+        "attached combat restriction",
+    )
+    .ok()
+}
+
+pub(crate) fn parse_all_creatures_block_attached_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<AttachedSubject> {
+    primitives::parse_all(
+        tokens,
+        parse_all_creatures_block_attached_lexed,
+        "all creatures block attached object",
+    )
+    .ok()
+}
+
+pub(crate) fn parse_attached_tap_ability_restriction_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<AttachedTapAbilitySubject> {
+    primitives::parse_all(
+        tokens,
+        parse_attached_tap_ability_restriction_lexed,
+        "attached tap-ability restriction",
+    )
+    .ok()
+}
+
+pub(crate) fn parse_you_control_attached_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<AttachedSubject> {
+    primitives::parse_all(
+        tokens,
+        parse_you_control_attached_lexed,
+        "control attached object",
+    )
+    .ok()
+}
+
+pub(crate) fn parse_attached_restriction_tail_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<AttachedCombatRestrictionKind> {
+    primitives::parse_all(
+        tokens,
+        (parse_attached_restriction_tail_lexed, semantic_finish).map(|(kind, ())| kind),
+        "attached restriction tail",
+    )
+    .ok()
+}
+
+fn parse_attached_combat_restriction_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<AttachedCombatRestrictionSpec> {
+    let subject = parse_attached_subject_lexed(input)?;
+    if !matches!(
+        subject,
+        AttachedSubject::EnchantedCreature
+            | AttachedSubject::EnchantedPermanent
+            | AttachedSubject::EquippedCreature
+    ) {
+        return Err(primitives::backtrack_err(
+            "attached restriction subject",
+            "creature or permanent attachment subject",
+        ));
+    }
+    let kind = parse_attached_restriction_tail_lexed(input)?;
+    if kind == AttachedCombatRestrictionKind::CantBeBlocked {
+        return Err(primitives::backtrack_err(
+            "attached restriction",
+            "attack or block restriction",
+        ));
+    }
+    semantic_finish(input)?;
+    Ok(AttachedCombatRestrictionSpec { subject, kind })
+}
+
+fn parse_attached_restriction_tail_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<AttachedCombatRestrictionKind> {
+    semantic_kw("cant").parse_next(input)?;
+    alt((
+        semantic_phrase(&["attack", "or", "block"])
+            .value(AttachedCombatRestrictionKind::CantAttackOrBlock),
+        semantic_phrase(&["be", "blocked"]).value(AttachedCombatRestrictionKind::CantBeBlocked),
+        semantic_kw("attack").value(AttachedCombatRestrictionKind::CantAttack),
+        semantic_kw("block").value(AttachedCombatRestrictionKind::CantBlock),
+    ))
+    .parse_next(input)
+}
+
+fn parse_all_creatures_block_attached_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<AttachedSubject> {
+    semantic_phrase(&["all", "creatures", "able", "to", "block"]).parse_next(input)?;
+    let subject = parse_attached_subject_lexed(input)?;
+    semantic_phrase(&["do", "so"]).parse_next(input)?;
+    semantic_finish(input)?;
+    Ok(subject)
+}
+
+fn parse_attached_tap_ability_restriction_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<AttachedTapAbilitySubject> {
+    let subject = alt((
+        (semantic_kw("enchanted"), semantic_kw("creatures"))
+            .value(AttachedTapAbilitySubject::EnchantedCreature),
+        (semantic_kw("enchanted"), semantic_kw("permanents"))
+            .value(AttachedTapAbilitySubject::EnchantedPermanent),
+        (semantic_kw("equipped"), semantic_kw("creatures"))
+            .value(AttachedTapAbilitySubject::EquippedCreature),
+    ))
+    .parse_next(input)?;
+    semantic_phrase(&[
+        "activated",
+        "abilities",
+        "with",
+        "t",
+        "in",
+        "their",
+        "costs",
+        "cant",
+        "be",
+        "activated",
+    ])
+    .parse_next(input)?;
+    semantic_finish(input)?;
+    Ok(subject)
+}
+
+fn parse_you_control_attached_lexed<'a>(input: &mut LexStream<'a>) -> WResult<AttachedSubject> {
+    semantic_phrase(&["you", "control"]).parse_next(input)?;
+    let subject = parse_attached_subject_lexed(input)?;
+    semantic_finish(input)?;
+    Ok(subject)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::super::lexer::lex_line;
+    use super::*;
+
+    #[test]
+    fn parses_attached_restriction_shapes() {
+        let tokens = lex_line("Enchanted creature can't attack or block.", 0).unwrap();
+        assert_eq!(
+            parse_attached_combat_restriction_tokens(&tokens).map(|spec| spec.kind),
+            Some(AttachedCombatRestrictionKind::CantAttackOrBlock)
+        );
+        let tokens = lex_line("All creatures able to block equipped creature do so.", 0).unwrap();
+        assert_eq!(
+            parse_all_creatures_block_attached_tokens(&tokens),
+            Some(AttachedSubject::EquippedCreature)
+        );
+    }
+}

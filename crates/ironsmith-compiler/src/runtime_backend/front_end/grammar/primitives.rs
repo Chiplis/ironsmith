@@ -292,7 +292,7 @@ where
     }
 }
 
-pub(crate) fn find_token_index(
+pub(crate) fn locate_token_index(
     tokens: &[LexToken],
     mut predicate: impl FnMut(&LexToken) -> bool,
 ) -> Option<usize> {
@@ -306,35 +306,22 @@ pub(crate) fn find_token_index(
     None
 }
 
-pub(crate) fn rfind_token_index(
-    tokens: &[LexToken],
-    mut predicate: impl FnMut(&LexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = tokens.len();
-    while idx > 0 {
-        idx -= 1;
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-    }
-    None
-}
-
 pub(crate) fn contains_word(tokens: &[LexToken], expected: &'static str) -> bool {
     find_prefix(tokens, || kw(expected)).is_some()
 }
 
-pub(crate) fn contains_phrase(tokens: &[LexToken], expected: &'static [&'static str]) -> bool {
+pub(crate) fn has_phrase(tokens: &[LexToken], expected: &'static [&'static str]) -> bool {
     find_phrase_start(tokens, expected).is_some()
 }
 
-pub(crate) fn contains_any_phrase(
+#[cfg(test)]
+pub(crate) fn has_any_phrase(
     tokens: &[LexToken],
     phrases: &'static [&'static [&'static str]],
 ) -> bool {
     phrases
         .iter()
-        .any(|phrase_words| contains_phrase(tokens, phrase_words))
+        .any(|phrase_words| has_phrase(tokens, phrase_words))
 }
 
 pub(crate) fn find_phrase_start(
@@ -509,18 +496,7 @@ pub(crate) fn end_of_sentence_or_block<'a>() -> impl Parser<LexStream<'a>, (), E
 /// Parse a numeric word token (digit or english word like "three") and return
 /// its `u32` value.  Consumes exactly one token on success.
 pub(crate) fn number_token<'a>(input: &mut LexStream<'a>) -> Result<u32, ErrMode<ContextError>> {
-    let token: &'a LexToken = any.parse_next(input)?;
-    let word = token
-        .as_word()
-        .ok_or_else(|| backtrack_err("number", "numeric word"))?
-        .to_ascii_lowercase();
-
-    if let Ok(value) = word.parse::<u32>() {
-        return Ok(value);
-    }
-
-    ironsmith_core::parse_cardinal_word(&word)
-        .ok_or_else(|| backtrack_err("number", "numeric word"))
+    super::leaf::parse_leaf_number_token_lexed.parse_next(input)
 }
 
 /// Parse a single mana symbol from the next token (word, number, or
@@ -529,30 +505,9 @@ pub(crate) fn number_token<'a>(input: &mut LexStream<'a>) -> Result<u32, ErrMode
 pub(crate) fn mana_pips_token<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<Vec<ManaSymbol>, ErrMode<ContextError>> {
-    let checkpoint = input.checkpoint();
-    let token: &'a LexToken = any.parse_next(input)?;
-
-    let result = match token.kind {
-        TokenKind::Word | TokenKind::Number => {
-            super::values::parse_mana_symbol(token.slice.as_str())
-                .ok()
-                .map(|s| vec![s])
-        }
-        TokenKind::ManaGroup => token
-            .mana_group_inner()
-            .filter(|inner| !inner.is_empty())
-            .and_then(|inner| {
-                super::values::parse_mana_symbol_group(inner)
-                    .ok()
-                    .filter(|g| !g.is_empty())
-            }),
-        _ => None,
-    };
-
-    result.ok_or_else(|| {
-        input.reset(&checkpoint);
-        backtrack_err("mana", "mana symbol")
-    })
+    super::leaf::parse_leaf_surface_mana_pip_lexed
+        .map(super::leaf::LeafManaPipToken::into_pip)
+        .parse_next(input)
 }
 
 /// Skip one or more tokens that are commas and/or the keyword "or".
@@ -806,12 +761,47 @@ fn should_keep_and_for_power_toughness_axis<'a>(
     let remaining_words = TokenWordView::new(remaining).word_refs();
     POWER_AXIS_SUFFIXES
         .iter()
-        .any(|suffix| current_words.ends_with(suffix))
-        && remaining_words.first().copied() == Some(TOUGHNESS_WORD)
+        .any(|suffix| parse_word_sequence_suffix(&current_words, suffix).is_some())
+        && parse_word_sequence_prefix(&remaining_words, &[TOUGHNESS_WORD]).is_some()
 }
 
 pub(crate) fn split_lexed_slices_on_and<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
     let raw = split_lexed_slices_on_separator(tokens, || phrase(&["and"]));
+    let mut merged = Vec::new();
+    let mut idx = 0usize;
+    while idx < raw.len() {
+        if idx + 1 < raw.len() && should_keep_and_for_power_toughness_axis(raw[idx], raw[idx + 1]) {
+            let start = raw[idx]
+                .as_ptr()
+                .addr()
+                .saturating_sub(tokens.as_ptr().addr())
+                / std::mem::size_of::<LexToken>();
+            let end = raw[idx + 1]
+                .as_ptr()
+                .addr()
+                .saturating_sub(tokens.as_ptr().addr())
+                / std::mem::size_of::<LexToken>()
+                + raw[idx + 1].len();
+            if start < end && end <= tokens.len() {
+                merged.push(&tokens[start..end]);
+                idx += 2;
+                continue;
+            }
+        }
+        merged.push(raw[idx]);
+        idx += 1;
+    }
+    merged
+}
+
+/// Splits a coordinated Oracle list on either `and` or `and/or` while
+/// preserving the power-and-toughness axis as one phrase.  The latter is a
+/// single lexical word, so callers that only split on `and` otherwise leave a
+/// leading `and/or` attached to the final list item.
+pub(crate) fn split_lexed_slices_on_list_conjunction<'a>(
+    tokens: &'a [LexToken],
+) -> Vec<&'a [LexToken]> {
+    let raw = split_lexed_slices_on_separator(tokens, || alt((kw("and"), kw("and/or"))).void());
     let mut merged = Vec::new();
     let mut idx = 0usize;
     while idx < raw.len() {
@@ -976,12 +966,8 @@ pub(crate) fn strip_lexed_suffix_phrase<'a>(
     }
 
     let keep_word_count = word_refs.len().checked_sub(phrase.len())?;
-    let keep_until = if keep_word_count == 0 {
-        0
-    } else {
-        words.token_index_for_word_index(keep_word_count)?
-    };
-    Some(&tokens[..keep_until])
+    let suffix_range = words.token_span_for_words(keep_word_count, word_refs.len())?;
+    Some(&tokens[..suffix_range.start])
 }
 
 pub(crate) fn strip_lexed_suffix_phrases<'a, 'b>(
@@ -998,7 +984,7 @@ pub(crate) fn strip_lexed_suffix_phrases<'a, 'b>(
 //
 // These operate on `&[LexToken]` but match words while skipping non-word
 // tokens (commas, etc.), mirroring the behavior of `token_word_refs` +
-// `slice_starts_with`.  They bridge the gap between old word-slice-based
+// `items_start_with`.  They bridge the gap between old word-slice-based
 // code and the token-stream-based grammar primitives.
 // ---------------------------------------------------------------------------
 
@@ -1006,7 +992,7 @@ pub(crate) fn strip_lexed_suffix_phrases<'a, 'b>(
 /// using `TokenWordView` for proper multi-word token splitting (e.g.,
 /// hyphenated words like "life-gaining" → ["life", "gaining"]).
 /// Returns the token slice after the matched prefix.
-pub(crate) fn words_match_prefix<'a>(
+pub(crate) fn match_word_prefix<'a>(
     tokens: &'a [LexToken],
     expected: &[&str],
 ) -> Option<&'a [LexToken]> {
@@ -1021,19 +1007,19 @@ pub(crate) fn words_match_prefix<'a>(
     Some(&tokens[token_end..])
 }
 
-pub(crate) fn words_match_any_prefix<'a, 'b>(
+pub(crate) fn match_any_word_prefix<'a, 'b>(
     tokens: &'a [LexToken],
     phrases: &'b [&'static [&'static str]],
 ) -> Option<(&'static [&'static str], &'a [LexToken])> {
     phrases
         .iter()
-        .find_map(|phrase| words_match_prefix(tokens, phrase).map(|rest| (*phrase, rest)))
+        .find_map(|phrase| match_word_prefix(tokens, phrase).map(|rest| (*phrase, rest)))
 }
 
 /// Checks whether the word pieces at the end of `tokens` match `expected`,
 /// using `TokenWordView` for proper multi-word token splitting.
 /// Returns the token slice before the matched suffix.
-pub(crate) fn words_match_suffix<'a>(
+pub(crate) fn match_word_suffix<'a>(
     tokens: &'a [LexToken],
     expected: &[&str],
 ) -> Option<&'a [LexToken]> {
@@ -1048,7 +1034,9 @@ pub(crate) fn words_match_suffix<'a>(
     if !view.slice_eq(suffix_start_word, expected) {
         return None;
     }
-    let token_start = view.token_index_for_word_index(suffix_start_word)?;
+    let token_start = view
+        .token_span_for_words(suffix_start_word, view.len())?
+        .start;
     Some(&tokens[..token_start])
 }
 
@@ -1066,7 +1054,7 @@ pub(crate) fn words_split_once<'a>(
     }
     let view = TokenWordView::new(tokens);
     let word_idx = view.find_phrase_start(separator)?;
-    let token_start = view.token_index_for_word_index(word_idx)?;
+    let token_start = view.token_boundary_for_word(word_idx)?;
     let after_word_idx = word_idx + separator.len();
     let token_end = view.token_index_after_words(after_word_idx)?;
     Some((&tokens[..token_start], &tokens[token_end..]))
@@ -1082,6 +1070,75 @@ pub(crate) fn words_split_once<'a>(
 
 /// Input type for word-slice parsers.
 pub(crate) type WordSliceInput<'a> = &'a [&'a str];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct WordSequenceSpan {
+    pub(crate) start: usize,
+    pub(crate) len: usize,
+}
+
+fn dynamic_word_sequence<'a, 'p>(
+    expected: &'p [&'p str],
+) -> impl Parser<WordSliceInput<'a>, (), ErrMode<ContextError>> + 'p {
+    move |input: &mut WordSliceInput<'a>| {
+        for expected_word in expected {
+            let Some((word, rest)) = input.split_first() else {
+                return Err(backtrack_err("word sequence", "expected word"));
+            };
+            if word != expected_word {
+                return Err(backtrack_err("word sequence", "expected word"));
+            }
+            *input = rest;
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn parse_word_sequence_complete(words: &[&str], expected: &[&str]) -> Option<()> {
+    let mut input: WordSliceInput<'_> = words;
+    (dynamic_word_sequence(expected), word_slice_eof)
+        .void()
+        .parse_next(&mut input)
+        .ok()
+}
+
+pub(crate) fn parse_word_sequence_prefix<'a>(
+    words: &'a [&'a str],
+    expected: &[&str],
+) -> Option<&'a [&'a str]> {
+    let mut input: WordSliceInput<'a> = words;
+    dynamic_word_sequence(expected)
+        .parse_next(&mut input)
+        .ok()?;
+    Some(input)
+}
+
+pub(crate) fn parse_word_sequence_suffix<'a>(
+    words: &'a [&'a str],
+    expected: &[&str],
+) -> Option<&'a [&'a str]> {
+    let split = words.len().checked_sub(expected.len())?;
+    parse_word_sequence_complete(&words[split..], expected)?;
+    Some(&words[..split])
+}
+
+pub(crate) fn parse_word_sequence_span(
+    words: &[&str],
+    expected: &[&str],
+) -> Option<WordSequenceSpan> {
+    if expected.is_empty() {
+        return None;
+    }
+    for start in 0..=words.len().saturating_sub(expected.len()) {
+        if parse_word_sequence_prefix(&words[start..], expected).is_some() {
+            return Some(WordSequenceSpan {
+                start,
+                len: expected.len(),
+            });
+        }
+    }
+    None
+}
 
 /// Matches a single word (exact, case-sensitive) and consumes it, returning
 /// the matched `&str`.
@@ -1125,123 +1182,5 @@ pub(crate) fn parse_full_word_slice<'a, O>(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::runtime_backend::lexer::lex_line;
-    use winnow::combinator::cut_err;
-
-    #[test]
-    fn words_match_prefix_basic() {
-        let tokens = lex_line("target creature gets", 0).unwrap();
-        assert!(matches!(
-            words_match_prefix(&tokens, &["target", "creature"]),
-            Some(_)
-        ));
-        assert!(words_match_prefix(&tokens, &["target", "gets"]).is_none());
-        assert!(matches!(words_match_prefix(&tokens, &[]), Some(_)));
-    }
-
-    #[test]
-    fn words_match_suffix_basic() {
-        let tokens = lex_line("target creature gets", 0).unwrap();
-        assert!(words_match_suffix(&tokens, &["creature", "gets"]).is_some());
-        assert!(words_match_suffix(&tokens, &["target", "gets"]).is_none());
-    }
-
-    #[test]
-    fn words_match_any_prefix_skips_leading_non_word_tokens() {
-        let tokens = lex_line("\"At the beginning of the end step\"", 0).unwrap();
-        let (matched, rest) =
-            words_match_any_prefix(&tokens, &[&["at", "the", "beginning"]]).unwrap();
-
-        assert_eq!(matched, &["at", "the", "beginning"]);
-        assert_eq!(
-            TokenWordView::new(rest).word_refs(),
-            ["of", "the", "end", "step"]
-        );
-    }
-
-    #[test]
-    fn words_split_once_basic() {
-        let tokens = lex_line("exile target creature from graveyard", 0).unwrap();
-        let (before, after) = words_split_once(&tokens, &["from"]).unwrap();
-        assert_eq!(before.len(), 3); // "exile", "target", "creature"
-        assert_eq!(after.len(), 1); // "graveyard"
-    }
-
-    #[test]
-    fn strip_lexed_prefix_phrases_returns_matched_phrase_and_rest() {
-        let tokens = lex_line("choose a new target for target spell", 0).unwrap();
-        let (matched, rest) = strip_lexed_prefix_phrases(
-            &tokens,
-            &[
-                &["choose", "new", "targets", "for"],
-                &["choose", "a", "new", "target", "for"],
-            ],
-        )
-        .unwrap();
-
-        assert_eq!(matched, &["choose", "a", "new", "target", "for"]);
-        assert_eq!(TokenWordView::new(rest).word_refs(), ["target", "spell"]);
-    }
-
-    #[test]
-    fn starts_with_any_phrase_matches_any_prefix_choice() {
-        let tokens = lex_line("for each opponent draw a card", 0).unwrap();
-        assert!(starts_with_any_phrase(
-            &tokens,
-            &[
-                &["each", "player"],
-                &["for", "each", "opponent"],
-                &["target", "opponent"],
-            ],
-        ));
-    }
-
-    #[test]
-    fn split_lexed_once_before_suffix_finds_prefix_before_full_tail_match() {
-        let tokens = lex_line(
-            "untap all creatures during each other player's untap step",
-            0,
-        )
-        .unwrap();
-        let remainder = words_match_prefix(&tokens, &["untap", "all"]).unwrap();
-        let (subject_tokens, ()) = split_lexed_once_before_suffix(remainder, 1, || {
-            phrase(&["during", "each", "other", "player's", "untap", "step"])
-        })
-        .unwrap();
-        assert_eq!(
-            TokenWordView::new(subject_tokens).word_refs(),
-            ["creatures"]
-        );
-    }
-
-    #[test]
-    fn try_parse_all_returns_some_on_full_match() {
-        let tokens = lex_line("target creature", 0).unwrap();
-        let result = try_parse_all(&tokens, phrase(&["target", "creature"]), "test");
-        assert!(result.unwrap().is_some());
-    }
-
-    #[test]
-    fn try_parse_all_returns_none_on_backtrack() {
-        let tokens = lex_line("target creature", 0).unwrap();
-        let result = try_parse_all(&tokens, phrase(&["exile", "creature"]), "test");
-        assert!(result.unwrap().is_none());
-    }
-
-    #[test]
-    fn try_parse_all_returns_err_on_trailing_tokens() {
-        let tokens = lex_line("target creature gets", 0).unwrap();
-        let result = try_parse_all(&tokens, phrase(&["target", "creature"]), "test");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn try_parse_all_returns_err_on_cut() {
-        let tokens = lex_line("target creature", 0).unwrap();
-        let parser = (kw("target").void(), cut_err(kw("opponent")).void()).void();
-        let result = try_parse_all(&tokens, parser, "test");
-        assert!(result.is_err());
-    }
-}
+#[path = "primitives/tests.rs"]
+mod tests;

@@ -8,6 +8,7 @@ pub(crate) use super::ir;
 pub(crate) use super::modal_support;
 pub(crate) use super::semantic;
 pub(crate) use super::shared_types;
+pub(crate) use super::token_definition;
 pub(crate) use super::{
     CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine,
     NormalizedLine,

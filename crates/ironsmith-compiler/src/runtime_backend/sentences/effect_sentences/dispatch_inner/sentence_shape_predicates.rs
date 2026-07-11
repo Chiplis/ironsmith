@@ -1,11 +1,7 @@
-type DispatchInnerNormalizedWords<'a> = TokenWordView<'a>;
-
 use crate::runtime_backend::effect_sentences::{
     SubjectVerbPrimitiveClause, parse_sentence_delayed_next_step_unless_pays,
-};
-use crate::runtime_backend::lexer::{
-    word_slice_contains_any_phrase, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
-    word_slice_matching_phrase, word_slice_matching_prefix,
+    parse_sentence_each_player_return_with_additional_counter,
+    parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard,
 };
 
 macro_rules! sentence_unsupported_adapters_lexed {
@@ -19,96 +15,13 @@ macro_rules! sentence_unsupported_adapters_lexed {
     };
 }
 
-const SENTENCE_WITH_WORD: &str = "with";
-const SENTENCE_NO_WORD: &str = "no";
-const SENTENCE_WHERE_X_IS_ITS_POWER_PREFIX: &[&str] = &["where", "x", "is", "its", "power"];
-const SENTENCE_SELF_DAMAGE_TARGET_PHRASES: &[&[&str]] = &[&["itself"], &["it"]];
-const SENTENCE_DEALS_X_DAMAGE_TO_PREFIXES: &[&[&str]] = &[
-    &["deals", "x", "damage", "to"],
-    &["deal", "x", "damage", "to"],
-];
-const SENTENCE_AND_X_DAMAGE_TO_PREFIX: &[&str] = &["and", "x", "damage", "to"];
-const SENTENCE_WHERE_X_NUMBER_TAPPED_THIS_WAY_PREFIX: &[&str] =
-    &["where", "x", "is", "the", "number", "of"];
-const SENTENCE_TAPPED_THIS_WAY_SUFFIX: &[&str] = &["tapped", "this", "way"];
-const SENTENCE_THIS_WAY_PHRASE: &[&str] = &["this", "way"];
-const SENTENCE_CHOSEN_WORD: &str = "chosen";
-const SENTENCE_MANA_VALUE_PREFIX: &[&str] = &["mana", "value"];
-const SENTENCE_WHERE_X_IS_PREFIX: &[&str] = &["where", "x", "is"];
-const SENTENCE_POWER_WORD: &str = "power";
-const SENTENCE_TOUGHNESS_WORD: &str = "toughness";
-const SENTENCE_OF_WORD: &str = "of";
-const SENTENCE_THE_WORD: &str = "the";
-const SENTENCE_EXILED_CARD_REFERENCE_PHRASES: &[&[&str]] = &[
-    &["the", "exiled", "card"],
-    &["the", "exiled", "cards"],
-    &["exiled", "card"],
-    &["exiled", "cards"],
-];
-const SENTENCE_NUMBER_OF_PREFIX: &[&str] = &["number", "of"];
-const SENTENCE_COUNTER_WORDS: &[&str] = &["counter", "counters"];
-const SENTENCE_REMOVED_WORD: &str = "removed";
-const SENTENCE_COMMANDER_MANA_VALUE_CHOICE_WORDS: &[&str] = &[
-    "mana",
-    "value",
-    "of",
-    "commander",
-    "you",
-    "own",
-    "on",
-    "battlefield",
-    "or",
-    "in",
-    "command",
-    "zone",
-];
-const SENTENCE_TO_THE_PLAYER_PHRASE: &[&str] = &["to", "the", "player"];
-const SENTENCE_ITS_AN_PREFIXES: &[&[&str]] =
-    &[&["it's", "an"], &["it’s", "an"], &["its", "an"], &["it", "s", "an"]];
-const SENTENCE_IT_IS_AN_PREFIX: &[&str] = &["it", "is", "an"];
-const SENTENCE_AURA_ENCHANT_CREATURE_PREFIX: &[&str] =
-    &["aura", "enchantment", "with", "enchant"];
-const SENTENCE_YOU_CONTROL_PREFIX: &[&str] = &["you", "control"];
-const SENTENCE_LOSES_ALL_ABILITIES_PHRASES: &[&[&str]] = &[
-    &["loses", "all", "other", "abilities"],
-    &["loses", "all", "abilities"],
-];
-const SENTENCE_AT_THIS_PREFIX: &[&str] = &["at", "this"];
-const SENTENCE_SACRIFICE_WORD: &str = "sacrifice";
-const SENTENCE_SACRIFICE_COUNTED_PREFIXES: &[&[&str]] = &[
-    &["sacrifice", "any", "number"],
-    &["sacrifice", "one", "or", "more"],
-];
-const SENTENCE_DELAYED_LIFECYCLE_PHRASES: &[&[&str]] = &[
-    &["at", "the", "beginning", "of", "the", "next", "end", "step"],
-    &["at", "the", "beginning", "of", "next", "end", "step"],
-    &["at", "end", "of", "combat"],
-    &["at", "the", "end", "of", "combat"],
-];
-const SENTENCE_END_OF_COMBAT_PREFIX: &[&str] = &["end", "of", "combat"];
-const SENTENCE_NEXT_WORD: &str = "next";
-const SENTENCE_WOULD_WORD: &str = "would";
-const SENTENCE_TARGET_WORD: &str = "target";
-const SENTENCE_SEARCH_WORD: &str = "search";
-const SENTENCE_ARTICLE_WORDS: &[&str] = &["a", "an", "the"];
-
-fn sentence_removed_counters_this_way(words: &[&str]) -> bool {
-    word_slice_contains_any_word(words, SENTENCE_COUNTER_WORDS)
-        && word_slice_contains_word(words, SENTENCE_REMOVED_WORD)
-        && word_slice_contains_phrase(words, SENTENCE_THIS_WAY_PHRASE)
-}
-
 fn trailing_counter_constraint(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::filter::CounterConstraint> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let with_idx = find_index(&words, |word| *word == SENTENCE_WITH_WORD)?;
-    let tail = &words[with_idx + 1..];
-    if word_slice_eq(tail, &[SENTENCE_NO_WORD]) {
-        return None;
+    match sentence_shapes::parse_trailing_counter_constraint_tokens(tokens)? {
+        sentence_shapes::TrailingCounterConstraintShape::NoCounters => None,
+        sentence_shapes::TrailingCounterConstraintShape::Constraint(constraint) => Some(constraint),
     }
-    let (counter_constraint, consumed) = parse_filter_counter_constraint_words(tail)?;
-    (consumed == tail.len()).then_some(counter_constraint)
 }
 
 fn apply_trailing_counter_constraint_to_destroy_all(
@@ -137,40 +50,12 @@ fn apply_trailing_counter_constraint_to_destroy_all(
 
 fn parse_target_deals_power_damage_to_other_and_self_where_x(
     tokens: &[OwnedLexToken],
-    words: &[&str],
-    where_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !word_slice_starts_with(&words[where_idx..], SENTENCE_WHERE_X_IS_ITS_POWER_PREFIX) {
-        return Ok(None);
-    }
-
-    let Some((_deal_phrase, deal_idx)) =
-        word_slice_find_any_phrase_start(words, SENTENCE_DEALS_X_DAMAGE_TO_PREFIXES)
-    else {
+    let Some(shape) = sentence_shapes::parse_power_damage_self_tokens(tokens) else {
         return Ok(None);
     };
-    if deal_idx == 0 {
-        return Ok(None);
-    }
-
-    let Some(and_idx) = word_slice_find_phrase_start(words, SENTENCE_AND_X_DAMAGE_TO_PREFIX) else {
-        return Ok(None);
-    };
-    if and_idx <= deal_idx + 4 || where_idx <= and_idx + 4 {
-        return Ok(None);
-    }
-
-    let self_target_words = &words[and_idx + 4..where_idx];
-    if !word_slice_eq_any(self_target_words, SENTENCE_SELF_DAMAGE_TARGET_PHRASES) {
-        return Ok(None);
-    }
-
-    let source_end = token_index_for_word_index(tokens, deal_idx).unwrap_or(tokens.len());
-    let first_target_start =
-        token_index_for_word_index(tokens, deal_idx + 4).unwrap_or(tokens.len());
-    let first_target_end = token_index_for_word_index(tokens, and_idx).unwrap_or(tokens.len());
-    let source_tokens = trim_edge_punctuation(&tokens[..source_end]);
-    let first_target_tokens = trim_edge_punctuation(&tokens[first_target_start..first_target_end]);
+    let source_tokens = trim_edge_punctuation(shape.source_tokens);
+    let first_target_tokens = trim_edge_punctuation(shape.first_target_tokens);
     if source_tokens.is_empty() || first_target_tokens.is_empty() {
         return Ok(None);
     }
@@ -185,147 +70,141 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
     ]))
 }
 
-fn where_x_is_number_tapped_this_way(words: &[&str]) -> bool {
-    words.len() >= 9
-        && word_slice_starts_with(words, SENTENCE_WHERE_X_NUMBER_TAPPED_THIS_WAY_PREFIX)
-        && word_slice_ends_with(words, SENTENCE_TAPPED_THIS_WAY_SUFFIX)
-}
+fn lower_where_x_shape(
+    shape: sentence_shapes::WhereXValueShape,
+) -> Option<(Option<EffectAst>, Value)> {
+    use sentence_shapes::{WhereXMetricShape as Metric, WhereXReferenceShape as Reference};
 
-fn prior_effect_words_reference_memory(words: &[&str]) -> bool {
-    word_slice_contains_phrase(words, SENTENCE_THIS_WAY_PHRASE)
-        || words.iter().enumerate().any(|(idx, word)| {
-            if *word == SENTENCE_CHOSEN_WORD
-                && words
-                    .get(idx + 1)
-                    .is_some_and(|next| matches!(*next, "type" | "color"))
-            {
-                return false;
-            }
-            matches!(
-                *word,
-                "chosen"
-                    | "destroyed"
-                    | "discarded"
-                    | "exiled"
-                    | "milled"
-                    | "revealed"
-                    | "sacrificed"
-                    | "searched"
+    let lowered = match shape {
+        sentence_shapes::WhereXValueShape::CommanderManaValueChoice => {
+            let mut filter = ObjectFilter::default();
+            filter.is_commander = true;
+            filter.owner = Some(PlayerFilter::You);
+            let tag = TagKey::from("__where_x_commander_mana_value");
+            let choice = EffectAst::ChooseObjectsAcrossZones {
+                filter,
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: tag.clone(),
+                zones: vec![Zone::Battlefield, Zone::Command],
+                search_mode: None,
+            };
+            (
+                Some(choice),
+                Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(tag))),
             )
-        })
-}
-
-fn prior_effect_metric_source(words: &[&str]) -> ironsmith_core::EffectMetricSource {
-    if word_slice_contains_word(words, SENTENCE_CHOSEN_WORD) {
-        ironsmith_core::EffectMetricSource::ChosenObjects
-    } else {
-        ironsmith_core::EffectMetricSource::AffectedObjects
-    }
-}
-
-fn parse_where_x_prior_effect_first_metric_value(words: &[&str], mut idx: usize) -> Option<Value> {
-    let metric = if word_slice_at_is(words, idx, SENTENCE_POWER_WORD) {
-        idx += 1;
-        ironsmith_core::EffectMetric::FirstPower
-    } else if word_slice_at_is(words, idx, SENTENCE_TOUGHNESS_WORD) {
-        idx += 1;
-        ironsmith_core::EffectMetric::FirstToughness
-    } else if word_slice_starts_with(&words[idx..], SENTENCE_MANA_VALUE_PREFIX) {
-        idx += 2;
-        ironsmith_core::EffectMetric::FirstManaValue
-    } else {
-        return None;
+        }
+        sentence_shapes::WhereXValueShape::ReferenceMetric { reference, metric } => {
+            let choose = match reference {
+                Reference::Source => crate::target::ChooseSpec::Source,
+                Reference::Target => crate::target::ChooseSpec::target(
+                    crate::target::ChooseSpec::Object(ObjectFilter::default()),
+                ),
+                Reference::TaggedIt => crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+            };
+            let value = match (reference, metric) {
+                (Reference::Source, Metric::Power) => Value::SourcePower,
+                (Reference::Source, Metric::Toughness) => Value::SourceToughness,
+                (_, Metric::Power) => Value::PowerOf(Box::new(choose)),
+                (_, Metric::Toughness) => Value::ToughnessOf(Box::new(choose)),
+                (_, Metric::ManaValue) => Value::ManaValueOf(Box::new(choose)),
+            };
+            (None, value)
+        }
+        sentence_shapes::WhereXValueShape::TapCostPower => (
+            None,
+            Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
+                "tap_cost_0",
+            )))),
+        ),
+        sentence_shapes::WhereXValueShape::CommanderCastCount => {
+            (None, Value::CommanderCastCount(PlayerFilter::You))
+        }
+        sentence_shapes::WhereXValueShape::CardTypesInYourGraveyard => {
+            (None, Value::CardTypesInGraveyard(PlayerFilter::You))
+        }
+        sentence_shapes::WhereXValueShape::SacrificeCostManaValue { object_kind } => {
+            let object_kind = match object_kind {
+                sentence_shapes::SacrificeCostObjectKindShape::CardType(card_type) => {
+                    card_type.name()
+                }
+                sentence_shapes::SacrificeCostObjectKindShape::Permanent => "permanent",
+            };
+            (
+                None,
+                Value::ManaValueOf(Box::new(
+                    crate::target::ChooseSpec::Tagged(TagKey::from("sacrifice_cost_0"))
+                        .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
+                            crate::target::SourceReferenceSurface::ThisPermanentType(format!(
+                                "the sacrificed {object_kind}"
+                            )),
+                        )),
+                )),
+            )
+        }
+        sentence_shapes::WhereXValueShape::ColorsAmongSacrificed { object_kind } => {
+            let object_kind = object_kind.trim_end_matches('s');
+            let object_tokens =
+                crate::runtime_backend::lexer::synthetic_word_tokens(&[object_kind]);
+            let mut filter = parse_object_filter(&object_tokens, false).ok()?;
+            filter = filter.match_tagged(
+                TagKey::from("sacrificed_0"),
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
+            (None, Value::ColorsAmong(filter))
+        }
+        sentence_shapes::WhereXValueShape::TwoPlusSacrificedManaValue => (
+            None,
+            Value::Add(
+                Box::new(Value::Fixed(2)),
+                Box::new(Value::ManaValueOf(Box::new(
+                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+                ))),
+            ),
+        ),
+        sentence_shapes::WhereXValueShape::SourceExiledManaValue => (
+            None,
+            Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
+                crate::tag::SOURCE_EXILED_TAG,
+            )))),
+        ),
+        sentence_shapes::WhereXValueShape::PriorEffectMetric { source, metric } => {
+            (None, Value::PendingEffectMetric { source, metric })
+        }
+        sentence_shapes::WhereXValueShape::RemovedCountersThisWay => (None, Value::X),
+        sentence_shapes::WhereXValueShape::CountersOn {
+            reference,
+            counter_type,
+        } => {
+            let value = match (reference, counter_type) {
+                (Reference::Source, Some(counter_type)) => Value::CountersOnSource(counter_type),
+                (Reference::Source, None) => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+                (Reference::Target, counter_type) => Value::CountersOn(
+                    Box::new(ChooseSpec::target(ChooseSpec::Object(
+                        ObjectFilter::default(),
+                    ))),
+                    counter_type,
+                ),
+                (Reference::TaggedIt, counter_type) => Value::CountersOn(
+                    Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                    counter_type,
+                ),
+            };
+            (None, value)
+        }
     };
-    if !word_slice_at_is(words, idx, SENTENCE_OF_WORD) {
-        return None;
-    }
-    let object_words = &words[idx + 1..];
-    if metric == ironsmith_core::EffectMetric::FirstManaValue
-        && word_slice_eq_any(object_words, SENTENCE_EXILED_CARD_REFERENCE_PHRASES)
-    {
-        return Some(Value::ManaValueOf(Box::new(
-            crate::target::ChooseSpec::Tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG)),
-        )));
-    }
-    if !prior_effect_words_reference_memory(object_words) {
-        return None;
-    }
-
-    Some(Value::PendingEffectMetric {
-        source: prior_effect_metric_source(object_words),
-        metric,
-    })
-}
-
-fn parse_where_x_prior_effect_number_value(words: &[&str]) -> Option<Value> {
-    if !word_slice_starts_with(words, SENTENCE_WHERE_X_IS_PREFIX) {
-        return None;
-    }
-    let mut idx = 3usize;
-    if word_slice_at_is(words, idx, SENTENCE_THE_WORD) {
-        idx += 1;
-    }
-    if let Some(value) = parse_where_x_prior_effect_first_metric_value(words, idx) {
-        return Some(value);
-    }
-    if !word_slice_starts_with(&words[idx..], SENTENCE_NUMBER_OF_PREFIX) {
-        return None;
-    }
-
-    let object_words = &words[idx + 2..];
-    if sentence_removed_counters_this_way(object_words) {
-        return Some(Value::X);
-    }
-    if !prior_effect_words_reference_memory(object_words) {
-        return None;
-    }
-
-    Some(Value::PendingEffectMetric {
-        source: prior_effect_metric_source(object_words),
-        metric: ironsmith_core::EffectMetric::Count,
-    })
-}
-
-fn parse_where_x_commander_mana_value_choice(words: &[&str]) -> Option<(EffectAst, Value)> {
-    if !word_slice_starts_with(words, SENTENCE_WHERE_X_IS_PREFIX) {
-        return None;
-    }
-    let tail: Vec<&str> = words
-        .get(3..)?
-        .iter()
-        .copied()
-        .filter(|word| !SENTENCE_ARTICLE_WORDS.contains(word))
-        .collect();
-    if !word_slice_eq(&tail, SENTENCE_COMMANDER_MANA_VALUE_CHOICE_WORDS) {
-        return None;
-    }
-
-    let mut filter = ObjectFilter::default();
-    filter.is_commander = true;
-    filter.owner = Some(PlayerFilter::You);
-    let tag = TagKey::from("__where_x_commander_mana_value");
-
-    Some((
-        EffectAst::ChooseObjectsAcrossZones {
-            filter,
-            count: ChoiceCount::exactly(1),
-            count_value: None,
-            player: PlayerAst::You,
-            tag: tag.clone(),
-            zones: vec![Zone::Battlefield, Zone::Command],
-            search_mode: None,
-        },
-        Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(tag))),
-    ))
+    Some(lowered)
 }
 
 fn parse_tap_then_damage_for_number_tapped_this_way(
     stripped: &[OwnedLexToken],
-    where_words: &[&str],
+    where_tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !where_x_is_number_tapped_this_way(where_words) {
+    let Some(shape) = sentence_shapes::parse_tapped_this_way_binding_tokens(stripped, where_tokens)
+    else {
         return Ok(None);
-    }
+    };
 
     let mut effects = parse_effect_sentence_inner_lexed(stripped)?;
     if effects.len() != 2 {
@@ -353,10 +232,7 @@ fn parse_tap_then_damage_for_number_tapped_this_way(
     }
 
     *amount = Value::EventValue(EventValueSpec::Amount);
-    if word_slice_contains_phrase(
-        &crate::runtime_backend::token_word_refs(stripped),
-        SENTENCE_TO_THE_PLAYER_PHRASE,
-    ) {
+    if shape.damage_to_active_player {
         *target = TargetAst::Player(PlayerFilter::Active, None);
     }
     Ok(Some(effects))
@@ -628,144 +504,38 @@ fn sentence_has_unsupported_negated_untap_clause(_: &[&str], tokens: &[OwnedLexT
     effect_grammar::has_unsupported_negated_untap_clause_sentence_lexed(tokens)
 }
 
-
-
-
-
-fn first_unquoted_and_token(tokens: &[OwnedLexToken]) -> Option<usize> {
-    let mut in_double_quotes = false;
-    let mut in_apostrophes = false;
-    for (idx, token) in tokens.iter().enumerate() {
-        match token.kind {
-            TokenKind::Quote => {
-                in_double_quotes = !in_double_quotes;
-                continue;
-            }
-            TokenKind::Apostrophe => {
-                in_apostrophes = !in_apostrophes;
-                continue;
-            }
-            _ => {}
-        }
-        if !in_double_quotes && !in_apostrophes && token.is_word("and") {
-            return Some(idx);
-        }
-    }
-    None
-}
-
-fn trim_aura_granted_ability_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut tokens = trim_edge_punctuation(tokens);
-    while tokens
-        .first()
-        .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
-    {
-        tokens = trim_edge_punctuation(&tokens[1..]);
-    }
-    while tokens
-        .last()
-        .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
-    {
-        tokens = trim_edge_punctuation(&tokens[..tokens.len() - 1]);
-    }
-    tokens
-}
-
-fn parse_aura_tail_granted_abilities(
-    tail_tokens: &[OwnedLexToken],
-) -> Result<Vec<GrantedAbilityAst>, CardTextError> {
-    let Some(has_idx) = tail_tokens.iter().position(|token| token.is_word("has")) else {
-        return Ok(Vec::new());
-    };
-    let clause_words = crate::runtime_backend::token_word_refs(tail_tokens);
-    let mut abilities = Vec::new();
-
-    let ability_tokens = &tail_tokens[has_idx + 1..];
-    let mut quote_start = None;
-    for (idx, token) in ability_tokens.iter().enumerate() {
-        if token.kind != TokenKind::Apostrophe {
-            continue;
-        }
-        if let Some(start) = quote_start.take() {
-            let segment = trim_aura_granted_ability_tokens(&ability_tokens[start..idx]);
-            if !segment.is_empty() {
-                let (mut parsed, _) = super::gain_ability::parse_granted_abilities_for_gain_clause(
-                    &segment,
-                    &clause_words,
-                    false,
-                )?;
-                abilities.append(&mut parsed);
-            }
-        } else {
-            quote_start = Some(idx + 1);
-        }
-    }
-    if !abilities.is_empty() {
-        return Ok(abilities);
-    }
-
-    let fallback = trim_aura_granted_ability_tokens(ability_tokens);
-    if fallback.is_empty() {
-        return Ok(Vec::new());
-    }
-    let (abilities, _) =
-        super::gain_ability::parse_granted_abilities_for_gain_clause(&fallback, &clause_words, false)?;
-    Ok(abilities)
-}
-
 fn parse_it_is_aura_enchantment_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause = LexedClause::new(tokens);
-    let words = clause.word_refs();
-    let tail = if let Some(prefix) =
-        word_slice_matching_prefix(&words, SENTENCE_ITS_AN_PREFIXES)
-    {
-        let Some(tail) = clause.after_words(prefix.len()) else {
-            return Ok(None);
-        };
-        tail
-    } else if word_slice_starts_with(&words, SENTENCE_IT_IS_AN_PREFIX) {
-        let Some(tail) = clause.after_words(3) else {
-            return Ok(None);
-        };
-        tail
-    } else {
+    let Some(shape) = sentence_shapes::parse_aura_enchantment_tokens(tokens) else {
         return Ok(None);
     };
-    if !word_slice_starts_with(&tail.word_refs(), SENTENCE_AURA_ENCHANT_CREATURE_PREFIX) {
-        return Ok(None);
-    }
-
-    let Some(after_enchant_clause) = tail.after_words(SENTENCE_AURA_ENCHANT_CREATURE_PREFIX.len())
-    else {
-        return Ok(None);
-    };
-    let after_enchant_tokens = after_enchant_clause.tokens();
-    let (attachment_tokens, tail_tokens) =
-        if let Some(and_idx) = first_unquoted_and_token(after_enchant_tokens) {
-            (
-                trim_edge_punctuation(&after_enchant_tokens[..and_idx]),
-                trim_edge_punctuation(&after_enchant_tokens[and_idx + 1..]),
-            )
-        } else {
-            (trim_edge_punctuation(after_enchant_tokens), Vec::new())
-        };
+    let attachment_tokens = trim_edge_punctuation(shape.attachment_tokens);
     if attachment_tokens.is_empty() {
         return Ok(None);
     }
     let attachment_filter = if let Ok(filter) = parse_object_filter_lexed(&attachment_tokens, false)
     {
         filter
-    } else if word_slice_starts_with(
-        &LexedClause::new(&attachment_tokens).word_refs(),
-        SENTENCE_YOU_CONTROL_PREFIX,
-    ) {
+    } else if shape.attachment_mentions_you_control {
         ObjectFilter::creature().you_control()
     } else {
         ObjectFilter::creature()
     };
-    let granted_abilities = parse_aura_tail_granted_abilities(&tail_tokens)?;
+    let clause_words = crate::runtime_backend::token_word_refs(shape.tail_tokens);
+    let mut granted_abilities = Vec::new();
+    for ability_tokens in shape.granted_ability_tokens {
+        let ability_tokens = trim_edge_punctuation(ability_tokens);
+        if ability_tokens.is_empty() {
+            continue;
+        }
+        let (mut parsed, _) = super::gain_ability::parse_granted_abilities_for_gain_clause(
+            &ability_tokens,
+            &clause_words,
+            false,
+        )?;
+        granted_abilities.append(&mut parsed);
+    }
     let mut effects = vec![EffectAst::subject_verb_become_aura_enchantment_with_grants(
         TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic())),
         attachment_filter,
@@ -773,7 +543,7 @@ fn parse_it_is_aura_enchantment_sentence_lexed(
         Until::Forever,
     )];
 
-    if word_slice_contains_any_phrase(&tail.word_refs(), SENTENCE_LOSES_ALL_ABILITIES_PHRASES) {
+    if shape.loses_all_abilities {
         effects.push(EffectAst::subject_verb_remove_abilities_all(
             ObjectFilter::default(),
             Vec::new(),
@@ -789,6 +559,17 @@ pub(crate) fn parse_effect_sentence_lexed(
     stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         parse_effect_sentence_lexed_inner(tokens)
     })
+}
+
+fn has_unrecognized_leading_effect_label(tokens: &[OwnedLexToken]) -> bool {
+    if crate::runtime_backend::grammar::structure::split_leading_result_prefix_lexed(tokens)
+        .is_some()
+    {
+        return false;
+    }
+    effect_grammar::labeled_dispatch::parse_leading_effect_label_tokens(tokens).is_some_and(
+        |shape| shape.kind == effect_grammar::labeled_dispatch::LeadingEffectLabelKind::Unknown,
+    )
 }
 
 fn parse_effect_sentence_lexed_inner(
@@ -836,8 +617,8 @@ fn parse_effect_sentence_lexed_inner(
         }
     }
 
-    let sentence_words = crate::runtime_backend::token_word_refs(tokens);
-    if let Some(effects) = super::parse_destroy_then_temporary_cant_attack_block_chain_lexed(tokens)?
+    if let Some(effects) =
+        super::parse_destroy_then_temporary_cant_attack_block_chain_lexed(tokens)?
     {
         return Ok(effects);
     }
@@ -845,31 +626,130 @@ fn parse_effect_sentence_lexed_inner(
     // instead." == a can't-gain-life window for those players (Flames of the
     // Blood Hand). Intercept before leading-if splitting since the would-gain
     // predicate isn't a state condition.
-    if sentence_words.first() == Some(&"if")
-        && sentence_words
-            .windows(5)
-            .any(|window| window == ["would", "gain", "life", "this", "turn"])
-        && (sentence_words.ends_with(&["gains", "no", "life", "instead"])
-            || sentence_words.ends_with(&["gain", "no", "life", "instead"]))
-    {
+    if sentence_shapes::parses_cant_gain_life_replacement_tokens(tokens) {
         return Ok(vec![EffectAst::subject_verb_cant(
             crate::effect::Restriction::gain_life(crate::target::PlayerFilter::DamagedPlayer),
             crate::effect::Until::EndOfTurn,
             None,
         )]);
     }
-    if let Some(effect) = parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence(tokens)
+    if let Some(effects) = parse_reveal_source_exiled_permanents_sentence_lexed(tokens) {
+        return Ok(effects);
+    }
+    if let Some(effect) =
+        parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence(tokens)
     {
         return Ok(vec![effect]);
     }
     if let Some(effect) = parse_source_and_blocked_creatures_top_library_shuffle_sentence(tokens) {
         return Ok(vec![effect]);
     }
-    if sentence_words.starts_with(&["at", "the", "beginning", "of"])
-        && sentence_words
-            .windows(3)
-            .any(|window| window == ["next", "end", "step"])
+    if let Some(effect) = parse_vote_subject_verb(tokens)? {
+        crate::parse_trace::event(
+            "effect-route: subject-verb verb=Vote subject=explicit recognizer=vote-procedure",
+        );
+        return Ok(vec![effect]);
+    }
+    // Numeric die-result branches also have the surface shape
+    // "for each <noun phrase>, <effect>".  Route the typed keyword shape
+    // before the generic object iterator so "odd/even result" is not sent to
+    // object-filter lowering.
+    if matches!(
+        effect_grammar::clause_pattern_shapes::parse_keyword_mechanic_tokens(tokens),
+        Some(effect_grammar::clause_pattern_shapes::KeywordMechanicShape::OddEvenResult { .. })
+    ) && let Some(effect) = parse_keyword_mechanic_clause(tokens)?
     {
+        return Ok(vec![effect]);
+    }
+    // Counter-result clauses also have the generic surface shape
+    // `for each <noun phrase>, <effect>`. Route their typed grammar shapes
+    // first so `counter(s) removed this way` is not treated as an object
+    // filter or target phrase.
+    if let Some(effect) = parse_for_each_counter_removed_sentence(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) =
+        super::clause_dispatch::parse_for_each_counter_group_removed_this_way_clause(tokens)?
+    {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) = super::clause_dispatch::parse_for_each_prevent_damage_clause(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effects) =
+        super::search_library::parse_for_each_destroyed_this_way_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+    if let Some(effects) =
+        super::search_library::parse_for_each_put_into_graveyard_this_way_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::search_library::parse_for_each_exiled_this_way_sentence(tokens)? {
+        return Ok(effects);
+    }
+    // This typed search sequence contains an internal `then` chain. Route it
+    // before the generic object iterator can interpret "each of them" as an
+    // object filter and detach the final put-on-top clause.
+    if effect_grammar::parse_each_chosen_player_search_put_top_shape(tokens).is_some()
+        && let Some(effects) = parse_search_library_sentence_lexed(tokens)?
+    {
+        return Ok(effects);
+    }
+    if let Some(shape) =
+        effect_grammar::for_each_shapes::parse_for_each_spent_mana_effect_shape(tokens)
+    {
+        return Err(CardTextError::ParseError(format!(
+            "for-each spent-mana clauses are not yet supported (mana source: '{}'; effect: '{}')",
+            render_token_slice(shape.source_tokens).trim(),
+            render_token_slice(shape.effect_tokens).trim()
+        )));
+    }
+    if let Some(shape) =
+        effect_grammar::for_each_shapes::parse_for_each_dynamic_target_effect_shape(tokens)
+    {
+        let mut filter = parse_object_filter_lexed(shape.filter_tokens, false)?;
+        if filter.zone.is_none() {
+            filter.zone = Some(Zone::Battlefield);
+        }
+        let effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError(
+                "for-each dynamic target sentence missing effect payload".to_string(),
+            ));
+        }
+        let tag = TagKey::from(IT_TAG);
+        return Ok(vec![
+            EffectAst::ChooseObjects {
+                filter,
+                count: ChoiceCount::dynamic_x(),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: tag.clone(),
+            },
+            EffectAst::ForEachTagged { tag, effects },
+        ]);
+    }
+    if let Some(shape) = effect_grammar::for_each_shapes::parse_for_each_object_effect_shape(tokens)
+    {
+        let filter = parse_object_filter_lexed(shape.filter_tokens, false)?;
+        let effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError(
+                "for-each object sentence missing effect payload".to_string(),
+            ));
+        }
+        return Ok(vec![EffectAst::ForEachObject { filter, effects }]);
+    }
+    if let Some(effects) = super::bundle_rules::parse_consult_disposition_bundle(tokens) {
+        return Ok(effects);
+    }
+    let delayed_shape = sentence_shapes::parse_delayed_sentence_tokens(tokens);
+    if matches!(
+        delayed_shape,
+        Some(sentence_shapes::DelayedSentenceShape::NextEndStep)
+    ) {
         if let Some(effects) =
             parse_sentence_delayed_next_step_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?
         {
@@ -879,57 +759,37 @@ fn parse_effect_sentence_lexed_inner(
             return Ok(effects);
         }
     }
-    if sentence_words.starts_with(&["at", "the", "beginning", "of", "the", "next", "combat"])
-        && let Some(effects) = parse_delayed_next_combat_phase_this_turn_sentence(tokens)?
+    if matches!(
+        delayed_shape,
+        Some(sentence_shapes::DelayedSentenceShape::NextCombat)
+    ) && let Some(effects) = parse_delayed_next_combat_phase_this_turn_sentence(tokens)?
     {
         return Ok(effects);
     }
     if let Some(effects) = parse_it_is_aura_enchantment_sentence_lexed(tokens)? {
         return Ok(effects);
     }
-    if contains_token_kind(tokens, TokenKind::Quote)
-        && sentence_words
-            .iter()
-            .any(|word| matches!(*word, "gain" | "gains" | "has" | "have" | "lose" | "loses"))
-        && let Some(effects) = super::fanout_family::parse_shared_color_target_fanout_sentence(tokens)?
+    let quoted_ability_shape = sentence_shapes::parse_quoted_ability_sentence_tokens(tokens);
+    if quoted_ability_shape.is_some()
+        && let Some(effects) =
+            super::fanout_family::parse_shared_color_target_fanout_sentence(tokens)?
     {
         return Ok(effects);
     }
-    if contains_token_kind(tokens, TokenKind::Quote)
-        && sentence_words
-            .iter()
-            .any(|word| matches!(*word, "gain" | "gains" | "has" | "have" | "lose" | "loses"))
+    if quoted_ability_shape.is_some()
         && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
     {
         return Ok(effects);
     }
-    let sacrifice_counted_prefix =
-        word_slice_starts_with_any(&sentence_words, SENTENCE_SACRIFICE_COUNTED_PREFIXES);
-    let sacrifice_delayed_lifecycle =
-        word_slice_contains_any_phrase(&sentence_words, SENTENCE_DELAYED_LIFECYCLE_PHRASES);
-    if word_slice_at_is(&sentence_words, 0, SENTENCE_SACRIFICE_WORD)
-        && !sacrifice_counted_prefix
-        && !sacrifice_delayed_lifecycle
-    {
+    if sentence_shapes::parse_immediate_sacrifice_sentence_tokens(tokens).is_some() {
         let mut effects = super::parse_effect_chain_inner_lexed(tokens)?;
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_starts_with(&sentence_words, SENTENCE_AT_THIS_PREFIX)
-        && let Some(end_idx) =
-            word_slice_find_phrase_start(&sentence_words, SENTENCE_END_OF_COMBAT_PREFIX)
-        && let Some(end_token_idx) = token_index_for_word_index(tokens, end_idx)
-        && word_slice_contains_word(
-            &crate::runtime_backend::token_word_refs(&tokens[..end_token_idx]),
-            SENTENCE_NEXT_WORD,
-        )
+    if let Some(sentence_shapes::DelayedSentenceShape::EndOfCombat { remainder_tokens }) =
+        delayed_shape
     {
-        let Some(remainder_start) = token_index_for_word_index(tokens, end_idx + 3) else {
-            return Err(CardTextError::ParseError(
-                "end-of-combat delayed trigger missing effect payload".to_string(),
-            ));
-        };
-        let remainder = trim_commas(&tokens[remainder_start..]);
+        let remainder = trim_commas(remainder_tokens);
         if remainder.is_empty() {
             return Err(CardTextError::ParseError(
                 "end-of-combat delayed trigger missing effect payload".to_string(),
@@ -943,12 +803,12 @@ fn parse_effect_sentence_lexed_inner(
         return Ok(vec![effect]);
     }
 
-    let leading_if_replacement_shape = token_slice_first_is(tokens, "if")
-        && word_slice_contains_word(&sentence_words, SENTENCE_WOULD_WORD);
-    if token_slice_first_is(tokens, "if")
-        && !leading_if_replacement_shape
-        && let Ok(Some(mut effects)) =
-            parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)
+    let leading_if_shape = sentence_shapes::parse_leading_if_sentence_tokens(tokens);
+    if matches!(
+        leading_if_shape,
+        Some(sentence_shapes::LeadingIfSentenceShape { replacement: false })
+    ) && let Ok(Some(mut effects)) =
+        parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)
         && matches!(effects.as_slice(), [EffectAst::Conditional { .. }])
     {
         apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
@@ -956,11 +816,29 @@ fn parse_effect_sentence_lexed_inner(
         return Ok(effects);
     }
 
-    if let Some(effect) = parse_vote_subject_verb(tokens)? {
+    if has_unrecognized_leading_effect_label(tokens) {
+        return Err(CardTextError::ParseError(
+            "unknown labeled effect prefix".to_string(),
+        ));
+    }
+
+    if let Some(effects) = parse_sentence_each_player_return_with_additional_counter(
+        SubjectVerbPrimitiveClause::new(tokens),
+    )? {
         crate::parse_trace::event(
-            "effect-route: subject-verb verb=Vote subject=explicit recognizer=vote-procedure",
+            "effect-route: subject-verb verb=Return subject=each-player recognizer=return-with-additional-counter",
         );
-        return Ok(vec![effect]);
+        return Ok(effects);
+    }
+    if let Some(effects) =
+        parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard(
+            SubjectVerbPrimitiveClause::new(tokens),
+        )?
+    {
+        crate::parse_trace::event(
+            "effect-route: subject-verb verb=Reveal subject=each-player recognizer=top-count-permanents-rest-graveyard",
+        );
+        return Ok(effects);
     }
 
     if let Some((route, mut effects)) = parse_top_level_subject_verb_recognition(tokens)? {
@@ -974,42 +852,10 @@ fn parse_effect_sentence_lexed_inner(
     Ok(effects)
 }
 
-fn source_and_creatures_blocked_by_source_words(words: &[&str]) -> bool {
-    words
-        == [
-            "this", "creature", "and", "each", "creature", "it's", "blocking",
-        ]
-}
-
 fn parse_source_and_blocked_creatures_top_library_shuffle_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
-    if !token_slice_first_is(tokens, "put") {
-        return None;
-    }
-    let (target_slice, after_on_top_of) =
-        grammar::split_lexed_once_on_separator(&tokens[1..], || {
-            use winnow::Parser as _;
-            grammar::phrase(&["on", "top", "of"]).void()
-        })?;
-    let target_tokens = trim_commas(target_slice);
-    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-    if !source_and_creatures_blocked_by_source_words(&target_words) {
-        return None;
-    }
-
-    let destination_words = crate::runtime_backend::token_word_refs(after_on_top_of);
-    let has_owner_library = destination_words
-        .iter()
-        .any(|word| matches!(*word, "owner" | "owners" | "owner's" | "owners'"))
-        && destination_words
-            .iter()
-            .any(|word| matches!(*word, "library" | "libraries"));
-    if !has_owner_library
-        || !word_slice_contains_phrase(&destination_words, &["then", "those", "players", "shuffle"])
-    {
-        return None;
-    }
+    sentence_shapes::parse_source_blocked_library_shuffle_tokens(tokens)?;
 
     let mut blocked_creature = ObjectFilter::creature();
     blocked_creature.blocked_by_source = true;
@@ -1039,44 +885,8 @@ fn parse_source_and_blocked_creatures_top_library_shuffle_sentence(
 fn parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
-    if !token_slice_first_is(tokens, "put") {
-        return None;
-    }
-    let (count, count_used) = parse_value(&tokens[1..])?;
-    let Value::Fixed(count) = count else {
-        return None;
-    };
-    if count <= 0 {
-        return None;
-    }
-    let card_idx = 1 + count_used;
-    if !tokens
-        .get(card_idx)
-        .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| matches!(word, "card" | "cards"))
-    {
-        return None;
-    }
-
-    let tail = trim_edge_punctuation(&tokens[card_idx + 1..]);
-    let tail_words = crate::runtime_backend::token_word_refs(&tail);
-    if !word_slice_starts_with(
-        &tail_words,
-        &["from", "a", "single", "graveyard", "on", "the", "bottom", "of"],
-    ) {
-        return None;
-    }
-    let owner_tail = &tail_words[8..];
-    if !owner_tail
-        .iter()
-        .any(|word| matches!(*word, "owner" | "owners" | "owner's" | "owners'"))
-        || !owner_tail.iter().any(|word| *word == "library")
-        || !owner_tail
-            .first()
-            .is_some_and(|word| matches!(*word, "its" | "their"))
-    {
-        return None;
-    }
+    let shape = sentence_shapes::parse_single_graveyard_library_bottom_tokens(tokens)?;
+    let count = usize::try_from(shape.count).ok()?;
 
     let filter = ObjectFilter::default()
         .in_zone(Zone::Graveyard)
@@ -1084,7 +894,7 @@ fn parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence(
     Some(EffectAst::subject_verb_move_to_zone(
         TargetAst::WithCount(
             Box::new(TargetAst::Object(filter, None, None)),
-            ChoiceCount::exactly(count as usize),
+            ChoiceCount::exactly(count),
         ),
         Zone::Library,
         false,
@@ -1097,88 +907,6 @@ fn parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence(
 fn parse_effect_sentence_with_where_x_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    fn colors_that_referenced_object_was_value(words: &[&str]) -> Option<Value> {
-        let ["the", "number", "of", color_word, reference_word, object_kind, be_word] = words
-        else {
-            return None;
-        };
-        if !matches!(*color_word, "color" | "colors")
-            || !matches!(*reference_word, "that" | "the")
-            || !matches!(*be_word, "was" | "were")
-        {
-            return None;
-        }
-
-        let object_kind = object_kind.trim_end_matches('s');
-        let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&[object_kind]);
-        let mut filter = parse_object_filter(&object_tokens, false).ok()?;
-        filter = filter.match_tagged(
-            TagKey::from("sacrificed_0"),
-            TaggedOpbjectRelation::IsTaggedObject,
-        );
-        Some(Value::ColorsAmong(filter))
-    }
-
-    fn counters_on_reference_where_x_value(words: &[&str]) -> Option<Value> {
-        if !word_slice_starts_with(words, SENTENCE_WHERE_X_IS_PREFIX) {
-            return None;
-        }
-
-        let after_prefix = &words[SENTENCE_WHERE_X_IS_PREFIX.len()..];
-        let after_optional_the = after_prefix
-            .strip_prefix(&[SENTENCE_THE_WORD])
-            .unwrap_or(after_prefix);
-        let after_number = after_optional_the.strip_prefix(SENTENCE_NUMBER_OF_PREFIX)?;
-        let after_optional_article = match after_number.split_first() {
-            Some((word, rest)) if is_article(word) || *word == "one" => rest,
-            _ => after_number,
-        };
-
-        let (counter_type, counter_tail) = match after_optional_article.split_first() {
-            Some((word, rest)) => parse_counter_type_word(word)
-                .map(|counter_type| (Some(counter_type), rest))
-                .unwrap_or((None, after_optional_article)),
-            None => return None,
-        };
-
-        let after_counter_word = match counter_tail.split_first() {
-            Some((word, rest)) if SENTENCE_COUNTER_WORDS.contains(word) => rest,
-            _ => return None,
-        };
-        let reference = after_counter_word.strip_prefix(&["on"])?;
-        if reference.is_empty() {
-            return None;
-        }
-
-        if is_source_reference_words(reference) {
-            return Some(match counter_type {
-                Some(counter_type) => Value::CountersOnSource(counter_type),
-                None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
-            });
-        }
-
-        if matches!(
-            reference,
-            ["that"]
-                | ["that", "card"]
-                | ["that", "creature"]
-                | ["that", "object"]
-                | ["that", "permanent"]
-                | ["those"]
-                | ["those", "cards"]
-                | ["those", "creatures"]
-                | ["those", "objects"]
-                | ["those", "permanents"]
-        ) {
-            return Some(Value::CountersOn(
-                Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
-                counter_type,
-            ));
-        }
-
-        None
-    }
-
     fn replace_search_filter_x(effect: &mut EffectAst, replacement: &Value) {
         let (filter, count, count_value) = match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1340,355 +1068,105 @@ fn parse_effect_sentence_with_where_x_lexed(
         }
     }
 
-    let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
-    let clause_words = clause_word_storage.to_word_refs();
     let clause_display = render_token_slice(tokens).trim().to_string();
-    let Some(where_idx) =
-        word_slice_find_phrase_start(clause_words.as_slice(), SENTENCE_WHERE_X_IS_PREFIX)
-    else {
+    let Some(where_shape) = sentence_shapes::parse_where_x_sentence_tokens(tokens) else {
         return parse_effect_sentence_inner_lexed(tokens);
     };
-    let where_token_idx = token_index_for_word_index(tokens, where_idx)
-        .or_else(|| find_token_word_sequence(tokens, &["where", "x", "is"]));
-    let Some(where_token_idx) = where_token_idx else {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported where-x clause (clause: '{}')",
-            &clause_display
-        )));
-    };
-    let where_tokens = &tokens[where_token_idx..];
-    let where_segments = split_lexed_slices_on_commas_or_semicolons(where_tokens);
-    let comma_tail_has_effect_clause = where_segments.iter().skip(1).any(|segment| {
-        let words = crate::runtime_backend::token_word_refs(segment);
-        words.iter().any(|word| *word == "then") || super::find_verb(segment).is_some()
-    });
-    let full_where_is_count_value = !comma_tail_has_effect_clause
+    let full_where_is_count_value = !where_shape.comma_tail_has_effect_clause
         && crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
-            where_tokens,
+            where_shape.where_tokens,
         )
         .is_some();
-    let primary_where_tokens = if full_where_is_count_value {
-        where_tokens
-    } else {
-        where_segments.first().copied().unwrap_or(where_tokens)
-    };
-    let trailing_after_where = if !full_where_is_count_value && where_segments.len() > 1 {
-        let mut tail = Vec::new();
-        for (idx, segment) in where_segments.iter().enumerate().skip(1) {
-            if idx > 1 {
-                tail.push(OwnedLexToken::comma(TextSpan::synthetic()));
-            }
-            tail.extend(segment.iter().cloned());
-        }
-        tail
-    } else {
-        Vec::new()
-    };
+    let layout = where_shape.layout(full_where_is_count_value);
+    let primary_where_tokens = layout.primary_where_tokens;
+    let trailing_after_where = layout.trailing_after_where;
+    let stripped = trim_edge_punctuation(where_shape.stripped_tokens);
 
-    let stripped = trim_edge_punctuation(&tokens[..where_token_idx]);
-    let stripped_word_storage = DispatchInnerNormalizedWords::new(&stripped);
-    let stripped_words = stripped_word_storage.to_word_refs();
-    let where_word_storage = DispatchInnerNormalizedWords::new(&primary_where_tokens);
-    let where_words = where_word_storage.to_word_refs();
-
-    if let Some(effects) =
-        parse_target_deals_power_damage_to_other_and_self_where_x(tokens, &clause_words, where_idx)?
-    {
+    if let Some(effects) = parse_target_deals_power_damage_to_other_and_self_where_x(tokens)? {
         return Ok(effects);
     }
     if let Some(effects) =
-        parse_tap_then_damage_for_number_tapped_this_way(&stripped, &where_words)?
+        parse_tap_then_damage_for_number_tapped_this_way(&stripped, primary_where_tokens)?
     {
         return Ok(effects);
     }
 
     let mut prelude_effects = Vec::new();
-    let where_value = if let Some((choice_effect, value)) =
-        parse_where_x_commander_mana_value_choice(&where_words)
-    {
-        prelude_effects.push(choice_effect);
-        value
-    } else if matches!(
-        where_words.get(3..),
-        Some(["the", "power", "of", "the", "creature", "tapped", "this", "way"])
-            | Some(["power", "of", "the", "creature", "tapped", "this", "way"])
-    ) {
-        Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
-            "tap_cost_0",
-        ))))
-    } else if let Some(value) = parse_where_x_prior_effect_number_value(&where_words) {
+    // Preserve the established source-relative interpretation for a where-X
+    // binding that is followed by another effect clause. The follow-up is
+    // dispatched independently; it must not cause the primary clause's
+    // contextual `its` value to be promoted to a new target choice.
+    let typed_where_references_target =
+        where_shape.stripped_references_target && !where_shape.comma_tail_has_effect_clause;
+    let typed_where_value = sentence_shapes::parse_where_x_value_shape_tokens(
+        primary_where_tokens,
+        typed_where_references_target,
+    )
+    .and_then(lower_where_x_shape);
+    let where_value = if let Some((prelude, value)) = typed_where_value {
+        if let Some(prelude) = prelude {
+            prelude_effects.push(prelude);
+        }
         value
     } else {
-        let stripped_references_target = word_slice_contains_word(
-            &crate::runtime_backend::token_word_refs(&stripped),
-            SENTENCE_TARGET_WORD,
-        );
-        match where_words.get(3..) {
-            Some(["its", "power"]) => {
-                if stripped_references_target {
-                    Value::PowerOf(Box::new(crate::target::ChooseSpec::target(
-                        crate::target::ChooseSpec::Object(ObjectFilter::default()),
-                    )))
-                } else {
-                    Value::SourcePower
-                }
-            }
-            Some(["its", "toughness"]) => {
-                if stripped_references_target {
-                    Value::ToughnessOf(Box::new(crate::target::ChooseSpec::target(
-                        crate::target::ChooseSpec::Object(ObjectFilter::default()),
-                    )))
-                } else {
-                    Value::SourceToughness
-                }
-            }
-            Some(["its", "mana", "value"]) => {
-                Value::ManaValueOf(Box::new(if stripped_references_target {
-                    crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
-                        ObjectFilter::default(),
-                    ))
-                } else {
-                    crate::target::ChooseSpec::Source
-                }))
-            }
-            Some(["this", "creatures", "power"]) => Value::SourcePower,
-            Some(["this", "creatures", "toughness"]) => Value::SourceToughness,
-            Some(["this", "creatures", "mana", "value"]) => {
-                Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source))
-            }
-            Some(["that", "spell", "mana", "value"])
-            | Some(["that", "spell's", "mana", "value"])
-            | Some(["that", "spells", "mana", "value"]) => Value::ManaValueOf(Box::new(
-                crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
-            )),
-            Some(["that", "creatures", "power"]) => {
-                Value::PowerOf(Box::new(if stripped_references_target {
-                    crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
-                        ObjectFilter::default(),
-                    ))
-                } else {
-                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
-                }))
-            }
-            Some(["that", "creatures", "toughness"]) => {
-                Value::ToughnessOf(Box::new(if stripped_references_target {
-                    crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
-                        ObjectFilter::default(),
-                    ))
-                } else {
-                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
-                }))
-            }
-            Some(["that", "creatures", "mana", "value"]) => {
-                Value::ManaValueOf(Box::new(if stripped_references_target {
-                    crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
-                        ObjectFilter::default(),
-                    ))
-                } else {
-                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
-                }))
-            }
-            Some(
-                [
-                    "the",
-                    "number",
-                    "of",
-                    "times",
-                    "it's",
-                    "been",
-                    "cast",
-                    "from",
-                    "the",
-                    "command",
-                    "zone",
-                    "this",
-                    "game",
-                ],
+        let activation_time_trimmed =
+            sentence_shapes::parse_before_activation_time_tokens(primary_where_tokens)
+                .map(trim_edge_punctuation);
+        let specific_where_value =
+            crate::runtime_backend::front_end::grammar::values::parse_players_who_control_more_than_you_value_lexed(
+                primary_where_tokens,
             )
-            | Some(
-                [
-                    "the",
-                    "number",
-                    "of",
-                    "times",
-                    "its",
-                    "been",
-                    "cast",
-                    "from",
-                    "the",
-                    "command",
-                    "zone",
-                    "this",
-                    "game",
-                ],
-            )
-            | Some(
-                [
-                    "the",
-                    "number",
-                    "of",
-                    "times",
-                    "it",
-                    "has",
-                    "been",
-                    "cast",
-                    "from",
-                    "the",
-                    "command",
-                    "zone",
-                    "this",
-                    "game",
-                ],
-            ) => Value::CommanderCastCount(PlayerFilter::You),
-            Some(["the", "power", "of", "the", "creature", "tapped", "this", "way"])
-            | Some(["power", "of", "the", "creature", "tapped", "this", "way"]) => {
-                Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
-                    "tap_cost_0",
-                ))))
-            }
-            Some(["the", "sacrificed", sacrificed_kind, "mana", "value"])
-            | Some(["sacrificed", sacrificed_kind, "mana", "value"]) => {
-                let sacrificed_kind = sacrificed_kind.trim_end_matches('s');
-                Value::ManaValueOf(Box::new(
-                    crate::target::ChooseSpec::Tagged(TagKey::from("sacrifice_cost_0"))
-                        .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
-                            crate::target::SourceReferenceSurface::ThisPermanentType(format!(
-                                "the sacrificed {sacrificed_kind}"
-                            )),
-                        )),
+            .or_else(|| {
+                crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
+                    primary_where_tokens,
+                )
+            })
+            .or_else(|| {
+                crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_different_powers_filter_value(
+                    primary_where_tokens,
+                )
+            });
+        let number_of_filter_value = specific_where_value
+            .or_else(|| {
+                crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
+                    primary_where_tokens,
+                )
+            })
+            .or_else(|| {
+                activation_time_trimmed.as_deref().and_then(
+                    crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value,
+                )
+            });
+        if let Some(value) = number_of_filter_value {
+            value
+        } else if let Some(trimmed) = activation_time_trimmed.as_deref() {
+            parse_value_binding_clause_lexed(trimmed).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported where-x clause (clause: '{}')",
+                    &clause_display
                 ))
-            }
-            Some(words) if colors_that_referenced_object_was_value(words).is_some() => {
-                colors_that_referenced_object_was_value(words)
-                    .expect("where-X colors value checked in guard")
-            }
-            Some(
-                [
-                    "2",
-                    "plus",
-                    "the",
-                    "sacrificed",
-                    "creature",
-                    "mana",
-                    "value",
-                    ..,
-                ],
-            )
-            | Some(
-                [
-                    "2",
-                    "plus",
-                    "the",
-                    "sacrificed",
-                    "creatures",
-                    "mana",
-                    "value",
-                    ..,
-                ],
-            )
-            | Some(["2", "plus", "sacrificed", "creature", "mana", "value", ..])
-            | Some(["2", "plus", "sacrificed", "creatures", "mana", "value", ..])
-            | Some(
-                [
-                    "two",
-                    "plus",
-                    "the",
-                    "sacrificed",
-                    "creature",
-                    "mana",
-                    "value",
-                    ..,
-                ],
-            )
-            | Some(
-                [
-                    "two",
-                    "plus",
-                    "the",
-                    "sacrificed",
-                    "creatures",
-                    "mana",
-                    "value",
-                    ..,
-                ],
-            )
-            | Some(["two", "plus", "sacrificed", "creature", "mana", "value", ..])
-            | Some(
-                [
-                    "two",
-                    "plus",
-                    "sacrificed",
-                    "creatures",
-                    "mana",
-                    "value",
-                    ..,
-                ],
-            ) => Value::Add(
-                Box::new(Value::Fixed(2)),
-                Box::new(Value::ManaValueOf(Box::new(
-                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
-                ))),
-            ),
-            _ => {
-                let activation_time_trimmed =
-                    crate::runtime_backend::lexer::find_token_word(primary_where_tokens, "as")
-                    .map(|token_idx| trim_edge_punctuation(&primary_where_tokens[..token_idx]));
-                let specific_where_value =
-                    crate::runtime_backend::front_end::grammar::values::parse_players_who_control_more_than_you_value_lexed(
-                        primary_where_tokens,
-                    )
-                    .or_else(|| {
-                        crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
-                            primary_where_tokens,
-                        )
-                    })
-                    .or_else(|| {
-                        crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_different_powers_filter_value(
-                            primary_where_tokens,
-                        )
-                    });
-                let primary_where_words = TokenWordView::new(primary_where_tokens).word_refs();
-                let counter_reference_value =
-                    counters_on_reference_where_x_value(&primary_where_words);
-                let number_of_filter_value = specific_where_value.or(counter_reference_value).or_else(|| {
-                    crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
-                        primary_where_tokens,
-                    )
-                })
-                    .or_else(|| {
-                        activation_time_trimmed.as_deref().and_then(
-                            crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value,
-                        )
-                    });
-                if let Some(value) = number_of_filter_value {
-                    value
-                } else if let Some(trimmed) = activation_time_trimmed.as_deref() {
-                    parse_value_binding_clause_lexed(trimmed).ok_or_else(|| {
-                        CardTextError::ParseError(format!(
-                            "unsupported where-x clause (clause: '{}')",
-                            &clause_display
-                        ))
-                    })?
-                } else {
-                    parse_value_binding_clause_lexed(&primary_where_tokens).ok_or_else(|| {
-                        CardTextError::ParseError(format!(
-                            "unsupported where-x clause (clause: '{}')",
-                            &clause_display
-                        ))
-                    })?
-                }
-            }
+            })?
+        } else {
+            parse_value_binding_clause_lexed(primary_where_tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported where-x clause (clause: '{}')",
+                    &clause_display
+                ))
+            })?
         }
     }
     .with_surface_hint(ValueSurfaceHint::WhereXIs);
 
-    let search_like = word_slice_at_is(&stripped_words, 0, SENTENCE_SEARCH_WORD);
+    let search_like = where_shape.stripped_starts_search;
     let mut effects = if search_like && !trailing_after_where.is_empty() {
         let mut recombined = stripped.clone();
         recombined.extend(trailing_after_where.clone());
         parse_effect_sentence_lexed(&recombined)?
     } else {
         let mut parsed = parse_effect_sentence_inner_lexed(&stripped)?;
+        if parsed.is_empty() && !stripped.is_empty() {
+            parsed.push(super::parse_effect_clause_lexed(&stripped)?);
+        }
         if !trailing_after_where.is_empty() {
             let mut trailing_effects = parse_effect_sentence_lexed(&trailing_after_where)?;
             parsed.append(&mut trailing_effects);

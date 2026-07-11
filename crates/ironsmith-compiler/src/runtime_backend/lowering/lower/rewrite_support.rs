@@ -1,43 +1,12 @@
 use super::*;
-use crate::runtime_backend::lexer::{
-    token_word_refs, word_slice_contains_any_phrase, word_slice_contains_phrase,
-};
 
-pub(super) fn infer_static_ability_functional_zones(tokens: &[OwnedLexToken]) -> Option<Vec<Zone>> {
-    let words = token_word_refs(tokens);
-    if word_slice_contains_any_phrase(&words, STATIC_LIBRARY_SEARCH_ZONE_PHRASES)
-        && word_slice_contains_phrase(&words, FROM_YOUR_LIBRARY_PHRASE)
-    {
-        return Some(vec![Zone::Library]);
-    }
-    if word_slice_contains_any_phrase(&words, CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PHRASES) {
-        return Some(vec![Zone::Graveyard]);
-    }
-    if word_slice_contains_any_phrase(&words, CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES) {
-        return Some(vec![Zone::Exile]);
-    }
-    if word_slice_contains_phrase(&words, CAUSES_YOU_TO_DISCARD_THIS_CARD_PHRASE)
-        && word_slice_contains_phrase(&words, INSTEAD_OF_PUTTING_IT_INTO_YOUR_GRAVEYARD_PHRASE)
-    {
-        return Some(vec![Zone::Hand]);
-    }
-
-    let mut zones = Vec::new();
-    for (phrase, zone) in STATIC_ZONE_HINT_PHRASES {
-        if word_slice_contains_phrase(&words, phrase) {
-            zones.push(zone.clone());
-        }
-    }
-    if zones.is_empty() { None } else { Some(zones) }
-}
-
-pub(super) fn infer_triggered_ability_functional_zones(
+pub(crate) fn infer_triggered_ability_functional_zones_from_facts(
     trigger: &TriggerSpec,
-    tokens: &[OwnedLexToken],
+    facts: &crate::runtime_backend::shared_types::TriggerFunctionalZoneFacts,
 ) -> Vec<Zone> {
     let mut zones = match trigger {
         TriggerSpec::WithIntro { trigger, .. } => {
-            return infer_triggered_ability_functional_zones(trigger, tokens);
+            return infer_triggered_ability_functional_zones_from_facts(trigger, facts);
         }
         TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
         TriggerSpec::KeywordActionFromSource {
@@ -47,18 +16,12 @@ pub(super) fn infer_triggered_ability_functional_zones(
         _ => vec![Zone::Battlefield],
     };
 
-    let words = token_word_refs(tokens);
-    for (phrase, zone) in TRIGGER_ZONE_HINT_PHRASES {
-        if word_slice_contains_phrase(&words, phrase) {
-            zones = vec![zone.clone()];
-            break;
-        }
+    if let Some(explicit_zone) = &facts.explicit_zone {
+        zones = vec![explicit_zone.clone()];
     }
-    if word_slice_contains_any_phrase(&words, RETURN_SELF_FROM_GRAVEYARD_PHRASES)
-        && !trigger_references_attached_object(trigger)
-    {
+    if facts.returns_self_from_graveyard && !trigger_references_attached_object(trigger) {
         zones = vec![Zone::Graveyard];
-    } else if word_slice_contains_phrase(&words, DISCARD_THIS_CARD_PHRASE) {
+    } else if facts.discards_this_card {
         zones = vec![Zone::Hand];
     }
     zones
@@ -217,6 +180,65 @@ pub(super) fn rewrite_apply_pending_mechanic_linkages(
     builder
 }
 
+fn rewrite_apply_pending_backup_abilities(
+    mut builder: CardDefinitionBuilder,
+    state: &mut RewriteLoweredCardState,
+) -> CardDefinitionBuilder {
+    if state.pending_backups.is_empty() {
+        return builder;
+    }
+
+    let original_abilities = std::mem::take(&mut builder.abilities);
+    let pending_backups = std::mem::take(&mut state.pending_backups);
+    let mut abilities = Vec::with_capacity(original_abilities.len() + pending_backups.len());
+    let mut next_backup = 0;
+
+    for boundary in 0..=original_abilities.len() {
+        while pending_backups
+            .get(next_backup)
+            .is_some_and(|backup| backup.ability_boundary == boundary)
+        {
+            let backup = pending_backups[next_backup];
+            let granted_abilities = original_abilities[boundary..].to_vec();
+            abilities.push(Ability::triggered(
+                crate::triggers::Trigger::this_enters_battlefield(),
+                vec![crate::effect::Effect::backup(
+                    backup.amount,
+                    granted_abilities,
+                )],
+            ));
+            next_backup += 1;
+        }
+
+        if let Some(ability) = original_abilities.get(boundary) {
+            abilities.push(ability.clone());
+        }
+    }
+
+    debug_assert_eq!(
+        next_backup,
+        pending_backups.len(),
+        "Backup boundaries must follow lowered ability order"
+    );
+    builder.abilities = abilities;
+    builder
+}
+
+fn rewrite_apply_pending_cipher_effect(
+    mut builder: CardDefinitionBuilder,
+    state: &mut RewriteLoweredCardState,
+) -> CardDefinitionBuilder {
+    if !std::mem::take(&mut state.pending_cipher) {
+        return builder;
+    }
+
+    builder
+        .spell_effect
+        .get_or_insert_with(ResolutionProgram::default)
+        .push(crate::effect::Effect::cipher());
+    builder
+}
+
 fn is_haunt_placeholder_ability(ability: &Ability) -> bool {
     let AbilityKind::Triggered(triggered) = &ability.kind else {
         return false;
@@ -256,8 +278,7 @@ pub(super) fn rewrite_normalize_take_to_the_streets_spell_effect(
         crate::continuous::EffectTarget::Filter(filter) => filter,
         _ => return builder,
     };
-    if filter.controller != Some(PlayerFilter::You)
-        || !slice_contains(filter.subtypes.as_slice(), &Subtype::Citizen)
+    if filter.controller != Some(PlayerFilter::You) || !filter.subtypes.contains(&Subtype::Citizen)
     {
         return builder;
     }
@@ -295,5 +316,7 @@ pub(super) fn rewrite_finalize_lowered_card(
     state: &mut RewriteLoweredCardState,
 ) -> CardDefinitionBuilder {
     builder = rewrite_normalize_take_to_the_streets_spell_effect(builder);
-    rewrite_apply_pending_mechanic_linkages(builder, state)
+    builder = rewrite_apply_pending_mechanic_linkages(builder, state);
+    builder = rewrite_apply_pending_backup_abilities(builder, state);
+    rewrite_apply_pending_cipher_effect(builder, state)
 }

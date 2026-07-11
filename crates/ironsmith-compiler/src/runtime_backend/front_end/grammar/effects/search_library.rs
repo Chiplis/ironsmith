@@ -1,5 +1,23 @@
 use super::*;
+use crate::runtime_backend::lexer::{parser_token_word_positions, parser_token_word_refs};
 use ironsmith_core::Value;
+use winnow::error::{ContextError, ErrMode, ModalResult};
+use winnow::prelude::*;
+
+#[path = "search_library/duration_shapes.rs"]
+mod duration_shapes;
+#[path = "search_library/exile_shapes.rs"]
+mod exile_shapes;
+#[path = "search_library/shuffle_shapes.rs"]
+mod shuffle_shapes;
+
+pub(crate) use duration_shapes::*;
+pub(crate) use exile_shapes::*;
+pub(crate) use shuffle_shapes::*;
+
+#[path = "search_library/same_name_references.rs"]
+mod same_name_references;
+pub(crate) use same_name_references::*;
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const EACH_OF_THEM_SUBJECT: &[&str] = &["each", "of", "them"];
@@ -192,23 +210,104 @@ const OWNER_LIBRARY_FOR_PREFIX_PATTERN: &[&[&str]] = &[
 ];
 const ON_TOP_OF_LIBRARY_PHRASE: &[&str] = &["on", "top", "of", "library"];
 const FROM_THE_TOP_PREFIX: &[&str] = &["from", "the", "top"];
+const BASIC_LAND_TYPE_SEARCH_SELECTOR: &[&str] =
+    &["land", "card", "of", "each", "basic", "land", "type"];
+const ANY_NUMBER_PREFIX: &[&str] = &["any", "number"];
+const UP_TO_PREFIX: &[&str] = &["up", "to"];
+const UP_TO_X_PREFIX: &[&str] = &["up", "to", "x"];
 
 fn search_library_token_is_any_word(token: &OwnedLexToken, words: &[&str]) -> bool {
-    token
-        .as_word()
-        .is_some_and(|_| words.contains(&token.parser_text()))
+    token.as_word().is_some_and(|_| {
+        let text = token.parser_text();
+        search_library_words_have_word(words, text)
+    })
+}
+
+fn search_library_words_have_word(words: &[&str], expected: &str) -> bool {
+    let mut idx = 0usize;
+    while idx < words.len() {
+        if words[idx] == expected {
+            return true;
+        }
+        idx += 1;
+    }
+    false
 }
 
 fn search_library_words_equal_any(words: &[&str], phrases: &[&[&str]]) -> bool {
-    phrases.iter().any(|phrase| words == *phrase)
+    let mut idx = 0usize;
+    while idx < phrases.len() {
+        if search_word_stream_eq_phrase(words, phrases[idx]) {
+            return true;
+        }
+        idx += 1;
+    }
+    false
 }
 
-fn search_library_words_start_with_any(words: &[&str], phrases: &[&[&str]]) -> bool {
-    phrases.iter().any(|phrase| words.starts_with(phrase))
+fn dynamic_search_word_phrase<'phrase, 'input>(
+    phrase: &'phrase [&'phrase str],
+) -> impl Parser<&'input [&'input str], (), ErrMode<ContextError>> + 'phrase {
+    move |input: &mut &'input [&'input str]| {
+        if phrase.is_empty() || input.len() < phrase.len() {
+            return Err(primitives::backtrack_err(
+                "search word phrase",
+                "non-empty matching phrase",
+            ));
+        }
+        let (candidate, rest) = input.split_at(phrase.len());
+        if candidate
+            .iter()
+            .copied()
+            .zip(phrase.iter().copied())
+            .all(|(actual, expected)| actual == expected)
+        {
+            *input = rest;
+            Ok(())
+        } else {
+            Err(primitives::backtrack_err(
+                "search word phrase",
+                "matching phrase",
+            ))
+        }
+    }
 }
 
-fn search_library_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    crate::word_primitives::contains_phrase(words, phrase)
+fn search_word_stream_starts_with_any(words: &[&str], phrases: &[&[&str]]) -> bool {
+    for phrase in phrases {
+        let mut input = words;
+        if dynamic_search_word_phrase(phrase)
+            .parse_next(&mut input)
+            .is_ok()
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn search_word_stream_matches_at_some_offset(words: &[&str], phrase: &[&str]) -> bool {
+    for start in 0..=words.len() {
+        let mut input = &words[start..];
+        if dynamic_search_word_phrase(phrase)
+            .parse_next(&mut input)
+            .is_ok()
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn search_word_stream_eq_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    if words.len() != phrase.len() {
+        return false;
+    }
+    let mut input = words;
+    dynamic_search_word_phrase(phrase)
+        .parse_next(&mut input)
+        .is_ok()
+        && input.is_empty()
 }
 
 fn search_library_words_contain_all(words: &[&str], required: &[&str]) -> bool {
@@ -218,7 +317,28 @@ fn search_library_words_contain_all(words: &[&str], required: &[&str]) -> bool {
 }
 
 fn search_library_words_are_default_card_selector(words: &[&str]) -> bool {
-    matches!(words, [] | ["card"] | ["cards"])
+    words.is_empty()
+        || search_word_stream_eq_phrase(words, &["card"])
+        || search_word_stream_eq_phrase(words, &["cards"])
+}
+
+fn search_library_prefix_len(
+    tokens: &[OwnedLexToken],
+    phrase: &'static [&'static str],
+) -> Option<usize> {
+    primitives::parse_prefix(tokens, primitives::phrase(phrase))
+        .map(|(_, rest)| tokens.len().saturating_sub(rest.len()))
+}
+
+fn search_library_word_index(words: &[&str], expected: &str) -> Option<usize> {
+    let mut idx = 0usize;
+    while idx < words.len() {
+        if words[idx] == expected {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
 }
 
 pub(crate) fn last_non_article_parser_word_token_idx(
@@ -633,7 +753,7 @@ pub(crate) fn parse_search_library_basic_land_type_slots_lexed(
 ) -> Option<Vec<SearchLibrarySlotAst>> {
     let parser_words = parser_token_word_refs(tokens);
     let words = crate::runtime_backend::util::non_article_word_refs(&parser_words);
-    if words.as_slice() != ["land", "card", "of", "each", "basic", "land", "type"] {
+    if !search_word_stream_eq_phrase(&words, BASIC_LAND_TYPE_SEARCH_SELECTOR) {
         return None;
     }
 
@@ -809,7 +929,7 @@ pub(crate) fn find_search_library_trailing_life_followup_lexed<'a>(
 
     let trailing_words = parser_token_word_refs(trailing_tokens);
     let starts_with_life_clause =
-        search_library_words_start_with_any(&trailing_words, LIFE_FOLLOWUP_PREFIXES);
+        search_word_stream_starts_with_any(&trailing_words, LIFE_FOLLOWUP_PREFIXES);
 
     starts_with_life_clause.then_some(trailing_tokens)
 }
@@ -876,11 +996,11 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
         .put_idx
         .map(|put_idx| parser_token_word_refs(&search_tokens[put_idx..]));
     let destination = if let Some(put_clause_words) = put_clause_words.as_ref() {
-        if put_clause_words.contains(&"graveyard") {
+        if search_library_words_have_word(put_clause_words, "graveyard") {
             Zone::Graveyard
-        } else if put_clause_words.contains(&"hand") {
+        } else if search_library_words_have_word(put_clause_words, "hand") {
             Zone::Hand
-        } else if put_clause_words.contains(&"top") {
+        } else if search_library_words_have_word(put_clause_words, "top") {
             Zone::Library
         } else {
             Zone::Battlefield
@@ -890,7 +1010,7 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
     };
     let reveal = clause_markers.reveal_idx.is_some();
     let face_down_exile = clause_markers.exile_idx.is_some_and(|idx| {
-        search_library_words_contain_phrase(
+        search_word_stream_matches_at_some_offset(
             &parser_token_word_refs(&search_tokens[idx..]),
             FACE_DOWN_PHRASE,
         )
@@ -898,7 +1018,7 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
     let shuffle = clause_markers.shuffle_idx.is_some() && !trailing_discard_before_shuffle;
     let split_battlefield_and_hand = clause_markers.put_idx.is_some()
         && search_library_words_contain_all(&words_all, BATTLEFIELD_HAND_OTHER_ONE_MARKER_WORDS);
-    let has_tapped_modifier = words_all.contains(&"tapped");
+    let has_tapped_modifier = search_library_words_have_word(&words_all, "tapped");
 
     SearchLibraryEffectRouting {
         destination,
@@ -928,7 +1048,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
     let mut forced_library_owner: Option<PlayerFilter> = None;
     let mut search_zones_override: Option<Vec<Zone>> = None;
 
-    if search_library_words_start_with_any(
+    if search_word_stream_starts_with_any(
         search_body_words,
         YOUR_OR_THEIR_LIBRARY_GRAVEYARD_FOR_PREFIX_PATTERN,
     ) {
@@ -948,7 +1068,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
             _ => PlayerFilter::You,
         });
         search_zones_override = Some(vec![Zone::Library, Zone::Graveyard]);
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         YOUR_OR_THEIR_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
@@ -969,24 +1089,24 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
                 _ => PlayerFilter::You,
             });
         }
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         CONTROLLER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
-    ) || search_library_words_start_with_any(
+    ) || search_word_stream_starts_with_any(
         search_body_words,
         CONTROLLER_SUFFIX_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::ItsController;
         forced_library_owner = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         OWNER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::ItsOwner;
         forced_library_owner = Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target));
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         TARGET_PLAYER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
@@ -997,7 +1117,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         ));
         forced_library_owner = Some(PlayerFilter::target_player());
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         TARGET_OPPONENT_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
@@ -1008,7 +1128,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         ));
         forced_library_owner = Some(PlayerFilter::target_opponent());
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         TARGET_PLAYER_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
@@ -1018,7 +1138,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
             span_from_tokens(&search_tokens[1..3]),
         ));
         forced_library_owner = Some(PlayerFilter::target_player());
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         TARGET_OPPONENT_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
@@ -1028,25 +1148,25 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
             span_from_tokens(&search_tokens[1..3]),
         ));
         forced_library_owner = Some(PlayerFilter::target_opponent());
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         THAT_PLAYER_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
         forced_library_owner = Some(PlayerFilter::IteratedPlayer);
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         THAT_PLAYER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
         forced_library_owner = Some(PlayerFilter::IteratedPlayer);
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         CONTROLLER_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::ItsController;
-    } else if search_library_words_start_with_any(
+    } else if search_word_stream_starts_with_any(
         search_body_words,
         OWNER_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
@@ -1054,7 +1174,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
     } else if search_body_words
         .first()
         .is_some_and(|word| *word == "your")
-        && let Some(for_pos) = search_body_words.iter().position(|word| *word == "for")
+        && let Some(for_pos) = search_library_word_index(search_body_words, "for")
         && for_pos > 1
     {
         let zone_words = &search_body_words[1..for_pos];
@@ -1077,7 +1197,9 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
                     zones.push(Zone::Library);
                     saw_library = true;
                 }
-                "outside" if !saw_outside_game && zone_words.contains(&"game") => {
+                "outside"
+                    if !saw_outside_game && search_library_words_have_word(zone_words, "game") =>
+                {
                     zones.push(Zone::OutsideGame);
                     saw_outside_game = true;
                 }
@@ -1111,20 +1233,20 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
     if count_tokens
         .first()
         .is_some_and(|token| search_library_token_is_any_word(token, &["any"]))
-        && !token_slice_starts_with(count_tokens, &["any", "number"])
+        && search_library_prefix_len(count_tokens, ANY_NUMBER_PREFIX).is_none()
     {
         if let Some((value, used)) = parse_number(&count_tokens[1..]) {
             count = ChoiceCount::up_to(value as usize);
             search_mode = SearchSelectionMode::Optional;
             count_used = 1 + used;
         }
-    } else if token_slice_starts_with(count_tokens, &["that", "many"]) {
+    } else if search_library_prefix_len(count_tokens, THAT_MANY_PREFIX).is_some() {
         count = ChoiceCount::dynamic_x();
         count_value = Some(Value::Count(crate::target::ObjectFilter::tagged(
             crate::cards::builders::IT_TAG,
         )));
         count_used = 2;
-    } else if token_slice_starts_with(count_tokens, &["up", "to", "x"]) {
+    } else if search_library_prefix_len(count_tokens, UP_TO_X_PREFIX).is_some() {
         count = ChoiceCount::up_to_dynamic_x();
         search_mode = SearchSelectionMode::Optional;
         count_used = 3;
@@ -1132,8 +1254,9 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
         count = ChoiceCount::any_number();
         search_mode = SearchSelectionMode::AllMatching;
         count_used = 1;
-    } else if token_slice_starts_with(&count_tokens[2..], &["that", "many"])
-        && token_slice_starts_with(count_tokens, &["up", "to"])
+    } else if search_library_prefix_len(count_tokens.get(2..).unwrap_or(&[]), THAT_MANY_PREFIX)
+        .is_some()
+        && search_library_prefix_len(count_tokens, UP_TO_PREFIX).is_some()
     {
         count = ChoiceCount::up_to_dynamic_x();
         search_mode = SearchSelectionMode::Optional;
@@ -1174,7 +1297,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
 pub(crate) fn parse_search_library_same_name_reference_lexed(
     raw_filter_tokens: &[OwnedLexToken],
     mut filter_tokens: Vec<OwnedLexToken>,
-    words_all: &[&str],
+    clause_display: &str,
 ) -> Result<SearchLibrarySameNameSplit, CardTextError> {
     let mut same_name_reference: Option<SearchLibrarySameNameReference> = None;
     let mut same_name_relation = TaggedOpbjectRelation::SameNameAsTagged;
@@ -1224,19 +1347,33 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
         if base_filter_tokens.is_empty() || reference_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "incomplete same-name search filter in search-library sentence (clause: '{}')",
-                words_all.join(" ")
+                clause_display
             )));
         }
         filter_tokens = base_filter_tokens;
         same_name_relation = relation;
         let reference_words = token_word_refs(&reference_tokens);
-        same_name_reference = if is_same_name_that_reference_words(&reference_words) {
+        let source_exiled_reference = primitives::parse_all(
+            &reference_tokens,
+            (
+                primitives::any_phrase(&[&["the", "exiled", "card"], &["the", "exiled", "cards"]]),
+                primitives::sentence_end(),
+            )
+                .void(),
+            "source-exiled same-name reference",
+        )
+        .is_ok();
+        same_name_reference = if source_exiled_reference {
+            Some(SearchLibrarySameNameReference::Tagged(TagKey::from(
+                crate::tag::SOURCE_EXILED_TAG,
+            )))
+        } else if is_same_name_that_reference_words(&reference_words) {
             Some(SearchLibrarySameNameReference::Tagged(TagKey::from(IT_TAG)))
-        } else if reference_words.contains(&"target") {
+        } else if search_library_words_have_word(&reference_words, "target") {
             let target = parse_target_phrase(&reference_tokens).map_err(|_| {
                 CardTextError::ParseError(format!(
                     "unsupported target same-name reference in search-library sentence (clause: '{}')",
-                    words_all.join(" ")
+                    clause_display
                 ))
             })?;
             Some(SearchLibrarySameNameReference::Target(target))
@@ -1254,7 +1391,7 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
                 .map_err(|_| {
                     CardTextError::ParseError(format!(
                         "unsupported same-name reference filter in search-library sentence (clause: '{}')",
-                        words_all.join(" ")
+                        clause_display
                     ))
                 })?;
             Some(SearchLibrarySameNameReference::Choose {
@@ -1273,7 +1410,7 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
 
 pub(crate) fn parse_search_library_object_filter_lexed(
     filter_tokens: &[OwnedLexToken],
-    words_all: &[&str],
+    clause_display: &str,
 ) -> Result<ObjectFilter, CardTextError> {
     let (filter_tokens, color_count) = if let Some((stripped, color_count)) =
         strip_search_library_color_count_phrase_lexed(filter_tokens)
@@ -1288,7 +1425,11 @@ pub(crate) fn parse_search_library_object_filter_lexed(
     let filter_words = crate::runtime_backend::util::non_article_word_refs(&raw_filter_words);
     let parser_words = parser_token_word_positions(&filter_tokens);
 
-    if let Some(named_idx) = parser_words.iter().position(|(_, word)| *word == "named") {
+    let parser_word_refs = parser_words
+        .iter()
+        .map(|(_, word)| *word)
+        .collect::<Vec<_>>();
+    if let Some(named_idx) = search_library_word_index(&parser_word_refs, "named") {
         let negated_named = parser_words[..named_idx]
             .iter()
             .rev()
@@ -1309,7 +1450,7 @@ pub(crate) fn parse_search_library_object_filter_lexed(
         if name.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing card name in named search clause (clause: '{}')",
-                words_all.join(" ")
+                clause_display
             )));
         }
         let base_tokens =
@@ -1320,7 +1461,7 @@ pub(crate) fn parse_search_library_object_filter_lexed(
             parse_object_filter(&base_tokens, false).map_err(|_| {
                 CardTextError::ParseError(format!(
                     "unsupported named search filter in search-library sentence (clause: '{}')",
-                    words_all.join(" ")
+                    clause_display
                 ))
             })?
         };
@@ -1341,13 +1482,13 @@ pub(crate) fn parse_search_library_object_filter_lexed(
         }
         filter.distinct_names |= distinct_names;
         Ok(filter)
-    } else if filter_words.contains(&"or") {
+    } else if search_library_words_have_word(&filter_words, "or") {
         let mut filter = parse_search_library_disjunction_filter(&filter_tokens)
             .or_else(|| parse_object_filter(&filter_tokens, false).ok())
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported search filter in search-library sentence (clause: '{}')",
-                    words_all.join(" ")
+                    clause_display
                 ))
             })?;
         if let Some(color_count) = color_count {
@@ -1359,7 +1500,7 @@ pub(crate) fn parse_search_library_object_filter_lexed(
         let mut filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported search filter in search-library sentence (clause: '{}')",
-                words_all.join(" ")
+                clause_display
             ))
         })?;
         if let Some(color_count) = color_count {
@@ -1372,7 +1513,7 @@ pub(crate) fn parse_search_library_object_filter_lexed(
 
 pub(crate) fn split_search_named_item_filters_lexed(
     filter_tokens: &[OwnedLexToken],
-    words_all: &[&str],
+    clause_display: &str,
 ) -> Result<Option<Vec<ObjectFilter>>, CardTextError> {
     if !crate::runtime_backend::lexer::contains_token_word(filter_tokens, "named") {
         return Ok(None);
@@ -1472,7 +1613,7 @@ pub(crate) fn split_search_named_item_filters_lexed(
             .copied()
             .unwrap_or(filter_tokens.len());
         let item_tokens = trim_commas(&filter_tokens[*start..end]);
-        let item_filter = parse_search_library_object_filter_lexed(&item_tokens, words_all)?;
+        let item_filter = parse_search_library_object_filter_lexed(&item_tokens, clause_display)?;
         if item_filter.name.is_none() {
             return Ok(None);
         }
@@ -1486,7 +1627,12 @@ pub(crate) fn parse_search_library_leading_effect_prelude_lexed<'a>(
     subject_starts_effect_lexed: fn(&[OwnedLexToken]) -> bool,
     parse_leading_effects_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<SearchLibraryLeadingPrelude<'a>, CardTextError> {
-    if subject_tokens.is_empty() || !subject_starts_effect_lexed(subject_tokens) {
+    let typed_effect_head = super::chain_splitting::find_chain_verb_tokens(subject_tokens)
+        .is_some()
+        || super::chain_splitting::has_extended_effect_head_tokens(subject_tokens);
+    if subject_tokens.is_empty()
+        || (!subject_starts_effect_lexed(subject_tokens) && !typed_effect_head)
+    {
         return Ok(SearchLibraryLeadingPrelude {
             subject_tokens,
             leading_effects: Vec::new(),
@@ -1514,8 +1660,15 @@ pub(crate) fn parse_search_library_leading_effect_prelude_lexed<'a>(
 
 pub(crate) fn search_library_has_unsupported_top_position_probe(words: &[&str]) -> bool {
     word_slice_mentions_nth_from_top(words)
-        && !search_library_words_contain_phrase(words, ON_TOP_OF_LIBRARY_PHRASE)
+        && !search_word_stream_matches_at_some_offset(words, ON_TOP_OF_LIBRARY_PHRASE)
         && search_library_put_position_from_top_words(words).is_none()
+}
+
+pub(crate) fn search_library_has_unsupported_top_position_probe_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let words = parser_token_word_refs(tokens);
+    search_library_has_unsupported_top_position_probe(&words)
 }
 
 pub(crate) fn search_library_put_position_from_top_words(words: &[&str]) -> Option<Value> {
@@ -1585,14 +1738,17 @@ pub(crate) fn parse_search_library_iterated_object_subject_lexed(
         return Ok(None);
     }
 
-    let mut filter_tokens =
-        if let Some(rest) = primitives::words_match_prefix(subject_tokens, &["for", "each"]) {
-            rest
-        } else if let Some(rest) = primitives::words_match_prefix(subject_tokens, &["each"]) {
-            rest
-        } else {
-            return Ok(None);
-        };
+    let mut filter_tokens = if let Some((_, rest)) =
+        primitives::strip_lexed_prefix_phrases(subject_tokens, &[&["for", "each"]])
+    {
+        rest
+    } else if let Some((_, rest)) =
+        primitives::strip_lexed_prefix_phrases(subject_tokens, &[&["each"]])
+    {
+        rest
+    } else {
+        return Ok(None);
+    };
 
     if filter_tokens
         .first()
@@ -1606,7 +1762,8 @@ pub(crate) fn parse_search_library_iterated_object_subject_lexed(
         return Ok(None);
     }
 
-    if primitives::words_match_any_prefix(&filter_tokens, PLAYER_OR_OPPONENT_PREFIXES).is_some() {
+    if primitives::strip_lexed_prefix_phrases(&filter_tokens, PLAYER_OR_OPPONENT_PREFIXES).is_some()
+    {
         return Ok(None);
     }
 

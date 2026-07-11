@@ -96,6 +96,12 @@ fn compile_delayed_trigger_spec(
             exact_spells_this_turn: *exact_spells_this_turn,
             from_not_hand: *from_not_hand,
         }),
+        TriggerSpec::PlayerPlaysLand { player, filter } => {
+            Ok(ironsmith_core::DelayedTriggerSpec::PlayerPlaysLand {
+                player: player.clone(),
+                filter: filter.clone(),
+            })
+        }
         TriggerSpec::AbilityActivated {
             activator,
             filter,
@@ -305,6 +311,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             trigger,
             effects,
             one_shot,
+            attach_to_previous_ability: _,
         } => {
             let (delayed_effects, _delayed_choices) =
                 compile_trigger_effects(Some(trigger), effects)?;
@@ -588,8 +595,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                         (vec![effect], choices)
                     }
                 }
-                TriggerSpec::DealsCombatDamageToPlayer { source, player }
-                | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => {
+                TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => {
                     let resolved_source = resolve_it_tag(source, &current_reference_env(ctx))?;
                     let trigger = ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
                         source: resolved_source.clone(),

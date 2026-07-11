@@ -1,0 +1,369 @@
+use crate::color::ColorSet;
+use crate::effect::Value;
+use crate::runtime_backend::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
+use winnow::combinator::alt;
+use winnow::prelude::*;
+
+use super::super::super::{leaf, primitives};
+use super::super::chain_splitting;
+use super::common;
+
+const HAND_REFERENCES: &[&[&str]] = &[
+    &["hand"],
+    &["your", "hand"],
+    &["their", "hand"],
+    &["that", "players", "hand"],
+];
+const TAGGED_REFERENCES: &[&[&str]] = &[&["it"], &["that", "card"], &["that", "token"]];
+const EQUAL_COUNT_PREFIXES: &[&[&str]] = &[
+    &["a", "number", "of", "cards", "equal", "to"],
+    &["the", "number", "of", "cards", "equal", "to"],
+    &["number", "of", "cards", "equal", "to"],
+];
+const SAME_MANA_VALUE_REFERENCES: &[&[&str]] = &[
+    &["with", "that", "spells", "mana", "value"],
+    &["with", "that", "spell's", "mana", "value"],
+    &[
+        "with", "the", "same", "mana", "value", "as", "that", "spell",
+    ],
+    &["with", "same", "mana", "value", "as", "that", "spell"],
+];
+const CHOSEN_COLOR_REFERENCES: &[&[&str]] = &[
+    &["of", "that", "color"],
+    &["that", "color"],
+    &["of", "the", "chosen", "color"],
+    &["the", "chosen", "color"],
+    &["of", "chosen", "color"],
+    &["chosen", "color"],
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DiscardShapeError {
+    MissingCount,
+    MissingCardKeyword,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum DiscardClauseShape<'a> {
+    Hand,
+    TaggedOne,
+    TaggedAll,
+    EqualCount {
+        count: Value,
+        trailing_tokens: &'a [OwnedLexToken],
+    },
+    Cards(DiscardCardsShape<'a>),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DiscardCardsShape<'a> {
+    pub(crate) uses_all_count: bool,
+    pub(crate) count: Value,
+    pub(crate) any_number: bool,
+    pub(crate) qualifier_tokens: &'a [OwnedLexToken],
+    pub(crate) trailing_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DiscardQualifierShape {
+    EmptyOrThe,
+    ChosenColor,
+    Colors(ColorSet),
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DiscardTrailingShape {
+    Empty,
+    Random,
+    ChosenName,
+    ChosenColor,
+    SameManaValueAsTriggering,
+    Colors(ColorSet),
+    Other,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DiscardAlternativeShape<'a> {
+    pub(crate) discard_tokens: &'a [OwnedLexToken],
+    pub(crate) alternative_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum DiscardUnlessShape<'a> {
+    None,
+    MissingPredicate,
+    Predicate(&'a [OwnedLexToken]),
+}
+
+fn discard_value_from_choice_count(count: crate::effect::ChoiceCount) -> Option<(Value, bool)> {
+    if count.is_any_number() {
+        return Some((Value::Fixed(0), true));
+    }
+    if count.is_dynamic_x() {
+        return Some((Value::X, false));
+    }
+    if count.min == 0
+        && let Some(max) = count.max
+    {
+        return Some((Value::Fixed(max as i32), false));
+    }
+    if count.min == count.max? {
+        return Some((Value::Fixed(count.min as i32), false));
+    }
+    None
+}
+
+fn equal_count_shape(tokens: &[OwnedLexToken]) -> Option<DiscardClauseShape<'_>> {
+    for prefix in EQUAL_COUNT_PREFIXES {
+        let Some((_, rest)) = primitives::parse_prefix(tokens, primitives::phrase(prefix).void())
+        else {
+            continue;
+        };
+        let (count, used) = crate::runtime_backend::util::parse_value(rest)?;
+        return Some(DiscardClauseShape::EqualCount {
+            count,
+            trailing_tokens: rest.get(used..)?,
+        });
+    }
+    None
+}
+
+pub(crate) fn parse_discard_clause_shape(
+    tokens: &[OwnedLexToken],
+) -> Result<DiscardClauseShape<'_>, DiscardShapeError> {
+    let words = parser_token_word_refs(tokens);
+    if common::exact_any(&words, HAND_REFERENCES) {
+        return Ok(DiscardClauseShape::Hand);
+    }
+    if common::exact_any(&words, TAGGED_REFERENCES) {
+        return Ok(DiscardClauseShape::TaggedOne);
+    }
+    if common::exact(&words, &["those", "cards"]) {
+        return Ok(DiscardClauseShape::TaggedAll);
+    }
+    if let Some(shape) = equal_count_shape(tokens) {
+        return Ok(shape);
+    }
+
+    let (uses_all_count, count, any_number, used) =
+        if let Some((_, rest)) = primitives::parse_prefix(tokens, primitives::kw("all").void()) {
+            (true, Value::Fixed(0), false, tokens.len() - rest.len())
+        } else if let Some((choice_count, used)) =
+            crate::runtime_backend::util::parse_choice_count_token_prefix_consumed(tokens)
+            && let Some((count, any_number)) = discard_value_from_choice_count(choice_count)
+        {
+            (false, count, any_number, used)
+        } else if let Some((count, used)) = crate::runtime_backend::util::parse_value(tokens) {
+            (false, count, false, used)
+        } else {
+            return Err(DiscardShapeError::MissingCount);
+        };
+
+    let rest = tokens
+        .get(used..)
+        .ok_or(DiscardShapeError::MissingCardKeyword)?;
+    let Some((card_offset, _, trailing_tokens)) = primitives::find_prefix(rest, || {
+        alt((
+            primitives::kw("card").void(),
+            primitives::kw("cards").void(),
+        ))
+    }) else {
+        return Err(DiscardShapeError::MissingCardKeyword);
+    };
+    Ok(DiscardClauseShape::Cards(DiscardCardsShape {
+        uses_all_count,
+        count,
+        any_number,
+        qualifier_tokens: &rest[..card_offset],
+        trailing_tokens,
+    }))
+}
+
+fn non_article_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    parser_token_word_refs(tokens)
+        .into_iter()
+        .filter(|word| leaf::parse_leaf_article_complete(word).is_err())
+        .collect()
+}
+
+fn chosen_color_reference(tokens: &[OwnedLexToken]) -> bool {
+    let raw_words = parser_token_word_refs(tokens);
+    let words = non_article_words(tokens);
+    common::exact_any(&raw_words, CHOSEN_COLOR_REFERENCES)
+        || common::exact_any(&words, CHOSEN_COLOR_REFERENCES)
+}
+
+fn color_set(tokens: &[OwnedLexToken]) -> Option<ColorSet> {
+    let words = non_article_words(tokens);
+    if words.is_empty() {
+        return None;
+    }
+    let mut colors = ColorSet::new();
+    let mut saw_color = false;
+    for word in words {
+        if word == "or" {
+            continue;
+        }
+        let color = leaf::parse_leaf_color_complete(word).ok()?;
+        colors = colors.union(color);
+        saw_color = true;
+    }
+    saw_color.then_some(colors)
+}
+
+pub(crate) fn parse_discard_qualifier_shape(tokens: &[OwnedLexToken]) -> DiscardQualifierShape {
+    let words = parser_token_word_refs(tokens);
+    if words.is_empty() || common::exact(&words, &["the"]) {
+        DiscardQualifierShape::EmptyOrThe
+    } else if chosen_color_reference(tokens) {
+        DiscardQualifierShape::ChosenColor
+    } else if let Some(colors) = color_set(tokens) {
+        DiscardQualifierShape::Colors(colors)
+    } else {
+        DiscardQualifierShape::Other
+    }
+}
+
+pub(crate) fn parse_discard_trailing_shape(tokens: &[OwnedLexToken]) -> DiscardTrailingShape {
+    let words = parser_token_word_refs(tokens);
+    if words.is_empty() {
+        DiscardTrailingShape::Empty
+    } else if common::exact(&words, &["at", "random"]) {
+        DiscardTrailingShape::Random
+    } else if common::exact(&words, &["with", "that", "name"]) {
+        DiscardTrailingShape::ChosenName
+    } else if chosen_color_reference(tokens) {
+        DiscardTrailingShape::ChosenColor
+    } else if common::exact_any(&words, SAME_MANA_VALUE_REFERENCES) {
+        DiscardTrailingShape::SameManaValueAsTriggering
+    } else if let Some(colors) = color_set(tokens) {
+        DiscardTrailingShape::Colors(colors)
+    } else {
+        DiscardTrailingShape::Other
+    }
+}
+
+pub(crate) fn parse_discard_alternative_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<DiscardAlternativeShape<'_>> {
+    let mut search_tokens = tokens;
+    let mut search_offset = 0usize;
+    while let Some((relative_offset, _, after_or)) =
+        primitives::find_prefix(search_tokens, || primitives::kw("or").void())
+    {
+        let marker_offset = search_offset + relative_offset;
+        let alternative_tokens =
+            crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(after_or);
+        let starts_new_action = chain_splitting::find_chain_verb_tokens(alternative_tokens)
+            .is_some_and(|found| found.word_index == 0)
+            || chain_splitting::has_extended_effect_head_tokens(alternative_tokens);
+        if !alternative_tokens.is_empty() && starts_new_action {
+            return Some(DiscardAlternativeShape {
+                discard_tokens: &tokens[..marker_offset],
+                alternative_tokens,
+            });
+        }
+
+        let consumed = search_tokens.len().saturating_sub(after_or.len());
+        search_offset += consumed;
+        search_tokens = after_or;
+    }
+    None
+}
+
+pub(crate) fn parse_discard_unless_shape(tokens: &[OwnedLexToken]) -> DiscardUnlessShape<'_> {
+    let tokens =
+        crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(tokens);
+    let Some((_, predicate_tokens)) =
+        primitives::parse_prefix(tokens, primitives::kw("unless").void())
+    else {
+        return DiscardUnlessShape::None;
+    };
+    let predicate_tokens =
+        crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(
+            predicate_tokens,
+        );
+    if predicate_tokens.is_empty() {
+        DiscardUnlessShape::MissingPredicate
+    } else {
+        DiscardUnlessShape::Predicate(predicate_tokens)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::runtime_backend::front_end::lexer::{
+        lex_line, parser_token_word_refs, render_token_slice,
+    };
+
+    use super::*;
+
+    #[test]
+    fn discard_clause_returns_typed_count_and_sides() {
+        let tokens = lex_line("two black cards at random", 0).unwrap();
+        let shape = parse_discard_clause_shape(&tokens).unwrap();
+        let DiscardClauseShape::Cards(cards) = shape else {
+            panic!("expected counted cards shape");
+        };
+        assert_eq!(cards.count, Value::Fixed(2));
+        assert_eq!(
+            parse_discard_qualifier_shape(cards.qualifier_tokens),
+            DiscardQualifierShape::Colors(ColorSet::BLACK)
+        );
+        assert_eq!(
+            parse_discard_trailing_shape(cards.trailing_tokens),
+            DiscardTrailingShape::Random
+        );
+    }
+
+    #[test]
+    fn discard_clause_preserves_equal_count_and_same_mana_reference() {
+        let tokens = lex_line(
+            "a number of cards equal to the damage dealt with the same mana value as that spell",
+            0,
+        )
+        .unwrap();
+        let shape = parse_discard_clause_shape(&tokens).unwrap();
+        assert!(matches!(shape, DiscardClauseShape::EqualCount { .. }));
+
+        let trailing = lex_line("with the same mana value as that spell", 0).unwrap();
+        assert_eq!(
+            parse_discard_trailing_shape(&trailing),
+            DiscardTrailingShape::SameManaValueAsTriggering
+        );
+    }
+
+    #[test]
+    fn chosen_color_qualifier_accepts_article_normalization() {
+        let tokens = lex_line("of the chosen color", 0).unwrap();
+        assert_eq!(
+            parse_discard_qualifier_shape(&tokens),
+            DiscardQualifierShape::ChosenColor
+        );
+    }
+
+    #[test]
+    fn alternative_shape_skips_color_or_and_finds_the_next_action() {
+        let tokens = lex_line("two black or red cards or sacrifice a creature", 0).unwrap();
+        let shape = parse_discard_alternative_shape(&tokens).unwrap();
+        assert_eq!(
+            parser_token_word_refs(shape.discard_tokens),
+            ["two", "black", "or", "red", "cards"]
+        );
+        assert_eq!(
+            parser_token_word_refs(shape.alternative_tokens),
+            ["sacrifice", "a", "creature"]
+        );
+    }
+
+    #[test]
+    fn discard_unless_shape_returns_typed_predicate_tokens() {
+        let tokens = lex_line("unless they pay {2}", 0).unwrap();
+        let DiscardUnlessShape::Predicate(predicate_tokens) = parse_discard_unless_shape(&tokens)
+        else {
+            panic!("expected discard unless predicate");
+        };
+        assert_eq!(render_token_slice(predicate_tokens), "they pay {2}");
+    }
+}

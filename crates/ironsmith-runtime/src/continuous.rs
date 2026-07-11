@@ -2784,6 +2784,11 @@ fn filter_matches_layered_fast(
     {
         return Some(false);
     }
+    if let Some(required_colors) = filter.required_colors
+        && !chars.colors.contains_all(required_colors)
+    {
+        return Some(false);
+    }
     if !filter.excluded_colors.is_empty()
         && !filter.excluded_colors.intersection(chars.colors).is_empty()
     {
@@ -2887,6 +2892,11 @@ fn filter_matches_layered_fast(
     if filter.has_x_in_cost && !object.mana_cost.as_ref().is_some_and(|cost| cost.has_x()) {
         return Some(false);
     }
+    if let Some(sticker) = filter.sticker
+        && game.sticker_count_on_object(object.id, sticker, None) == 0
+    {
+        return Some(false);
+    }
 
     let layered = LayeredSubject { object, chars };
     Some(filter.matches_layered_tail(&layered, filter_ctx, game))
@@ -2918,6 +2928,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.chosen_creature_type
         || filter.chosen_card_type
         || filter.excluded_chosen_creature_type
+        || filter.sticker.is_some()
         || filter.modified
         || filter.attacking
         || filter.attacked_this_turn
@@ -3569,20 +3580,6 @@ pub(crate) fn resolve_value_direct(
     controller: PlayerId,
     game: &crate::game_state::GameState,
 ) -> i32 {
-    fn type_sensitive_filter(filter: &ObjectFilter) -> bool {
-        !filter.card_types.is_empty()
-            || !filter.all_card_types.is_empty()
-            || !filter.excluded_card_types.is_empty()
-            || !filter.subtypes.is_empty()
-            || !filter.excluded_subtypes.is_empty()
-            || !filter.supertypes.is_empty()
-            || !filter.excluded_supertypes.is_empty()
-            || filter
-                .any_of
-                .iter()
-                .any(|candidate| type_sensitive_filter(candidate))
-    }
-
     fn count_filter_matches_direct(
         filter: &ObjectFilter,
         objects: &ObjectMap,
@@ -3601,13 +3598,8 @@ pub(crate) fn resolve_value_direct(
             game,
             current_object,
         };
-        if !type_sensitive_filter(filter) {
-            return count_filter_matches(filter, &ctx, filter_ctx);
-        }
-
         let mut count = 0i32;
         for_each_filter_candidate(&ctx, filter, |obj| {
-            let mut candidate = obj.clone();
             if let Some(chars) = calculate_characteristics_with_effects_simple(
                 obj.id,
                 objects,
@@ -3615,12 +3607,14 @@ pub(crate) fn resolve_value_direct(
                 battlefield,
                 commanders,
                 game,
+            ) && filter_matches_with_characteristics(
+                filter,
+                obj,
+                &chars,
+                game,
+                filter_ctx.you.unwrap_or(obj.owner),
+                filter_ctx.source.unwrap_or(current_object),
             ) {
-                candidate.card_types = chars.card_types.into();
-                candidate.subtypes = chars.subtypes.into();
-                candidate.supertypes = chars.supertypes.into();
-            }
-            if filter.matches_non_recursive(&candidate, filter_ctx, game) {
                 count += 1;
             }
         });
@@ -4772,7 +4766,20 @@ fn count_filter_matches(
 ) -> i32 {
     let mut count = 0i32;
     for_each_filter_candidate(ctx, filter, |obj| {
-        if filter.matches_non_recursive(obj, filter_ctx, ctx.game) {
+        let matches = ctx
+            .effects
+            .calculate_characteristics(obj.id, ctx.objects, ctx.battlefield, ctx.game)
+            .is_some_and(|chars| {
+                filter_matches_with_characteristics(
+                    filter,
+                    obj,
+                    &chars,
+                    ctx.game,
+                    filter_ctx.you.unwrap_or(obj.owner),
+                    filter_ctx.source.unwrap_or(ctx.current_object),
+                )
+            });
+        if matches {
             count += 1;
         }
     });
@@ -5046,12 +5053,7 @@ fn resolve_value_with_context(
                 .iter()
                 .filter(|player| player.is_in_game())
                 .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
-                .map(|player| match counter_type {
-                    crate::object::CounterType::Poison => player.poison_counters,
-                    crate::object::CounterType::Energy => player.energy_counters,
-                    crate::object::CounterType::Experience => player.experience_counters,
-                    _ => 0,
-                } as i32)
+                .map(|player| player.counter_count(*counter_type) as i32)
                 .sum()
         }
 

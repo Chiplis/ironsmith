@@ -1,26 +1,23 @@
 use super::super::activation_and_restrictions::activated_line_core::parse_named_number;
 use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::effects::{
-    split_for_each_opponent_doesnt_clause_lexed, split_for_each_player_doesnt_clause_lexed,
-    split_negated_who_this_way_filter_tokens_lexed,
+    CounterSpellConditionalKind, ForEachPlayerKind, split_for_each_opponent_doesnt_clause_lexed,
+    split_for_each_player_doesnt_clause_lexed, split_negated_who_this_way_filter_tokens_lexed,
 };
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::values as shared_values;
-use super::super::lexer::{
-    OwnedLexToken, token_word_refs, word_slice_contains_any_phrase, word_slice_contains_phrase,
-    word_slice_eq, word_slice_eq_any, word_slice_starts_with,
-};
+use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
-    find_index, rfind_index, slice_contains, slice_ends_with, slice_starts_with,
-    slice_strip_prefix, str_strip_prefix, str_strip_suffix,
+    items_end_with, items_have, items_start_with, locate_index, locate_last_index,
+    slice_strip_prefix,
 };
 use super::super::util::{
     is_article, is_permanent_type, is_source_reference_words, parse_card_type,
     parse_counter_type_word, parse_mana_symbol_word_flexible, parse_number,
     parse_subtype_word as parse_shared_subtype_word,
     parse_supertype_word as parse_shared_supertype_word, parse_target_phrase, parse_zone_word,
-    span_from_tokens, token_index_for_word_index, trim_commas, words,
+    span_from_tokens, trim_commas, words,
 };
 use super::super::value_helpers::parse_filter_comparison_tokens;
 use super::{parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed};
@@ -34,32 +31,6 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
-
-const COUNTER_TARGET_SPELL_IF_KICKED_WORDS: &[&str] =
-    &["counter", "target", "spell", "if", "it", "was", "kicked"];
-const COUNTER_TARGET_SECOND_SPELL_CAST_THIS_TURN_WORDS: &[&[&str]] = &[
-    &[
-        "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
-    ],
-    &[
-        "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this", "turn",
-    ],
-    &[
-        "counter", "target", "spell", "that's", "second", "spell", "cast", "this", "turn",
-    ],
-    &[
-        "counter", "target", "spell", "that's", "the", "second", "spell", "cast", "this", "turn",
-    ],
-    &[
-        "counter", "target", "spell", "that", "s", "second", "spell", "cast", "this", "turn",
-    ],
-    &[
-        "counter", "target", "spell", "that", "s", "the", "second", "spell", "cast", "this", "turn",
-    ],
-];
-const EXILE_TARGET_CREATURE_PREFIX: &[&str] = &["exile", "target", "creature"];
-const GREATEST_POWER_AMONG_CREATURES_PHRASE: &[&str] = &["greatest", "power", "among", "creatures"];
-const ON_BATTLEFIELD_PHRASES: &[&[&str]] = &[&["on", "battlefield"], &["on", "the", "battlefield"]];
 
 #[cfg(test)]
 pub(crate) fn parse_conditional_sentence_lexed(
@@ -149,51 +120,22 @@ pub(crate) fn parse_for_each_player_doesnt(
     Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }))
 }
 
-fn parse_for_each_doesnt_control_lose_game(
+pub(crate) fn parse_for_each_doesnt_control_lose_game(
     tokens: &[OwnedLexToken],
     opponent: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let split = if opponent {
-        split_for_each_opponent_doesnt_clause_lexed(tokens)
+    let Some(shape) = effect_grammar::parse_for_each_no_control_lose_game_tokens(tokens) else {
+        return Ok(None);
+    };
+    let expected_kind = if opponent {
+        ForEachPlayerKind::Opponent
     } else {
-        split_for_each_player_doesnt_clause_lexed(tokens)
+        ForEachPlayerKind::Player
     };
-    let Some(split) = split else {
-        return Ok(None);
-    };
-
-    let inner_words = crate::runtime_backend::token_word_refs(split.inner_tokens);
-    let verb_idx = split.negation_idx + split.negation_len;
-    if !inner_words
-        .get(verb_idx)
-        .is_some_and(|word| *word == "control")
-    {
+    if shape.player_kind != expected_kind {
         return Ok(None);
     }
-
-    let Some(lose_idx) = inner_words
-        .windows(3)
-        .enumerate()
-        .find_map(|(idx, window)| {
-            ((window[0] == "loses" || window[0] == "lose")
-                && window[1] == "the"
-                && window[2] == "game")
-                .then_some(idx)
-        })
-    else {
-        return Ok(None);
-    };
-    if lose_idx <= verb_idx + 1 {
-        return Ok(None);
-    }
-
-    let Some(filter_start) = token_index_for_word_index(split.inner_tokens, verb_idx + 1) else {
-        return Ok(None);
-    };
-    let Some(filter_end) = token_index_for_word_index(split.inner_tokens, lose_idx) else {
-        return Ok(None);
-    };
-    let filter_tokens = trim_commas(&split.inner_tokens[filter_start..filter_end]);
+    let filter_tokens = trim_commas(shape.filter_tokens);
     if filter_tokens.is_empty() {
         return Ok(None);
     }
@@ -245,12 +187,14 @@ fn parse_negated_who_this_way_predicate(
 pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
-    if !word_slice_eq(&clause_words, COUNTER_TARGET_SPELL_IF_KICKED_WORDS) {
+    let Some(shape) = effect_grammar::parse_counter_spell_conditional_tokens(tokens) else {
+        return Ok(None);
+    };
+    if shape.kind != CounterSpellConditionalKind::IfKicked {
         return Ok(None);
     }
 
-    let target = TargetAst::Spell(span_from_tokens(&tokens[1..3]));
+    let target = TargetAst::Spell(span_from_tokens(shape.target_tokens));
     let counter = EffectAst::subject_verb_counter(target);
     let effect = EffectAst::Conditional {
         predicate: PredicateAst::TargetWasKicked,
@@ -263,15 +207,14 @@ pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
 pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
-    if !word_slice_eq_any(
-        &clause_words,
-        COUNTER_TARGET_SECOND_SPELL_CAST_THIS_TURN_WORDS,
-    ) {
+    let Some(shape) = effect_grammar::parse_counter_spell_conditional_tokens(tokens) else {
+        return Ok(None);
+    };
+    if shape.kind != CounterSpellConditionalKind::SecondCastThisTurn {
         return Ok(None);
     }
 
-    let target = TargetAst::Spell(span_from_tokens(&tokens[1..3]));
+    let target = TargetAst::Spell(span_from_tokens(shape.target_tokens));
     let counter = EffectAst::subject_verb_counter(target);
     let effect = EffectAst::Conditional {
         predicate: PredicateAst::TargetSpellCastOrderThisTurn(2),
@@ -284,15 +227,11 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
 pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
-    if !word_slice_starts_with(&clause_words, EXILE_TARGET_CREATURE_PREFIX)
-        || !word_slice_contains_phrase(&clause_words, GREATEST_POWER_AMONG_CREATURES_PHRASE)
-        || !word_slice_contains_any_phrase(&clause_words, ON_BATTLEFIELD_PHRASES)
-    {
+    let Some(shape) = effect_grammar::parse_exile_greatest_power_creature_tokens(tokens) else {
         return Ok(None);
-    }
+    };
 
-    let target_tokens = trim_commas(&tokens[1..3]);
+    let target_tokens = trim_commas(shape.target_tokens);
     let target = parse_target_phrase(&target_tokens)?;
     let exile = EffectAst::subject_verb_exile(target.clone(), false);
     let effect = EffectAst::Conditional {

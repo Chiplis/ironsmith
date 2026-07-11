@@ -19,7 +19,7 @@ use std::sync::Arc;
 use crate::ability::{Ability, AbilityKind};
 use crate::card::LinkedFaceLayout;
 use crate::color::ColorSet;
-use crate::continuous::ContinuousEffect;
+use crate::continuous::{CalculatedCharacteristics, ContinuousEffect};
 use crate::ids::CardId;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::mana::ManaCost;
@@ -245,12 +245,21 @@ impl ObjectSnapshot {
         game: &crate::game_state::GameState,
         effects: &[ContinuousEffect],
     ) -> Self {
+        let calculated = game.calculated_characteristics_with_effects(obj.id, effects);
+        Self::from_object_with_known_characteristics(obj, game, calculated.as_ref())
+    }
+
+    /// Create a snapshot using characteristics already calculated for the same
+    /// game-state instant. Callers that batch characteristic work can use this
+    /// to preserve LKI without rerunning the layer system for each object.
+    pub fn from_object_with_known_characteristics(
+        obj: &Object,
+        game: &crate::game_state::GameState,
+        calculated: Option<&CalculatedCharacteristics>,
+    ) -> Self {
         let mut snapshot = Self::from_object(obj, game);
 
-        // If the object is on the battlefield, use calculated characteristics
-        // which include continuous effects like anthems, pumps, etc.
-        if let Some(calculated) = game.calculated_characteristics_with_effects(obj.id, effects) {
-            // Override with calculated values (these include continuous effects)
+        if let Some(calculated) = calculated {
             snapshot.compiled_card_text = calculated.compiled_card_text.to_string();
             snapshot.power = calculated.power;
             snapshot.toughness = calculated.toughness;

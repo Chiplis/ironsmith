@@ -1,22 +1,21 @@
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, KeywordAction, LineInfo,
-    ParsedAbility, PredicateAst, StaticAbilityAst, SubjectVerbActionAst, TargetAst, TriggerSpec,
+    CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, KeywordAction, ParsedAbility,
+    PredicateAst, StaticAbilityAst, SubjectVerbActionAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec, Value};
 use crate::filter::ObjectFilter;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::runtime_backend::token_primitives::is_static_keyword_marker_text;
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 
 use super::compile_support::{
-    collect_tag_spans_from_effects_with_context, compile_trigger_spec, effect_references_it_tag,
-    effects_reference_it_tag, effects_reference_its_controller, effects_reference_tag,
-    ensure_concrete_trigger_spec, inferred_trigger_player_filter,
+    compile_trigger_spec, effect_references_it_tag, effects_reference_it_tag,
+    effects_reference_its_controller, effects_reference_tag, ensure_concrete_trigger_spec,
+    inferred_trigger_player_filter, is_sentence_helper_exiled_collection_tag,
     materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
     materialize_prepared_triggered_effects, trigger_binds_player_reference_context,
     trigger_supports_event_value,
@@ -33,11 +32,10 @@ use super::effect_pipeline::{
     NormalizedPreparedAbility, PreparedEffectsForLowering, PreparedPredicateForLowering,
     PreparedTriggeredEffectsForLowering,
 };
-use super::lexer::{lex_line, token_slice_starts_with};
+use super::lexer::lex_line;
 use super::reference_model::{LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports};
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
 use super::static_ability_helpers::exalted_triggered_ability;
-use super::util::classify_instead_followup_text;
 
 fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
     match target {
@@ -375,6 +373,7 @@ pub(crate) fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&
         trigger,
         TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::ThisDealsCombatDamageTo(_)
+            | TriggerSpec::DealsDamageTo { .. }
             | TriggerSpec::DealsCombatDamageTo { .. }
     ) {
         Some("damaged")
@@ -567,8 +566,85 @@ fn has_prior_effect_before_it_reference(effects: &[EffectAst]) -> bool {
     false
 }
 
+fn tagged_target_key(target: &TargetAst) -> Option<&crate::cards::builders::TagKey> {
+    match target {
+        TargetAst::Tagged(tag, _) => Some(tag),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            tagged_target_key(inner)
+        }
+        _ => None,
+    }
+}
+
+/// Rebind a plural "return them" back-reference to the concrete helper tag
+/// established by the preceding typed choose/exile chain.  The parser emits
+/// `SOURCE_EXILED_TAG` as a cross-sentence placeholder; resolving it only from
+/// `last_object_tag` is too late because lowering the aggregate exile itself
+/// replaces that environment entry with the placeholder.  Preparing the
+/// typed chain here also lets the return remain explicitly plural.
+fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
+    let mut helper_choices = std::collections::HashMap::<String, (usize, bool)>::new();
+    let mut last_aggregate_exile = None;
+
+    for effect in effects {
+        if let EffectAst::ChooseObjects { tag, count, .. } = effect
+            && is_sentence_helper_exiled_collection_tag(tag.as_str())
+        {
+            let entry = helper_choices
+                .entry(tag.as_str().to_string())
+                .or_insert((0, false));
+            entry.0 += 1;
+            entry.1 |= count.max.map_or(true, |max| max > 1);
+        }
+
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::Exile { target, .. } = &subject_verb.action
+            && let Some(tag) = tagged_target_key(target)
+            && let Some((choice_count, explicitly_plural)) = helper_choices.get(tag.as_str())
+            && (*choice_count > 1 || *explicitly_plural)
+        {
+            last_aggregate_exile = Some(tag.clone());
+        }
+
+        if let Some(tag) = last_aggregate_exile.as_ref()
+            && let EffectAst::SubjectVerb(subject_verb) = effect
+        {
+            let replacement = match &subject_verb.action {
+                SubjectVerbActionAst::ReturnToBattlefield {
+                    target,
+                    tapped,
+                    transformed,
+                    converted,
+                    controller,
+                    count_value,
+                    as_aura,
+                } if tagged_target_key(target).is_some_and(|target_tag| {
+                    matches!(target_tag.as_str(), crate::tag::SOURCE_EXILED_TAG | IT_TAG)
+                }) && !*transformed
+                    && !*converted
+                    && count_value.is_none()
+                    && as_aura.is_none() =>
+                {
+                    Some(SubjectVerbActionAst::ReturnAllToBattlefield {
+                        filter: ObjectFilter::tagged(tag.clone()).in_zone(Zone::Exile),
+                        tapped: *tapped,
+                        face_down: false,
+                        controller: controller.clone(),
+                    })
+                }
+                _ => None,
+            };
+            if let Some(replacement) = replacement {
+                subject_verb.action = replacement;
+            }
+        }
+
+        for_each_nested_effects_mut(effect, true, rebind_aggregate_source_exiled_returns);
+    }
+}
+
 fn rewrite_prepare_effects_from_normalized(
-    semantic_effects: Vec<EffectAst>,
+    mut semantic_effects: Vec<EffectAst>,
     reference_effects: &[EffectAst],
     mut imports: ReferenceImports,
     config: EffectReferenceResolutionConfig,
@@ -577,6 +653,7 @@ fn rewrite_prepare_effects_from_normalized(
     default_last_object_prelude: Option<EffectPreludeTag>,
     include_trigger_prelude: bool,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
+    rebind_aggregate_source_exiled_returns(&mut semantic_effects);
     let mut prelude = Vec::new();
     for tag in ["equipped", "enchanted"] {
         if effects_reference_tag(reference_effects, tag) {
@@ -1200,12 +1277,6 @@ fn effect_produces_mana(effect: &crate::effect::Effect) -> bool {
     effect.contains_mana_production()
 }
 
-fn text_starts_with_if(text: &str) -> bool {
-    lex_line(text, 0)
-        .ok()
-        .is_some_and(|tokens| token_slice_starts_with(&tokens, &["if"]))
-}
-
 pub(crate) fn rewrite_lower_parsed_ability(
     parsed: ParsedAbility,
 ) -> Result<ParsedAbility, CardTextError> {
@@ -1226,8 +1297,6 @@ pub(crate) fn rewrite_apply_instead_followup_statement_to_last_ability(
     builder: &mut CardDefinitionBuilder,
     last_restrictable_ability: Option<usize>,
     effects: &[EffectAst],
-    info: &LineInfo,
-    annotations: &mut ParseAnnotations,
 ) -> Result<bool, CardTextError> {
     let Some(index) = last_restrictable_ability else {
         return Ok(false);
@@ -1236,13 +1305,15 @@ pub(crate) fn rewrite_apply_instead_followup_statement_to_last_ability(
         return Ok(false);
     }
 
-    let normalized = info.normalized.normalized.as_str().to_ascii_lowercase();
-    if !text_starts_with_if(normalized.as_str())
-        || !matches!(
-            classify_instead_followup_text(&normalized),
-            crate::cards::builders::InsteadSemantics::SelfReplacement
+    if !effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SelfReplacement {
+                attach_to_previous_ability: true,
+                ..
+            }
         )
-    {
+    }) {
         return Ok(false);
     }
 
@@ -1265,8 +1336,6 @@ pub(crate) fn rewrite_apply_instead_followup_statement_to_last_ability(
     if !compiled.choices.is_empty() {
         return Ok(false);
     }
-
-    collect_tag_spans_from_effects_with_context(effects, annotations, &info.normalized);
 
     match &mut builder.abilities[index].kind {
         AbilityKind::Triggered(ability) => {
@@ -1307,7 +1376,6 @@ pub(crate) fn rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
     builder: &mut CardDefinitionBuilder,
     last_restrictable_ability: Option<usize>,
     effects: &[EffectAst],
-    info: &LineInfo,
 ) -> Result<bool, CardTextError> {
     let Some(index) = last_restrictable_ability else {
         return Ok(false);
@@ -1316,13 +1384,15 @@ pub(crate) fn rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
         return Ok(false);
     }
 
-    let normalized = info.normalized.normalized.as_str().to_ascii_lowercase();
-    if !(normalized.starts_with("when that creature")
-        || normalized.starts_with("whenever that creature"))
-        || !effects
-            .iter()
-            .any(|effect| matches!(effect, EffectAst::DelayedTriggerThisTurn { .. }))
-    {
+    if !effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::DelayedTriggerThisTurn {
+                attach_to_previous_ability: true,
+                ..
+            }
+        )
+    }) {
         return Ok(false);
     }
 
@@ -1355,7 +1425,7 @@ pub(crate) fn rewrite_parsed_triggered_ability(
     functional_zones: Vec<Zone>,
     text: Option<String>,
     intervening_if: Option<crate::ConditionExpr>,
-    presentation_label: Option<&str>,
+    presentation_label: Option<&crate::ability::PresentationLabel>,
     reference_imports: impl Into<ReferenceImports>,
 ) -> ParsedAbility {
     let reference_imports = reference_imports.into();
@@ -1366,8 +1436,7 @@ pub(crate) fn rewrite_parsed_triggered_ability(
                 effects: crate::resolution::ResolutionProgram::default(),
                 choices: Vec::new(),
                 intervening_if,
-                presentation_label: presentation_label
-                    .map(crate::ability::PresentationLabel::from_ability_word),
+                presentation_label: presentation_label.cloned(),
             }),
             functional_zones,
         }
@@ -1561,20 +1630,12 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::Annihilator(amount) => Some(StaticAbility::keyword_marker(format!(
             "annihilator {amount}"
         ))),
-        KeywordAction::Marker(name) if supported_keyword_marker_text(name) => {
-            Some(StaticAbility::keyword_marker(name))
-        }
-        KeywordAction::MarkerText(text) if supported_keyword_marker_text(&text) => {
-            Some(StaticAbility::keyword_marker(text))
-        }
+        KeywordAction::StaticMarker(name) => Some(StaticAbility::keyword_marker(name)),
+        KeywordAction::StaticMarkerText(text) => Some(StaticAbility::keyword_marker(text)),
         KeywordAction::Marker(name) => Some(StaticAbility::keyword_fallback_text(name)),
         KeywordAction::MarkerText(text) => Some(StaticAbility::keyword_fallback_text(text)),
         _ => None,
     }
-}
-
-fn supported_keyword_marker_text(text: &str) -> bool {
-    is_static_keyword_marker_text(text)
 }
 
 fn rewrite_lower_keyword_action_or_err(
@@ -2178,4 +2239,30 @@ pub(crate) fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
         iterated_player_bound,
         context,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repeated_optional_exiles_prepare_plural_return_with_aggregate_tag() {
+        let tokens = lex_line(
+            "Exile up to one target artifact you control and up to one target creature you control. Then return them to the battlefield under their owners' control.",
+            0,
+        )
+        .expect("lex");
+        let effects =
+            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
+                .expect("parse");
+        let prepared = rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())
+            .expect("prepare");
+        let debug = format!("{:#?}", prepared.effects);
+
+        assert!(
+            debug.contains("ReturnAllToBattlefield")
+                && !debug.contains(crate::tag::SOURCE_EXILED_TAG),
+            "expected aggregate helper tag to replace the plural placeholder, got {debug}"
+        );
+    }
 }

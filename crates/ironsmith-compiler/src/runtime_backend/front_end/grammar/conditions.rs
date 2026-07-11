@@ -1,3 +1,8 @@
+use winnow::Parser;
+use winnow::combinator::{alt, opt};
+use winnow::error::ModalResult as WResult;
+use winnow::prelude::*;
+
 use crate::cards::builders::{DamageBySpec, PlayerAst};
 use crate::color::ColorSet;
 use crate::effect::{Comparison, Value, ValueComparisonOperator};
@@ -6,11 +11,8 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
-use super::super::lex_patterns::{
-    LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
-};
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, TokenWordView, render_token_slice, token_slice_first_is_any,
+    LexStream, LexedClause, OwnedLexToken, TokenWordView, render_token_slice,
 };
 use super::super::util::{
     comparison_to_at_least_threshold, comparison_to_strict_at_least_threshold,
@@ -19,7 +21,21 @@ use super::super::util::{
     parse_quantity_comparison_prefix_words, parse_subtype_flexible, trim_edge_punctuation_tokens,
 };
 use super::filters::parse_object_filter_with_grammar_entrypoint;
+use super::leaf::{
+    LeafPlayerReference, LeafPlayerReferenceMode, parse_leaf_player_reference_tokens,
+    parse_leaf_player_reference_words,
+};
+use super::primitives;
 use crate::runtime_backend::object_filters::parse_object_filter_words;
+
+#[path = "conditions/event_shapes.rs"]
+mod event_shapes;
+#[path = "conditions/relation_shapes.rs"]
+mod relation_shapes;
+#[path = "conditions/status_shapes.rs"]
+mod status_shapes;
+#[path = "conditions/zone_change_shapes.rs"]
+mod zone_change_shapes;
 
 #[derive(Debug, Clone, PartialEq)]
 enum LifeRelationShape {
@@ -35,26 +51,9 @@ enum CardsInHandRelationShape {
     MoreThanEachOtherPlayer,
 }
 
-const CONTROL_ACTION_PHRASES: &[&[&str]] = &[&["control"], &["controls"]];
-const CONTROL_ACTION_WORDS: &[&str] = &["control", "controls"];
-const CONTROL_OR_CONTROLLED_ACTION_PHRASES: &[&[&str]] = &[&["control"], &["controlled"]];
-const CONTROL_OR_CONTROLLED_ACTION_WORDS: &[&str] = &["control", "controlled"];
-const HAS_ACTION_PHRASES: &[&[&str]] = &[&["has"], &["have"]];
-const HAS_ACTION_WORDS: &[&str] = &["has", "have"];
-const COPULA_ACTION_PHRASES: &[&[&str]] = &[&["is"], &["are"]];
-const COPULA_ACTION_WORDS: &[&str] = &["is", "are"];
-const CONTROL_DIFFERENT_POWERS_TAILS: &[&[&str]] = &[
-    &["with", "different", "powers"],
-    &["with", "different", "power"],
-];
-const CONTROL_NEGATION_PHRASES: &[&[&str]] = &[&["dont"], &["don't"], &["do", "not"]];
-
-fn clause_matches_phrase(clause: LexedClause<'_>, phrase: &[&str]) -> bool {
-    LexPattern::new(&[LexPattern::phrase(phrase)]).matches_clause(clause)
-}
-
-fn clause_matches_any_phrase(clause: LexedClause<'_>, phrases: &[&[&str]]) -> bool {
-    LexPattern::new(&[LexPattern::any_phrase(phrases)]).matches_clause(clause)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ControlConditionFilterSuffix {
+    DifferentPowers,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -231,6 +230,20 @@ pub(crate) enum PlayerCardsInHandRelationAst {
 pub(crate) struct PlayerCardsInHandRelationConditionAst {
     pub(crate) player: PlayerFilter,
     pub(crate) relation: PlayerCardsInHandRelationAst,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TargetSetPredicateAst {
+    DifferentColorSets,
+}
+
+/// Parse a predicate that relates the object targets selected by the enclosing
+/// spell or ability. These predicates intentionally carry no card identity or
+/// effect-specific behavior; they lower to reusable resolution conditions.
+pub(crate) fn parse_target_set_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<TargetSetPredicateAst> {
+    relation_shapes::parse_target_set_predicate(tokens)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -524,51 +537,16 @@ pub(crate) fn parse_control_condition_words(
     words: &[&str],
     options: ControlConditionOptions,
 ) -> Option<ControlConditionAst> {
-    let basic_atoms = [
-        LexPattern::subject(
-            "subject",
-            LexCaptureKind::UntilAnyPhrase(CONTROL_ACTION_PHRASES),
-        ),
-        LexPattern::action("action", LexCaptureKind::OneOf(CONTROL_ACTION_WORDS)),
-        LexPattern::tail("amount_and_object", LexCaptureKind::OneOrMoreWords),
-    ];
-    let modifier_atoms = [
-        LexPattern::subject(
-            "subject",
-            LexCaptureKind::UntilAnyPhrase(CONTROL_ACTION_PHRASES),
-        ),
-        LexPattern::action("action", LexCaptureKind::OneOf(CONTROL_ACTION_WORDS)),
-        LexPattern::tail(
-            "amount_and_object",
-            LexCaptureKind::UntilLastAnyPhrase(CONTROL_DIFFERENT_POWERS_TAILS),
-        ),
-        LexPattern::modifier("modifier", LexCaptureKind::OneOf(&["with"])),
-        LexPattern::phrase(&["different"]),
-        LexPattern::any_word(&["powers", "power"]),
-    ];
-    let matched = if options.allow_different_powers_tail {
-        LexPattern::new(&modifier_atoms)
-            .match_word_refs(words)
-            .or_else(|| LexPattern::new(&basic_atoms).match_word_refs(words))?
-    } else {
-        LexPattern::new(&basic_atoms).match_word_refs(words)?
-    };
-    let subject_range = matched
-        .capture_by_role(LexCaptureRole::Subject)?
-        .word_range
-        .clone();
-    let tail_range = matched
-        .capture_by_role(LexCaptureRole::Tail)?
-        .word_range
-        .clone();
+    let shape =
+        relation_shapes::parse_control_relation_words(words, options.allow_different_powers_tail)?;
     let (player, player_filter) =
-        parse_control_condition_subject_words(&words[subject_range], options)?;
+        parse_control_condition_subject_words(shape.subject_words, options)?;
     finish_control_condition_words(
         player,
         player_filter,
-        &words[..tail_range.start],
-        &words[tail_range],
-        matched.capture_by_role(LexCaptureRole::Modifier).is_some(),
+        shape.prefix_words,
+        shape.tail_words,
+        shape.has_different_powers_modifier,
         options,
     )
 }
@@ -611,7 +589,7 @@ pub(crate) fn parse_copula_relation_clauses(
     tokens: &[OwnedLexToken],
 ) -> Option<CopulaRelationClauses<'_>> {
     let captured =
-        match_possession_relation_shape(tokens, COPULA_ACTION_PHRASES, COPULA_ACTION_WORDS, None)?;
+        match_possession_relation_shape(tokens, relation_shapes::PossessionAction::Copula, false)?;
     Some(CopulaRelationClauses {
         subject_clause: captured.subject_clause,
         tail_clause: LexedClause::new(captured.tail_tokens).trimmed(),
@@ -622,40 +600,17 @@ pub(crate) fn parse_prepositional_copula_relation_clauses<'a>(
     tokens: &'a [OwnedLexToken],
     preposition_words: &[&str],
 ) -> Option<PrepositionalCopulaRelationClauses<'a>> {
-    let clause = LexedClause::new(tokens);
-    let atoms = [
-        LexPattern::subject(
-            "subject",
-            LexCaptureKind::UntilAnyPhrase(COPULA_ACTION_PHRASES),
-        ),
-        LexPattern::action("copula", LexCaptureKind::OneOf(COPULA_ACTION_WORDS)),
-        LexPattern::modifier("preposition", LexCaptureKind::OneOf(preposition_words)),
-        LexPattern::tail("tail", LexCaptureKind::OneOrMoreWords),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let shape = relation_shapes::parse_prepositional_copula(tokens, preposition_words)?;
     Some(PrepositionalCopulaRelationClauses {
-        subject_clause: matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?,
-        preposition_clause: matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?,
-        tail_clause: matched
-            .capture_clause_by_role(LexCaptureRole::Tail, clause)?
-            .trimmed(),
+        subject_clause: LexedClause::new(shape.subject_tokens),
+        preposition_clause: LexedClause::new(shape.preposition_tokens),
+        tail_clause: LexedClause::new(shape.tail_tokens).trimmed(),
     })
 }
 
 pub(crate) fn parse_existential_object_clause(tokens: &[OwnedLexToken]) -> Option<LexedClause<'_>> {
-    let clause = LexedClause::new(tokens);
-    let optional_copula = [LexPattern::action(
-        "copula",
-        LexCaptureKind::OneOf(COPULA_ACTION_WORDS),
-    )];
-    let atoms = [
-        LexPattern::subject("existential", LexCaptureKind::OneOf(&["there"])),
-        LexPattern::optional(&optional_copula),
-        LexPattern::object("object", LexCaptureKind::OneOrMoreWords),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    matched
-        .capture_clause_by_role(LexCaptureRole::Object, clause)
+    relation_shapes::parse_existential_object(tokens)
+        .map(LexedClause::new)
         .map(LexedClause::trimmed)
 }
 
@@ -663,7 +618,7 @@ pub(crate) fn parse_has_relation_clauses(
     tokens: &[OwnedLexToken],
 ) -> Option<HasRelationClauses<'_>> {
     let captured =
-        match_possession_relation_shape(tokens, HAS_ACTION_PHRASES, HAS_ACTION_WORDS, None)?;
+        match_possession_relation_shape(tokens, relation_shapes::PossessionAction::Has, false)?;
     Some(HasRelationClauses {
         subject_clause: captured.subject_clause,
         tail_clause: LexedClause::new(captured.tail_tokens).trimmed(),
@@ -676,13 +631,8 @@ pub(crate) fn parse_control_relation_clauses(
 ) -> Option<ControlRelationClauses<'_>> {
     let captured = match_possession_relation_shape(
         tokens,
-        CONTROL_ACTION_PHRASES,
-        CONTROL_ACTION_WORDS,
-        if allow_different_powers_tail {
-            Some(CONTROL_DIFFERENT_POWERS_TAILS)
-        } else {
-            None
-        },
+        relation_shapes::PossessionAction::Control,
+        allow_different_powers_tail,
     )?;
     Some(ControlRelationClauses {
         subject_clause: captured.subject_clause,
@@ -695,9 +645,8 @@ pub(crate) fn parse_control_or_controlled_relation_clauses(
 ) -> Option<ControlRelationClauses<'_>> {
     let captured = match_possession_relation_shape(
         tokens,
-        CONTROL_OR_CONTROLLED_ACTION_PHRASES,
-        CONTROL_OR_CONTROLLED_ACTION_WORDS,
-        None,
+        relation_shapes::PossessionAction::ControlOrControlled,
+        false,
     )?;
     Some(ControlRelationClauses {
         subject_clause: captured.subject_clause,
@@ -708,80 +657,26 @@ pub(crate) fn parse_control_or_controlled_relation_clauses(
 pub(crate) fn parse_negated_control_relation_clauses(
     tokens: &[OwnedLexToken],
 ) -> Option<NegatedControlRelationClauses<'_>> {
-    let clause = LexedClause::new(tokens);
-    let atoms = [
-        LexPattern::subject(
-            "subject",
-            LexCaptureKind::UntilAnyPhrase(CONTROL_NEGATION_PHRASES),
-        ),
-        LexPattern::modifier(
-            "negation",
-            LexCaptureKind::OneOfPhrase(CONTROL_NEGATION_PHRASES),
-        ),
-        LexPattern::action("action", LexCaptureKind::OneOf(CONTROL_ACTION_WORDS)),
-        LexPattern::tail("amount_and_object", LexCaptureKind::OneOrMoreWords),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let shape = relation_shapes::parse_negated_control(tokens)?;
     Some(NegatedControlRelationClauses {
-        subject_clause: matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?,
-        negation_clause: matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?,
-        tail_clause: matched
-            .capture_clause_by_role(LexCaptureRole::Tail, clause)?
-            .trimmed(),
+        subject_clause: LexedClause::new(shape.subject_tokens),
+        negation_clause: LexedClause::new(shape.negation_tokens),
+        tail_clause: LexedClause::new(shape.tail_tokens).trimmed(),
     })
 }
 
-fn match_possession_relation_shape<'a>(
-    tokens: &'a [OwnedLexToken],
-    action_phrases: &[&[&str]],
-    action_words: &[&str],
-    modifier_tail_phrases: Option<&[&[&str]]>,
-) -> Option<PossessionRelationCapture<'a>> {
-    let clause = LexedClause::new(tokens);
-    let basic_atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
-        LexPattern::action("action", LexCaptureKind::OneOf(action_words)),
-        LexPattern::tail("amount_and_object", LexCaptureKind::OneOrMoreWords),
-    ];
-    let build_capture = |matched: LexPatternMatch<'_>| -> Option<PossessionRelationCapture<'a>> {
-        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-        let tail_capture = matched.capture_by_role(LexCaptureRole::Tail)?;
-        let tail_range = clause.words().token_range_for_word_range(
-            tail_capture.word_range.start,
-            tail_capture.word_range.end,
-        )?;
-        let prefix_range = clause
-            .words()
-            .token_range_for_word_range(0, tail_capture.word_range.start)?;
-
-        Some(PossessionRelationCapture {
-            subject_clause,
-            prefix_tokens: tokens.get(prefix_range)?,
-            tail_tokens: tokens.get(tail_range)?,
-            has_modifier: matched.capture_by_role(LexCaptureRole::Modifier).is_some(),
-        })
-    };
-
-    if let Some(modifier_tail_phrases) = modifier_tail_phrases {
-        let modifier_atoms = [
-            LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
-            LexPattern::action("action", LexCaptureKind::OneOf(action_words)),
-            LexPattern::tail(
-                "amount_and_object",
-                LexCaptureKind::UntilLastAnyPhrase(modifier_tail_phrases),
-            ),
-            LexPattern::modifier("modifier", LexCaptureKind::OneOf(&["with"])),
-            LexPattern::phrase(&["different"]),
-            LexPattern::any_word(&["powers", "power"]),
-        ];
-        let matched = LexPattern::new(&modifier_atoms)
-            .match_clause(clause)
-            .or_else(|| LexPattern::new(&basic_atoms).match_clause(clause))?;
-        return build_capture(matched);
-    } else {
-        let matched = LexPattern::new(&basic_atoms).match_clause(clause)?;
-        build_capture(matched)
-    }
+fn match_possession_relation_shape(
+    tokens: &[OwnedLexToken],
+    action: relation_shapes::PossessionAction,
+    allow_different_powers: bool,
+) -> Option<PossessionRelationCapture<'_>> {
+    let shape = relation_shapes::parse_possession_relation(tokens, action, allow_different_powers)?;
+    Some(PossessionRelationCapture {
+        subject_clause: LexedClause::new(shape.subject_tokens),
+        prefix_tokens: shape.prefix_tokens,
+        tail_tokens: shape.tail_tokens,
+        has_modifier: shape.has_different_powers_modifier,
+    })
 }
 
 fn parse_control_condition_shape(
@@ -790,13 +685,8 @@ fn parse_control_condition_shape(
 ) -> Option<ControlConditionAst> {
     let captured = match_possession_relation_shape(
         tokens,
-        CONTROL_ACTION_PHRASES,
-        CONTROL_ACTION_WORDS,
-        if options.allow_different_powers_tail {
-            Some(CONTROL_DIFFERENT_POWERS_TAILS)
-        } else {
-            None
-        },
+        relation_shapes::PossessionAction::Control,
+        options.allow_different_powers_tail,
     )?;
 
     let (player, player_filter) =
@@ -816,56 +706,42 @@ fn parse_control_condition_subject_clause(
     clause: LexedClause<'_>,
     options: ControlConditionOptions,
 ) -> Option<(PlayerAst, Option<PlayerFilter>)> {
-    if clause_matches_phrase(clause, &["you"]) {
-        return Some((PlayerAst::You, Some(PlayerFilter::You)));
-    }
-    if options.allow_that_player && clause_matches_phrase(clause, &["that", "player"]) {
-        return Some((PlayerAst::That, None));
-    }
-    if options.allow_opponent_players
-        && clause_matches_any_phrase(
-            clause,
-            &[
-                &["opponent"],
-                &["opponents"],
-                &["an", "opponent"],
-                &["your", "opponents"],
-            ],
-        )
-    {
-        return Some((PlayerAst::Opponent, Some(PlayerFilter::Opponent)));
-    }
-    if options.allow_defending_player && clause_matches_phrase(clause, &["defending", "player"]) {
-        return Some((PlayerAst::Defending, Some(PlayerFilter::Defending)));
-    }
-    None
+    let reference = parse_leaf_player_reference_tokens(
+        clause.tokens(),
+        control_subject_reference_mode(options),
+    )?;
+    lower_control_subject_reference(reference)
 }
 
 fn parse_control_condition_subject_words(
     words: &[&str],
     options: ControlConditionOptions,
 ) -> Option<(PlayerAst, Option<PlayerFilter>)> {
-    if words == ["you"] {
-        return Some((PlayerAst::You, Some(PlayerFilter::You)));
+    let reference =
+        parse_leaf_player_reference_words(words, control_subject_reference_mode(options))?;
+    lower_control_subject_reference(reference)
+}
+
+fn control_subject_reference_mode(options: ControlConditionOptions) -> LeafPlayerReferenceMode {
+    LeafPlayerReferenceMode::ControlSubject {
+        allow_that_player: options.allow_that_player,
+        allow_opponent_players: options.allow_opponent_players,
+        allow_defending_player: options.allow_defending_player,
     }
-    if options.allow_that_player && words == ["that", "player"] {
-        return Some((PlayerAst::That, None));
+}
+
+fn lower_control_subject_reference(
+    reference: LeafPlayerReference,
+) -> Option<(PlayerAst, Option<PlayerFilter>)> {
+    match reference {
+        LeafPlayerReference::You => Some((PlayerAst::You, Some(PlayerFilter::You))),
+        LeafPlayerReference::ThatPlayer => Some((PlayerAst::That, None)),
+        LeafPlayerReference::Opponent => Some((PlayerAst::Opponent, Some(PlayerFilter::Opponent))),
+        LeafPlayerReference::DefendingPlayer => {
+            Some((PlayerAst::Defending, Some(PlayerFilter::Defending)))
+        }
+        _ => None,
     }
-    if options.allow_opponent_players
-        && [
-            &["opponent"][..],
-            &["opponents"][..],
-            &["an", "opponent"][..],
-            &["your", "opponents"][..],
-        ]
-        .contains(&words)
-    {
-        return Some((PlayerAst::Opponent, Some(PlayerFilter::Opponent)));
-    }
-    if options.allow_defending_player && words == ["defending", "player"] {
-        return Some((PlayerAst::Defending, Some(PlayerFilter::Defending)));
-    }
-    None
 }
 
 fn finish_control_condition(
@@ -889,14 +765,11 @@ fn finish_control_condition(
     if filter_tokens.is_empty() {
         return None;
     }
+    let different_powers_suffix = split_control_condition_filter_suffix(filter_tokens);
     let requires_different_powers = captured_requires_different_powers
-        || options.allow_different_powers_tail
-            && (token_words_end_with(filter_tokens, &["with", "different", "powers"])
-                || token_words_end_with(filter_tokens, &["with", "different", "power"]));
+        || options.allow_different_powers_tail && different_powers_suffix.is_some();
     if requires_different_powers {
-        filter_tokens = trim_edge_punctuation_tokens(
-            filter_tokens.get(..filter_tokens.len().saturating_sub(3))?,
-        );
+        filter_tokens = trim_edge_punctuation_tokens(different_powers_suffix?.0);
         if filter_tokens.is_empty() {
             return None;
         }
@@ -963,12 +836,11 @@ fn finish_control_condition_words(
     if filter_words.is_empty() {
         return None;
     }
+    let different_powers_suffix = split_control_condition_filter_suffix_words(filter_words);
     let requires_different_powers = captured_requires_different_powers
-        || options.allow_different_powers_tail
-            && (filter_words.ends_with(&["with", "different", "powers"])
-                || filter_words.ends_with(&["with", "different", "power"]));
+        || options.allow_different_powers_tail && different_powers_suffix.is_some();
     if requires_different_powers {
-        filter_words = filter_words.get(..filter_words.len().saturating_sub(3))?;
+        filter_words = different_powers_suffix?.0;
         if filter_words.is_empty() {
             return None;
         }
@@ -1022,9 +894,8 @@ fn parse_ownership_condition_shape(
     tokens: &[OwnedLexToken],
     options: OwnershipConditionOptions,
 ) -> Option<OwnershipConditionAst> {
-    let action_phrases: &[&[&str]] = &[&["own"], &["owns"]];
-    let action_words = &["own", "owns"];
-    let captured = match_possession_relation_shape(tokens, action_phrases, action_words, None)?;
+    let captured =
+        match_possession_relation_shape(tokens, relation_shapes::PossessionAction::Own, false)?;
     let (player, player_filter) =
         parse_ownership_condition_subject_clause(captured.subject_clause, options)?;
 
@@ -1035,23 +906,17 @@ fn parse_ownership_condition_subject_clause(
     clause: LexedClause<'_>,
     options: OwnershipConditionOptions,
 ) -> Option<(PlayerAst, Option<PlayerFilter>)> {
-    if clause_matches_phrase(clause, &["you"]) {
-        return Some((PlayerAst::You, Some(PlayerFilter::You)));
+    let reference = parse_leaf_player_reference_tokens(
+        clause.tokens(),
+        LeafPlayerReferenceMode::OwnershipSubject {
+            allow_opponent_players: options.allow_opponent_players,
+        },
+    )?;
+    match reference {
+        LeafPlayerReference::You => Some((PlayerAst::You, Some(PlayerFilter::You))),
+        LeafPlayerReference::Opponent => Some((PlayerAst::Opponent, Some(PlayerFilter::Opponent))),
+        _ => None,
     }
-    if options.allow_opponent_players
-        && clause_matches_any_phrase(
-            clause,
-            &[
-                &["opponent"],
-                &["opponents"],
-                &["an", "opponent"],
-                &["your", "opponents"],
-            ],
-        )
-    {
-        return Some((PlayerAst::Opponent, Some(PlayerFilter::Opponent)));
-    }
-    None
 }
 
 fn finish_ownership_condition(
@@ -1107,132 +972,7 @@ pub(crate) fn parse_subject_status_condition(
 }
 
 fn parse_subject_status_shape(tokens: &[OwnedLexToken]) -> Option<SubjectStatusConditionAst> {
-    let state_words = &[
-        "attacking",
-        "enchanted",
-        "equipped",
-        "monstrous",
-        "tapped",
-        "untapped",
-    ];
-    parse_subject_status_shape_with_copula(tokens, state_words)
-        .or_else(|| parse_subject_status_shape_without_copula(tokens, state_words))
-}
-
-fn parse_subject_status_shape_with_copula(
-    tokens: &[OwnedLexToken],
-    state_words: &[&str],
-) -> Option<SubjectStatusConditionAst> {
-    let relation = parse_copula_relation_clauses(tokens)?;
-    let state_atoms = [LexPattern::object(
-        "state",
-        LexCaptureKind::OneOf(state_words),
-    )];
-    let state_match = LexPattern::new(&state_atoms).match_clause(relation.tail_clause)?;
-    let subject = parse_subject_status_subject_clause(relation.subject_clause)?;
-    let state_clause =
-        state_match.capture_clause_by_role(LexCaptureRole::Object, relation.tail_clause)?;
-    let state = parse_subject_status_state_clause(state_clause)?;
-
-    Some(SubjectStatusConditionAst { subject, state })
-}
-
-fn parse_subject_status_shape_without_copula(
-    tokens: &[OwnedLexToken],
-    state_words: &[&str],
-) -> Option<SubjectStatusConditionAst> {
-    if let Some(parsed) = parse_subject_status_shape_without_copula_rightmost(tokens, state_words) {
-        return Some(parsed);
-    }
-    let clause = LexedClause::new(tokens);
-    let state_phrases: &[&[&str]] = &[
-        &["attacking"],
-        &["enchanted"],
-        &["equipped"],
-        &["monstrous"],
-        &["tapped"],
-        &["untapped"],
-    ];
-    let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(state_phrases)),
-        LexPattern::object("state", LexCaptureKind::OneOf(state_words)),
-    ];
-    parse_subject_status_match(
-        tokens,
-        LexPattern::new(&atoms).match_clause(clause)?,
-        clause,
-    )
-}
-
-fn parse_subject_status_shape_without_copula_rightmost(
-    tokens: &[OwnedLexToken],
-    state_words: &[&str],
-) -> Option<SubjectStatusConditionAst> {
-    let words = TokenWordView::new(tokens);
-    let state_word_idx = (1..words.len())
-        .rev()
-        .find(|idx| state_words.iter().any(|state| words.at_is(*idx, state)))?;
-    let subject_range = words.token_range_for_word_range(0, state_word_idx)?;
-    let state_range = words.token_range_for_word_range(state_word_idx, state_word_idx + 1)?;
-    let subject = parse_subject_status_subject_clause(LexedClause::new(&tokens[subject_range]))?;
-    let state = parse_subject_status_state_clause(LexedClause::new(&tokens[state_range]))?;
-    Some(SubjectStatusConditionAst { subject, state })
-}
-
-fn parse_subject_status_match(
-    _tokens: &[OwnedLexToken],
-    matched: LexPatternMatch<'_>,
-    clause: LexedClause<'_>,
-) -> Option<SubjectStatusConditionAst> {
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let subject = parse_subject_status_subject_clause(subject_clause)?;
-    let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let state = parse_subject_status_state_clause(state_clause)?;
-
-    Some(SubjectStatusConditionAst { subject, state })
-}
-
-fn parse_subject_status_subject_clause(
-    clause: LexedClause<'_>,
-) -> Option<StatusConditionSubjectAst> {
-    if clause_matches_any_phrase(
-        clause,
-        &[
-            &["this", "creature"],
-            &["this", "permanent"],
-            &["this"],
-            &["it"],
-            &["its"],
-        ],
-    ) {
-        return Some(StatusConditionSubjectAst::Source);
-    }
-    if clause_matches_phrase(clause, &["equipped", "creature"]) {
-        return Some(StatusConditionSubjectAst::EquippedCreature);
-    }
-    None
-}
-
-fn parse_subject_status_state_clause(clause: LexedClause<'_>) -> Option<StatusConditionStateAst> {
-    if clause_matches_phrase(clause, &["equipped"]) {
-        return Some(StatusConditionStateAst::Equipped);
-    }
-    if clause_matches_phrase(clause, &["enchanted"]) {
-        return Some(StatusConditionStateAst::Enchanted);
-    }
-    if clause_matches_phrase(clause, &["tapped"]) {
-        return Some(StatusConditionStateAst::Tapped);
-    }
-    if clause_matches_phrase(clause, &["untapped"]) {
-        return Some(StatusConditionStateAst::Untapped);
-    }
-    if clause_matches_phrase(clause, &["attacking"]) {
-        return Some(StatusConditionStateAst::Attacking);
-    }
-    if clause_matches_phrase(clause, &["monstrous"]) {
-        return Some(StatusConditionStateAst::Monstrous);
-    }
-    None
+    status_shapes::parse_subject_status(tokens)
 }
 
 pub(crate) fn parse_subject_descriptor_condition(
@@ -1261,29 +1001,19 @@ fn parse_subject_descriptor_shape(
 fn parse_subject_descriptor_subject_clause(
     clause: LexedClause<'_>,
 ) -> Option<SubjectDescriptorConditionSubjectAst> {
-    if clause_matches_phrase(clause, &["enchanted", "permanent"]) {
-        return Some(SubjectDescriptorConditionSubjectAst::EnchantedPermanent);
-    }
-    if clause_matches_any_phrase(
-        clause,
-        &[
-            &["equipped", "creature"],
-            &["equipped", "permanent"],
-            &["enchanted", "artifact"],
-            &["enchanted", "creature"],
-            &["enchanted", "land"],
-        ],
-    ) {
-        return Some(SubjectDescriptorConditionSubjectAst::AttachedObject);
-    }
-    None
+    status_shapes::parse_subject_descriptor_subject(clause.tokens())
 }
 
 fn parse_object_descriptor_clause(clause: LexedClause<'_>) -> Option<ObjectDescriptorAst> {
-    let mut tokens = clause.trimmed().tokens();
-    if token_slice_first_is_any(tokens, &["a", "an", "the"]) {
-        tokens = &tokens[1..];
-    }
+    let (_, tokens) = primitives::parse_prefix(
+        clause.trimmed().tokens(),
+        opt(alt((
+            primitives::kw("a"),
+            primitives::kw("an"),
+            primitives::kw("the"),
+        )))
+        .void(),
+    )?;
     let [descriptor] = tokens else {
         return None;
     };
@@ -1299,77 +1029,27 @@ pub(crate) fn parse_player_status_condition(
 pub(crate) fn parse_player_status_condition_words(
     words: &[&str],
 ) -> Option<PlayerStatusConditionAst> {
-    let shortcut_atoms = [
-        LexPattern::subject("subject", LexCaptureKind::OneOf(&["youre"])),
-        LexPattern::object("status", LexCaptureKind::Rest),
-    ];
-    if let Some(matched) = LexPattern::new(&shortcut_atoms).match_word_refs(words) {
-        let status_range = matched
-            .capture_by_role(LexCaptureRole::Object)?
-            .word_range
-            .clone();
-        let status = parse_player_status_tail_words(&words[status_range])?;
-        return Some(PlayerStatusConditionAst {
-            player: PlayerFilter::You,
-            status,
-        });
-    }
-
-    let action_words = &["are", "have", "has", "is"];
-    let action_phrases: &[&[&str]] = &[&["are"], &["have"], &["has"], &["is"]];
-    let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
-        LexPattern::action("action", LexCaptureKind::OneOf(action_words)),
-        LexPattern::object("status", LexCaptureKind::Rest),
-    ];
-    let matched = LexPattern::new(&atoms).match_word_refs(words)?;
-    let subject_range = matched
-        .capture_by_role(LexCaptureRole::Subject)?
-        .word_range
-        .clone();
-    let player = parse_player_status_subject_words(&words[subject_range])?;
-    let status_range = matched
-        .capture_by_role(LexCaptureRole::Object)?
-        .word_range
-        .clone();
-    let status = parse_player_status_tail_words(&words[status_range])?;
-
-    Some(PlayerStatusConditionAst { player, status })
+    let shape = status_shapes::parse_player_status_words(words)?;
+    let player = match shape.subject_words {
+        Some(subject) => parse_player_status_subject_words(subject)?,
+        None => PlayerFilter::You,
+    };
+    Some(PlayerStatusConditionAst {
+        player,
+        status: shape.status,
+    })
 }
 
 fn parse_player_status_shape(tokens: &[OwnedLexToken]) -> Option<PlayerStatusConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let shortcut_atoms = [
-        LexPattern::subject("subject", LexCaptureKind::OneOf(&["youre"])),
-        LexPattern::object("status", LexCaptureKind::Rest),
-    ];
-    if let Some(matched) = LexPattern::new(&shortcut_atoms).match_clause(clause) {
-        let status_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-        let status = parse_player_status_tail_clause(status_clause)?;
-        return Some(PlayerStatusConditionAst {
-            player: PlayerFilter::You,
-            status,
-        });
-    }
-
-    let action_words = &["are", "have", "has", "is"];
-    let action_phrases: &[&[&str]] = &[&["are"], &["have"], &["has"], &["is"]];
-    let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
-        LexPattern::action("action", LexCaptureKind::OneOf(action_words)),
-        LexPattern::object("status", LexCaptureKind::Rest),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let player = parse_player_status_subject_clause(subject_clause)?;
-    let status_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let status = parse_player_status_tail_clause(status_clause)?;
-
-    Some(PlayerStatusConditionAst { player, status })
-}
-
-fn parse_player_status_tail_clause(clause: LexedClause<'_>) -> Option<PlayerStatusAst> {
-    parse_player_status_tail_clause_lexed(clause)
+    let shape = status_shapes::parse_player_status_tokens(tokens)?;
+    let player = match shape.subject_tokens {
+        Some(subject) => parse_player_status_subject_clause(LexedClause::new(subject))?,
+        None => PlayerFilter::You,
+    };
+    Some(PlayerStatusConditionAst {
+        player,
+        status: shape.status,
+    })
 }
 
 pub(crate) fn parse_player_achievement_condition(
@@ -1381,46 +1061,7 @@ pub(crate) fn parse_player_achievement_condition(
 fn parse_player_achievement_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerAchievementConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let action_shapes: &[(&[&str], bool)] = &[
-        (&["have", "not"], true),
-        (&["havent"], true),
-        (&["have"], false),
-    ];
-    for (action_phrase, negated) in action_shapes {
-        let atoms = [
-            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
-            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-            LexPattern::object("achievement", LexCaptureKind::Rest),
-        ];
-        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
-            continue;
-        };
-        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-        if !subject_clause_matches_you(subject_clause) {
-            continue;
-        }
-        let achievement_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-        let achievement = parse_player_achievement_tail_clause(achievement_clause)?;
-        return Some(PlayerAchievementConditionAst {
-            player: PlayerFilter::You,
-            achievement,
-            negated: *negated,
-        });
-    }
-
-    let shortcut_atoms = [
-        LexPattern::subject("subject", LexCaptureKind::OneOf(&["youve"])),
-        LexPattern::object("achievement", LexCaptureKind::Rest),
-    ];
-    let matched = LexPattern::new(&shortcut_atoms).match_clause(clause)?;
-    let achievement_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let achievement = parse_player_achievement_tail_clause(achievement_clause)?;
-    Some(PlayerAchievementConditionAst {
-        player: PlayerFilter::You,
-        achievement,
-        negated: false,
-    })
+    status_shapes::parse_player_achievement(tokens)
 }
 
 pub(crate) fn parse_player_cards_in_hand_condition(
@@ -1467,58 +1108,14 @@ pub(crate) fn parse_player_has_quantity_object_condition(
     object_phrases: &[&[&str]],
     context: &str,
 ) -> Option<PlayerHasQuantityObjectConditionAst> {
-    let atoms = [
-        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
-        LexPattern::object("object", LexCaptureKind::Rest),
-    ];
     let relation = parse_has_relation_clauses(tokens)?;
     let player = parse_player_has_quantity_subject_clause(relation.subject_clause)?;
-    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
-    let amount_capture = matched.capture_by_role(LexCaptureRole::Amount)?;
-    if amount_capture.word_range.is_empty() {
-        return None;
-    }
-    let amount_range = relation.tail_clause.words().token_range_for_word_range(
-        amount_capture.word_range.start,
-        amount_capture.word_range.end,
-    )?;
-    let amount_tokens = relation.tail_clause.tokens().get(amount_range)?;
+    let shape =
+        event_shapes::parse_quantity_object_tail(relation.tail_clause.tokens(), object_phrases)?;
     let (comparison, used) =
-        parse_quantity_comparison_prefix(amount_tokens, false, false, context).ok()?;
-    if used != amount_tokens.len() {
-        return None;
-    }
-    let object_clause =
-        matched.capture_clause_by_role(LexCaptureRole::Object, relation.tail_clause)?;
-    if !object_clause.matches_any_words(object_phrases) {
-        return None;
-    }
-
-    Some(PlayerHasQuantityObjectConditionAst { player, comparison })
-}
-
-fn parse_amount_capture_comparison(
-    tokens: &[OwnedLexToken],
-    clause: LexedClause<'_>,
-    matched: &LexPatternMatch<'_>,
-    context: &str,
-) -> Option<Comparison> {
-    let amount_capture = matched.capture_by_role(LexCaptureRole::Amount)?;
-    if amount_capture.word_range.is_empty() {
-        return None;
-    }
-    let amount_range = clause.words().token_range_for_word_range(
-        amount_capture.word_range.start,
-        amount_capture.word_range.end,
-    )?;
-    let amount_tokens = tokens.get(amount_range)?;
-    let (comparison, used) =
-        parse_quantity_comparison_prefix(amount_tokens, false, false, context).ok()?;
-    if used == amount_tokens.len() {
-        Some(comparison)
-    } else {
-        None
-    }
+        parse_quantity_comparison_prefix(shape.amount_tokens, false, false, context).ok()?;
+    (used == shape.amount_tokens.len())
+        .then_some(PlayerHasQuantityObjectConditionAst { player, comparison })
 }
 
 pub(crate) fn parse_player_life_relation_condition(
@@ -1563,65 +1160,21 @@ fn parse_player_life_relation_shape(
     }
 }
 
-const MORE_LIFE_THAN_YOU_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["more", "life", "than"]),
-    LexPattern::subject(
-        "player",
-        LexCaptureKind::OneOfPhrase(&[&["you", "do"], &["you"]]),
-    ),
-]);
-const MORE_LIFE_THAN_EACH_OTHER_PLAYER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["more", "life", "than"]),
-    LexPattern::subject(
-        "player",
-        LexCaptureKind::OneOfPhrase(&[&["each", "other", "player"], &["each", "other", "players"]]),
-    ),
-]);
-const MORE_LIFE_THAN_EACH_OPPONENT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["more", "life", "than"]),
-    LexPattern::subject(
-        "player",
-        LexCaptureKind::OneOfPhrase(&[&["each", "opponent"], &["each", "opponents"]]),
-    ),
-]);
-
 fn parse_life_relation_shape(relation_clause: LexedClause<'_>) -> Option<LifeRelationShape> {
-    const MORE_LIFE_THAN_PLAYER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::phrase(&["more", "life", "than"]),
-        LexPattern::subject("player", LexCaptureKind::Rest),
-    ]);
-
-    let relation_clause = relation_clause.trimmed();
-    if MORE_LIFE_THAN_YOU_PATTERN.matches(relation_clause) {
-        return Some(LifeRelationShape::MoreThanYou);
+    let (kind, player_tokens) = event_shapes::parse_life_relation(relation_clause.tokens())?;
+    if let Some(player_tokens) = player_tokens {
+        let player = parse_life_relation_player_subject_clause(LexedClause::new(player_tokens))?;
+        Some(LifeRelationShape::MoreThanPlayer(player))
+    } else {
+        Some(kind)
     }
-    if MORE_LIFE_THAN_EACH_OTHER_PLAYER_PATTERN.matches(relation_clause) {
-        return Some(LifeRelationShape::MoreThanEachOtherPlayer);
-    }
-    if MORE_LIFE_THAN_EACH_OPPONENT_PATTERN.matches(relation_clause) {
-        return Some(LifeRelationShape::MoreThanEachOpponent);
-    }
-    let matched = MORE_LIFE_THAN_PLAYER_PATTERN.match_clause(relation_clause)?;
-    let player_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, relation_clause)?;
-    let player = parse_life_relation_player_subject_clause(player_clause)?;
-    Some(LifeRelationShape::MoreThanPlayer(player))
 }
 
 fn parse_no_opponent_more_life_than_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeRelationConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let tail_phrase = &["more", "life", "than"];
-    let atoms = [
-        LexPattern::phrase(&["no"]),
-        LexPattern::subject("subject", LexCaptureKind::OneOf(&["opponent", "opponents"])),
-        LexPattern::word("has"),
-        LexPattern::phrase(tail_phrase),
-        LexPattern::object("object", LexCaptureKind::Rest),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let player = parse_life_relation_player_subject_clause(object_clause)?;
+    let shape = event_shapes::parse_no_opponent_more_life_than(tokens)?;
+    let player = parse_life_relation_player_subject_clause(LexedClause::new(shape.player_tokens))?;
     Some(PlayerLifeRelationConditionAst {
         player,
         relation: PlayerLifeRelationAst::HasNoOpponentWithMoreLifeThan,
@@ -1655,48 +1208,10 @@ fn parse_player_cards_in_hand_relation_shape(
     }
 }
 
-const MORE_CARDS_IN_HAND_THAN_PREFIXES: &[&[&str]] = &[
-    &["more", "card"],
-    &["more", "cards"],
-    &["more", "card", "in", "hand"],
-    &["more", "cards", "in", "hand"],
-    &["more", "card", "in", "your", "hand"],
-    &["more", "cards", "in", "your", "hand"],
-    &["more", "card", "in", "their", "hand"],
-    &["more", "cards", "in", "their", "hand"],
-];
 fn parse_cards_in_hand_relation_shape(
     relation_clause: LexedClause<'_>,
 ) -> Option<CardsInHandRelationShape> {
-    const MORE_CARDS_IN_HAND_THAN_YOU_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::any_phrase(MORE_CARDS_IN_HAND_THAN_PREFIXES),
-        LexPattern::word("than"),
-        LexPattern::subject(
-            "player",
-            LexCaptureKind::OneOfPhrase(&[&["you", "do"], &["you"]]),
-        ),
-    ]);
-    const MORE_CARDS_IN_HAND_THAN_EACH_OTHER_PLAYER_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[
-            LexPattern::any_phrase(MORE_CARDS_IN_HAND_THAN_PREFIXES),
-            LexPattern::word("than"),
-            LexPattern::subject(
-                "player",
-                LexCaptureKind::OneOfPhrase(&[
-                    &["each", "other", "player"],
-                    &["each", "other", "players"],
-                ]),
-            ),
-        ]);
-
-    let relation_clause = relation_clause.trimmed();
-    if MORE_CARDS_IN_HAND_THAN_YOU_PATTERN.matches(relation_clause) {
-        return Some(CardsInHandRelationShape::MoreThanYou);
-    }
-    if MORE_CARDS_IN_HAND_THAN_EACH_OTHER_PLAYER_PATTERN.matches(relation_clause) {
-        return Some(CardsInHandRelationShape::MoreThanEachOtherPlayer);
-    }
-    None
+    event_shapes::parse_cards_in_hand_relation(relation_clause.tokens())
 }
 
 pub(crate) fn parse_player_turn_event_condition(
@@ -1713,72 +1228,46 @@ fn parse_player_turn_event_shape(tokens: &[OwnedLexToken]) -> Option<PlayerTurnE
 fn parse_cards_drawn_this_turn_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerTurnEventConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let action_shapes: &[&[&str]] = &[&["has", "drawn"], &["have", "drawn"], &["drew"]];
-    let card_phrases: &[&[&str]] = &[&["card"], &["cards"]];
-    for action_phrase in action_shapes {
-        let atoms = [
-            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
-            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-            LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(card_phrases)),
-            LexPattern::object("object", LexCaptureKind::OneOf(&["card", "cards"])),
-            LexPattern::phrase(&["this", "turn"]),
-        ];
-        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
-            continue;
-        };
-        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-        let player = parse_life_relation_player_subject_clause(subject_clause)?;
-        let comparison =
-            parse_amount_capture_comparison(tokens, clause, &matched, "cards-drawn condition")?;
-        return Some(PlayerTurnEventConditionAst {
-            player,
-            event: PlayerTurnEventAst::CardsDrawn,
-            comparison,
-        });
-    }
-    None
+    let shape = event_shapes::parse_cards_drawn_this_turn(tokens)?;
+    let player = parse_life_relation_player_subject_clause(LexedClause::new(shape.subject_tokens))?;
+    let (comparison, used) = parse_quantity_comparison_prefix(
+        shape.amount_tokens,
+        false,
+        false,
+        "cards-drawn condition",
+    )
+    .ok()?;
+    (used == shape.amount_tokens.len()).then_some(PlayerTurnEventConditionAst {
+        player,
+        event: PlayerTurnEventAst::CardsDrawn,
+        comparison,
+    })
 }
 
 fn parse_lands_entered_this_turn_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerTurnEventConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let land_phrases: &[&[&str]] = &[&["land"], &["lands"]];
-    let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["had"])),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["had"])),
-        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(land_phrases)),
-        LexPattern::object("object", LexCaptureKind::Rest),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let player = parse_life_relation_player_subject_clause(subject_clause)?;
-    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !parse_lands_entered_this_turn_object_clause(object_clause) {
-        return None;
-    }
+    let shape = event_shapes::parse_lands_entered_this_turn(tokens)?;
+    let player = parse_life_relation_player_subject_clause(LexedClause::new(shape.subject_tokens))?;
     let comparison =
-        parse_amount_capture_comparison(tokens, clause, &matched, "lands-entered condition")?;
+        super::leaf::parse_leaf_another_event_count_comparison_tokens(shape.amount_tokens)
+            .ok()
+            .flatten()
+            .or_else(|| {
+                let (comparison, used) = parse_quantity_comparison_prefix(
+                    shape.amount_tokens,
+                    false,
+                    false,
+                    "lands-entered condition",
+                )
+                .ok()?;
+                (used == shape.amount_tokens.len()).then_some(comparison)
+            })?;
     Some(PlayerTurnEventConditionAst {
         player,
         event: PlayerTurnEventAst::LandsEnteredBattlefieldUnderControl,
         comparison,
     })
-}
-
-fn parse_lands_entered_this_turn_object_clause(clause: LexedClause<'_>) -> bool {
-    const OPTIONAL_THE: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
-    const LANDS_ENTERED_THIS_TURN_OBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::object("object", LexCaptureKind::OneOf(&["land", "lands"])),
-        LexPattern::any_word(&["enter", "entered"]),
-        LexPattern::optional(OPTIONAL_THE),
-        LexPattern::phrase(&["battlefield", "under"]),
-        LexPattern::any_word(&["your", "their", "that", "its"]),
-        LexPattern::phrase(&["control", "this", "turn"]),
-    ]);
-
-    LANDS_ENTERED_THIS_TURN_OBJECT_PATTERN.matches_clause(clause)
 }
 
 pub(crate) fn parse_spell_context_condition(
@@ -1798,52 +1287,28 @@ fn parse_spell_context_condition_shape(
 fn parse_target_spell_controller_poisoned_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellContextConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let atoms = [
-        LexPattern::subject("controller", LexCaptureKind::UntilPhrase(&["poisoned"])),
-        LexPattern::object("status", LexCaptureKind::OneOf(&["poisoned"])),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let controller_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let spell = parse_target_spell_controller_clause(controller_clause)?;
+    let shape = event_shapes::parse_target_spell_controller_poisoned(tokens)?;
+    let spell = event_shapes::parse_target_spell_controller(shape.controller_tokens)?;
     Some(SpellContextConditionAst::ControllerIsPoisoned { spell })
 }
 
 fn parse_no_mana_spent_to_cast_target_spell_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellContextConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let atoms = [
-        LexPattern::phrase(&["no", "mana"]),
-        LexPattern::action("spent_action", LexCaptureKind::OneOf(&["was", "were"])),
-        LexPattern::phrase(&["spent", "to", "cast"]),
-        LexPattern::object("spell", LexCaptureKind::Rest),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let spell_clause = matched.capture_clause("spell", clause)?;
-    let spell = parse_target_spell_reference_clause(spell_clause)?;
+    let shape = event_shapes::parse_no_mana_spent_to_cast(tokens)?;
+    let spell = event_shapes::parse_target_spell_reference(shape.spell_tokens)?;
     Some(SpellContextConditionAst::NoManaSpentToCast { spell })
 }
 
 fn parse_you_control_more_creatures_than_spell_controller_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellContextConditionAst> {
-    let atoms = [
-        LexPattern::phrase(&["more"]),
-        LexPattern::object(
-            "controlled_object",
-            LexCaptureKind::OneOf(&["creature", "creatures"]),
-        ),
-        LexPattern::word("than"),
-        LexPattern::object("controller", LexCaptureKind::Rest),
-    ];
     let relation = parse_control_relation_clauses(tokens, false)?;
-    if !clause_matches_phrase(relation.subject_clause, &["you"]) {
+    if !status_shapes::is_you_subject(relation.subject_clause.tokens()) {
         return None;
     }
-    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
-    let controller_clause = matched.capture_clause("controller", relation.tail_clause)?;
-    let spell = parse_target_spell_controller_clause(controller_clause)?;
+    let shape = event_shapes::parse_more_creatures_than_controller(relation.tail_clause.tokens())?;
+    let spell = event_shapes::parse_target_spell_controller(shape.controller_tokens)?;
     Some(SpellContextConditionAst::YouControlMoreCreaturesThanController { spell })
 }
 
@@ -1856,54 +1321,23 @@ pub(crate) fn parse_player_spell_cast_this_turn_condition(
 fn parse_player_spell_cast_this_turn_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerSpellCastThisTurnConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let action_shapes: &[(&[&str], bool)] = &[
-        (&["did", "not", "cast"], true),
-        (&["didnt", "cast"], true),
-        (&["haven't", "cast"], true),
-        (&["havent", "cast"], true),
-        (&["hasn't", "cast"], true),
-        (&["hasnt", "cast"], true),
-        (&["have", "cast"], false),
-        (&["has", "cast"], false),
-        (&["cast"], false),
-    ];
-    for (action_phrase, negated) in action_shapes {
-        let atoms = [
-            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
-            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
-            LexPattern::object("object", LexCaptureKind::UntilPhrase(&["this", "turn"])),
-            LexPattern::phrase(&["this", "turn"]),
-        ];
-        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
-            continue;
-        };
-        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-        let Some(player) = parse_spell_cast_this_turn_subject_clause(subject_clause) else {
-            continue;
-        };
-        let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-        if !*negated && player == PlayerFilter::You && is_another_spell_filter(object_clause) {
-            return Some(PlayerSpellCastThisTurnConditionAst::CountAtLeast { player, count: 2 });
-        }
-        let filters = parse_spell_cast_filter_tokens(object_clause.tokens())?;
-        if filters.is_empty() {
-            return None;
-        }
-        return Some(PlayerSpellCastThisTurnConditionAst::MatchingFilters {
-            player,
-            filters,
-            negated: *negated,
-        });
+    let shape = event_shapes::parse_spell_cast_this_turn(tokens)?;
+    let player = parse_spell_cast_this_turn_subject_clause(LexedClause::new(shape.subject_tokens))?;
+    if !shape.negated
+        && player == PlayerFilter::You
+        && event_shapes::is_another_spell(shape.object_tokens)
+    {
+        return Some(PlayerSpellCastThisTurnConditionAst::CountAtLeast { player, count: 2 });
     }
-    None
-}
-
-fn is_another_spell_filter(clause: LexedClause<'_>) -> bool {
-    const ANOTHER_SPELL_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::phrase(&["another", "spell"])]);
-
-    ANOTHER_SPELL_PATTERN.matches_clause(clause)
+    let filters = parse_spell_cast_filter_tokens(shape.object_tokens)?;
+    if filters.is_empty() {
+        return None;
+    }
+    Some(PlayerSpellCastThisTurnConditionAst::MatchingFilters {
+        player,
+        filters,
+        negated: shape.negated,
+    })
 }
 
 pub(crate) fn parse_player_life_change_this_turn_condition(
@@ -1915,35 +1349,19 @@ pub(crate) fn parse_player_life_change_this_turn_condition(
 fn parse_player_life_change_this_turn_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeChangeThisTurnConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let action_words = &["gained", "lost"];
-    let action_phrases: &[&[&str]] = &[&["gained"], &["lost"]];
-    let object_phrases: &[&[&str]] = &[&["life"]];
-    let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
-        LexPattern::action("action", LexCaptureKind::OneOf(action_words)),
-        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
-        LexPattern::object("object", LexCaptureKind::OneOf(&["life"])),
-        LexPattern::phrase(&["this", "turn"]),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let player = parse_life_change_subject_clause(subject_clause)?;
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    let direction = parse_life_change_direction_clause(action_clause)?;
-    let amount_capture = matched.capture_by_role(LexCaptureRole::Amount)?;
-    let comparison = if amount_capture.word_range.is_empty() {
+    let shape = event_shapes::parse_life_change_this_turn(tokens)?;
+    let player = parse_life_change_subject_clause(LexedClause::new(shape.subject_tokens))?;
+    let comparison = if shape.amount_tokens.is_empty() {
         Comparison::GreaterThanOrEqual(1)
     } else {
-        let amount_range = clause.words().token_range_for_word_range(
-            amount_capture.word_range.start,
-            amount_capture.word_range.end,
-        )?;
-        let amount_tokens = tokens.get(amount_range)?;
-        let (comparison, used) =
-            parse_quantity_comparison_prefix(amount_tokens, false, false, "life-change condition")
-                .ok()?;
-        if used != amount_tokens.len() {
+        let (comparison, used) = parse_quantity_comparison_prefix(
+            shape.amount_tokens,
+            false,
+            false,
+            "life-change condition",
+        )
+        .ok()?;
+        if used != shape.amount_tokens.len() {
             return None;
         }
         comparison
@@ -1951,7 +1369,7 @@ fn parse_player_life_change_this_turn_shape(
 
     Some(PlayerLifeChangeThisTurnConditionAst {
         player,
-        direction,
+        direction: shape.direction,
         comparison,
     })
 }
@@ -1965,19 +1383,12 @@ pub(crate) fn parse_player_would_action_condition(
 fn parse_player_would_action_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerWouldActionConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let action_phrases: &[&[&str]] = &[&["would"]];
-    let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
-        LexPattern::word("would"),
-        LexPattern::action("action", LexCaptureKind::Rest),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let player = parse_player_would_subject_clause(subject_clause)?;
-    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    let action = parse_player_would_action_clause(action_clause)?;
-    Some(PlayerWouldActionConditionAst { player, action })
+    let shape = event_shapes::parse_player_would(tokens)?;
+    let player = parse_player_would_subject_clause(LexedClause::new(shape.subject_tokens))?;
+    Some(PlayerWouldActionConditionAst {
+        player,
+        action: shape.action,
+    })
 }
 
 pub(crate) fn parse_battlefield_change_this_turn_condition(
@@ -1989,217 +1400,25 @@ pub(crate) fn parse_battlefield_change_this_turn_condition(
 fn parse_battlefield_change_this_turn_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldChangeThisTurnConditionAst> {
-    parse_no_permanent_left_battlefield_shape(tokens)
-        .or_else(|| parse_permanent_left_battlefield_under_your_control_shape(tokens))
-        .or_else(|| parse_object_put_into_graveyard_from_battlefield_shape(tokens))
-        .or_else(|| parse_nonland_permanent_or_spell_warped_this_turn_shape(tokens))
-        .or_else(|| parse_permanent_left_battlefield_shape(tokens))
-}
-
-fn parse_no_permanent_left_battlefield_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<BattlefieldChangeThisTurnConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let battlefield_tail: &[&[&str]] = &[
-        &["battlefield", "this", "turn"],
-        &["the", "battlefield", "this", "turn"],
-    ];
-    let atoms = [
-        LexPattern::word("no"),
-        LexPattern::subject(
-            "subject",
-            LexCaptureKind::OneOf(&["permanent", "permanents"]),
+    match zone_change_shapes::parse_battlefield_change(tokens)? {
+        zone_change_shapes::BattlefieldChangeShape::NoPermanentLeft => {
+            Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield { negated: true })
+        }
+        zone_change_shapes::BattlefieldChangeShape::PermanentLeft => {
+            Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield { negated: false })
+        }
+        zone_change_shapes::BattlefieldChangeShape::PermanentLeftUnderYourControl => {
+            Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefieldUnderYourControl)
+        }
+        zone_change_shapes::BattlefieldChangeShape::LandPutIntoGraveyardFromBattlefield => Some(
+            BattlefieldChangeThisTurnConditionAst::ObjectPutIntoGraveyardFromBattlefield {
+                filter: ObjectFilter::land().controlled_by(PlayerFilter::You),
+            },
         ),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["left"])),
-        LexPattern::any_phrase(battlefield_tail),
-    ];
-    LexPattern::new(&atoms).match_clause(clause)?;
-    Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield { negated: true })
-}
-
-fn parse_permanent_left_battlefield_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<BattlefieldChangeThisTurnConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let optional_article = [LexPattern::any_word(&["a", "an", "the"])];
-    let battlefield_tail: &[&[&str]] = &[
-        &["battlefield", "this", "turn"],
-        &["the", "battlefield", "this", "turn"],
-    ];
-    let atoms = [
-        LexPattern::optional(&optional_article),
-        LexPattern::subject(
-            "subject",
-            LexCaptureKind::OneOf(&["permanent", "permanents"]),
+        zone_change_shapes::BattlefieldChangeShape::NonlandPermanentLeftOrSpellWarped => Some(
+            BattlefieldChangeThisTurnConditionAst::NonlandPermanentLeftBattlefieldOrSpellWarped,
         ),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["left"])),
-        LexPattern::any_phrase(battlefield_tail),
-    ];
-    LexPattern::new(&atoms).match_clause(clause)?;
-    Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield { negated: false })
-}
-
-fn parse_permanent_left_battlefield_under_your_control_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<BattlefieldChangeThisTurnConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let optional_article = [LexPattern::any_word(&["a", "an", "the"])];
-    let controlled_battlefield_tail: &[&[&str]] = &[
-        &["battlefield", "under", "your", "control", "this", "turn"],
-        &[
-            "the",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn",
-        ],
-    ];
-    let battlefield_tail: &[&[&str]] = &[
-        &["battlefield", "this", "turn"],
-        &["the", "battlefield", "this", "turn"],
-    ];
-    let controlled_tail = [
-        LexPattern::optional(&optional_article),
-        LexPattern::subject(
-            "subject",
-            LexCaptureKind::OneOf(&["permanent", "permanents", "creature", "creatures"]),
-        ),
-        LexPattern::word("left"),
-        LexPattern::any_phrase(controlled_battlefield_tail),
-    ];
-    let you_controlled_tail = [
-        LexPattern::optional(&optional_article),
-        LexPattern::subject(
-            "subject",
-            LexCaptureKind::OneOf(&["permanent", "permanents"]),
-        ),
-        LexPattern::phrase(&["you", "controlled"]),
-        LexPattern::word("left"),
-        LexPattern::any_phrase(battlefield_tail),
-    ];
-    let alternatives: &[&[LexPatternAtom<'_>]] = &[&controlled_tail, &you_controlled_tail];
-    let atoms = [LexPattern::any_sequence(alternatives)];
-    LexPattern::new(&atoms).match_clause(clause)?;
-    Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefieldUnderYourControl)
-}
-
-fn parse_object_put_into_graveyard_from_battlefield_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<BattlefieldChangeThisTurnConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let optional_article = [LexPattern::any_word(&["a", "an", "the"])];
-    let graveyard_tail: &[&[&str]] = &[
-        &[
-            "put",
-            "into",
-            "graveyard",
-            "from",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-        &[
-            "put",
-            "into",
-            "graveyard",
-            "from",
-            "the",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-        &[
-            "put",
-            "into",
-            "a",
-            "graveyard",
-            "from",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-        &[
-            "put",
-            "into",
-            "a",
-            "graveyard",
-            "from",
-            "the",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-    ];
-    let atoms = [
-        LexPattern::optional(&optional_article),
-        LexPattern::object("object", LexCaptureKind::OneOf(&["land", "lands"])),
-        LexPattern::phrase(&["you", "controlled"]),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["was", "were"])),
-        LexPattern::any_phrase(graveyard_tail),
-    ];
-    LexPattern::new(&atoms).match_clause(clause)?;
-    Some(
-        BattlefieldChangeThisTurnConditionAst::ObjectPutIntoGraveyardFromBattlefield {
-            filter: ObjectFilter::land().controlled_by(PlayerFilter::You),
-        },
-    )
-}
-
-fn parse_nonland_permanent_or_spell_warped_this_turn_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<BattlefieldChangeThisTurnConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let left_battlefield_phrases: &[&[&str]] = &[
-        &[
-            "a",
-            "nonland",
-            "permanent",
-            "left",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-        &[
-            "a",
-            "nonland",
-            "permanent",
-            "left",
-            "the",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-        &[
-            "nonland",
-            "permanent",
-            "left",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-        &[
-            "nonland",
-            "permanent",
-            "left",
-            "the",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-    ];
-    let spell_warped_phrases: &[&[&str]] = &[
-        &["a", "spell", "was", "warped", "this", "turn"],
-        &["spell", "was", "warped", "this", "turn"],
-    ];
-    let atoms = [
-        LexPattern::any_phrase(left_battlefield_phrases),
-        LexPattern::word("or"),
-        LexPattern::any_phrase(spell_warped_phrases),
-    ];
-    LexPattern::new(&atoms).match_clause(clause)?;
-    Some(BattlefieldChangeThisTurnConditionAst::NonlandPermanentLeftBattlefieldOrSpellWarped)
+    }
 }
 
 pub(crate) fn parse_object_death_this_turn_condition(
@@ -2211,142 +1430,47 @@ pub(crate) fn parse_object_death_this_turn_condition(
 fn parse_object_death_this_turn_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectDeathThisTurnConditionAst> {
-    parse_object_died_this_turn_shape(tokens)
-        .or_else(|| parse_object_put_into_your_graveyard_from_anywhere_shape(tokens))
-}
-
-fn parse_object_died_this_turn_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ObjectDeathThisTurnConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let object_phrases: &[&[&str]] = &[&["creature"], &["creatures"]];
-    if let Some(matched) = LexPattern::new(&[
-        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
-        LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
-        LexPattern::phrase(&["dealt", "damage", "by"]),
-        LexPattern::capture("damager", LexCaptureKind::UntilPhrase(&["this", "turn"])),
-        LexPattern::phrase(&["this", "turn"]),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["died"])),
-    ])
-    .match_clause(clause)
-    {
-        let amount_capture = matched.capture_by_role(LexCaptureRole::Amount)?;
-        let comparison = if amount_capture.word_range.is_empty() {
-            Comparison::GreaterThanOrEqual(1)
-        } else {
-            let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-            if clause_matches_phrase(amount_clause, &["a"]) {
-                Comparison::GreaterThanOrEqual(1)
-            } else {
-                parse_amount_capture_comparison(tokens, clause, &matched, "object-death condition")?
-            }
-        };
-        let damager_clause = matched.capture_clause("damager", clause)?;
-        let damaged_by = if clause_matches_phrase(damager_clause, &["this", "creature"]) {
-            DamageBySpec::ThisCreature
-        } else if clause_matches_phrase(damager_clause, &["equipped", "creature"]) {
-            DamageBySpec::EquippedCreature
-        } else if clause_matches_phrase(damager_clause, &["enchanted", "creature"]) {
-            DamageBySpec::EnchantedCreature
-        } else {
-            return None;
-        };
-
-        return Some(ObjectDeathThisTurnConditionAst {
-            event: ObjectDeathThisTurnEventAst::Died,
-            filter: ObjectFilter::creature(),
-            comparison,
-            under_controller: None,
-            damaged_by: Some(damaged_by),
-        });
-    }
-
-    if let Some(matched) = LexPattern::new(&[
-        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
-        LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["died"])),
-        LexPattern::phrase(&["under", "your", "control"]),
-        LexPattern::phrase(&["this", "turn"]),
-    ])
-    .match_clause(clause)
-    {
-        let amount_capture = matched.capture_by_role(LexCaptureRole::Amount)?;
-        let comparison = if amount_capture.word_range.is_empty() {
-            Comparison::GreaterThanOrEqual(1)
-        } else {
-            let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-            if clause_matches_phrase(amount_clause, &["a"]) {
-                Comparison::GreaterThanOrEqual(1)
-            } else {
-                parse_amount_capture_comparison(tokens, clause, &matched, "object-death condition")?
-            }
-        };
-
-        return Some(ObjectDeathThisTurnConditionAst {
-            event: ObjectDeathThisTurnEventAst::Died,
-            filter: ObjectFilter::creature(),
-            comparison,
-            under_controller: Some(PlayerFilter::You),
-            damaged_by: None,
-        });
-    }
-
-    let atoms = [
-        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
-        LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["died"])),
-        LexPattern::phrase(&["this", "turn"]),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let amount_capture = matched.capture_by_role(LexCaptureRole::Amount)?;
-    let comparison = if amount_capture.word_range.is_empty() {
-        Comparison::GreaterThanOrEqual(1)
-    } else {
-        let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-        if clause_matches_phrase(amount_clause, &["a"]) {
-            Comparison::GreaterThanOrEqual(1)
-        } else {
-            parse_amount_capture_comparison(tokens, clause, &matched, "object-death condition")?
+    match zone_change_shapes::parse_death(tokens)? {
+        zone_change_shapes::DeathShape::Died(shape) => {
+            let comparison = parse_object_death_amount(shape.amount_tokens)?;
+            let damaged_by = shape.damaged_by.map(|damager| match damager {
+                zone_change_shapes::DamagerShape::ThisCreature => DamageBySpec::ThisCreature,
+                zone_change_shapes::DamagerShape::EquippedCreature => {
+                    DamageBySpec::EquippedCreature
+                }
+                zone_change_shapes::DamagerShape::EnchantedCreature => {
+                    DamageBySpec::EnchantedCreature
+                }
+            });
+            Some(ObjectDeathThisTurnConditionAst {
+                event: ObjectDeathThisTurnEventAst::Died,
+                filter: ObjectFilter::creature(),
+                comparison,
+                under_controller: shape.under_your_control.then_some(PlayerFilter::You),
+                damaged_by,
+            })
         }
-    };
-
-    Some(ObjectDeathThisTurnConditionAst {
-        event: ObjectDeathThisTurnEventAst::Died,
-        filter: ObjectFilter::creature(),
-        comparison,
-        under_controller: None,
-        damaged_by: None,
-    })
+        zone_change_shapes::DeathShape::CreatureCardPutIntoYourGraveyard => {
+            Some(ObjectDeathThisTurnConditionAst {
+                event: ObjectDeathThisTurnEventAst::PutIntoYourGraveyardFromAnywhere,
+                filter: ObjectFilter::creature(),
+                comparison: Comparison::GreaterThanOrEqual(1),
+                under_controller: None,
+                damaged_by: None,
+            })
+        }
+    }
 }
 
-fn parse_object_put_into_your_graveyard_from_anywhere_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ObjectDeathThisTurnConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let optional_article = [LexPattern::word("a")];
-    let atoms = [
-        LexPattern::optional(&optional_article),
-        LexPattern::phrase(&["creature", "card"]),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["was"])),
-        LexPattern::phrase(&[
-            "put",
-            "into",
-            "your",
-            "graveyard",
-            "from",
-            "anywhere",
-            "this",
-            "turn",
-        ]),
-    ];
-    LexPattern::new(&atoms).match_clause(clause)?;
-    Some(ObjectDeathThisTurnConditionAst {
-        event: ObjectDeathThisTurnEventAst::PutIntoYourGraveyardFromAnywhere,
-        filter: ObjectFilter::creature(),
-        comparison: Comparison::GreaterThanOrEqual(1),
-        under_controller: None,
-        damaged_by: None,
-    })
+fn parse_object_death_amount(tokens: &[OwnedLexToken]) -> Option<Comparison> {
+    if tokens.is_empty()
+        || primitives::parse_all(tokens, primitives::kw("a").void(), "death article").is_ok()
+    {
+        return Some(Comparison::GreaterThanOrEqual(1));
+    }
+    let (comparison, used) =
+        parse_quantity_comparison_prefix(tokens, false, false, "object-death condition").ok()?;
+    (used == tokens.len()).then_some(comparison)
 }
 
 pub(crate) fn parse_battlefield_entry_condition(
@@ -2356,304 +1480,111 @@ pub(crate) fn parse_battlefield_entry_condition(
 }
 
 fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<BattlefieldEntryConditionAst> {
-    parse_you_had_land_entered_battlefield_this_turn_shape(tokens)
-        .or_else(|| parse_you_had_object_entered_battlefield_last_turn_shape(tokens))
-        .or_else(|| parse_object_entered_battlefield_this_turn_shape(tokens))
-}
-
-fn subject_clause_matches_you(clause: LexedClause<'_>) -> bool {
-    clause_matches_phrase(clause, &["you"])
+    match zone_change_shapes::parse_entry(tokens)? {
+        zone_change_shapes::EntryShape::LandThisTurn => Some(
+            BattlefieldEntryConditionAst::LandEnteredUnderYourControlThisTurn {
+                player: PlayerAst::You,
+            },
+        ),
+        zone_change_shapes::EntryShape::Object {
+            object_tokens,
+            window,
+            other,
+        } => {
+            let mut filter =
+                parse_object_filter_with_grammar_entrypoint(object_tokens, false).ok()?;
+            filter.controller = Some(PlayerFilter::You);
+            if other {
+                filter.other = true;
+            }
+            Some(BattlefieldEntryConditionAst::ObjectEntered {
+                filter,
+                window: match window {
+                    zone_change_shapes::EntryWindowShape::ThisTurn => {
+                        BattlefieldEntryTurnWindowAst::ThisTurn
+                    }
+                    zone_change_shapes::EntryWindowShape::LastTurn => {
+                        BattlefieldEntryTurnWindowAst::LastTurn
+                    }
+                },
+            })
+        }
+    }
 }
 
 fn parse_player_status_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
-    if clause_matches_phrase(clause, &["you"]) {
-        return Some(PlayerFilter::You);
-    }
-    if clause_matches_phrase(clause, &["defending", "player"]) {
-        return Some(PlayerFilter::Defending);
-    }
-    if clause_matches_phrase(clause, &["attacking", "player"]) {
-        return Some(PlayerFilter::Attacking);
-    }
-    if clause_matches_phrase(clause, &["that", "player"]) {
-        return Some(PlayerFilter::IteratedPlayer);
-    }
-    if clause_matches_any_phrase(clause, &[&["an", "opponent"], &["opponent"]]) {
-        return Some(PlayerFilter::Opponent);
-    }
-    if clause_matches_any_phrase(clause, &[&["a", "player"], &["player"]]) {
-        return Some(PlayerFilter::Any);
-    }
-    None
+    let reference = parse_leaf_player_reference_tokens(
+        clause.tokens(),
+        LeafPlayerReferenceMode::PlayerStatusSubject,
+    )?;
+    lower_player_status_subject_reference(reference)
 }
 
 fn parse_player_status_subject_words(words: &[&str]) -> Option<PlayerFilter> {
-    if words == ["you"] {
-        return Some(PlayerFilter::You);
-    }
-    if words == ["defending", "player"] {
-        return Some(PlayerFilter::Defending);
-    }
-    if words == ["attacking", "player"] {
-        return Some(PlayerFilter::Attacking);
-    }
-    if words == ["that", "player"] {
-        return Some(PlayerFilter::IteratedPlayer);
-    }
-    if [&["an", "opponent"][..], &["opponent"][..]].contains(&words) {
-        return Some(PlayerFilter::Opponent);
-    }
-    if [&["a", "player"][..], &["player"][..]].contains(&words) {
-        return Some(PlayerFilter::Any);
-    }
-    None
+    let reference =
+        parse_leaf_player_reference_words(words, LeafPlayerReferenceMode::PlayerStatusSubject)?;
+    lower_player_status_subject_reference(reference)
 }
 
-fn parse_player_status_tail_clause_lexed(clause: LexedClause<'_>) -> Option<PlayerStatusAst> {
-    const MONARCH_PHRASES: &[&[&str]] = &[&["monarch"], &["a", "monarch"], &["the", "monarch"]];
-    const INITIATIVE_PHRASES: &[&[&str]] = &[
-        &["initiative"],
-        &["a", "initiative"],
-        &["an", "initiative"],
-        &["the", "initiative"],
-    ];
-    const MAX_SPEED_PHRASES: &[&[&str]] = &[
-        &["max", "speed"],
-        &["maximum", "speed"],
-        &["a", "max", "speed"],
-        &["a", "maximum", "speed"],
-        &["an", "max", "speed"],
-        &["an", "maximum", "speed"],
-        &["the", "max", "speed"],
-        &["the", "maximum", "speed"],
-    ];
-
-    if clause_matches_any_phrase(clause, MONARCH_PHRASES) {
-        return Some(PlayerStatusAst::Monarch);
+fn lower_player_status_subject_reference(reference: LeafPlayerReference) -> Option<PlayerFilter> {
+    match reference {
+        LeafPlayerReference::You => Some(PlayerFilter::You),
+        LeafPlayerReference::DefendingPlayer => Some(PlayerFilter::Defending),
+        LeafPlayerReference::AttackingPlayer => Some(PlayerFilter::Attacking),
+        LeafPlayerReference::ThatPlayer => Some(PlayerFilter::IteratedPlayer),
+        LeafPlayerReference::Opponent => Some(PlayerFilter::Opponent),
+        LeafPlayerReference::AnyPlayer => Some(PlayerFilter::Any),
+        _ => None,
     }
-    if clause_matches_any_phrase(clause, INITIATIVE_PHRASES) {
-        return Some(PlayerStatusAst::Initiative);
-    }
-    if clause_matches_any_phrase(clause, MAX_SPEED_PHRASES) {
-        return Some(PlayerStatusAst::MaxSpeed);
-    }
-    None
-}
-
-fn parse_player_status_tail_words(words: &[&str]) -> Option<PlayerStatusAst> {
-    const MONARCH_PHRASES: &[&[&str]] = &[&["monarch"], &["a", "monarch"], &["the", "monarch"]];
-    const INITIATIVE_PHRASES: &[&[&str]] = &[
-        &["initiative"],
-        &["a", "initiative"],
-        &["an", "initiative"],
-        &["the", "initiative"],
-    ];
-    const MAX_SPEED_PHRASES: &[&[&str]] = &[
-        &["max", "speed"],
-        &["maximum", "speed"],
-        &["a", "max", "speed"],
-        &["a", "maximum", "speed"],
-        &["an", "max", "speed"],
-        &["an", "maximum", "speed"],
-        &["the", "max", "speed"],
-        &["the", "maximum", "speed"],
-    ];
-
-    if MONARCH_PHRASES.contains(&words) {
-        return Some(PlayerStatusAst::Monarch);
-    }
-    if INITIATIVE_PHRASES.contains(&words) {
-        return Some(PlayerStatusAst::Initiative);
-    }
-    if MAX_SPEED_PHRASES.contains(&words) {
-        return Some(PlayerStatusAst::MaxSpeed);
-    }
-    None
 }
 
 fn parse_player_has_quantity_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
-    if clause_matches_phrase(clause, &["you"]) {
-        return Some(PlayerFilter::You);
+    let reference = parse_leaf_player_reference_tokens(
+        clause.tokens(),
+        LeafPlayerReferenceMode::PlayerHasQuantitySubject,
+    )?;
+    match reference {
+        LeafPlayerReference::You => Some(PlayerFilter::You),
+        LeafPlayerReference::Opponent => Some(PlayerFilter::Opponent),
+        LeafPlayerReference::AnyPlayer => Some(PlayerFilter::Any),
+        LeafPlayerReference::ThatPlayer => Some(PlayerFilter::IteratedPlayer),
+        LeafPlayerReference::AttackingPlayer => Some(PlayerFilter::Attacking),
+        LeafPlayerReference::DefendingPlayer => Some(PlayerFilter::Defending),
+        _ => None,
     }
-    if clause_matches_any_phrase(
-        clause,
-        &[&["a", "opponent"], &["an", "opponent"], &["opponent"]],
-    ) {
-        return Some(PlayerFilter::Opponent);
-    }
-    if clause_matches_any_phrase(clause, &[&["a", "player"], &["player"]]) {
-        return Some(PlayerFilter::Any);
-    }
-    if clause_matches_phrase(clause, &["that", "player"]) {
-        return Some(PlayerFilter::IteratedPlayer);
-    }
-    if clause_matches_phrase(clause, &["attacking", "player"]) {
-        return Some(PlayerFilter::Attacking);
-    }
-    if clause_matches_phrase(clause, &["defending", "player"]) {
-        return Some(PlayerFilter::Defending);
-    }
-    None
 }
 
 fn parse_life_relation_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
-    if clause_matches_phrase(clause, &["you"]) {
-        return Some(PlayerFilter::You);
+    let reference = parse_leaf_player_reference_tokens(
+        clause.tokens(),
+        LeafPlayerReferenceMode::LifeRelationSubject,
+    )?;
+    match reference {
+        LeafPlayerReference::You => Some(PlayerFilter::You),
+        LeafPlayerReference::ThatPlayer => Some(PlayerFilter::IteratedPlayer),
+        LeafPlayerReference::TargetPlayer => Some(PlayerFilter::target_player()),
+        LeafPlayerReference::TargetOpponent => Some(PlayerFilter::target_opponent()),
+        LeafPlayerReference::Opponent | LeafPlayerReference::EachOpponent => {
+            Some(PlayerFilter::Opponent)
+        }
+        LeafPlayerReference::AnyPlayer => Some(PlayerFilter::Any),
+        LeafPlayerReference::DefendingPlayer => Some(PlayerFilter::Defending),
+        LeafPlayerReference::AttackingPlayer => Some(PlayerFilter::Attacking),
+        _ => None,
     }
-    if clause_matches_any_phrase(clause, &[&["that", "player"], &["player", "who"]]) {
-        return Some(PlayerFilter::IteratedPlayer);
-    }
-    if clause_matches_phrase(clause, &["target", "player"]) {
-        return Some(PlayerFilter::target_player());
-    }
-    if clause_matches_phrase(clause, &["target", "opponent"]) {
-        return Some(PlayerFilter::target_opponent());
-    }
-    if clause_matches_any_phrase(
-        clause,
-        &[
-            &["each", "opponent"],
-            &["each", "opponents"],
-            &["a", "opponent"],
-            &["an", "opponent"],
-            &["opponent"],
-            &["opponents"],
-        ],
-    ) {
-        return Some(PlayerFilter::Opponent);
-    }
-    if clause_matches_any_phrase(clause, &[&["a", "player"], &["any", "player"], &["player"]]) {
-        return Some(PlayerFilter::Any);
-    }
-    if clause_matches_phrase(clause, &["defending", "player"]) {
-        return Some(PlayerFilter::Defending);
-    }
-    if clause_matches_phrase(clause, &["attacking", "player"]) {
-        return Some(PlayerFilter::Attacking);
-    }
-    None
-}
-
-fn parse_you_had_land_entered_battlefield_this_turn_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<BattlefieldEntryConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["had"])),
-        LexPattern::object("object", LexCaptureKind::OneOf(&["land", "lands"])),
-        LexPattern::any_word(&["enter", "entered"]),
-        LexPattern::phrase(&["battlefield", "under", "your", "control", "this", "turn"]),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !subject_clause_matches_you(subject_clause) {
-        return None;
-    }
-    Some(
-        BattlefieldEntryConditionAst::LandEnteredUnderYourControlThisTurn {
-            player: PlayerAst::You,
-        },
-    )
-}
-
-fn parse_you_had_object_entered_battlefield_last_turn_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<BattlefieldEntryConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let enter_phrases: &[&[&str]] = &[&["enter"], &["entered"]];
-    let optional_the = [LexPattern::word("the")];
-    let atoms = [
-        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
-        LexPattern::action("action", LexCaptureKind::OneOf(&["had"])),
-        LexPattern::object("object", LexCaptureKind::UntilAnyPhrase(enter_phrases)),
-        LexPattern::any_word(&["enter", "entered"]),
-        LexPattern::optional(&optional_the),
-        LexPattern::phrase(&["battlefield", "under", "your", "control", "last", "turn"]),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !subject_clause_matches_you(subject_clause) {
-        return None;
-    }
-    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let mut filter =
-        parse_object_filter_with_grammar_entrypoint(object_clause.tokens(), false).ok()?;
-    filter.controller = Some(PlayerFilter::You);
-    if token_slice_first_is_any(object_clause.trimmed().tokens(), &["another", "other"]) {
-        filter.other = true;
-    }
-    Some(BattlefieldEntryConditionAst::ObjectEntered {
-        filter,
-        window: BattlefieldEntryTurnWindowAst::LastTurn,
-    })
-}
-
-fn parse_object_entered_battlefield_this_turn_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<BattlefieldEntryConditionAst> {
-    let clause = LexedClause::new(tokens);
-    let enter_phrases: &[&[&str]] = &[&["enter"], &["entered"]];
-    let optional_the = [LexPattern::word("the")];
-    let atoms = [
-        LexPattern::object("object", LexCaptureKind::UntilAnyPhrase(enter_phrases)),
-        LexPattern::any_word(&["enter", "entered"]),
-        LexPattern::optional(&optional_the),
-        LexPattern::phrase(&["battlefield", "under", "your", "control", "this", "turn"]),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let mut filter =
-        parse_object_filter_with_grammar_entrypoint(object_clause.tokens(), false).ok()?;
-    filter.controller = Some(PlayerFilter::You);
-    if token_slice_first_is_any(object_clause.trimmed().tokens(), &["another", "other"]) {
-        filter.other = true;
-    }
-    Some(BattlefieldEntryConditionAst::ObjectEntered {
-        filter,
-        window: BattlefieldEntryTurnWindowAst::ThisTurn,
-    })
-}
-
-fn parse_target_spell_controller_clause(
-    clause: LexedClause<'_>,
-) -> Option<SpellContextReferenceAst> {
-    if clause_matches_any_phrase(
-        clause,
-        &[
-            &["its", "controller"],
-            &["that", "spells", "controller"],
-            &["that", "spell", "controller"],
-        ],
-    ) {
-        return Some(SpellContextReferenceAst::TargetSpell);
-    }
-    None
-}
-
-fn parse_target_spell_reference_clause(
-    clause: LexedClause<'_>,
-) -> Option<SpellContextReferenceAst> {
-    if clause_matches_any_phrase(clause, &[&["it"], &["that", "spell"]]) {
-        return Some(SpellContextReferenceAst::TargetSpell);
-    }
-    None
 }
 
 fn parse_spell_cast_this_turn_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
-    if clause_matches_phrase(clause, &["that", "player"]) {
-        return Some(PlayerFilter::Active);
+    let reference = parse_leaf_player_reference_tokens(
+        clause.tokens(),
+        LeafPlayerReferenceMode::SpellCastThisTurnSubject,
+    )?;
+    match reference {
+        LeafPlayerReference::ThatPlayer => Some(PlayerFilter::Active),
+        LeafPlayerReference::You => Some(PlayerFilter::You),
+        LeafPlayerReference::Opponent => Some(PlayerFilter::Opponent),
+        _ => None,
     }
-    if clause_matches_any_phrase(clause, &[&["you"], &["youve"]]) {
-        return Some(PlayerFilter::You);
-    }
-    if clause_matches_any_phrase(
-        clause,
-        &[&["opponent"], &["opponents"], &["an", "opponent"]],
-    ) {
-        return Some(PlayerFilter::Opponent);
-    }
-    None
 }
 
 fn parse_spell_cast_filter_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<ObjectFilter>> {
@@ -2669,63 +1600,8 @@ fn parse_spell_cast_filter_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<Object
 fn split_both_spell_cast_filter_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
-    parse_both_spell_cast_filter_pair_tokens(tokens)
-        .or_else(|| parse_named_spell_cast_filter_pair_tokens(tokens))
-}
-
-fn parse_both_spell_cast_filter_pair_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
-    const BOTH_SPELL_CAST_FILTER_PAIR_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::word("both"),
-        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
-        LexPattern::word("and"),
-        LexPattern::object("right", LexCaptureKind::OneOrMoreWords),
-    ]);
-
-    let clause = LexedClause::new(tokens);
-    spell_cast_filter_pair_captures(BOTH_SPELL_CAST_FILTER_PAIR_PATTERN, clause)
-}
-
-fn parse_named_spell_cast_filter_pair_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
-    const NAMED_SPELL_CAST_FILTER_PAIR_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
-        LexPattern::word("and"),
-        LexPattern::object("right", LexCaptureKind::OneOrMoreWords),
-    ]);
-
-    let clause = LexedClause::new(tokens);
-    let (left, right) =
-        spell_cast_filter_pair_captures(NAMED_SPELL_CAST_FILTER_PAIR_PATTERN, clause)?;
-    if !spell_named_prefix_matches_tokens(left) || !spell_named_prefix_matches_tokens(right) {
-        return None;
-    }
-    Some((left, right))
-}
-
-fn spell_cast_filter_pair_captures<'a>(
-    pattern: LexPattern<'static>,
-    clause: LexedClause<'a>,
-) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
-    let matched = pattern.match_clause(clause)?;
-    let left = matched.capture_clause("left", clause)?;
-    let right = matched.capture_clause("right", clause)?;
-    let left_tokens = left.tokens();
-    let right_tokens = right.tokens();
-    (!left_tokens.is_empty() && !right_tokens.is_empty()).then_some((left_tokens, right_tokens))
-}
-
-fn spell_named_prefix_matches_tokens(tokens: &[OwnedLexToken]) -> bool {
-    const A_SPELL_NAMED_PREFIX_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::phrase(&["a", "spell", "named"])]);
-    const SPELL_NAMED_PREFIX_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[LexPattern::phrase(&["spell", "named"])]);
-
-    let clause = LexedClause::new(tokens);
-    A_SPELL_NAMED_PREFIX_PATTERN.matches_prefix(clause)
-        || SPELL_NAMED_PREFIX_PATTERN.matches_prefix(clause)
+    let shape = event_shapes::parse_spell_cast_filter_pair(tokens)?;
+    Some((shape.left_tokens, shape.right_tokens))
 }
 
 fn parse_spell_cast_filter_tokens_single(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
@@ -2733,132 +1609,28 @@ fn parse_spell_cast_filter_tokens_single(tokens: &[OwnedLexToken]) -> Option<Obj
 }
 
 fn parse_life_change_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
-    if clause_matches_phrase(clause, &["you"]) {
-        return Some(PlayerFilter::You);
+    let reference = parse_leaf_player_reference_tokens(
+        clause.tokens(),
+        LeafPlayerReferenceMode::LifeChangeSubject,
+    )?;
+    match reference {
+        LeafPlayerReference::You => Some(PlayerFilter::You),
+        LeafPlayerReference::Opponent => Some(PlayerFilter::Opponent),
+        LeafPlayerReference::AnyPlayer => Some(PlayerFilter::Any),
+        _ => None,
     }
-    if clause_matches_any_phrase(
-        clause,
-        &[
-            &["opponent"],
-            &["opponents"],
-            &["an", "opponent"],
-            &["one", "or", "more", "opponents"],
-        ],
-    ) {
-        return Some(PlayerFilter::Opponent);
-    }
-    None
-}
-
-fn parse_life_change_direction_clause(
-    clause: LexedClause<'_>,
-) -> Option<PlayerLifeChangeDirectionAst> {
-    if clause_matches_phrase(clause, &["gained"]) {
-        return Some(PlayerLifeChangeDirectionAst::Gained);
-    }
-    if clause_matches_phrase(clause, &["lost"]) {
-        return Some(PlayerLifeChangeDirectionAst::Lost);
-    }
-    None
 }
 
 fn parse_player_would_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
-    if clause_matches_phrase(clause, &["you"]) {
-        return Some(PlayerFilter::You);
+    let reference = parse_leaf_player_reference_tokens(
+        clause.tokens(),
+        LeafPlayerReferenceMode::PlayerWouldSubject,
+    )?;
+    match reference {
+        LeafPlayerReference::You => Some(PlayerFilter::You),
+        LeafPlayerReference::Opponent => Some(PlayerFilter::Opponent),
+        _ => None,
     }
-    if clause_matches_any_phrase(
-        clause,
-        &[&["an", "opponent"], &["opponent"], &["opponents"]],
-    ) {
-        return Some(PlayerFilter::Opponent);
-    }
-    None
-}
-
-fn parse_player_would_action_clause(clause: LexedClause<'_>) -> Option<PlayerWouldActionAst> {
-    if clause_matches_any_phrase(clause, &[&["draw", "a", "card"], &["draw", "card"]]) {
-        return Some(PlayerWouldActionAst::DrawCard);
-    }
-    if clause_matches_phrase(clause, &["proliferate"]) {
-        return Some(PlayerWouldActionAst::Proliferate);
-    }
-    if clause_matches_any_phrase(
-        clause,
-        &[
-            &["begin", "extra", "turn"],
-            &["begin", "an", "extra", "turn"],
-        ],
-    ) {
-        return Some(PlayerWouldActionAst::BeginExtraTurn);
-    }
-    None
-}
-
-fn parse_player_achievement_tail_clause(clause: LexedClause<'_>) -> Option<PlayerAchievementAst> {
-    const CITYS_BLESSING_PHRASES: &[&[&str]] = &[
-        &["citys", "blessing"],
-        &["city", "blessing"],
-        &["a", "citys", "blessing"],
-        &["a", "city", "blessing"],
-        &["the", "citys", "blessing"],
-        &["the", "city", "blessing"],
-    ];
-    const FULL_PARTY_PHRASES: &[&[&str]] = &[
-        &["full", "party"],
-        &["a", "full", "party"],
-        &["the", "full", "party"],
-    ];
-    const COMPLETED_DUNGEON_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::optional(&[LexPattern::any_word(&["a", "an", "the"])]),
-        LexPattern::word("completed"),
-        LexPattern::object("dungeon", LexCaptureKind::Rest),
-    ]);
-    const CITYS_BLESSING_FOR_EACH_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::optional(&[LexPattern::any_word(&["a", "an", "the"])]),
-        LexPattern::any_phrase(&[&["citys", "blessing"], &["city", "blessing"]]),
-        LexPattern::phrase(&["for", "each"]),
-        LexPattern::tail("tail", LexCaptureKind::Rest),
-    ]);
-
-    if clause_matches_any_phrase(clause, CITYS_BLESSING_PHRASES)
-        || CITYS_BLESSING_FOR_EACH_PATTERN.matches_clause(clause)
-    {
-        return Some(PlayerAchievementAst::CitysBlessing);
-    }
-    if clause_matches_any_phrase(clause, FULL_PARTY_PHRASES) {
-        return Some(PlayerAchievementAst::FullParty);
-    }
-    let matched = COMPLETED_DUNGEON_PATTERN.match_clause(clause)?;
-    let dungeon_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    parse_completed_dungeon_achievement_clause(dungeon_clause)
-}
-
-fn parse_completed_dungeon_achievement_clause(
-    clause: LexedClause<'_>,
-) -> Option<PlayerAchievementAst> {
-    const DUNGEON_PHRASES: &[&[&str]] = &[
-        &["dungeon"],
-        &["a", "dungeon"],
-        &["an", "dungeon"],
-        &["the", "dungeon"],
-    ];
-    const NAMED_DUNGEON_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::optional(&[LexPattern::any_word(&["a", "an", "the"])]),
-        LexPattern::object("dungeon_name", LexCaptureKind::Rest),
-    ]);
-
-    if clause_matches_any_phrase(clause, DUNGEON_PHRASES) {
-        return Some(PlayerAchievementAst::CompletedDungeon { dungeon_name: None });
-    }
-    let matched = NAMED_DUNGEON_PATTERN.match_clause(clause)?;
-    let dungeon_name_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let dungeon_name_tokens = dungeon_name_clause.trimmed().tokens();
-    if dungeon_name_tokens.is_empty() {
-        return None;
-    }
-    Some(PlayerAchievementAst::CompletedDungeon {
-        dungeon_name: Some(render_token_slice(dungeon_name_tokens).trim().to_string()),
-    })
 }
 
 fn parse_object_descriptor_word(word: &str) -> Option<ObjectDescriptorAst> {
@@ -2878,25 +1650,72 @@ fn apply_object_descriptor_to_filter(filter: &mut ObjectFilter, descriptor: Obje
     }
 }
 
-fn token_words_end_with(tokens: &[OwnedLexToken], suffix: &[&str]) -> bool {
-    if suffix.len() > tokens.len() {
-        return false;
-    }
-    let start = tokens.len() - suffix.len();
-    tokens[start..]
-        .iter()
-        .zip(suffix.iter())
-        .all(|(token, expected)| {
-            token
-                .as_word()
-                .is_some_and(|_| token.parser_text() == *expected)
-        })
+fn parse_control_condition_filter_suffix_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ControlConditionFilterSuffix> {
+    alt((
+        primitives::phrase(&["with", "different", "powers"]),
+        primitives::phrase(&["with", "different", "power"]),
+    ))
+    .value(ControlConditionFilterSuffix::DifferentPowers)
+    .parse_next(input)
+}
+
+fn split_control_condition_filter_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], ControlConditionFilterSuffix)> {
+    primitives::split_lexed_once_before_suffix(tokens, 1, || {
+        parse_control_condition_filter_suffix_lexed
+    })
+}
+
+fn parse_control_condition_filter_suffix_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<ControlConditionFilterSuffix> {
+    alt((
+        (
+            primitives::word_slice_exact("with"),
+            primitives::word_slice_exact("different"),
+            primitives::word_slice_exact("powers"),
+        ),
+        (
+            primitives::word_slice_exact("with"),
+            primitives::word_slice_exact("different"),
+            primitives::word_slice_exact("power"),
+        ),
+    ))
+    .value(ControlConditionFilterSuffix::DifferentPowers)
+    .parse_next(input)
+}
+
+fn split_control_condition_filter_suffix_words<'a>(
+    words: &'a [&'a str],
+) -> Option<(&'a [&'a str], ControlConditionFilterSuffix)> {
+    let suffix_start = words.len().checked_sub(3)?;
+    let suffix = primitives::parse_full_word_slice(
+        &words[suffix_start..],
+        parse_control_condition_filter_suffix_word_slice,
+    )?;
+    Some((&words[..suffix_start], suffix))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn life_change_condition_accepts_any_player_subject() {
+        let tokens = lex_line("a player lost 4 or more life this turn", 0).expect("lex");
+        assert_eq!(
+            parse_player_life_change_this_turn_condition(&tokens),
+            Some(PlayerLifeChangeThisTurnConditionAst {
+                player: PlayerFilter::Any,
+                direction: PlayerLifeChangeDirectionAst::Lost,
+                comparison: Comparison::GreaterThanOrEqual(4),
+            })
+        );
+    }
 
     #[test]
     fn parse_subject_status_condition_uses_shared_capture_shape() {
@@ -3051,6 +1870,55 @@ mod tests {
     }
 
     #[test]
+    fn player_status_subjects_lower_typed_contextual_references() {
+        let tokens = lex_line("that player is the monarch", 0).expect("lex");
+        let parsed = parse_player_status_condition(&tokens).expect("that-player status");
+        assert_eq!(parsed.player, PlayerFilter::IteratedPlayer);
+        assert_eq!(parsed.status, PlayerStatusAst::Monarch);
+
+        let parsed = parse_player_status_condition_words(&[
+            "attacking",
+            "player",
+            "has",
+            "the",
+            "initiative",
+        ])
+        .expect("attacking-player status words");
+        assert_eq!(parsed.player, PlayerFilter::Attacking);
+        assert_eq!(parsed.status, PlayerStatusAst::Initiative);
+    }
+
+    #[test]
+    fn deferred_player_subject_modes_keep_contextual_lowering_distinct() {
+        let that_player = lex_line("that player", 0).expect("lex");
+        let that_player = LexedClause::new(&that_player);
+        assert_eq!(
+            parse_player_has_quantity_subject_clause(that_player),
+            Some(PlayerFilter::IteratedPlayer)
+        );
+        assert_eq!(
+            parse_life_relation_player_subject_clause(that_player),
+            Some(PlayerFilter::IteratedPlayer)
+        );
+        assert_eq!(
+            parse_spell_cast_this_turn_subject_clause(that_player),
+            Some(PlayerFilter::Active)
+        );
+
+        let source_contraction = lex_line("you've", 0).expect("lex");
+        assert_eq!(
+            parse_spell_cast_this_turn_subject_clause(LexedClause::new(&source_contraction)),
+            Some(PlayerFilter::You)
+        );
+
+        let odd_each = lex_line("each opponents", 0).expect("lex");
+        assert_eq!(
+            parse_life_relation_player_subject_clause(LexedClause::new(&odd_each)),
+            Some(PlayerFilter::Opponent)
+        );
+    }
+
+    #[test]
     fn parse_player_has_quantity_object_condition_uses_shared_capture_shape() {
         let opponents = lex_line("you have two or more opponents", 0).expect("lex");
         let parsed = parse_player_has_quantity_object_condition(
@@ -3073,5 +1941,54 @@ mod tests {
 
         assert_eq!(parsed.player, PlayerFilter::Any);
         assert_eq!(parsed.comparison, Comparison::LessThanOrEqual(13));
+    }
+
+    #[test]
+    fn typed_zone_change_shapes_preserve_condition_semantics() {
+        let death = lex_line("Two creatures died under your control this turn.", 0).expect("lex");
+        let death = parse_object_death_this_turn_condition(&death).expect("death condition");
+        assert_eq!(death.event, ObjectDeathThisTurnEventAst::Died);
+        assert_eq!(death.comparison, Comparison::Equal(2));
+        assert_eq!(death.under_controller, Some(PlayerFilter::You));
+
+        let entry = lex_line(
+            "Another creature entered the battlefield under your control this turn.",
+            0,
+        )
+        .expect("lex");
+        let BattlefieldEntryConditionAst::ObjectEntered { filter, window } =
+            parse_battlefield_entry_condition(&entry).expect("entry condition")
+        else {
+            panic!("expected object entry condition");
+        };
+        assert_eq!(window, BattlefieldEntryTurnWindowAst::ThisTurn);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert!(filter.other);
+
+        let left = lex_line("No permanents left the battlefield this turn.", 0).expect("lex");
+        assert_eq!(
+            parse_battlefield_change_this_turn_condition(&left),
+            Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield { negated: true })
+        );
+    }
+
+    #[test]
+    fn typed_event_references_and_actions_preserve_condition_semantics() {
+        let spell = lex_line("No mana was spent to cast it.", 0).expect("lex");
+        assert_eq!(
+            parse_spell_context_condition(&spell),
+            Some(SpellContextConditionAst::NoManaSpentToCast {
+                spell: SpellContextReferenceAst::TargetSpell,
+            })
+        );
+
+        let action = lex_line("You would begin an extra turn.", 0).expect("lex");
+        assert_eq!(
+            parse_player_would_action_condition(&action),
+            Some(PlayerWouldActionConditionAst {
+                player: PlayerFilter::You,
+                action: PlayerWouldActionAst::BeginExtraTurn,
+            })
+        );
     }
 }

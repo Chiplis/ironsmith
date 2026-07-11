@@ -20,7 +20,7 @@ use crate::cards::builders::{
     SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec,
 };
 #[allow(unused_imports)]
-use crate::color::ColorSet;
+use crate::color::{Color, ColorSet};
 #[allow(unused_imports)]
 use crate::cost::TotalCost;
 #[allow(unused_imports)]
@@ -52,19 +52,14 @@ use crate::zone::Zone;
 #[allow(unused_imports)]
 use std::collections::HashMap;
 
-use super::token_primitives::{
-    find_index, find_window_by, slice_contains, str_contains, str_split_once, str_split_once_char,
-    str_starts_with, str_strip_suffix,
-};
+use super::grammar::leaf as leaf_grammar;
+use super::grammar::token_definitions as token_grammar;
+use super::token_definition::TokenDefinitionSpec;
+use super::token_primitives::{find_window_by, items_have, locate_index};
 use super::util::parse_unsigned_pt_word;
-use crate::runtime_backend::lexer::{
-    OwnedLexToken, TokenKind, contains_token_word_sequence, find_token_word,
-    find_token_word_sequence_span, lex_line, parser_token_word_refs, render_token_slice,
-    token_slice_starts_with, word_slice_contains_any_phrase, word_slice_contains_phrase,
-    word_slice_contains_phrase_or_empty, word_slice_contains_word, word_slice_eq,
-    word_slice_find_phrase_start_or_zero,
-};
+use crate::runtime_backend::lexer::{OwnedLexToken, TokenKind};
 
+use super::ast::{EmblemAbilityAst, EmblemDescriptionAst};
 use super::effect_ast_traversal::{
     assert_effect_ast_variant_coverage, for_each_nested_effects, for_each_nested_effects_mut,
 };
@@ -74,7 +69,8 @@ use super::effect_pipeline::{
 };
 use super::effect_sentences::parse_subtype_word;
 use super::lowering_support::{
-    rewrite_lower_parsed_ability as lower_parsed_ability, rewrite_prepare_effects_for_lowering,
+    rewrite_lower_parsed_ability as lower_parsed_ability, rewrite_lower_static_ability_ast,
+    rewrite_parsed_triggered_ability, rewrite_prepare_effects_for_lowering,
     rewrite_prepare_effects_with_trigger_context_for_lowering,
 };
 use super::reference_helpers::{
@@ -240,6 +236,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
         }
         PredicateAst::EnchantedPermanentAttackedThisTurn => {
             Condition::EnchantedPermanentAttackedThisTurn
+        }
+        PredicateAst::TargetObjectsHaveDifferentColorSets => {
+            Condition::TargetObjectsHaveDifferentColorSets
         }
         PredicateAst::PlayerTaggedObjectMatches {
             player,
@@ -574,6 +573,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
             }
         }
         PredicateAst::OpponentLostLifeThisTurn => Condition::OpponentLostLifeThisTurn,
+        PredicateAst::AnyPlayerLostLifeThisTurnOrMore { count } => {
+            Condition::AnyPlayerLostLifeThisTurnOrMore { count: *count }
+        }
         PredicateAst::OpponentWasDealtDamageThisTurn => Condition::OpponentWasDealtDamageThisTurn,
         PredicateAst::YouHaveNoCardsInHand => {
             Condition::Not(Box::new(Condition::CardsInHandOrMore(1)))
@@ -1567,7 +1569,7 @@ pub(crate) fn lower_may_imprint_from_hand_effect(
     let Some((filter, count, zones)) = hand_exile_filter_and_count(target, ctx)? else {
         return Ok(None);
     };
-    if !count.is_single() || zones.as_slice() != [Zone::Hand] {
+    if !count.is_single() || zones.len() != 1 || zones.first().copied() != Some(Zone::Hand) {
         return Ok(None);
     }
 
@@ -1645,14 +1647,49 @@ fn try_compile_simultaneous_each_player_scry(
     )))
 }
 
-fn compile_emblem_description_from_text(text: &str) -> Result<EmblemDescription, CardTextError> {
-    let abilities = CardDefinitionBuilder::new(CardId::new(), "Emblem")
-        .parse_text(text.to_string())
-        .map(|definition| definition.abilities)
-        .unwrap_or_default();
+fn compile_emblem_description(
+    emblem: &EmblemDescriptionAst,
+) -> Result<EmblemDescription, CardTextError> {
+    let mut abilities = Vec::new();
+    for ability in &emblem.abilities {
+        match ability {
+            EmblemAbilityAst::Static(static_abilities) => {
+                for static_ability in static_abilities {
+                    if let Ok(static_ability) =
+                        rewrite_lower_static_ability_ast(static_ability.clone())
+                    {
+                        abilities.push(Ability::static_ability(static_ability));
+                    }
+                }
+            }
+            EmblemAbilityAst::Activated(ability) => {
+                if let Ok(ability) = lower_parsed_ability(ability.clone()) {
+                    abilities.push(ability.into_runtime());
+                }
+            }
+            EmblemAbilityAst::Triggered {
+                trigger,
+                effects,
+                trigger_limit_condition,
+            } => {
+                let parsed = rewrite_parsed_triggered_ability(
+                    trigger.clone(),
+                    effects.clone(),
+                    vec![Zone::Battlefield],
+                    None,
+                    trigger_limit_condition.clone(),
+                    None,
+                    ReferenceImports::default(),
+                );
+                if let Ok(ability) = lower_parsed_ability(parsed) {
+                    abilities.push(ability.into_runtime());
+                }
+            }
+        }
+    }
     Ok(EmblemDescription {
         name: "Emblem".to_string(),
-        text: text.to_string(),
+        text: emblem.text.clone(),
         abilities,
     })
 }
@@ -2013,264 +2050,6 @@ pub(crate) fn eldrazi_scion_token_definition() -> CardDefinition {
         .build()
 }
 
-pub(crate) fn parse_number_word(word: &str) -> Option<i32> {
-    parse_number_word_i32(word)
-}
-
-pub(crate) fn parse_deals_damage_amount(words: &[&str]) -> Option<i32> {
-    let match_idx = find_window_by(words, 3, |window| {
-        if (window[0] == "deals" || window[0] == "deal") && window[2] == "damage" {
-            return true;
-        }
-        false
-    })?;
-    parse_number_word(words[match_idx + 1])
-}
-
-pub(crate) fn token_inline_noncreature_spell_each_opponent_damage_amount(
-    name: &str,
-) -> Option<i32> {
-    let tokens = lex_line(name, 0).ok()?;
-    let words = parser_token_word_refs(&tokens);
-    let has_noncreature_cast_trigger = word_slice_contains_any_phrase(
-        &words,
-        &[
-            &["whenever", "you", "cast", "a", "noncreature", "spell"],
-            &["whenever", "you", "cast", "noncreature", "spell"],
-        ],
-    );
-    if !has_noncreature_cast_trigger {
-        return None;
-    }
-    let has_damage_subject = word_slice_contains_any_phrase(
-        &words,
-        &[
-            &["this", "token", "deals"],
-            &["this", "creature", "deals"],
-            &["this", "token", "deal"],
-            &["this", "creature", "deal"],
-            &["it", "deals"],
-            &["it", "deal"],
-        ],
-    );
-    if !has_damage_subject {
-        return None;
-    }
-    if !word_slice_contains_phrase(&words, &["to", "each", "opponent"]) {
-        return None;
-    }
-    parse_deals_damage_amount(&words)
-}
-
-pub(crate) fn parse_crew_amount(words: &[&str]) -> Option<u32> {
-    let crew_idx = find_index(words, |word| *word == "crew")?;
-    let amount_word = words.get(crew_idx + 1)?;
-    let amount = parse_number_word(amount_word)?;
-    u32::try_from(amount).ok()
-}
-
-pub(crate) fn parse_as_though_power_were_greater_amount(words: &[&str]) -> Option<u32> {
-    let were_idx = find_index(words, |word| *word == "were")?;
-    let amount_word = words.get(were_idx + 1)?;
-    if words.get(were_idx + 2).copied() != Some("greater") {
-        return None;
-    }
-    let amount = parse_number_word(amount_word)?;
-    u32::try_from(amount).ok()
-}
-
-pub(crate) fn parse_equip_amount(words: &[&str]) -> Option<u32> {
-    let equip_idx = find_index(words, |word| *word == "equip")?;
-    let amount_word = words.get(equip_idx + 1)?;
-    let amount = parse_number_word(amount_word)?;
-    u32::try_from(amount).ok()
-}
-
-pub(crate) fn join_simple_and_list(parts: &[&str]) -> String {
-    match parts.len() {
-        0 => String::new(),
-        1 => parts[0].to_string(),
-        2 => format!("{} and {}", parts[0], parts[1]),
-        _ => {
-            let mut out = parts[..parts.len() - 1].join(", ");
-            out.push_str(", and ");
-            out.push_str(parts.last().copied().unwrap_or_default());
-            out
-        }
-    }
-}
-
-fn render_trimmed_token_text(tokens: &[OwnedLexToken]) -> String {
-    render_token_slice(tokens).trim().to_string()
-}
-
-fn render_trimmed_unquoted_token_text(tokens: &[OwnedLexToken]) -> String {
-    render_trimmed_token_text(strip_surrounding_quote_tokens(tokens))
-        .trim_matches(|ch| matches!(ch, '\'' | '"' | '“' | '”'))
-        .trim()
-        .to_string()
-}
-
-fn strip_surrounding_quote_tokens(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    loop {
-        let mut changed = false;
-        if tokens
-            .first()
-            .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
-        {
-            tokens = &tokens[1..];
-            changed = true;
-        }
-        if tokens
-            .last()
-            .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
-        {
-            tokens = &tokens[..tokens.len().saturating_sub(1)];
-            changed = true;
-        }
-        if !changed {
-            break;
-        }
-    }
-    tokens
-}
-
-fn first_quoted_token_text(tokens: &[OwnedLexToken]) -> Option<String> {
-    let open_idx = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Quote)?;
-    let close_idx = tokens
-        .iter()
-        .enumerate()
-        .skip(open_idx + 1)
-        .find_map(|(idx, token)| (token.kind == TokenKind::Quote).then_some(idx))?;
-    let quoted = render_trimmed_token_text(&tokens[open_idx + 1..close_idx]);
-    (!quoted.is_empty()).then_some(quoted)
-}
-
-fn equipment_granted_ability_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let (_, has_end) = find_token_word_sequence_span(tokens, &["equipped", "creature", "has"])?;
-    let tail = tokens.get(has_end..)?;
-    let mut inside_quotes = false;
-    let equip_idx = tail.iter().enumerate().find_map(|(idx, token)| {
-        if matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe) {
-            inside_quotes = !inside_quotes;
-            return None;
-        }
-        (!inside_quotes && token.is_word("equip")).then_some(idx)
-    });
-    let end = match equip_idx {
-        Some(idx) if idx > 0 && tail[idx - 1].is_word("and") => idx - 1,
-        Some(idx) => idx,
-        None => tail.len(),
-    };
-    let ability_tokens = strip_surrounding_quote_tokens(&tail[..end]);
-    (!ability_tokens.is_empty()).then_some(ability_tokens)
-}
-
-fn inline_token_rules_start(tokens: &[OwnedLexToken]) -> Option<usize> {
-    let mut starts = Vec::new();
-    for phrase in [
-        &["tap"][..],
-        &["sacrifice"],
-        &["this"],
-        &["power"],
-        &["whenever"],
-        &["when"],
-        &["at"],
-    ] {
-        if let Some((start, _)) = find_token_word_sequence_span(tokens, phrase) {
-            starts.push(start);
-        }
-    }
-    if let Some(idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
-        (token.kind == TokenKind::ManaGroup
-            && matches!(token.mana_group_inner(), Some("t" | "T" | "q" | "Q")))
-        .then_some(idx)
-    }) {
-        starts.push(idx);
-    }
-    starts.into_iter().min()
-}
-
-pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> Option<String> {
-    let has_equipped_subject = word_slice_contains_phrase(words, EQUIPPED_CREATURE_PHRASE);
-    if !has_equipped_subject {
-        return None;
-    }
-
-    let mut lines = Vec::new();
-    let source_tokens = lex_text_for_surface_check(source_text)?;
-    if let Some(ability_tokens) = equipment_granted_ability_tokens(&source_tokens)
-        && token_slice_contains_colon(ability_tokens)
-    {
-        let mut granted_text = render_trimmed_unquoted_token_text(ability_tokens);
-        if !granted_text.ends_with(['.', '!', '?']) {
-            granted_text.push('.');
-        }
-        lines.push(format!("Equipped creature has \"{granted_text}\""));
-    }
-
-    if lines.is_empty() {
-        let has_plus_one = word_slice_contains_phrase(words, &["gets", "+1/+1"]);
-        let mut granted_keywords: Vec<&str> = Vec::new();
-        for keyword in [
-            "vigilance",
-            "trample",
-            "haste",
-            "flying",
-            "lifelink",
-            "deathtouch",
-            "menace",
-            "reach",
-            "hexproof",
-            "indestructible",
-        ] {
-            if words.iter().any(|word| *word == keyword) {
-                granted_keywords.push(keyword);
-            }
-        }
-        if has_plus_one {
-            if granted_keywords.is_empty() {
-                lines.push("Equipped creature gets +1/+1.".to_string());
-            } else {
-                lines.push(format!(
-                    "Equipped creature gets +1/+1 and has {}.",
-                    join_simple_and_list(&granted_keywords)
-                ));
-            }
-        } else if !granted_keywords.is_empty() {
-            lines.push(format!(
-                "Equipped creature has {}.",
-                join_simple_and_list(&granted_keywords)
-            ));
-        }
-    }
-
-    if let Some(equip_amount) = parse_equip_amount(words) {
-        lines.push(format!("Equip {{{equip_amount}}}"));
-    }
-
-    if lines.is_empty() {
-        None
-    } else {
-        Some(lines.join("\n"))
-    }
-}
-
-fn first_generic_mana_amount_from_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
-    tokens.iter().find_map(|token| {
-        token
-            .mana_group_inner()
-            .and_then(|inner| inner.parse::<u32>().ok())
-    })
-}
-
-fn parse_braced_generic_mana_amount(text: &str) -> Option<u32> {
-    let tokens = lex_text_for_surface_check(text)?;
-    first_generic_mana_amount_from_tokens(&tokens)
-}
-
 fn generic_mana_cost(amount: u32) -> Option<ManaCost> {
     if amount == 0 {
         Some(ManaCost::new())
@@ -2359,96 +2138,31 @@ fn equipment_equip_ability(amount: u32) -> Option<Ability> {
     })
 }
 
-fn lex_text_for_surface_check(text: &str) -> Option<Vec<OwnedLexToken>> {
-    lex_line(text, 0).ok()
-}
-
-fn token_slice_contains_colon(tokens: &[OwnedLexToken]) -> bool {
-    tokens.iter().any(|token| token.kind == TokenKind::Colon)
-}
-
-fn token_slice_contains_tap_symbol(tokens: &[OwnedLexToken]) -> bool {
-    tokens.iter().any(|token| token.parser_text == "{t}")
-}
-
-fn token_slice_contains_trigger_intro(tokens: &[OwnedLexToken]) -> bool {
-    tokens.first().is_some_and(|token| {
-        token.is_word("when") || token.is_word("whenever") || token.is_word("at")
-    })
-}
-
-fn token_slice_contains_power_and_toughness(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(tokens, &["power"])
-        && contains_token_word_sequence(tokens, &["toughness"])
-}
-
-fn token_slice_starts_with_equip(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_starts_with(tokens, &["equip"])
-}
-
-fn token_slice_starts_with_equipped_creature_has(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_starts_with(tokens, &["equipped", "creature", "has"])
-}
-
-fn equipment_damage_amount_from_tokens(tokens: &[OwnedLexToken]) -> Option<i32> {
-    tokens.windows(2).find_map(|window| {
-        let [left, right] = window else {
-            return None;
-        };
-        left.is_word("deals")
-            .then(|| parse_number_word(right.parser_text.as_str()))
-            .flatten()
-    })
-}
-
-fn equipment_granted_damage_ability(ability_text: &str, token_name: &str) -> Option<Ability> {
-    let ability_tokens = lex_text_for_surface_check(ability_text)?;
-    let colon_idx = ability_tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Colon)?;
-    let cost_tokens = &ability_tokens[..colon_idx];
-    let effect_tokens = &ability_tokens[colon_idx + 1..];
-    if !contains_token_word_sequence(&effect_tokens, &["this", "creature", "deals"])
-        || !contains_token_word_sequence(&effect_tokens, &["any", "target"])
-    {
-        return None;
-    }
-
-    let damage_amount = equipment_damage_amount_from_tokens(&effect_tokens)?;
-
+fn equipment_granted_damage_ability(
+    shape: &token_grammar::EquipmentDamageGrantShape,
+    token_name: &str,
+) -> Option<Ability> {
     let mut costs = Vec::new();
-    let generic_amount = first_generic_mana_amount_from_tokens(cost_tokens);
-    if let Some(amount) = generic_amount
+    if let Some(amount) = shape.generic_amount
         && amount > 0
     {
         costs.push(crate::costs::Cost::mana(generic_mana_cost(amount)?));
     }
-    if token_slice_contains_tap_symbol(&ability_tokens) {
+    if shape.tap_cost {
         costs.push(crate::costs::Cost::Tap);
     }
-    if contains_token_word_sequence(&ability_tokens, &["sacrifice"]) {
+    if shape.sacrifice_equipment {
         costs.push(crate::costs::Cost::sacrifice(
             ObjectFilter::artifact().you_control().named(token_name),
         ));
     }
 
     let target = ChooseSpec::AnyTarget;
-    let mut cost_display = Vec::new();
-    if let Some(amount) = generic_amount {
-        cost_display.push(format!("{{{amount}}}"));
-    }
-    if token_slice_contains_tap_symbol(&ability_tokens) {
-        cost_display.push("{T}".to_string());
-    }
-    if contains_token_word_sequence(&ability_tokens, &["sacrifice"]) {
-        cost_display.push(format!("Sacrifice {token_name}"));
-    }
-
     Some(Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
             mana_cost: TotalCost::from_costs(costs),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::deal_damage(
-                Value::Fixed(damage_amount),
+                Value::Fixed(shape.damage_amount),
                 target.clone(),
             )]),
             choices: vec![target],
@@ -2464,177 +2178,319 @@ fn equipment_granted_damage_ability(ability_text: &str, token_name: &str) -> Opt
     })
 }
 
-fn build_equipment_token_from_rules_text(
+fn static_ability_for_token_keyword(keyword: token_grammar::TokenKeywordShape) -> StaticAbility {
+    match keyword {
+        token_grammar::TokenKeywordShape::Flying => StaticAbility::flying(),
+        token_grammar::TokenKeywordShape::Defender => StaticAbility::defender(),
+        token_grammar::TokenKeywordShape::Prowess => StaticAbility::prowess(),
+        token_grammar::TokenKeywordShape::Vigilance => StaticAbility::vigilance(),
+        token_grammar::TokenKeywordShape::Trample => StaticAbility::trample(),
+        token_grammar::TokenKeywordShape::Lifelink => StaticAbility::lifelink(),
+        token_grammar::TokenKeywordShape::Deathtouch => StaticAbility::deathtouch(),
+        token_grammar::TokenKeywordShape::Haste => StaticAbility::haste(),
+        token_grammar::TokenKeywordShape::Menace => StaticAbility::menace(),
+        token_grammar::TokenKeywordShape::Reach => StaticAbility::reach(),
+    }
+}
+
+fn build_equipment_token_from_rules_shape(
     mut builder: CardDefinitionBuilder,
-    rules_text: &str,
+    rules: &token_grammar::EquipmentRulesShape,
     token_name: &str,
 ) -> Option<CardDefinition> {
     let mut handled_any = false;
-    for line in rules_text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-    {
-        let Some(tokens) = lex_text_for_surface_check(line) else {
-            return None;
-        };
-        if token_slice_starts_with_equipped_creature_has(&tokens)
-            && token_slice_contains_colon(&tokens)
-        {
-            let ability_text = first_quoted_token_text(&tokens)
-                .unwrap_or_else(|| render_trimmed_token_text(tokens.get(3..).unwrap_or(&tokens)));
-            let ability = equipment_granted_damage_ability(&ability_text, token_name)?;
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::new(
-                crate::static_abilities::AttachedAbilityGrant::new(ability, line.to_string()),
-            )));
-            handled_any = true;
-            continue;
+    for line in &rules.lines {
+        match line {
+            token_grammar::EquipmentRuleLineShape::GrantedDamage {
+                display_text,
+                grant,
+            } => {
+                let ability = equipment_granted_damage_ability(grant, token_name)?;
+                builder = builder.with_ability(Ability::static_ability(StaticAbility::new(
+                    crate::static_abilities::AttachedAbilityGrant::new(
+                        ability,
+                        display_text.clone(),
+                    ),
+                )));
+                handled_any = true;
+            }
+            token_grammar::EquipmentRuleLineShape::StaticGrant {
+                display_text,
+                power_toughness,
+                scaled_power_toughness,
+                keywords,
+            } => {
+                let stat_grant = if let Some(scaled) = scaled_power_toughness {
+                    let count = match scaled.count {
+                        token_grammar::EquipmentGrantCountShape::CountersAmongPermanentsYouControl(
+                            counter_type,
+                        ) => crate::static_abilities::AnthemCountExpression::CountersAmong(
+                            ObjectFilter::permanent().you_control(),
+                            counter_type,
+                        ),
+                    };
+                    Some(
+                        crate::static_abilities::Anthem::for_source(0, 0).with_values(
+                            crate::static_abilities::AnthemValue::scaled(
+                                scaled.power,
+                                count.clone(),
+                            ),
+                            crate::static_abilities::AnthemValue::scaled(scaled.toughness, count),
+                        ),
+                    )
+                } else {
+                    power_toughness.map(|(power, toughness)| {
+                        crate::static_abilities::Anthem::for_source(power, toughness)
+                    })
+                };
+                if let Some(grant) = stat_grant {
+                    let grant = StaticAbility::new(grant);
+                    let display = if scaled_power_toughness.is_some() {
+                        display_text.clone()
+                    } else {
+                        let (power, toughness) = power_toughness.expect("fixed equipment grant");
+                        format!("Equipped creature gets {:+}/{:+}.", power, toughness)
+                    };
+                    builder = builder.with_ability(Ability::static_ability(StaticAbility::new(
+                        crate::static_abilities::AttachedAbilityGrant::new(
+                            Ability::static_ability(grant),
+                            display,
+                        ),
+                    )));
+                }
+                for keyword in keywords {
+                    let grant = static_ability_for_token_keyword(*keyword);
+                    let display = format!("Equipped creature has {}.", grant.display());
+                    builder = builder.with_ability(Ability::static_ability(StaticAbility::new(
+                        crate::static_abilities::AttachedAbilityGrant::new(
+                            Ability::static_ability(grant),
+                            display,
+                        ),
+                    )));
+                }
+                handled_any = true;
+            }
+            token_grammar::EquipmentRuleLineShape::Equip(equip) => {
+                builder = builder.with_ability(equipment_equip_ability(equip.amount)?);
+                handled_any = true;
+            }
+            token_grammar::EquipmentRuleLineShape::Other(_) => return None,
         }
-
-        if token_slice_starts_with_equip(&tokens) {
-            let amount = parse_braced_generic_mana_amount(line)?;
-            builder = builder.with_ability(equipment_equip_ability(amount)?);
-            handled_any = true;
-            continue;
-        }
-
-        return None;
     }
 
     handled_any.then(|| builder.build())
 }
 
-fn build_equipment_token_from_parsed_rules_text(
-    builder: CardDefinitionBuilder,
-    rules_text: &str,
-) -> Option<CardDefinition> {
-    let mut non_equip_lines = Vec::new();
-    let mut equip_amounts = Vec::new();
-    for line in rules_text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-    {
-        if lex_text_for_surface_check(line)
-            .is_some_and(|tokens| token_slice_starts_with_equip(&tokens))
-        {
-            equip_amounts.push(parse_braced_generic_mana_amount(line)?);
-        } else {
-            non_equip_lines.push(line);
-        }
-    }
-
-    let mut def = if non_equip_lines.is_empty() {
-        builder.build()
-    } else {
-        builder
-            .clone()
-            .parse_text(&non_equip_lines.join("\n"))
-            .ok()?
-    };
-    for amount in equip_amounts {
-        def.abilities.push(equipment_equip_ability(amount)?);
-    }
-    Some(def)
-}
-
-fn extract_double_quoted_token_rules_text(source_text: &str) -> Option<String> {
-    let tokens = lex_text_for_surface_check(source_text)?;
-    first_quoted_token_text(&tokens)
-}
-
-fn extract_inline_token_rules_text(source_text: &str) -> Option<String> {
-    let tokens = lex_text_for_surface_check(source_text)?;
-    let with_idx = find_token_word(&tokens, "with")?;
-    let tail = tokens.get(with_idx + 1..)?;
-
-    if token_slice_contains_colon(tail) {
-        return Some(render_trimmed_unquoted_token_text(tail));
-    }
-
-    let start = inline_token_rules_start(tail)?;
-    Some(render_trimmed_token_text(&tail[start..]))
-}
-
-fn normalize_token_self_reference_for_parser(rules_text: &str, self_reference: &str) -> String {
-    rules_text
-        .replace("This token", self_reference)
-        .replace("this token", &self_reference.to_ascii_lowercase())
-}
-
-fn try_parse_quoted_token_rules_text(
-    builder: &CardDefinitionBuilder,
-    source_text: &str,
-    self_reference: &str,
-) -> Option<CardDefinition> {
-    let quoted = extract_double_quoted_token_rules_text(source_text)
-        .or_else(|| extract_inline_token_rules_text(source_text))?;
-    let quoted_tokens = lex_text_for_surface_check(&quoted)?;
-    let looks_triggered = token_slice_contains_trigger_intro(&quoted_tokens);
-    let looks_activated = token_slice_contains_colon(&quoted_tokens);
-    let looks_static = token_slice_contains_power_and_toughness(&quoted_tokens);
-    if !looks_triggered && !looks_activated && !looks_static {
-        return None;
-    }
-
-    let normalized = normalize_token_self_reference_for_parser(&quoted, self_reference);
-    let parsed = builder.clone().parse_text(&normalized).ok()?;
-    Some(parsed)
-}
-
-fn apply_token_keyword_rules_text(
+fn apply_embedded_token_rules(
     mut builder: CardDefinitionBuilder,
-    rules_text: &str,
-) -> Option<CardDefinitionBuilder> {
-    let tokens = crate::runtime_backend::lexer::lex_line(rules_text, 0).ok()?;
-    let actions = crate::runtime_backend::keyword_static::parse_ability_line(&tokens)?;
-    for action in actions {
-        builder = builder.apply_keyword_action(action);
-    }
-    Some(builder)
-}
-
-fn apply_quoted_token_keyword_rules_text(
-    builder: CardDefinitionBuilder,
-    source_text: &str,
-) -> (CardDefinitionBuilder, bool) {
-    let Some(quoted) = extract_double_quoted_token_rules_text(source_text) else {
-        return (builder, false);
-    };
-    let Some(quoted_tokens) = lex_text_for_surface_check(&quoted) else {
-        return (builder, false);
-    };
-    let looks_triggered = token_slice_contains_trigger_intro(&quoted_tokens);
-    let looks_activated = token_slice_contains_colon(&quoted_tokens);
-    if looks_triggered || looks_activated {
-        return (builder, false);
-    }
-
-    match apply_token_keyword_rules_text(builder.clone(), &quoted) {
-        Some(next) => (next, true),
-        None => (builder, false),
-    }
-}
-
-fn token_cumulative_upkeep_text_from_words(words: &[&str]) -> Option<String> {
-    let upkeep_idx = word_slice_find_phrase_start_or_zero(words, &["cumulative", "upkeep"])?;
-    let mut cost_symbols = Vec::new();
-    for word in &words[upkeep_idx + 2..] {
-        if matches!(*word, "when" | "whenever" | "at") {
-            break;
-        }
-        let Some(symbol) = parse_token_mana_symbol(word) else {
-            break;
+    rules: &token_grammar::TokenRulesSurfaces,
+) -> CardDefinitionBuilder {
+    for rule in &rules.embedded_rules {
+        builder = match rule {
+            token_grammar::TokenEmbeddedRuleShape::OpponentCastsCreatureRemoveCreatureTypeUntilEndOfTurn => {
+                let effect = Effect::new(crate::effects::ApplyContinuousEffect::new(
+                    crate::continuous::EffectTarget::Source,
+                    crate::continuous::Modification::RemoveCardTypes(vec![CardType::Creature]),
+                    Until::EndOfTurn,
+                ));
+                builder.with_ability(Ability {
+                    kind: AbilityKind::Triggered(TriggeredAbility {
+                        trigger: Trigger::spell_cast(
+                            Some(ObjectFilter::creature()),
+                            PlayerFilter::Opponent,
+                        ),
+                        effects: crate::resolution::ResolutionProgram::from_effects(vec![effect]),
+                        choices: Vec::new(),
+                        intervening_if: None,
+                        presentation_label: None,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                })
+            }
+            token_grammar::TokenEmbeddedRuleShape::PowerToughnessEqualCreaturesYouControl => {
+                let count = Value::Count(ObjectFilter::creature().you_control());
+                builder.with_ability(Ability::static_ability(
+                    StaticAbility::characteristic_defining_pt(count.clone(), count),
+                ))
+            }
+            token_grammar::TokenEmbeddedRuleShape::LandEntersPutCountersOnSelf {
+                counter_type,
+                count,
+            } => builder.with_ability(Ability {
+                kind: AbilityKind::Triggered(TriggeredAbility {
+                    trigger: Trigger::enters_battlefield(
+                        ObjectFilter::land().you_control(),
+                        None,
+                    ),
+                    effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                        Effect::put_counters_on_source(*counter_type, *count as i32),
+                    ]),
+                    choices: Vec::new(),
+                    intervening_if: None,
+                    presentation_label: None,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            }),
+            token_grammar::TokenEmbeddedRuleShape::DiesCreateBuiltinToken { token, count } => {
+                let created = build_builtin_token_definition(*token);
+                builder.with_ability(Ability {
+                    kind: AbilityKind::Triggered(TriggeredAbility {
+                        trigger: Trigger::this_dies(),
+                        effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                            Effect::create_tokens(created, Value::Fixed(*count as i32)),
+                        ]),
+                        choices: Vec::new(),
+                        intervening_if: None,
+                        presentation_label: None,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                })
+            }
+            token_grammar::TokenEmbeddedRuleShape::DealsDamageToPlayerPutCounters {
+                combat_only,
+                counter_type,
+                count,
+            } => {
+                let trigger = if *combat_only {
+                    Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any)
+                } else {
+                    Trigger::this_deals_damage_to_player(PlayerFilter::Any, None)
+                };
+                let effect = if matches!(counter_type, crate::object::CounterType::Poison) {
+                    Effect::poison_counters_player(*count as i32, PlayerFilter::DamagedPlayer)
+                } else {
+                    Effect::put_counters(
+                        *counter_type,
+                        *count as i32,
+                        ChooseSpec::Player(PlayerFilter::DamagedPlayer),
+                    )
+                };
+                builder.with_ability(Ability {
+                    kind: AbilityKind::Triggered(TriggeredAbility {
+                        trigger,
+                        effects: crate::resolution::ResolutionProgram::from_effects(vec![effect]),
+                        choices: Vec::new(),
+                        intervening_if: None,
+                        presentation_label: None,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                })
+            }
+            token_grammar::TokenEmbeddedRuleShape::DealsDamageToPlayerLoseGame {
+                combat_only,
+            } => {
+                let trigger = if *combat_only {
+                    Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any)
+                } else {
+                    Trigger::this_deals_damage_to_player(PlayerFilter::Any, None)
+                };
+                builder.with_ability(Ability {
+                    kind: AbilityKind::Triggered(TriggeredAbility {
+                        trigger,
+                        effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                            Effect::lose_the_game_player(PlayerFilter::DamagedPlayer),
+                        ]),
+                        choices: Vec::new(),
+                        intervening_if: None,
+                        presentation_label: None,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                })
+            }
+            token_grammar::TokenEmbeddedRuleShape::DealsDamageToPlaneswalkerDestroy {
+                combat_only,
+            } => {
+                let trigger = if *combat_only {
+                    Trigger::this_deals_combat_damage_to(ObjectFilter::planeswalker())
+                } else {
+                    Trigger::this_deals_damage_to(ObjectFilter::planeswalker())
+                };
+                let damaged_tag = TagKey::from("damaged");
+                builder.with_ability(Ability {
+                    kind: AbilityKind::Triggered(TriggeredAbility {
+                        trigger,
+                        effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                            Effect::tag_triggering_damage_target(damaged_tag.clone()),
+                            Effect::new(crate::effects::DestroyEffect::with_spec(
+                                ChooseSpec::Tagged(damaged_tag),
+                            )),
+                        ]),
+                        choices: Vec::new(),
+                        intervening_if: None,
+                        presentation_label: None,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                })
+            }
+            token_grammar::TokenEmbeddedRuleShape::BeginningOfYourUpkeepSacrificeAnotherCreatureOrSourceDamagesYou {
+                damage,
+            } => {
+                let effect_id = EffectId(1);
+                let sacrifice = Effect::sacrifice_player(
+                    ObjectFilter::creature().you_control().other(),
+                    Value::Fixed(1),
+                    PlayerFilter::You,
+                );
+                builder.with_ability(Ability {
+                    kind: AbilityKind::Triggered(TriggeredAbility {
+                        trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
+                        effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                            Effect::with_id(effect_id.0, sacrifice),
+                            Effect::if_then(
+                                effect_id,
+                                EffectPredicate::DidNotHappen,
+                                vec![Effect::deal_damage(
+                                    Value::Fixed(*damage),
+                                    ChooseSpec::SourceController,
+                                )],
+                            ),
+                        ]),
+                        choices: Vec::new(),
+                        intervening_if: None,
+                        presentation_label: None,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                })
+            }
+            token_grammar::TokenEmbeddedRuleShape::TapSacrificeAddManaOrGainLife(shape) => {
+                let colors = shape
+                    .mana_options
+                    .iter()
+                    .filter_map(|symbol| match symbol {
+                        ManaSymbol::White => Some(Color::White),
+                        ManaSymbol::Blue => Some(Color::Blue),
+                        ManaSymbol::Black => Some(Color::Black),
+                        ManaSymbol::Red => Some(Color::Red),
+                        ManaSymbol::Green => Some(Color::Green),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                let costs = TotalCost::from_costs(vec![
+                    crate::costs::Cost::tap(),
+                    crate::costs::Cost::sacrifice_self(),
+                ]);
+                builder.with_ability(Ability {
+                    kind: AbilityKind::Activated(ActivatedAbility {
+                        mana_cost: costs,
+                        effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                            Effect::add_mana_of_any_color_restricted(1, colors),
+                            Effect::gain_life(shape.life as i32),
+                        ]),
+                        choices: Vec::new(),
+                        timing: ActivationTiming::AnyTime,
+                        additional_restrictions: Vec::new(),
+                        activation_restrictions: Vec::new(),
+                        mana_output: Some(Vec::new()),
+                        activation_condition: None,
+                        mana_usage_restrictions: Vec::new(),
+                        is_loyalty_ability: false,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                })
+            }
         };
-        cost_symbols.push(symbol);
     }
-
-    Some(if cost_symbols.is_empty() {
-        "Cumulative upkeep".to_string()
-    } else {
-        let cost = crate::mana::ManaCost::from_symbols(cost_symbols).to_oracle();
-        format!("Cumulative upkeep {cost}")
-    })
+    builder
 }
 
 pub(crate) fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
@@ -2754,36 +2610,22 @@ pub(crate) fn token_white_tap_target_creature_ability() -> Ability {
     }
 }
 
-pub(crate) fn token_tap_add_single_mana_ability(symbol: ManaSymbol) -> Ability {
+pub(crate) fn token_tap_mana_ability(shape: token_grammar::TokenTapManaAbilityShape) -> Ability {
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
             mana_cost: TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
-            effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::add_mana(
-                vec![symbol],
-            )]),
+            effects: crate::resolution::ResolutionProgram::default(),
             choices: Vec::new(),
             timing: crate::ability::ActivationTiming::AnyTime,
             additional_restrictions: Vec::new(),
             activation_restrictions: vec![],
-            mana_output: None,
+            mana_output: Some(shape.mana),
             activation_condition: None,
-            mana_usage_restrictions: vec![],
+            mana_usage_restrictions: shape.restrictions,
             is_loyalty_ability: false,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
-}
-
-pub(crate) fn parse_token_tap_add_single_mana_symbol(words: &[&str]) -> Option<ManaSymbol> {
-    let add_idx = find_index(words, |word| *word == "add")?;
-    if !words[..add_idx].iter().any(|word| *word == "t") {
-        return None;
-    }
-    let symbol = parse_token_mana_symbol(words.get(add_idx + 1).copied()?)?;
-    if matches!(symbol, ManaSymbol::Generic(_) | ManaSymbol::X) {
-        return None;
-    }
-    Some(symbol)
 }
 
 pub(crate) fn token_damage_to_player_poison_counter_ability() -> Ability {
@@ -2862,400 +2704,6 @@ pub(crate) fn token_leaves_return_named_from_graveyard_to_hand_ability(card_name
             presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-    }
-}
-
-pub(crate) fn parse_token_mana_symbol(word: &str) -> Option<ManaSymbol> {
-    match word {
-        "w" => Some(ManaSymbol::White),
-        "u" => Some(ManaSymbol::Blue),
-        "b" => Some(ManaSymbol::Black),
-        "r" => Some(ManaSymbol::Red),
-        "g" => Some(ManaSymbol::Green),
-        "c" => Some(ManaSymbol::Colorless),
-        "x" => Some(ManaSymbol::X),
-        _ => word.parse::<u8>().ok().map(ManaSymbol::Generic),
-    }
-}
-
-pub(crate) fn title_case_words(words: &[&str]) -> String {
-    let lowercase_words = [
-        "a", "an", "the", "and", "or", "but", "nor", "for", "so", "yet", "of", "in", "on", "at",
-        "to", "from", "with", "without", "by", "as", "into", "onto", "over", "under",
-    ];
-    words
-        .iter()
-        .filter(|word| !word.is_empty())
-        .enumerate()
-        .map(|(idx, word)| {
-            if idx > 0 && lowercase_words.iter().any(|candidate| candidate == word) {
-                return (*word).to_string();
-            }
-            let mut chars = word.chars();
-            if let Some(first) = chars.next() {
-                let mut out = first.to_uppercase().to_string();
-                out.push_str(chars.as_str());
-                out
-            } else {
-                String::new()
-            }
-        })
-        .filter(|word| !word.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-pub(crate) fn title_case_phrase_preserving_punctuation(phrase: &str) -> String {
-    let lowercase_words = [
-        "a", "an", "the", "and", "or", "but", "nor", "for", "so", "yet", "of", "in", "on", "at",
-        "to", "from", "with", "without", "by", "as", "into", "onto", "over", "under",
-    ];
-    let title_word = |idx: usize, word: &str| {
-        let letters_only: String = word
-            .chars()
-            .filter(|ch| ch.is_ascii_alphabetic())
-            .map(|ch| ch.to_ascii_lowercase())
-            .collect();
-        let keep_lowercase = idx > 0
-            && lowercase_words
-                .iter()
-                .any(|candidate| *candidate == letters_only.as_str());
-        if keep_lowercase {
-            return word.to_string();
-        }
-        let mut out = String::with_capacity(word.len());
-        let mut uppercased = false;
-        for ch in word.chars() {
-            if !uppercased && ch.is_ascii_alphabetic() {
-                out.extend(ch.to_uppercase());
-                uppercased = true;
-            } else {
-                out.push(ch);
-            }
-        }
-        out
-    };
-
-    let mut out = String::with_capacity(phrase.len());
-    let mut word = String::new();
-    let mut word_idx = 0usize;
-    for ch in phrase.chars() {
-        if ch.is_whitespace() {
-            if !word.is_empty() {
-                if !out.is_empty() {
-                    out.push(' ');
-                }
-                out.push_str(title_word(word_idx, word.as_str()).as_str());
-                word.clear();
-                word_idx += 1;
-            }
-            continue;
-        }
-        word.push(ch);
-    }
-    if !word.is_empty() {
-        if !out.is_empty() {
-            out.push(' ');
-        }
-        out.push_str(title_word(word_idx, word.as_str()).as_str());
-    }
-    out
-}
-
-pub(crate) fn extract_named_card_name(
-    tokens: &[OwnedLexToken],
-    source_text: &str,
-) -> Option<String> {
-    let pieces = tokens
-        .iter()
-        .flat_map(|token| token.parser_word_pieces())
-        .collect::<Vec<_>>();
-    let named_idx = find_index(pieces.as_slice(), |piece| piece.text == "named")?;
-    if named_idx > 0 && matches!(pieces[named_idx - 1].text.as_str(), "card" | "cards") {
-        return None;
-    }
-    let stop_words = [
-        "from",
-        "to",
-        "and",
-        "with",
-        "that",
-        "thats",
-        "it",
-        "at",
-        "until",
-        "if",
-        "where",
-        "when",
-        "whenever",
-        "this",
-        "token",
-        "tokens",
-        "tapped",
-        "attacking",
-        "add",
-        "sacrifice",
-        "draw",
-        "deals",
-        "deal",
-        "damage",
-        "gets",
-        "gains",
-        "gain",
-        "cant",
-        "can",
-        "attack",
-        "block",
-        "flying",
-        "trample",
-        "haste",
-        "vigilance",
-        "menace",
-        "deathtouch",
-        "lifelink",
-        "reach",
-        "hexproof",
-        "indestructible",
-        "first",
-        "double",
-        "strike",
-        "t",
-        "w",
-        "u",
-        "b",
-        "r",
-        "g",
-        "c",
-    ];
-    let mut end = named_idx + 1;
-    while end < pieces.len()
-        && !stop_words
-            .iter()
-            .any(|candidate| *candidate == pieces[end].text.as_str())
-    {
-        end += 1;
-    }
-    if end <= named_idx + 1 {
-        return None;
-    }
-
-    let name_start = pieces[named_idx + 1].span.start;
-    let name_end = pieces[end - 1].span.end;
-    if name_start < name_end
-        && source_text.is_char_boundary(name_start)
-        && source_text.is_char_boundary(name_end)
-        && let Some(raw_name) = source_text.get(name_start..name_end)
-    {
-        let titled = title_case_phrase_preserving_punctuation(raw_name);
-        if !titled.is_empty() {
-            return Some(titled);
-        }
-    }
-
-    let words = pieces[named_idx + 1..end]
-        .iter()
-        .map(|piece| piece.text.as_str())
-        .collect::<Vec<_>>();
-    Some(title_case_words(&words))
-}
-
-pub(crate) fn extract_leading_explicit_token_name(words: &[&str]) -> Option<String> {
-    let is_simple_name_word = |word: &str| {
-        word.chars()
-            .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-')
-    };
-    let is_descriptor = |word: &str| {
-        matches!(
-            word,
-            "legendary"
-                | "snow"
-                | "basic"
-                | "artifact"
-                | "enchantment"
-                | "creature"
-                | "land"
-                | "instant"
-                | "sorcery"
-                | "battle"
-                | "planeswalker"
-                | "token"
-                | "tokens"
-                | "white"
-                | "blue"
-                | "black"
-                | "red"
-                | "green"
-                | "colorless"
-                | "named"
-                | "with"
-                | "that"
-                | "which"
-                | "and"
-                | "or"
-                | "a"
-                | "an"
-                | "flying"
-                | "haste"
-                | "deathtouch"
-                | "trample"
-                | "vigilance"
-                | "lifelink"
-                | "menace"
-                | "reach"
-                | "hexproof"
-                | "indestructible"
-                | "prowess"
-                | "first"
-                | "double"
-                | "strike"
-                | "when"
-                | "whenever"
-                | "if"
-                | "this"
-                | "it"
-                | "those"
-                | "cant"
-                | "can"
-                | "attack"
-                | "block"
-                | "dies"
-                | "deals"
-                | "deal"
-                | "damage"
-                | "draw"
-                | "add"
-                | "sacrifice"
-                | "counter"
-                | "gets"
-                | "gains"
-                | "gain"
-        )
-    };
-    let first = *words.first()?;
-    if !is_simple_name_word(first)
-        || is_descriptor(first)
-        || parse_token_pt(first).is_some()
-        || parse_card_type(first).is_some()
-        || parse_subtype_word(first).is_some()
-    {
-        return None;
-    }
-
-    let mut name_words = vec![first];
-    for word in words.iter().skip(1) {
-        if !is_simple_name_word(word)
-            || is_descriptor(word)
-            || parse_token_pt(word).is_some()
-            || parse_card_type(word).is_some()
-            || parse_subtype_word(word).is_some()
-        {
-            break;
-        }
-        name_words.push(*word);
-    }
-
-    if name_words.len() >= 2
-        || words
-            .get(1)
-            .is_some_and(|word| is_descriptor(word) || parse_token_pt(word).is_some())
-    {
-        Some(title_case_words(&name_words))
-    } else {
-        None
-    }
-}
-
-pub(crate) fn extract_leading_token_name_phrase(words: &[&str]) -> Option<String> {
-    let is_simple_name_word = |word: &str| {
-        word.chars()
-            .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-')
-    };
-    let stop_words = [
-        "a",
-        "an",
-        "the",
-        "legendary",
-        "snow",
-        "basic",
-        "named",
-        "with",
-        "that",
-        "which",
-        "when",
-        "whenever",
-        "if",
-        "at",
-        "until",
-        "this",
-        "it",
-        "those",
-        "token",
-        "tokens",
-        "and",
-        "or",
-        "to",
-        "from",
-        "add",
-        "sacrifice",
-        "draw",
-        "deals",
-        "deal",
-        "damage",
-        "dies",
-        "gets",
-        "gains",
-        "gain",
-        "cant",
-        "can",
-        "attack",
-        "block",
-        "flying",
-        "haste",
-        "deathtouch",
-        "trample",
-        "vigilance",
-        "lifelink",
-        "menace",
-        "reach",
-        "hexproof",
-        "indestructible",
-        "prowess",
-        "first",
-        "double",
-        "strike",
-        "white",
-        "blue",
-        "black",
-        "red",
-        "green",
-        "colorless",
-        "w",
-        "u",
-        "b",
-        "r",
-        "g",
-        "c",
-        "t",
-    ];
-
-    let mut name_words = Vec::new();
-    for word in words {
-        if stop_words.iter().any(|candidate| *candidate == *word)
-            || parse_token_pt(word).is_some()
-            || parse_card_type(word).is_some()
-        {
-            break;
-        }
-        if !is_simple_name_word(word) {
-            break;
-        }
-        name_words.push(*word);
-    }
-
-    if name_words.len() < 2 {
-        None
-    } else {
-        Some(title_case_words(&name_words))
     }
 }
 
@@ -3375,697 +2823,291 @@ pub(crate) fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
     }
 }
 
-pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
-    let trimmed = name.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    let tokens = lex_line(trimmed, 0).ok()?;
-    let words = parser_token_word_refs(&tokens);
-    let has_word = |needle: &str| word_slice_contains_word(words.as_slice(), needle);
-    let has_words = |needles: &[&str]| needles.iter().all(|needle| has_word(needle));
-    let has_any_word = |needles: &[&str]| needles.iter().any(|needle| has_word(needle));
-    let has_phrase =
-        |phrase: &[&str]| word_slice_contains_phrase_or_empty(words.as_slice(), phrase);
-    let has_explicit_pt = words.iter().any(|word| parse_token_pt(word).is_some());
-    let has_equipment_rules_subject =
-        has_word("equipment") && has_phrase(&["equipped", "creature"]);
+fn build_builtin_token_definition(shape: token_grammar::BuiltinTokenShape) -> CardDefinition {
+    match shape {
+        token_grammar::BuiltinTokenShape::Treasure => {
+            crate::cards::tokens::treasure_token_definition()
+        }
+        token_grammar::BuiltinTokenShape::Clue => crate::cards::tokens::clue_token_definition(),
+        token_grammar::BuiltinTokenShape::Map => crate::cards::tokens::map_token_definition(),
+        token_grammar::BuiltinTokenShape::Lander => crate::cards::tokens::lander_token_definition(),
+        token_grammar::BuiltinTokenShape::Junk => crate::cards::tokens::junk_token_definition(),
+        token_grammar::BuiltinTokenShape::Mutagen => {
+            crate::cards::tokens::mutagen_token_definition()
+        }
+        token_grammar::BuiltinTokenShape::Gold => crate::cards::tokens::gold_token_definition(),
+        token_grammar::BuiltinTokenShape::Shard => crate::cards::tokens::shard_token_definition(),
+        token_grammar::BuiltinTokenShape::Walker => crate::cards::tokens::walker_token_definition(),
+        token_grammar::BuiltinTokenShape::EldraziSpawn => eldrazi_spawn_token_definition(),
+        token_grammar::BuiltinTokenShape::EldraziScion => eldrazi_scion_token_definition(),
+        token_grammar::BuiltinTokenShape::Food => CardDefinitionBuilder::new(CardId::new(), "Food")
+            .token()
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Food])
+            .build(),
+        token_grammar::BuiltinTokenShape::WickedRole => {
+            crate::cards::tokens::wicked_role_token_definition()
+        }
+        token_grammar::BuiltinTokenShape::YoungHeroRole => {
+            crate::cards::tokens::young_hero_role_token_definition()
+        }
+        token_grammar::BuiltinTokenShape::MonsterRole => {
+            crate::cards::tokens::monster_role_token_definition()
+        }
+        token_grammar::BuiltinTokenShape::SorcererRole => {
+            crate::cards::tokens::sorcerer_role_token_definition()
+        }
+        token_grammar::BuiltinTokenShape::RoyalRole => {
+            crate::cards::tokens::royal_role_token_definition()
+        }
+        token_grammar::BuiltinTokenShape::CursedRole => {
+            crate::cards::tokens::cursed_role_token_definition()
+        }
+        token_grammar::BuiltinTokenShape::Blood => {
+            CardDefinitionBuilder::new(CardId::new(), "Blood")
+                .token()
+                .card_types(vec![CardType::Artifact])
+                .build()
+        }
+        token_grammar::BuiltinTokenShape::Powerstone => {
+            CardDefinitionBuilder::new(CardId::new(), "Powerstone")
+                .token()
+                .card_types(vec![CardType::Artifact])
+                .build()
+        }
+    }
+}
 
-    if has_word("treasure") && !has_word("creature") {
-        return Some(crate::cards::tokens::treasure_token_definition());
+fn build_vehicle_token_definition(
+    shape: token_grammar::VehicleTokenShape,
+) -> Option<CardDefinition> {
+    let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Vehicle]);
+    if let Some((power, toughness)) = shape.power_toughness {
+        builder = builder.power_toughness(PowerToughness::fixed(power, toughness));
     }
-    if has_word("clue") && !has_word("creature") {
-        return Some(crate::cards::tokens::clue_token_definition());
+    if shape.flying {
+        builder = builder.flying();
     }
-    if has_word("map") && !has_word("creature") {
-        return Some(crate::cards::tokens::map_token_definition());
+    if let Some(crew_amount) = shape.crew_amount {
+        builder = builder.crew(crew_amount, ActivationTiming::AnyTime, Vec::new());
     }
-    if has_word("lander") && !has_word("creature") {
-        return Some(crate::cards::tokens::lander_token_definition());
+    Some(builder.build())
+}
+
+fn build_artifact_token_definition(
+    shape: token_grammar::ArtifactTokenShape,
+) -> Option<CardDefinition> {
+    let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)
+        .token()
+        .card_types(vec![CardType::Artifact]);
+    if shape.legendary {
+        builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
     }
-    if has_word("junk") && !has_word("creature") {
-        return Some(crate::cards::tokens::junk_token_definition());
+    if !shape.subtypes.is_empty() {
+        builder = builder.subtypes(shape.subtypes);
     }
-    if has_word("mutagen") && !has_word("creature") {
-        return Some(crate::cards::tokens::mutagen_token_definition());
+    if shape.colorless {
+        builder = builder.with_ability(Ability::static_ability(StaticAbility::make_colorless(
+            ObjectFilter::source(),
+        )));
     }
-    if has_word("gold") && !has_word("creature") {
-        return Some(crate::cards::tokens::gold_token_definition());
-    }
-    if has_word("shard") && !has_word("creature") {
-        return Some(crate::cards::tokens::shard_token_definition());
-    }
-    if has_word("walker") && !has_word("planeswalker") {
-        return Some(crate::cards::tokens::walker_token_definition());
-    }
-    if has_word("eldrazi") && has_word("spawn") {
-        return Some(eldrazi_spawn_token_definition());
-    }
-    if has_word("eldrazi") && has_word("scion") {
-        return Some(eldrazi_scion_token_definition());
-    }
-    if has_word("food") && !has_word("creature") {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Food")
-            .token()
-            .card_types(vec![CardType::Artifact])
-            .subtypes(vec![Subtype::Food]);
-        return Some(builder.build());
-    }
-    if has_word("wicked") && has_word("role") {
-        return Some(crate::cards::tokens::wicked_role_token_definition());
-    }
-    if has_word("young") && has_word("hero") && has_word("role") {
-        return Some(crate::cards::tokens::young_hero_role_token_definition());
-    }
-    if has_word("monster") && has_word("role") {
-        return Some(crate::cards::tokens::monster_role_token_definition());
-    }
-    if has_word("sorcerer") && has_word("role") {
-        return Some(crate::cards::tokens::sorcerer_role_token_definition());
-    }
-    if has_word("royal") && has_word("role") {
-        return Some(crate::cards::tokens::royal_role_token_definition());
-    }
-    if has_word("cursed") && has_word("role") {
-        return Some(crate::cards::tokens::cursed_role_token_definition());
-    }
-    if has_word("blood") && !has_word("creature") {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Blood")
-            .token()
-            .card_types(vec![CardType::Artifact]);
-        return Some(builder.build());
-    }
-    if has_word("powerstone") && !has_word("creature") {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Powerstone")
-            .token()
-            .card_types(vec![CardType::Artifact]);
-        return Some(builder.build());
-    }
-    if has_word("vehicle") && has_word("artifact") && !has_word("creature") {
-        let explicit_name_from_words = words.iter().find_map(|word| {
-            if parse_token_pt(word).is_some() {
-                return None;
-            }
-            if !word
-                .chars()
-                .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-')
-            {
-                return None;
-            }
-            if matches!(
-                *word,
-                "artifact"
-                    | "token"
-                    | "tokens"
-                    | "vehicle"
-                    | "colorless"
-                    | "named"
-                    | "with"
-                    | "and"
-                    | "crew"
-                    | "flying"
-                    | "white"
-                    | "blue"
-                    | "black"
-                    | "red"
-                    | "green"
-            ) {
-                return None;
-            }
-            if parse_card_type(word).is_some() || parse_subtype_word(word).is_some() {
-                return None;
-            }
-            Some(title_case_words(&[*word]))
-        });
-        let token_name = extract_named_card_name(&tokens, trimmed)
-            .or(explicit_name_from_words)
-            .unwrap_or_else(|| "Vehicle".to_string());
-        let mut builder = CardDefinitionBuilder::new(CardId::new(), &token_name)
-            .token()
-            .card_types(vec![CardType::Artifact])
-            .subtypes(vec![Subtype::Vehicle]);
-        if let Some((power, toughness)) = words.iter().find_map(|word| parse_token_pt(word)) {
-            builder = builder.power_toughness(PowerToughness::fixed(power, toughness));
-        }
-        if has_word("flying") {
-            builder = builder.flying();
-        }
-        if let Some(crew_amount) = parse_crew_amount(&words) {
-            builder = builder.crew(crew_amount, ActivationTiming::AnyTime, Vec::new());
-        }
-        return Some(builder.build());
-    }
-    if has_word("artifact")
-        && !has_explicit_pt
-        && (!has_word("creature") || has_equipment_rules_subject)
-    {
-        let mut subtypes = Vec::new();
-        for word in &words {
-            if let Some(subtype) = parse_subtype_word(word)
-                && !subtype.is_creature_type()
-                && !subtypes.iter().any(|candidate| *candidate == subtype)
-            {
-                subtypes.push(subtype);
-            }
-        }
-        let token_name = extract_named_card_name(&tokens, trimmed)
-            .or_else(|| {
-                find_index(words.as_slice(), |word| {
-                    !matches!(
-                        *word,
-                        "artifact"
-                            | "token"
-                            | "tokens"
-                            | "named"
-                            | "colorless"
-                            | "white"
-                            | "blue"
-                            | "black"
-                            | "red"
-                            | "green"
-                    )
-                })
-                .map(|idx| {
-                    let mut chars = words[idx].chars();
-                    match chars.next() {
-                        Some(first) => {
-                            let mut name = first.to_uppercase().to_string();
-                            name.push_str(chars.as_str());
-                            name
-                        }
-                        None => "Artifact".to_string(),
-                    }
-                })
-            })
-            .unwrap_or_else(|| "Artifact".to_string());
-        let mut builder = CardDefinitionBuilder::new(CardId::new(), &token_name)
-            .token()
-            .card_types(vec![CardType::Artifact]);
-        if has_word("legendary") {
-            builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
-        }
-        if !subtypes.is_empty() {
-            builder = builder.subtypes(subtypes);
-        }
-        if has_word("colorless") {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::make_colorless(
-                ObjectFilter::source(),
-            )));
-        }
-        if has_equipment_rules_subject
-            && let Some(rules_text) = parse_equipment_rules_text(&words, name)
+    if let Some(rules) = shape.equipment_rules.as_ref() {
+        if let Some(def) =
+            build_equipment_token_from_rules_shape(builder.clone(), rules, &shape.name)
         {
-            if let Some(def) =
-                build_equipment_token_from_rules_text(builder.clone(), &rules_text, &token_name)
-            {
-                return Some(def);
-            }
-            if let Some(def) =
-                build_equipment_token_from_parsed_rules_text(builder.clone(), &rules_text)
-            {
-                return Some(def);
-            }
+            return Some(def);
         }
-        if let Some(parsed) = try_parse_quoted_token_rules_text(&builder, name, "This artifact") {
-            return Some(parsed);
-        }
-        if let Some(rules_text) = parse_equipment_rules_text(&words, name) {
-            if let Some(def) =
-                build_equipment_token_from_rules_text(builder.clone(), &rules_text, &token_name)
-            {
-                return Some(def);
-            }
-            if let Some(def) =
-                build_equipment_token_from_parsed_rules_text(builder.clone(), &rules_text)
-            {
-                return Some(def);
-            }
-        }
-        if has_words(&[
-            "when",
-            "token",
-            "leaves",
-            "battlefield",
-            "deals",
-            "damage",
-            "target",
-        ]) && let Some(amount) = parse_deals_damage_amount(&words)
-        {
-            builder = builder.with_ability(token_leaves_deals_damage_any_target_ability(amount));
-        }
-        return Some(builder.build());
     }
-    if has_word("angel") && !has_explicit_pt {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Angel")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Angel])
-            .color_indicator(ColorSet::WHITE)
-            .power_toughness(PowerToughness::fixed(4, 4))
-            .flying();
-        return Some(builder.build());
+    builder = apply_embedded_token_rules(builder, &shape.token_rules);
+    if let Some(amount) = shape.leaves_damage_any_target {
+        builder = builder.with_ability(token_leaves_deals_damage_any_target_ability(amount));
     }
-    if has_word("wall") && has_word("0/4") && has_word("artifact") && has_word("creature") {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Wall")
-            .token()
-            .card_types(vec![CardType::Artifact, CardType::Creature])
-            .subtypes(vec![Subtype::Wall])
-            .power_toughness(PowerToughness::fixed(0, 4))
-            .defender();
-        return Some(builder.build());
+    Some(builder.build())
+}
+
+fn apply_standard_token_keyword(
+    builder: CardDefinitionBuilder,
+    keyword: token_grammar::TokenKeywordShape,
+) -> CardDefinitionBuilder {
+    match keyword {
+        token_grammar::TokenKeywordShape::Flying => builder.flying(),
+        token_grammar::TokenKeywordShape::Defender => builder.defender(),
+        token_grammar::TokenKeywordShape::Prowess => builder.prowess(),
+        token_grammar::TokenKeywordShape::Vigilance => builder.vigilance(),
+        token_grammar::TokenKeywordShape::Trample => builder.trample(),
+        token_grammar::TokenKeywordShape::Lifelink => builder.lifelink(),
+        token_grammar::TokenKeywordShape::Deathtouch => builder.deathtouch(),
+        token_grammar::TokenKeywordShape::Haste => builder.haste(),
+        token_grammar::TokenKeywordShape::Menace => builder.menace(),
+        token_grammar::TokenKeywordShape::Reach => builder.reach(),
     }
-    if has_word("squirrel") && has_word("1/1") && has_word("green") {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Squirrel")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Squirrel])
-            .color_indicator(ColorSet::GREEN)
-            .power_toughness(PowerToughness::fixed(1, 1));
-        return Some(builder.build());
+}
+
+fn build_creature_token_definition(
+    shape: token_grammar::CreatureTokenShape,
+) -> Option<CardDefinition> {
+    let (power, toughness) = shape.power_toughness;
+    let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)
+        .token()
+        .card_types(shape.card_types)
+        .power_toughness(PowerToughness::fixed(power, toughness));
+    if shape.legendary {
+        builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
     }
-    let is_dragon_egg_death_spawn_pattern = has_word("dragon")
-        && has_word("egg")
-        && has_word("0/2")
-        && has_words(&[
-            "when", "token", "dies", "create", "2/2", "flying", "r", "+1/+0",
-        ]);
-    if is_dragon_egg_death_spawn_pattern {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Dragon Egg")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Dragon])
-            .color_indicator(ColorSet::RED)
-            .power_toughness(PowerToughness::fixed(0, 2))
-            .defender()
-            .with_ability(token_dies_create_dragon_with_firebreathing_ability());
-        return Some(builder.build());
+    if !shape.subtypes.is_empty() {
+        builder = builder.subtypes(shape.subtypes);
     }
-    if has_word("elephant") && has_word("3/3") && has_word("green") {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Elephant")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Elephant])
-            .color_indicator(ColorSet::GREEN)
-            .power_toughness(PowerToughness::fixed(3, 3));
-        return Some(builder.build());
+    if !shape.colors.is_empty() {
+        builder = builder.color_indicator(shape.colors);
     }
-    let has_construct_cda_words = has_words(&[
-        "power",
-        "toughness",
-        "equal",
-        "number",
-        "artifacts",
-        "you",
-        "control",
-    ]);
-    let has_construct_plus_words =
-        has_words(&["gets", "+1/+1", "for", "each", "artifact", "you", "control"]);
-    let is_zero_zero_construct = has_word("construct") && has_word("0/0");
-    let named_non_construct = extract_named_card_name(&tokens, trimmed)
-        .is_some_and(|token_name| !token_name.eq_ignore_ascii_case("Construct"));
-    if has_word("construct")
-        && !named_non_construct
-        && (!has_explicit_pt
-            || has_construct_cda_words
-            || has_construct_plus_words
-            || is_zero_zero_construct)
-    {
-        let scaling_ability = Ability::static_ability(StaticAbility::characteristic_defining_pt(
-            Value::Count(ObjectFilter::artifact().you_control()),
-            Value::Count(ObjectFilter::artifact().you_control()),
+    for keyword in shape.keywords {
+        builder = apply_standard_token_keyword(builder, keyword);
+    }
+
+    let rules = shape.rules;
+    builder = apply_embedded_token_rules(builder, &rules.token_rules);
+    if let Some(symbols) = rules.cumulative_upkeep_mana_symbols.as_ref() {
+        let total_cost = if symbols.is_empty() {
+            TotalCost::free()
+        } else {
+            TotalCost::mana(ManaCost::from_symbols(symbols.clone()))
+        };
+        builder = builder.cumulative_upkeep(total_cost);
+    }
+    if let Some(shape) = rules.tap_mana_ability {
+        builder = builder.with_ability(token_tap_mana_ability(shape));
+    }
+    if let Some(amount) = rules.saddle_crew_power_bonus {
+        builder = builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
+            format!(
+                "This creature saddles Mounts and crews Vehicles as though its power were {amount} greater."
+            ),
+        )));
+    }
+    if rules.banding {
+        builder = builder.with_ability(Ability::static_ability(StaticAbility::banding()));
+    }
+    if rules.hexproof {
+        builder = builder.hexproof();
+    }
+    if rules.indestructible {
+        builder = builder.indestructible();
+    }
+    if rules.copies_exiled_triggered_abilities {
+        let filter = ObjectFilter::default().in_zone(Zone::Exile);
+        builder = builder.with_ability(Ability::static_ability(
+            StaticAbility::copy_triggered_abilities(
+                CopyTriggeredAbilities::new(filter)
+                    .with_display("all triggered abilities of the exiled cards"),
+            ),
         ));
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Construct")
-            .token()
-            .card_types(vec![CardType::Artifact, CardType::Creature])
-            .subtypes(vec![Subtype::Construct])
-            .power_toughness(PowerToughness::fixed(0, 0))
-            .with_ability(scaling_ability);
-        return Some(builder.build());
     }
-    if has_word("shapeshifter") && !has_word("creature") {
-        let mut builder = CardDefinitionBuilder::new(CardId::new(), "Shapeshifter")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Shapeshifter])
-            .power_toughness(PowerToughness::fixed(3, 2));
-        if has_word("changeling") || word_slice_eq(&words, &["shapeshifter"]) {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::changeling()));
-        }
-        return Some(builder.build());
+    if let Some(amount) = rules.toxic_amount {
+        builder = builder.toxic(amount);
     }
-    if has_word("astartes") && has_word("warrior") && has_word("2/2") && has_word("white") {
-        let mut builder = CardDefinitionBuilder::new(CardId::new(), "Astartes Warrior")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Astartes, Subtype::Warrior])
-            .color_indicator(ColorSet::WHITE)
-            .power_toughness(PowerToughness::fixed(2, 2));
-        if has_word("vigilance") {
-            builder = builder.vigilance();
-        }
-        return Some(builder.build());
+    if let Some(return_shape) = rules.sacrifice_return {
+        builder = builder.with_ability(token_sacrifice_return_named_from_graveyard_ability(
+            &return_shape.card_name,
+            return_shape.mana_symbols,
+            return_shape.tap_cost,
+        ));
     }
-    if has_word("creature") {
-        let mut card_types = vec![CardType::Creature];
-        let first_creature_idx = find_index(words.as_slice(), |word| *word == "creature");
-        let artifact_before_creature = first_creature_idx
-            .is_some_and(|idx| word_slice_contains_word(&words[..idx], "artifact"));
-        let enchantment_before_creature = first_creature_idx
-            .is_some_and(|idx| word_slice_contains_word(&words[..idx], "enchantment"));
-        if artifact_before_creature {
-            card_types.insert(0, CardType::Artifact);
-        }
-        if enchantment_before_creature {
-            card_types.insert(0, CardType::Enchantment);
-        }
-        let is_creature_token = card_types.contains(&CardType::Creature);
-
-        let (power, toughness) = words
-            .iter()
-            .find_map(|word| parse_token_pt(word))
-            .unwrap_or((0, 0));
-
-        let mut subtypes = Vec::new();
-        let subtype_scan_end = find_index(words.as_slice(), |word| {
-            matches!(
-                *word,
-                "with" | "when" | "whenever" | "has" | "have" | "gains" | "gain" | "gets" | "get"
-            )
-        })
-        .unwrap_or(words.len());
-        for word in &words[..subtype_scan_end] {
-            if parse_card_type(word).is_some() {
-                continue;
-            }
-            if let Some(subtype) = parse_subtype_word(word)
-                .or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
-                && !subtypes.iter().any(|candidate| *candidate == subtype)
-            {
-                subtypes.push(subtype);
-            }
-        }
-
-        let explicit_name = extract_named_card_name(&tokens, trimmed)
-            .or_else(|| extract_leading_token_name_phrase(&words))
-            .or_else(|| extract_leading_explicit_token_name(&words));
-        let token_name = explicit_name.unwrap_or_else(|| {
-            subtypes
-                .first()
-                .map(|subtype| format!("{subtype:?}"))
-                .unwrap_or_else(|| "OwnedLexToken".to_string())
-        });
-
-        let mut builder = CardDefinitionBuilder::new(CardId::new(), token_name)
-            .token()
-            .card_types(card_types)
-            .power_toughness(PowerToughness::fixed(power, toughness));
-        if has_word("legendary") {
-            builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
-        }
-
-        if !subtypes.is_empty() {
-            builder = builder.subtypes(subtypes);
-        }
-
-        let mut colors = ColorSet::new();
-        if has_word("white") {
-            colors = colors.union(ColorSet::WHITE);
-        }
-        if has_word("blue") {
-            colors = colors.union(ColorSet::BLUE);
-        }
-        if has_word("black") {
-            colors = colors.union(ColorSet::BLACK);
-        }
-        if has_word("red") {
-            colors = colors.union(ColorSet::RED);
-        }
-        if has_word("green") {
-            colors = colors.union(ColorSet::GREEN);
-        }
-        if !colors.is_empty() {
-            builder = builder.color_indicator(colors);
-        }
-
-        if has_word("flying") {
-            builder = builder.flying();
-        }
-        if has_word("defender") {
-            builder = builder.defender();
-        }
-        if has_word("prowess") {
-            builder = builder.prowess();
-        }
-        if has_word("vigilance") {
-            builder = builder.vigilance();
-        }
-        if has_word("trample") {
-            builder = builder.trample();
-        }
-        if has_word("lifelink") {
-            builder = builder.lifelink();
-        }
-        if has_word("deathtouch") {
-            builder = builder.deathtouch();
-        }
-        if has_word("haste") {
-            builder = builder.haste();
-        }
-        if has_word("menace") {
-            builder = builder.menace();
-        }
-        if has_word("reach") {
-            builder = builder.reach();
-        }
-        let (next_builder, applied_quoted_keyword) =
-            apply_quoted_token_keyword_rules_text(builder, name);
-        builder = next_builder;
-        if !applied_quoted_keyword
-            && let Some(text) = token_cumulative_upkeep_text_from_words(words.as_slice())
-            && let Some(next) = apply_token_keyword_rules_text(builder.clone(), &text)
-        {
-            builder = next;
-        }
-        if let Some(symbol) = parse_token_tap_add_single_mana_symbol(&words) {
-            builder = builder.with_ability(token_tap_add_single_mana_ability(symbol));
-        }
-        if !applied_quoted_keyword
-            && has_words(&["saddles", "mounts", "crews", "vehicles", "power", "greater"])
-            && let Some(amount) = parse_as_though_power_were_greater_amount(&words)
-        {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
-                format!(
-                    "This creature saddles Mounts and crews Vehicles as though its power were {amount} greater."
-                ),
-            )));
-        }
-        if has_word("banding") {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::banding()));
-        }
-        if has_word("hexproof") {
-            builder = builder.hexproof();
-        }
-        if has_word("indestructible") {
-            builder = builder.indestructible();
-        }
-        if has_words(&["all", "triggered", "abilities"]) && has_word("exiled") && has_word("cards")
-        {
-            let filter = ObjectFilter::default().in_zone(Zone::Exile);
-            builder = builder.with_ability(Ability::static_ability(
-                StaticAbility::copy_triggered_abilities(
-                    CopyTriggeredAbilities::new(filter)
-                        .with_display("all triggered abilities of the exiled cards"),
-                ),
-            ));
-        }
-        if let Some(toxic_idx) = find_window_by(words.as_slice(), 2, |window| window[0] == "toxic")
-        {
-            if let Ok(amount) = words[toxic_idx + 1].parse::<u32>() {
-                builder = builder.toxic(amount);
-            }
-        }
-        if has_words(&[
-            "sacrifice",
-            "this",
-            "token",
-            "return",
-            "named",
-            "graveyard",
-            "battlefield",
-        ]) && !has_word("beginning")
-            && let Some(card_name) = extract_named_card_name(&tokens, trimmed)
-            && let Some(sacrifice_idx) = find_index(words.as_slice(), |word| *word == "sacrifice")
-        {
-            let mut mana_symbols = Vec::new();
-            let mut tap_cost = false;
-            for word in &words[..sacrifice_idx] {
-                if *word == "t" {
-                    tap_cost = true;
-                    continue;
-                }
-                if let Some(symbol) = parse_token_mana_symbol(word) {
-                    mana_symbols.push(symbol);
-                }
-            }
-            builder = builder.with_ability(token_sacrifice_return_named_from_graveyard_ability(
-                &card_name,
-                mana_symbols,
-                tap_cost,
-            ));
-        }
-        if has_phrase(&["at", "the", "beginning", "of", "your"])
-            && has_words(&[
-                "upkeep",
-                "sacrifice",
-                "this",
-                "token",
-                "return",
-                "named",
-                "graveyard",
-                "battlefield",
-            ])
-            && let Some(card_name) = extract_named_card_name(&tokens, trimmed)
-        {
-            builder =
-                builder.with_ability(token_upkeep_sacrifice_return_named_from_graveyard_ability(
-                    &card_name,
-                    has_word("haste"),
-                ));
-        }
-        if has_words(&[
-            "when", "token", "dies", "create", "2/2", "red", "dragon", "flying", "r", "+1/+0",
-        ]) {
-            builder = builder.with_ability(token_dies_create_dragon_with_firebreathing_ability());
-        }
-        if has_words(&["when", "token", "dies", "deals", "damage", "target"])
-            && let Some(amount) = parse_deals_damage_amount(&words)
-        {
-            builder = builder.with_ability(token_dies_deals_damage_any_target_ability(amount));
-        }
-        if has_words(&[
-            "when", "token", "dies", "target", "creature", "gets", "-1/-1",
-        ]) {
-            builder =
-                builder.with_ability(token_dies_target_creature_gets_minus_one_minus_one_ability());
-        }
-        if has_words(&[
-            "when",
-            "token",
-            "leaves",
-            "battlefield",
-            "deals",
-            "damage",
-            "you",
-            "each",
-            "creature",
-            "control",
-        ]) && let Some(amount) = parse_deals_damage_amount(&words)
-        {
-            let ability = Ability {
-                kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                    trigger: Trigger::this_leaves_battlefield(),
-                    effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                        Effect::deal_damage(amount, ChooseSpec::SourceController),
-                        Effect::for_each(
-                            ObjectFilter::creature().you_control(),
-                            vec![Effect::deal_damage(amount, ChooseSpec::Iterated)],
-                        ),
-                    ]),
-                    choices: Vec::new(),
-                    intervening_if: None,
-                    presentation_label: None,
-                }),
-                functional_zones: vec![Zone::Battlefield],
-            };
-            builder = builder.with_ability(ability);
-        }
-        if has_words(&["bands", "other", "creatures", "named", "wolves"]) {
-            builder = builder.with_ability(Ability::static_ability(
-                StaticAbility::keyword_fallback_text(
-                    "bands with other creatures named Wolves of the Hunt",
-                ),
-            ));
-        }
-        if has_words(&["r", "this", "creature", "gets", "+1/+0"])
-            && !has_words(&["when", "token", "dies", "create"])
-        {
-            builder = builder.with_ability(token_red_pump_ability());
-        }
-        if has_words(&["w", "t", "tap", "target", "creature"]) {
-            builder = builder.with_ability(token_white_tap_target_creature_ability());
-        }
-        if has_words(&["deals", "damage", "player", "poison", "counter"]) {
-            builder = builder.with_ability(token_damage_to_player_poison_counter_ability());
-        }
-        if let Some(amount) =
-            token_inline_noncreature_spell_each_opponent_damage_amount(lower.as_str())
-        {
-            builder =
-                builder.with_ability(token_noncreature_spell_each_opponent_damage_ability(amount));
-        }
-        if has_words(&[
-            "whenever", "token", "becomes", "tapped", "deals", "damage", "target", "player",
-        ]) && let Some(amount) = parse_deals_damage_amount(&words)
-        {
-            builder = builder.with_ability(
-                token_becomes_tapped_deals_damage_target_player_ability(amount),
-            );
-        }
-        if has_words(&[
-            "whenever", "token", "deals", "combat", "damage", "player", "gain", "control",
-            "artifact",
-        ]) {
-            builder =
-                builder.with_ability(token_combat_damage_gain_control_target_artifact_ability());
-        }
-        if has_words(&[
-            "when",
-            "leaves",
-            "battlefield",
-            "return",
-            "named",
-            "graveyard",
-            "hand",
-        ]) && let Some(card_name) = extract_named_card_name(&tokens, trimmed)
-        {
-            builder = builder.with_ability(
-                token_leaves_return_named_from_graveyard_to_hand_ability(&card_name),
-            );
-        }
-        if has_word("pest") && has_words(&["when", "token", "dies", "gain", "1", "life"]) {
-            let ability = Ability {
-                kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                    trigger: Trigger::this_dies(),
-                    effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                        Effect::gain_life(1),
-                    ]),
-                    choices: Vec::new(),
-                    intervening_if: None,
-                    presentation_label: None,
-                }),
-                functional_zones: vec![Zone::Battlefield],
-            };
-            builder = builder.with_ability(ability);
-        }
-        if has_words(&["first", "strike"]) {
-            builder = builder.first_strike();
-        }
-        if has_words(&["double", "strike"]) {
-            builder = builder.double_strike();
-        }
-        if let Some(parsed) = try_parse_quoted_token_rules_text(
-            &builder,
-            name,
-            if is_creature_token {
-                "This creature"
-            } else {
-                "This permanent"
-            },
-        ) {
-            return Some(parsed);
-        }
-        if has_word("mercenary") && has_words(&["creature", "1/1", "red"]) {
-            let target =
-                ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
-            let ability = Ability {
+    if let Some(card_name) = rules.upkeep_return_name.as_deref() {
+        builder = builder.with_ability(token_upkeep_sacrifice_return_named_from_graveyard_ability(
+            card_name,
+            rules.upkeep_return_grants_haste,
+        ));
+    }
+    if rules.dies_create_firebreathing_dragon {
+        builder = builder.with_ability(token_dies_create_dragon_with_firebreathing_ability());
+    }
+    if let Some(amount) = rules.dies_damage_any_target {
+        builder = builder.with_ability(token_dies_deals_damage_any_target_ability(amount));
+    }
+    if rules.dies_minus_one_target_creature {
+        builder =
+            builder.with_ability(token_dies_target_creature_gets_minus_one_minus_one_ability());
+    }
+    if let Some(amount) = rules.leaves_damage_you_and_creatures {
+        let ability = Ability {
+            kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: Trigger::this_leaves_battlefield(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::deal_damage(amount, ChooseSpec::SourceController),
+                    Effect::for_each(
+                        ObjectFilter::creature().you_control(),
+                        vec![Effect::deal_damage(amount, ChooseSpec::Iterated)],
+                    ),
+                ]),
+                choices: Vec::new(),
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        builder = builder.with_ability(ability);
+    }
+    if rules.bands_with_wolves {
+        builder = builder.with_ability(Ability::static_ability(
+            StaticAbility::keyword_fallback_text(
+                "bands with other creatures named Wolves of the Hunt",
+            ),
+        ));
+    }
+    if rules.red_pump {
+        builder = builder.with_ability(token_red_pump_ability());
+    }
+    if rules.white_tap_target_creature {
+        builder = builder.with_ability(token_white_tap_target_creature_ability());
+    }
+    if rules.combat_damage_poison {
+        builder = builder.with_ability(token_damage_to_player_poison_counter_ability());
+    }
+    if let Some(amount) = rules.noncreature_spell_each_opponent_damage {
+        builder =
+            builder.with_ability(token_noncreature_spell_each_opponent_damage_ability(amount));
+    }
+    if let Some(amount) = rules.becomes_tapped_damage_player {
+        builder = builder.with_ability(token_becomes_tapped_deals_damage_target_player_ability(
+            amount,
+        ));
+    }
+    if rules.combat_damage_gain_artifact {
+        builder = builder.with_ability(token_combat_damage_gain_control_target_artifact_ability());
+    }
+    if let Some(card_name) = rules.leaves_return_named_to_hand.as_deref() {
+        builder = builder.with_ability(token_leaves_return_named_from_graveyard_to_hand_ability(
+            card_name,
+        ));
+    }
+    if rules.pest_dies_gain_life {
+        let ability = Ability {
+            kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: Trigger::this_dies(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::gain_life(1),
+                ]),
+                choices: Vec::new(),
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        builder = builder.with_ability(ability);
+    }
+    if rules.first_strike {
+        builder = builder.first_strike();
+    }
+    if rules.double_strike {
+        builder = builder.double_strike();
+    }
+    if rules.mercenary_pump {
+        let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
+        let ability =
+            Ability {
                 kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
                     mana_cost: TotalCost::from_cost(crate::costs::Cost::tap()),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![
@@ -4082,118 +3124,79 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 }),
                 functional_zones: vec![Zone::Battlefield],
             };
-            builder = builder.with_ability(ability);
-        }
-        let has_cant_attack_or_block = has_words(&["cant", "attack", "or", "block"]);
-        if has_cant_attack_or_block && has_word("alone") {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::restriction(
-                crate::effect::Restriction::attack_or_block_alone(ObjectFilter::source()),
-                "this token can't attack or block alone".to_string(),
-            )));
-        } else if has_cant_attack_or_block {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::restriction(
-                crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
-                "this token can't attack or block".to_string(),
-            )));
-        } else if has_words(&["cant", "be", "blocked"]) {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::unblockable()));
-        } else if has_words(&["cant", "block"]) {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::cant_block()));
-        }
-        if has_words(&["can", "block", "only", "creatures", "flying"]) {
-            builder = builder.with_ability(Ability::static_ability(
-                StaticAbility::can_block_only_flying(),
-            ));
-        }
-        if has_words(&[
-            "counter",
-            "noncreature",
-            "spell",
-            "sacrifice",
-            "token",
-            "unless",
-            "controller",
-            "pays",
-            "1",
-        ]) {
-            let target = ChooseSpec::target(ChooseSpec::Object(
-                ObjectFilter::spell().without_type(CardType::Creature),
-            ));
-            let counter_ability = Ability {
-                kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                    mana_cost: TotalCost::from_costs(vec![
-                        crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![
-                            ManaSymbol::Generic(1),
-                        ]])),
-                        crate::costs::Cost::sacrifice_self(),
-                    ]),
-                    effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                        Effect::counter_unless_pays(target.clone(), vec![ManaSymbol::Generic(1)]),
-                    ]),
-                    choices: vec![target],
-                    timing: crate::ability::ActivationTiming::AnyTime,
-                    additional_restrictions: vec![],
-                    activation_restrictions: vec![],
-                    mana_output: None,
-                    activation_condition: None,
-                    mana_usage_restrictions: vec![],
-                    is_loyalty_ability: false,
-                }),
-                functional_zones: vec![Zone::Battlefield],
-            };
-            builder = builder.with_ability(counter_ability);
-        }
-        if has_word("changeling") {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::changeling()));
-        }
-        if has_words(&[
-            "this", "token", "gets", "+1/+1", "for", "each", "card", "named",
-        ]) && has_any_word(&["graveyard", "graveyards"])
-        {
-            let card_name =
-                word_slice_find_phrase_start_or_zero(words.as_slice(), &["card", "named"])
-                    .and_then(|named_card_idx| {
-                        let start = named_card_idx + 2;
-                        let end = find_index(&words[start..], |word| {
-                            matches!(
-                                *word,
-                                "in" | "from"
-                                    | "and"
-                                    | "or"
-                                    | "with"
-                                    | "that"
-                                    | "where"
-                                    | "when"
-                                    | "whenever"
-                            )
-                        })
-                        .map(|offset| start + offset)
-                        .unwrap_or(words.len());
-                        (end > start).then(|| title_case_words(&words[start..end]))
-                    })
-                    .or_else(|| extract_named_card_name(&tokens, trimmed));
-            if let Some(card_name) = card_name {
-                let mut named_filter = ObjectFilter::default();
-                named_filter.zone = Some(Zone::Graveyard);
-                named_filter.name = Some(card_name.clone());
-                let count =
-                    crate::static_abilities::AnthemCountExpression::MatchingFilter(named_filter);
-                let anthem = crate::static_abilities::Anthem::for_source(0, 0).with_values(
-                    crate::static_abilities::AnthemValue::scaled(1, count.clone()),
-                    crate::static_abilities::AnthemValue::scaled(1, count),
-                );
-                builder = builder.with_ability(Ability::static_ability(StaticAbility::new(anthem)));
+        builder = builder.with_ability(ability);
+    }
+    if let Some(restriction) = rules.combat_restriction {
+        builder = match restriction {
+            token_grammar::TokenCombatRestrictionShape::CantAttackOrBlockAlone => builder
+                .with_ability(Ability::static_ability(StaticAbility::restriction(
+                    crate::effect::Restriction::attack_or_block_alone(ObjectFilter::source()),
+                    "this token can't attack or block alone".to_string(),
+                ))),
+            token_grammar::TokenCombatRestrictionShape::CantAttackOrBlock => {
+                builder.with_ability(Ability::static_ability(StaticAbility::restriction(
+                    crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
+                    "this token can't attack or block".to_string(),
+                )))
             }
-        }
-
-        // Final Fantasy "Chocobo" token text: a Bird token with a quoted landfall-ish pump ability.
-        // Example: Create a 2/2 green Bird creature token with
-        // "Whenever a land you control enters, this token gets +1/+0 until end of turn."
-        let is_land_you_control_enters_pump_token = has_words(&[
-            "whenever", "land", "control", "enters", "this", "token", "gets", "+1/+0",
-        ]) && contains_until_end_of_turn(&words);
-        if is_land_you_control_enters_pump_token {
-            let ability = Ability {
+            token_grammar::TokenCombatRestrictionShape::Unblockable => {
+                builder.with_ability(Ability::static_ability(StaticAbility::unblockable()))
+            }
+            token_grammar::TokenCombatRestrictionShape::CantBlock => {
+                builder.with_ability(Ability::static_ability(StaticAbility::cant_block()))
+            }
+        };
+    }
+    if rules.can_block_only_flying {
+        builder = builder.with_ability(Ability::static_ability(
+            StaticAbility::can_block_only_flying(),
+        ));
+    }
+    if rules.counter_noncreature_unless_pays {
+        let target = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::spell().without_type(CardType::Creature),
+        ));
+        let counter_ability = Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: TotalCost::from_costs(vec![
+                    crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+                        1,
+                    )]])),
+                    crate::costs::Cost::sacrifice_self(),
+                ]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::counter_unless_pays(target.clone(), vec![ManaSymbol::Generic(1)]),
+                ]),
+                choices: vec![target],
+                timing: crate::ability::ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        builder = builder.with_ability(counter_ability);
+    }
+    if rules.changeling {
+        builder = builder.with_ability(Ability::static_ability(StaticAbility::changeling()));
+    }
+    if let Some(card_name) = rules.graveyard_anthem_card_name {
+        let mut named_filter = ObjectFilter::default();
+        named_filter.zone = Some(Zone::Graveyard);
+        named_filter.name = Some(card_name);
+        let count = crate::static_abilities::AnthemCountExpression::MatchingFilter(named_filter);
+        let anthem = crate::static_abilities::Anthem::for_source(0, 0).with_values(
+            crate::static_abilities::AnthemValue::scaled(1, count.clone()),
+            crate::static_abilities::AnthemValue::scaled(1, count),
+        );
+        builder = builder.with_ability(Ability::static_ability(StaticAbility::new(anthem)));
+    }
+    if rules.landfall_pump {
+        let ability =
+            Ability {
                 kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
                     trigger: Trigger::enters_battlefield(ObjectFilter::land().you_control(), None),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![
@@ -4205,12 +3208,111 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 }),
                 functional_zones: vec![Zone::Battlefield],
             };
-            builder = builder.with_ability(ability);
-        }
-
-        return Some(builder.build());
+        builder = builder.with_ability(ability);
     }
-    None
+    Some(builder.build())
+}
+
+fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDefinition> {
+    match shape {
+        TokenDefinitionSpec::PriorCreated => None,
+        TokenDefinitionSpec::Builtin(builtin) => Some(build_builtin_token_definition(builtin)),
+        TokenDefinitionSpec::Vehicle(vehicle) => build_vehicle_token_definition(vehicle),
+        TokenDefinitionSpec::Artifact(artifact) => build_artifact_token_definition(artifact),
+        TokenDefinitionSpec::Angel => Some(
+            CardDefinitionBuilder::new(CardId::new(), "Angel")
+                .token()
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Angel])
+                .color_indicator(ColorSet::WHITE)
+                .power_toughness(PowerToughness::fixed(4, 4))
+                .flying()
+                .build(),
+        ),
+        TokenDefinitionSpec::Wall => Some(
+            CardDefinitionBuilder::new(CardId::new(), "Wall")
+                .token()
+                .card_types(vec![CardType::Artifact, CardType::Creature])
+                .subtypes(vec![Subtype::Wall])
+                .power_toughness(PowerToughness::fixed(0, 4))
+                .defender()
+                .build(),
+        ),
+        TokenDefinitionSpec::Squirrel => Some(
+            CardDefinitionBuilder::new(CardId::new(), "Squirrel")
+                .token()
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Squirrel])
+                .color_indicator(ColorSet::GREEN)
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build(),
+        ),
+        TokenDefinitionSpec::DragonEgg => Some(
+            CardDefinitionBuilder::new(CardId::new(), "Dragon Egg")
+                .token()
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Dragon])
+                .color_indicator(ColorSet::RED)
+                .power_toughness(PowerToughness::fixed(0, 2))
+                .defender()
+                .with_ability(token_dies_create_dragon_with_firebreathing_ability())
+                .build(),
+        ),
+        TokenDefinitionSpec::Elephant => Some(
+            CardDefinitionBuilder::new(CardId::new(), "Elephant")
+                .token()
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Elephant])
+                .color_indicator(ColorSet::GREEN)
+                .power_toughness(PowerToughness::fixed(3, 3))
+                .build(),
+        ),
+        TokenDefinitionSpec::Construct => {
+            let count = Value::Count(ObjectFilter::artifact().you_control());
+            Some(
+                CardDefinitionBuilder::new(CardId::new(), "Construct")
+                    .token()
+                    .card_types(vec![CardType::Artifact, CardType::Creature])
+                    .subtypes(vec![Subtype::Construct])
+                    .power_toughness(PowerToughness::fixed(0, 0))
+                    .with_ability(Ability::static_ability(
+                        StaticAbility::characteristic_defining_pt(count.clone(), count),
+                    ))
+                    .build(),
+            )
+        }
+        TokenDefinitionSpec::Shapeshifter(shapeshifter) => {
+            let mut builder = CardDefinitionBuilder::new(CardId::new(), "Shapeshifter")
+                .token()
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Shapeshifter])
+                .power_toughness(PowerToughness::fixed(3, 2));
+            if shapeshifter.changeling {
+                builder =
+                    builder.with_ability(Ability::static_ability(StaticAbility::changeling()));
+            }
+            Some(builder.build())
+        }
+        TokenDefinitionSpec::AstartesWarrior(astartes) => {
+            let mut builder = CardDefinitionBuilder::new(CardId::new(), "Astartes Warrior")
+                .token()
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Astartes, Subtype::Warrior])
+                .color_indicator(ColorSet::WHITE)
+                .power_toughness(PowerToughness::fixed(2, 2));
+            if astartes.vigilance {
+                builder = builder.vigilance();
+            }
+            Some(builder.build())
+        }
+        TokenDefinitionSpec::Creature(creature) => build_creature_token_definition(creature),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
+    let shape = token_grammar::parse_token_definition_shape_text(name)?;
+    lower_token_definition_shape(shape)
 }
 
 pub(crate) fn parse_token_pt(word: &str) -> Option<(i32, i32)> {
@@ -4263,995 +3365,5 @@ pub(crate) fn push_choice(choices: &mut Vec<ChooseSpec>, choice: ChooseSpec) {
 }
 
 #[cfg(test)]
-mod parse_compile_tests {
-    use super::*;
-    use crate::cards::TextSpan;
-    use crate::effect::{Condition, Value};
-    use crate::effects::{
-        AmassEffect, ConditionalEffect, ExecuteWithSourceEffect, ForEachObject,
-        ForEachTaggedEffect, GrantPlayTaggedEffect, InvestigateEffect, MoveToZoneEffect,
-        TaggedEffect,
-    };
-    use crate::ids::CardId;
-    use crate::runtime_backend::RefState;
-    use crate::target::ChooseSpec;
-    use crate::types::{CardType, Subtype};
-    use std::path::Path;
-
-    fn walk_rs_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {
-        for entry in std::fs::read_dir(root).expect("read source directory") {
-            let entry = entry.expect("read source entry");
-            let path = entry.path();
-            if path.is_dir() {
-                walk_rs_files(&path, files);
-            } else if path.extension().is_some_and(|ext| ext == "rs") {
-                files.push(path);
-            }
-        }
-    }
-
-    #[test]
-    fn player_filter_resolution_stays_behind_subject_context() {
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let src = manifest_dir.join("src");
-        let compile_support = manifest_dir
-            .join("src/runtime_backend/lowering/compile_support.rs")
-            .canonicalize()
-            .expect("canonical compile_support.rs");
-        let helper = manifest_dir
-            .join("src/runtime_backend/lowering/compile_support/player_effect_helpers.rs")
-            .canonicalize()
-            .expect("canonical player_effect_helpers.rs");
-        let needle = concat!("resolve_effect_player", "_filter(");
-
-        let mut rs_files = Vec::new();
-        walk_rs_files(&src, &mut rs_files);
-
-        let mut unexpected = Vec::new();
-        for path in rs_files {
-            let canonical = path.canonicalize().expect("canonical source path");
-            let source = std::fs::read_to_string(&path).expect("read source file");
-            for (line_index, line) in source.lines().enumerate() {
-                if !line.contains(needle) {
-                    continue;
-                }
-                let allowed = canonical == helper
-                    || canonical == compile_support
-                        && (line.contains(concat!("fn resolve_effect_player", "_filter("))
-                            || line.contains(needle) && line.contains("let needle = concat!("));
-                if !allowed {
-                    unexpected.push(format!("{}:{}", path.display(), line_index + 1));
-                }
-            }
-        }
-
-        assert!(
-            unexpected.is_empty(),
-            "player filter resolution must go through LoweredSubject, found {unexpected:?}"
-        );
-    }
-
-    #[test]
-    fn lowering_handlers_do_not_reach_into_lowered_subject_fields() {
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let compile_support_dir = manifest_dir.join("src/runtime_backend/lowering/compile_support");
-        let compile_support_rs =
-            manifest_dir.join("src/runtime_backend/lowering/compile_support.rs");
-        let hidden_filter_field = concat!(".", "player_filter");
-        let hidden_choices_field = concat!(".", "choices");
-
-        let mut files = vec![compile_support_rs];
-        for entry in std::fs::read_dir(&compile_support_dir).expect("read compile_support dir") {
-            let path = entry.expect("read compile_support entry").path();
-            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-                continue;
-            };
-            if !path.extension().is_some_and(|ext| ext == "rs") {
-                continue;
-            }
-            if name == "player_effect_helpers.rs" || name == "choose_effect_helpers.rs" {
-                continue;
-            }
-            files.push(path);
-        }
-
-        let mut unexpected = Vec::new();
-        for path in files {
-            let source = std::fs::read_to_string(&path).expect("read lowering source file");
-            for (line_index, line) in source.lines().enumerate() {
-                let reaches_filter_field =
-                    line.contains(hidden_filter_field) && !line.contains(".player_filter(");
-                let reaches_choices_field =
-                    line.contains(hidden_choices_field) && !line.contains(".choices()");
-                if line.contains("subject.") && (reaches_filter_field || reaches_choices_field) {
-                    unexpected.push(format!("{}:{}", path.display(), line_index + 1));
-                }
-            }
-        }
-
-        assert!(
-            unexpected.is_empty(),
-            "lowering handlers must use LoweredSubject methods, found {unexpected:?}"
-        );
-    }
-
-    #[test]
-    fn subject_roles_capture_binding_modes() {
-        assert_eq!(
-            LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
-                .as_role(SubjectRole::Chooser)
-                .binding_mode(),
-            SubjectBindingMode::Chooser
-        );
-        assert_eq!(
-            LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
-                .as_role(SubjectRole::LibraryOwner)
-                .binding_mode(),
-            SubjectBindingMode::OwnedZone
-        );
-        assert_eq!(
-            LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
-                .as_role(SubjectRole::AffectedPlayer)
-                .binding_mode(),
-            SubjectBindingMode::AffectedPlayer
-        );
-    }
-
-    #[test]
-    fn compile_investigate_uses_ast_count() {
-        let mut ctx = EffectLoweringContext::new();
-        let (effects, choices) = compile_effect(
-            &EffectAst::subject_verb_investigate(
-                crate::cards::builders::PlayerAst::Implicit,
-                Value::Fixed(2),
-            ),
-            &mut ctx,
-        )
-        .expect("compile investigate");
-
-        assert!(choices.is_empty());
-        assert_eq!(effects.len(), 1);
-        let debug = format!("{effects:?}");
-        assert!(
-            debug.contains("InvestigateEffect"),
-            "investigate effect: {debug}"
-        );
-        assert!(
-            debug.contains("count: Fixed(2)"),
-            "investigate count: {debug}"
-        );
-        assert!(debug.contains("player: You"), "investigate player: {debug}");
-    }
-
-    #[test]
-    fn parse_text_investigate_twice_compiles_to_count_two() {
-        let def = CardDefinitionBuilder::new(CardId::new(), "Investigate Probe")
-            .card_types(vec![CardType::Sorcery])
-            .parse_text("Investigate twice.")
-            .expect("parse investigate twice");
-
-        let effects = def.spell_effect.as_ref().expect("spell effects");
-        assert_eq!(effects.len(), 1);
-        let debug = format!("{effects:?}");
-        assert!(
-            debug.contains("InvestigateEffect"),
-            "investigate effect: {debug}"
-        );
-        assert!(
-            debug.contains("count: Fixed(2)"),
-            "investigate count: {debug}"
-        );
-        assert!(debug.contains("player: You"), "investigate player: {debug}");
-    }
-
-    #[test]
-    fn compile_amass_tags_output_when_followup_references_it() {
-        let mut ctx = EffectLoweringContext::new();
-        ctx.auto_tag_object_targets = true;
-
-        let (effects, choices) = compile_effect(
-            &EffectAst::subject_verb_amass(Some(Subtype::Orc), Value::Fixed(2)),
-            &mut ctx,
-        )
-        .expect("compile amass");
-
-        assert!(choices.is_empty());
-        assert_eq!(effects.len(), 1);
-
-        let debug = format!("{effects:?}");
-        assert!(debug.contains("TaggedEffect"), "amass tagging: {debug}");
-        assert!(debug.contains("amassed_0"), "amass tag: {debug}");
-        assert!(debug.contains("AmassEffect"), "amass effect: {debug}");
-        assert!(
-            debug.contains("subtype: Some(Orc)"),
-            "amass subtype: {debug}"
-        );
-        assert!(debug.contains("amount: Fixed(2)"), "amass amount: {debug}");
-        assert_eq!(ctx.last_object_tag.as_deref(), Some("amassed_0"));
-    }
-
-    #[test]
-    fn compile_damage_equal_to_power_over_each_object_fans_out_per_object() {
-        let (effects, choices) = compile_effect(
-            &EffectAst::subject_verb_damage_equal_to_power(
-                TargetAst::Tagged(TagKey::from("amassed_0"), None),
-                TargetAst::Object(
-                    ObjectFilter::creature().without_subtype(Subtype::Army),
-                    None,
-                    None,
-                ),
-            ),
-            &mut EffectLoweringContext::new(),
-        )
-        .expect("compile power-based fanout damage");
-
-        assert!(choices.is_empty());
-        assert_eq!(effects.len(), 1);
-
-        let debug = format!("{effects:?}");
-        assert!(debug.contains("ForEachObject"), "fan-out wrapper: {debug}");
-        assert!(
-            debug.contains("Creature"),
-            "fan-out creature filter: {debug}"
-        );
-        assert!(debug.contains("Army"), "fan-out excluded subtype: {debug}");
-        assert!(
-            debug.contains("ExecuteWithSourceEffect"),
-            "fan-out source wrapper: {debug}"
-        );
-        assert!(debug.contains("amassed_0"), "fan-out source tag: {debug}");
-        assert!(
-            debug.contains("PowerOf(Tagged(TagKey(\"amassed_0\")))"),
-            "fan-out damage amount: {debug}"
-        );
-        assert!(
-            debug.contains("target: Iterated"),
-            "fan-out iterated target: {debug}"
-        );
-    }
-
-    #[test]
-    fn parse_text_gargoyle_sentinel_keeps_the_activation_on_self() {
-        let def = CardDefinitionBuilder::new(CardId::new(), "Gargoyle Sentinel")
-            .parse_text(
-                "Mana cost: {3}\n\
-                 Type: Artifact Creature — Gargoyle\n\
-                 Power/Toughness: 3/3\n\
-                 Defender (This creature can't attack.)\n\
-                 {3}: Until end of turn, this creature loses defender and gains flying.",
-            )
-            .expect("Gargoyle Sentinel text should parse");
-
-        let _activated = def
-            .abilities
-            .iter()
-            .find_map(|ability| match &ability.kind {
-                AbilityKind::Activated(activated) => Some(activated),
-                _ => None,
-            })
-            .expect("expected Gargoyle Sentinel to have an activated ability");
-        let debug = format!("{def:?}");
-        assert!(
-            debug.matches("ApplyContinuousEffect").count() >= 2,
-            "expected two source-scoped continuous effects, got {debug}"
-        );
-        assert!(
-            debug.matches("target_spec: Some(Source)").count() >= 2
-                && debug.matches("until: EndOfTurn").count() >= 2,
-            "expected the lowered activation to stay source-targeted until end of turn, got {debug}"
-        );
-        assert!(
-            !debug.contains("GrantAbilitiesAll") && !debug.contains("RemoveAbilitiesAll"),
-            "expected no broad battlefield-wide ability changes in the lowered definition, got {debug}"
-        );
-    }
-
-    #[test]
-    fn parse_equipment_rules_text_keeps_single_quoted_activated_grant() {
-        let words = [
-            "colorless",
-            "equipment",
-            "artifact",
-            "token",
-            "named",
-            "rock",
-            "with",
-            "equipped",
-            "creature",
-            "has",
-            "sacrifice",
-            "rock",
-            "this",
-            "creature",
-            "deals",
-            "2",
-            "damage",
-            "to",
-            "any",
-            "target",
-            "and",
-            "equip",
-            "1",
-        ];
-        let source_text = "Colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.";
-
-        let rules_text =
-            parse_equipment_rules_text(&words, source_text).expect("equipment rules text");
-
-        assert!(
-            rules_text.contains("Equipped creature has \"{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target.\"")
-                && rules_text.contains("Equip {1}"),
-            "expected quoted activated ability plus equip line, got {rules_text}"
-        );
-    }
-
-    #[test]
-    fn equipment_token_rules_text_reparses_into_grant_and_equip() {
-        let words = [
-            "colorless",
-            "equipment",
-            "artifact",
-            "token",
-            "named",
-            "rock",
-            "with",
-            "equipped",
-            "creature",
-            "has",
-            "sacrifice",
-            "rock",
-            "this",
-            "creature",
-            "deals",
-            "2",
-            "damage",
-            "to",
-            "any",
-            "target",
-            "and",
-            "equip",
-            "1",
-        ];
-        let source_text = "colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.";
-        let rules_text =
-            parse_equipment_rules_text(&words, source_text).expect("equipment rules text");
-
-        let def = CardDefinitionBuilder::new(CardId::new(), "Rock")
-            .token()
-            .card_types(vec![CardType::Artifact])
-            .subtypes(vec![Subtype::Equipment])
-            .with_ability(Ability::static_ability(StaticAbility::make_colorless(
-                ObjectFilter::source(),
-            )))
-            .parse_text(&rules_text)
-            .expect("equipment token rules text should parse");
-
-        let activated_costs = def
-            .abilities
-            .iter()
-            .filter_map(|ability| match &ability.kind {
-                AbilityKind::Activated(activated) => Some(activated.mana_cost.display()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        assert!(
-            activated_costs.iter().any(|text| text.contains("{1}")),
-            "expected reparsed equipment token to keep equip cost, got {activated_costs:?}"
-        );
-        assert!(
-            format!("{def:?}").contains("AttachedAbilityGrant"),
-            "expected reparsed equipment token to keep a structured granted ability, got {def:#?}"
-        );
-    }
-
-    #[test]
-    fn token_definition_reparses_quoted_triggered_rules_text() {
-        let source_text = "2/2 black Alien Angel artifact creature token with first strike, vigilance, and \"Whenever an opponent casts a creature spell, this token isn't a creature until end of turn.\"";
-
-        let def =
-            token_definition_for(source_text).expect("quoted token trigger should build a token");
-        let debug = format!("{def:#?}");
-
-        assert!(
-            debug.contains("SpellCastQualified"),
-            "expected quoted trigger to lower into a spell-cast trigger, got {debug}"
-        );
-        assert!(
-            debug.contains("RemoveCardTypes"),
-            "expected quoted trigger to compile into a real remove-card-types effect, got {debug}"
-        );
-    }
-
-    #[test]
-    fn token_definition_lowers_quoted_cumulative_upkeep_keyword() {
-        let source_text =
-            "1/1 green Splinter creature token with flying and \"Cumulative upkeep {G}\"";
-
-        let def =
-            token_definition_for(source_text).expect("quoted cumulative upkeep should build token");
-        let debug = format!("{def:#?}");
-
-        assert!(
-            debug.contains("CumulativeUpkeepEffect"),
-            "expected quoted cumulative upkeep to lower into a real effect, got {debug}"
-        );
-        assert!(
-            !debug.contains("label: \"Cumulative upkeep {G}\""),
-            "quoted cumulative upkeep should not remain a keyword marker, got {debug}"
-        );
-    }
-
-    #[test]
-    fn token_definition_lowers_quoted_unblockable_keyword() {
-        let source_text = "1/1 blue Fish creature token with \"This token can't be blocked.\"";
-
-        let def = token_definition_for(source_text)
-            .expect("quoted unblockable token text should build token");
-        let debug = format!("{def:#?}");
-
-        assert!(
-            debug.contains("Unblockable"),
-            "expected quoted unblockable token text to lower into a static ability, got {debug}"
-        );
-    }
-
-    #[test]
-    fn token_definition_reparses_unquoted_triggered_rules_tail() {
-        let source_text = "2/2 black Alien Angel artifact creature token with first strike, vigilance, and Whenever an opponent casts a creature spell, this token isn't a creature until end of turn.";
-
-        let def = token_definition_for(source_text)
-            .expect("unquoted preserved trigger tail should still build a token");
-        let debug = format!("{def:#?}");
-
-        assert!(
-            debug.contains("SpellCastQualified"),
-            "expected inline trigger tail to lower into a spell-cast trigger, got {debug}"
-        );
-        assert!(
-            debug.contains("RemoveCardTypes"),
-            "expected inline trigger tail to compile into a real remove-card-types effect, got {debug}"
-        );
-    }
-
-    #[test]
-    fn token_definition_named_construct_skips_urza_construct_shell() {
-        let source_text =
-            "0/0 colorless Construct artifact creature token named Twin that's attacking.";
-
-        let def =
-            token_definition_for(source_text).expect("named construct token should still build");
-        let debug = format!("{def:#?}");
-
-        assert_eq!(def.card.name, "Twin");
-        assert!(
-            !debug.contains("CharacteristicDefiningPT"),
-            "named Construct tokens should not pick up the generic artifact-count CDA shell, got {debug}"
-        );
-    }
-
-    #[test]
-    fn try_parse_quoted_token_rules_text_parses_blink_trigger() {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Alien Angel")
-            .token()
-            .card_types(vec![CardType::Artifact, CardType::Creature])
-            .subtypes(vec![Subtype::Alien, Subtype::Angel])
-            .color_indicator(ColorSet::BLACK)
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .first_strike()
-            .vigilance();
-        let source_text = "2/2 black Alien Angel artifact creature token with first strike, vigilance, and \"Whenever an opponent casts a creature spell, this token isn't a creature until end of turn.\"";
-        let parsed = try_parse_quoted_token_rules_text(&builder, source_text, "This creature")
-            .expect("quoted trigger should parse generically");
-        let debug = format!("{parsed:#?}");
-
-        assert!(
-            debug.contains("RemoveCardTypes"),
-            "expected generic quoted-token parse to compile remove-card-types, got {debug}"
-        );
-        assert!(
-            debug.contains("until: EndOfTurn"),
-            "expected generic quoted-token parse to keep until-end-of-turn duration, got {debug}"
-        );
-    }
-
-    #[test]
-    fn try_parse_quoted_token_rules_text_parses_static_pt_ability() {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Elemental")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Elemental])
-            .color_indicator(ColorSet::GREEN.union(ColorSet::WHITE))
-            .power_toughness(PowerToughness::fixed(0, 0));
-        let source_text = "green and white Elemental creature token with \"This token's power and toughness are each equal to the number of creatures you control.\"";
-        let parsed = try_parse_quoted_token_rules_text(&builder, source_text, "This creature")
-            .expect("quoted static P/T ability should parse generically");
-        let debug = format!("{parsed:#?}");
-
-        assert!(
-            debug.contains("CharacteristicDefiningPT")
-                && debug.contains("card_types: [\n                                    Creature"),
-            "expected generic quoted-token parse to compile dynamic creature-count P/T, got {debug}"
-        );
-    }
-
-    #[test]
-    fn resolve_target_spec_treats_source_object_filters_as_source() {
-        let target = TargetAst::Object(ObjectFilter::source(), None, None);
-        let (spec, choices) = resolve_target_spec_with_choices(&target, &ReferenceEnv::default())
-            .expect("source object target should resolve cleanly");
-
-        assert_eq!(
-            spec,
-            ChooseSpec::Source,
-            "source object filters should resolve to the source choose spec"
-        );
-        assert!(
-            choices.is_empty(),
-            "self-targeted object filters should not create extra target choices"
-        );
-    }
-
-    #[test]
-    fn resolve_target_spec_preserves_source_surface_when_collapsing_to_source() {
-        let target = TargetAst::Object(
-            ObjectFilter::source().with_source_surface(
-                crate::target::SourceReferenceSurface::ThisPermanentType(
-                    "this enchantment".to_string(),
-                ),
-            ),
-            None,
-            None,
-        );
-        let (spec, choices) = resolve_target_spec_with_choices(&target, &ReferenceEnv::default())
-            .expect("source object target should resolve cleanly");
-
-        assert_eq!(
-            spec,
-            ChooseSpec::Source.with_surface_hint(
-                crate::target::ChooseSpecSurfaceHint::SourceReference(
-                    crate::target::SourceReferenceSurface::ThisPermanentType(
-                        "this enchantment".to_string(),
-                    ),
-                ),
-            ),
-            "source object filters should keep their captured source surface"
-        );
-        assert!(
-            choices.is_empty(),
-            "self-targeted object filters should not create extra target choices"
-        );
-    }
-
-    #[test]
-    fn resolve_target_spec_preserves_implicit_it_when_it_resolves_to_source() {
-        let target = TargetAst::Tagged(
-            TagKey::from(IT_TAG),
-            Some(TextSpan {
-                line: 0,
-                start: 42,
-                end: 44,
-            }),
-        );
-        let refs = ReferenceEnv {
-            source_object_antecedent: true,
-            ..ReferenceEnv::default()
-        };
-        let (spec, choices) = resolve_target_spec_with_choices(&target, &refs)
-            .expect("implicit it target should resolve cleanly");
-
-        assert_eq!(
-            spec,
-            ChooseSpec::Source.with_surface_hint(
-                crate::target::ChooseSpecSurfaceHint::SourceReference(
-                    crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
-                ),
-            ),
-            "implicit it should keep its surface when reference resolution maps it to source"
-        );
-        assert!(
-            choices.is_empty(),
-            "self-targeted implicit references should not create extra target choices"
-        );
-    }
-
-    #[test]
-    fn resolve_target_spec_preserves_source_object_filters_from_exile() {
-        let target = TargetAst::Object(ObjectFilter::source().in_zone(Zone::Exile), None, None);
-        let (spec, choices) = resolve_target_spec_with_choices(&target, &ReferenceEnv::default())
-            .expect("source object target from exile should resolve cleanly");
-
-        assert_eq!(
-            spec,
-            ChooseSpec::Object(ObjectFilter::source().in_zone(Zone::Exile)),
-            "source object filters from exile should keep their zone"
-        );
-        assert!(
-            choices.is_empty(),
-            "self-targeted object filters should not create extra target choices"
-        );
-    }
-
-    fn test_ctx(line: &str) -> NormalizedLine {
-        NormalizedLine {
-            original: line.to_string(),
-            normalized: line.to_string(),
-            char_map: (0..line.len()).collect(),
-        }
-    }
-
-    #[test]
-    fn collect_tag_spans_tracks_connive_and_destroy_no_regeneration_targets() {
-        let mut annotations = ParseAnnotations::default();
-        let ctx = test_ctx("alpha beta");
-        let alpha = TagKey::from("alpha");
-        let beta = TagKey::from("beta");
-
-        collect_tag_spans_from_effect(
-            &EffectAst::subject_verb_connive(
-                TargetAst::Tagged(
-                    alpha.clone(),
-                    Some(TextSpan {
-                        line: 0,
-                        start: 0,
-                        end: 5,
-                    }),
-                ),
-                Value::Fixed(1),
-            ),
-            &mut annotations,
-            &ctx,
-        );
-        collect_tag_spans_from_effect(
-            &EffectAst::subject_verb_destroy_no_regeneration(TargetAst::Tagged(
-                beta.clone(),
-                Some(TextSpan {
-                    line: 0,
-                    start: 6,
-                    end: 10,
-                }),
-            )),
-            &mut annotations,
-            &ctx,
-        );
-
-        assert!(
-            annotations
-                .tag_spans
-                .get(alpha.as_str())
-                .is_some_and(|spans| spans.len() == 1),
-            "expected span recorded for connive target tag"
-        );
-        assert!(
-            annotations
-                .tag_spans
-                .get(beta.as_str())
-                .is_some_and(|spans| spans.len() == 1),
-            "expected span recorded for destroy-no-regeneration target tag"
-        );
-    }
-
-    #[test]
-    fn collect_tag_spans_tracks_counter_unless_pays_target() {
-        let mut annotations = ParseAnnotations::default();
-        let ctx = test_ctx("gamma");
-        let gamma = TagKey::from("gamma");
-        let effect = EffectAst::subject_verb_counter_unless_pays(
-            TargetAst::Tagged(
-                gamma.clone(),
-                Some(TextSpan {
-                    line: 0,
-                    start: 0,
-                    end: 5,
-                }),
-            ),
-            TotalCost::free(),
-        );
-
-        collect_tag_spans_from_effect(&effect, &mut annotations, &ctx);
-        assert!(
-            annotations
-                .tag_spans
-                .get(gamma.as_str())
-                .is_some_and(|spans| spans.len() == 1),
-            "expected span recorded for counter-unless-pays target tag"
-        );
-        assert!(
-            effect_references_tag(&effect, "gamma"),
-            "counter-unless-pays tagged target should be detected by tag reference checks"
-        );
-    }
-
-    #[test]
-    fn this_attacks_triggers_bind_the_defending_player() {
-        assert_eq!(
-            inferred_trigger_player_filter(&TriggerSpec::ThisAttacks),
-            Some(PlayerFilter::Defending)
-        );
-    }
-
-    #[test]
-    fn compile_statement_effects_drops_empty_global_ability_grants() {
-        let effects = vec![EffectAst::subject_verb_grant_abilities_all(
-            ObjectFilter::default(),
-            Vec::new(),
-            Until::EndOfTurn,
-        )];
-
-        let compiled =
-            compile_statement_effects(&effects).expect("normalization should remove empty grants");
-        assert!(compiled.is_empty());
-    }
-
-    #[test]
-    fn compile_statement_effects_with_imports_returns_reference_exports() {
-        let effects = vec![EffectAst::subject_verb_destroy(TargetAst::Object(
-            ObjectFilter::creature(),
-            Some(TextSpan::synthetic()),
-            None,
-        ))];
-
-        let lowered =
-            compile_statement_effects_with_imports(&effects, &ReferenceImports::default())
-                .expect("compile statement with imports");
-
-        assert!(
-            !lowered.effects.is_empty(),
-            "expected at least one lowered effect for destroy statement"
-        );
-        assert_eq!(
-            lowered.exports.last_object_tag,
-            RefState::Known(TagKey::from("destroyed_0"))
-        );
-    }
-
-    #[test]
-    fn compile_effects_with_explicit_frame_uses_annotated_reference_frames() {
-        let effects = vec![
-            EffectAst::subject_verb_destroy(TargetAst::Object(
-                ObjectFilter::creature(),
-                Some(TextSpan::synthetic()),
-                None,
-            )),
-            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                TagKey::from(IT_TAG),
-                PlayerAst::You,
-                false,
-                false,
-                false,
-            ),
-        ];
-
-        let (compiled, _, frame_out) = compile_effects_with_explicit_frame(
-            &effects,
-            &mut IdGenContext::default(),
-            LoweringFrame::default(),
-        )
-        .expect("compile with explicit frame");
-
-        let debug = format!("{compiled:?}");
-        assert!(
-            debug.contains("GrantPlayTaggedEffect"),
-            "grant-play-tagged effect: {debug}"
-        );
-        assert!(
-            debug.contains("destroyed_0"),
-            "grant-play-tagged tag: {debug}"
-        );
-        assert_eq!(frame_out.last_object_tag.as_deref(), Some("destroyed_0"));
-    }
-
-    #[test]
-    fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
-        let effects = vec![
-            EffectAst::May {
-                effects: vec![EffectAst::subject_verb_destroy(TargetAst::WithCount(
-                    Box::new(TargetAst::Object(
-                        ObjectFilter::creature(),
-                        Some(TextSpan::synthetic()),
-                        None,
-                    )),
-                    ChoiceCount::up_to(3),
-                ))],
-            },
-            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                TagKey::from(IT_TAG),
-                PlayerAst::You,
-                false,
-                false,
-                false,
-            ),
-        ];
-
-        let (compiled, _, frame_out) = compile_effects_with_explicit_frame(
-            &effects,
-            &mut IdGenContext::default(),
-            LoweringFrame::default(),
-        )
-        .expect("compile may branch with tagged follow-up");
-
-        let debug = format!("{compiled:?}");
-        assert!(debug.contains("MayEffect"), "expected may effect: {debug}");
-        assert!(
-            debug.contains("TaggedEffect"),
-            "destroy should stay tagged: {debug}"
-        );
-        assert!(
-            debug.contains("DestroyEffect"),
-            "expected destroy effect: {debug}"
-        );
-        assert!(
-            debug.contains("destroyed_0"),
-            "expected destroy tag: {debug}"
-        );
-        assert!(
-            debug.contains("GrantPlayTaggedEffect"),
-            "expected grant-play-tagged follow-up: {debug}"
-        );
-        assert_eq!(frame_out.last_object_tag.as_deref(), Some("destroyed_0"));
-    }
-
-    #[test]
-    fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
-        let effects = vec![EffectAst::ForEachTagged {
-            tag: TagKey::from("revealed_0"),
-            effects: vec![EffectAst::Conditional {
-                predicate: PredicateAst::ItMatches(ObjectFilter::permanent()),
-                if_true: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    Zone::Battlefield,
-                    false,
-                    ReturnControllerAst::Owner,
-                    false,
-                    None,
-                )],
-                if_false: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    Zone::Graveyard,
-                    false,
-                    ReturnControllerAst::Preserve,
-                    false,
-                    None,
-                )],
-            }],
-        }];
-
-        let (compiled, _, _) = compile_effects_with_explicit_frame(
-            &effects,
-            &mut IdGenContext::default(),
-            LoweringFrame::default(),
-        )
-        .expect("compile for-each-tagged");
-
-        let debug = format!("{compiled:?}");
-        assert!(
-            debug.contains("ForEachTaggedEffect"),
-            "for-each-tagged effect: {debug}"
-        );
-        assert!(
-            debug.contains("ConditionalEffect"),
-            "conditional effect: {debug}"
-        );
-        assert!(
-            debug.contains("TaggedObjectMatches(TagKey(\"__it__\")"),
-            "it-binding condition: {debug}"
-        );
-        assert!(
-            debug.matches("target: Iterated").count() >= 2,
-            "iterated move targets: {debug}"
-        );
-    }
-
-    #[test]
-    fn compile_next_spell_grant_after_targeted_player_effect_binds_that_player() {
-        let effects = vec![
-            EffectAst::subject_verb_add_mana_any_one_color(PlayerAst::Target, Value::Fixed(2)),
-            EffectAst::subject_verb_grant_next_spell_ability_this_turn(
-                PlayerAst::That,
-                ObjectFilter::spell().cast_by(PlayerFilter::IteratedPlayer),
-                GrantedAbilityAst::KeywordAction(crate::cards::builders::KeywordAction::Cascade),
-            ),
-        ];
-
-        let (compiled, _, _) = compile_effects_with_explicit_frame(
-            &effects,
-            &mut IdGenContext::default(),
-            LoweringFrame::default(),
-        )
-        .expect("targeted player followup should compile");
-
-        let debug = format!("{compiled:?}");
-        assert!(
-            debug.contains("GrantNextSpellAbilityEffect"),
-            "expected next-spell grant effect: {debug}"
-        );
-        assert!(
-            !debug.contains("player: IteratedPlayer"),
-            "grant player should be rebound: {debug}"
-        );
-        assert!(
-            !debug.contains("cast_by: Some(IteratedPlayer)"),
-            "grant filter caster should be rebound: {debug}"
-        );
-    }
-
-    #[test]
-    fn compile_next_spell_grant_with_imported_target_player_binds_that_player() {
-        let effects = vec![EffectAst::subject_verb_grant_next_spell_ability_this_turn(
-            PlayerAst::That,
-            ObjectFilter::spell().cast_by(PlayerFilter::IteratedPlayer),
-            GrantedAbilityAst::KeywordAction(crate::cards::builders::KeywordAction::Cascade),
-        )];
-
-        let frame = LoweringFrame {
-            last_player_filter: Some(PlayerFilter::target_player()),
-            ..Default::default()
-        };
-        let (compiled, _, _) =
-            compile_effects_with_explicit_frame(&effects, &mut IdGenContext::default(), frame)
-                .expect("imported target-player followup should compile");
-
-        let debug = format!("{compiled:?}");
-        assert!(
-            debug.contains("GrantNextSpellAbilityEffect"),
-            "expected next-spell grant effect: {debug}"
-        );
-        assert!(
-            !debug.contains("player: IteratedPlayer"),
-            "grant player should be rebound: {debug}"
-        );
-        assert!(
-            !debug.contains("cast_by: Some(IteratedPlayer)"),
-            "grant filter caster should be rebound: {debug}"
-        );
-    }
-
-    #[test]
-    fn compile_shared_you_then_that_player_draw_preserves_prior_non_you_binding() {
-        let effects = vec![
-            EffectAst::subject_verb(
-                SubjectVerbRoleAst::AffectedPlayer,
-                PlayerAst::You,
-                SubjectVerbActionAst::Draw {
-                    count: Value::Fixed(1),
-                },
-            ),
-            EffectAst::subject_verb(
-                SubjectVerbRoleAst::AffectedPlayer,
-                PlayerAst::That,
-                SubjectVerbActionAst::Draw {
-                    count: Value::Fixed(1),
-                },
-            ),
-        ];
-
-        let frame = LoweringFrame {
-            last_player_filter: Some(PlayerFilter::DamagedPlayer),
-            ..Default::default()
-        };
-        let (compiled, _, _) =
-            compile_effects_with_explicit_frame(&effects, &mut IdGenContext::default(), frame)
-                .expect("shared draw follow-up should compile");
-
-        let debug = format!("{compiled:?}");
-        assert_eq!(
-            debug.matches("DrawCardsEffect").count(),
-            2,
-            "expected two draw effects: {debug}"
-        );
-        assert!(
-            debug.contains("player: You"),
-            "first draw should target you: {debug}"
-        );
-        assert!(
-            debug.contains("player: DamagedPlayer"),
-            "second draw should preserve damaged-player binding: {debug}"
-        );
-    }
-
-    #[test]
-    fn parse_token_pt_reuses_unsigned_pt_word_parser() {
-        assert_eq!(parse_token_pt("2/3"), Some((2, 3)));
-        assert_eq!(parse_token_pt("+2/3"), None);
-        assert_eq!(parse_token_pt("2/-3"), None);
-    }
-}
+#[path = "compile_support/parse_compile_tests.rs"]
+mod parse_compile_tests;

@@ -222,6 +222,12 @@ pub(super) fn current_display_pip<'a>(
     display_pips.get(current_index).map(Vec::as_slice)
 }
 
+pub(super) fn display_pip_can_use_black_life(
+    display_pip: Option<&[crate::mana::ManaSymbol]>,
+) -> bool {
+    display_pip.is_some_and(|pip| pip.len() == 1 && pip[0] == crate::mana::ManaSymbol::Black)
+}
+
 pub(super) fn preferred_auto_pip_choice(
     state: &PriorityLoopState,
     options: &[ManaPipPaymentOption],
@@ -427,38 +433,25 @@ pub(super) fn build_pip_payment_options(
     // - We don't have pool options, OR
     // - This is a Phyrexian pip (always give choice between mana and life)
     if !has_pool_options || is_phyrexian {
-        let mana_abilities = get_available_mana_abilities(game, player, decision_maker);
+        let mana_abilities = get_available_mana_abilities_for_pip(
+            game,
+            player,
+            source_for_pip_alternatives,
+            payment_reason,
+            pip,
+            mana_spend_policy,
+            decision_maker,
+        );
         for (perm_id, ability_index, description) in mana_abilities {
-            let mut source_policy = mana_spend_policy.clone();
-            source_policy.allow_any_color |= game.can_spend_mana_as_any_color_from_mana_source(
-                player,
-                source_for_pip_alternatives,
-                perm_id,
-            );
-            // Check if this ability produces mana that can pay this pip
-            if mana_ability_can_pay_pip_with_reason(
-                game,
-                perm_id,
-                ability_index,
-                source_for_pip_alternatives,
-                payment_reason,
-                pip,
-                &source_policy,
-            ) {
-                options.push(ManaPipPaymentOption {
-                    index,
-                    description: format!(
-                        "Tap {}: {}",
-                        describe_permanent(game, perm_id),
-                        description
-                    ),
-                    action: ManaPipPaymentAction::ActivateManaAbility {
-                        source_id: perm_id,
-                        ability_index,
-                    },
-                });
-                index += 1;
-            }
+            options.push(ManaPipPaymentOption {
+                index,
+                description: format!("Tap {}: {}", describe_permanent(game, perm_id), description),
+                action: ManaPipPaymentAction::ActivateManaAbility {
+                    source_id: perm_id,
+                    ability_index,
+                },
+            });
+            index += 1;
         }
     }
 
@@ -1233,28 +1226,7 @@ fn mana_ability_can_pay_pip_source_only(
     )
 }
 
-fn mana_ability_can_pay_pip_with_reason(
-    game: &GameState,
-    perm_id: ObjectId,
-    ability_index: usize,
-    payment_source: Option<ObjectId>,
-    payment_reason: crate::costs::PaymentReason,
-    pip: &[crate::mana::ManaSymbol],
-    mana_spend_policy: &crate::player::ManaSpendPolicy,
-) -> bool {
-    mana_ability_can_pay_pip_filtered(
-        game,
-        perm_id,
-        ability_index,
-        payment_source,
-        pip,
-        mana_spend_policy,
-        |game, unit, payment_source| {
-            game.restricted_mana_unit_is_payable_for_reason(unit, payment_source, payment_reason)
-        },
-    )
-}
-
+#[cfg(test)]
 fn mana_ability_can_pay_pip_filtered(
     game: &GameState,
     perm_id: ObjectId,
@@ -1268,14 +1240,60 @@ fn mana_ability_can_pay_pip_filtered(
         Option<ObjectId>,
     ) -> bool,
 ) -> bool {
+    let Some(ability) = game.current_ability(perm_id, ability_index) else {
+        return false;
+    };
+
+    mana_ability_definition_can_pay_pip_filtered(
+        game,
+        perm_id,
+        &ability,
+        payment_source,
+        pip,
+        mana_spend_policy,
+        restricted_is_payable,
+    )
+}
+
+pub(super) fn mana_ability_definition_can_pay_pip_with_reason(
+    game: &GameState,
+    perm_id: ObjectId,
+    ability: &crate::ability::Ability,
+    payment_source: Option<ObjectId>,
+    payment_reason: crate::costs::PaymentReason,
+    pip: &[crate::mana::ManaSymbol],
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
+) -> bool {
+    mana_ability_definition_can_pay_pip_filtered(
+        game,
+        perm_id,
+        ability,
+        payment_source,
+        pip,
+        mana_spend_policy,
+        |game, unit, payment_source| {
+            game.restricted_mana_unit_is_payable_for_reason(unit, payment_source, payment_reason)
+        },
+    )
+}
+
+fn mana_ability_definition_can_pay_pip_filtered(
+    game: &GameState,
+    perm_id: ObjectId,
+    ability: &crate::ability::Ability,
+    payment_source: Option<ObjectId>,
+    pip: &[crate::mana::ManaSymbol],
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
+    restricted_is_payable: impl Fn(
+        &GameState,
+        &crate::ability::RestrictedManaUnit,
+        Option<ObjectId>,
+    ) -> bool,
+) -> bool {
     use crate::ability::AbilityKind;
     use crate::mana::ManaSymbol;
 
     let Some(obj) = game.object(perm_id) else {
-        return false;
-    };
-
-    let Some(ability) = game.current_ability(perm_id, ability_index) else {
         return false;
     };
 
@@ -2492,11 +2510,12 @@ pub(super) fn apply_pip_payment_response_activation(
 
     // Rebuild the options to get the action for this choice
     let mana_spend_policy = game.mana_spend_policy(pending.activator, Some(pending.source));
-    let allow_black_life = game.player_can_pay_black_with_life_for_reason(
-        pending.activator,
-        Some(pending.source),
-        pending.payment_reason,
-    );
+    let allow_black_life = display_pip_can_use_black_life(display_pip)
+        && game.player_can_pay_black_with_life_for_reason(
+            pending.activator,
+            Some(pending.source),
+            pending.payment_reason,
+        );
     let options = build_pip_payment_options(
         game,
         pending.activator,
@@ -2587,16 +2606,17 @@ pub(super) fn apply_pip_payment_response_cast(
     let display_pip = current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
 
     let mana_spend_policy = game.mana_spend_policy(pending.caster, Some(pending.spell_id));
-    let allow_black_life = game.player_can_pay_black_with_life_for_reason(
-        pending.caster,
-        Some(pending.spell_id),
-        crate::costs::PaymentReason::CastSpell,
-    );
     let cached_options = std::mem::take(&mut pending.current_pip_payment_options);
     perf.cached_option_count = cached_options.len();
     perf.used_cached_options = !cached_options.is_empty();
     let build_options_started_at = crate::perf::PerfTimer::start();
     let options = if cached_options.is_empty() {
+        let allow_black_life = display_pip_can_use_black_life(display_pip)
+            && game.player_can_pay_black_with_life_for_reason(
+                pending.caster,
+                Some(pending.spell_id),
+                crate::costs::PaymentReason::CastSpell,
+            );
         build_pip_payment_options(
             game,
             pending.caster,
@@ -3631,13 +3651,10 @@ pub(crate) fn propose_spell_cast(
             if method.is_bestow() {
                 obj.apply_bestow_cast_overlay();
             }
-            if matches!(
-                method,
-                crate::alternative_cast::AlternativeCastingMethod::Composed { name, .. }
-                    if name.eq_ignore_ascii_case("Prototype")
-            ) && let Some(cost) = method.mana_cost().cloned()
+            if let Some(power_toughness) = method.prototype_power_toughness()
+                && let Some(cost) = method.mana_cost().cloned()
             {
-                obj.apply_prototype_cast_overlay(cost);
+                obj.apply_prototype_cast_overlay(cost, power_toughness);
             }
 
             if let crate::alternative_cast::AlternativeCastingMethod::Disturb { .. } = method {
@@ -3706,6 +3723,13 @@ pub(crate) fn propose_spell_cast(
     }
 
     apply_play_from_cast_this_way_grants(game, new_id, caster, casting_method);
+
+    // Moving the proposed spell and applying its cast overlay invalidates the
+    // continuous state.  The remaining cast pipeline immediately performs
+    // several independent legality, targeting, cost-modifier, and mana-source
+    // queries.  Refresh once here so those views share the game-level
+    // characteristic cache instead of each recalculating the same dirty board.
+    game.refresh_continuous_state();
 
     Ok(new_id)
 }

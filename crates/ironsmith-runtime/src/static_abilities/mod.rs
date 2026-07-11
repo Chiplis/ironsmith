@@ -2538,6 +2538,10 @@ impl StaticAbility {
         Self::new(PreventAllDamageDealtToCreatures)
     }
 
+    pub fn prevent_all_damage_dealt_to_and_by_this_permanent() -> Self {
+        Self::new(PreventAllDamageDealtToAndByThisPermanent)
+    }
+
     pub fn prevent_all_damage_dealt_by_this_permanent() -> Self {
         Self::new(PreventAllDamageDealtByThisPermanent)
     }
@@ -2584,9 +2588,21 @@ impl StaticAbility {
 
     pub fn prevent_damage_to_self_remove_counter(
         counter_type: crate::object::CounterType,
-        amount: u32,
+        amount: impl Into<crate::effect::Value>,
     ) -> Self {
         Self::new(PreventDamageToSelfRemoveCounter::new(counter_type, amount))
+    }
+
+    pub fn prevent_damage_to_self_remove_counter_with_follow_up(
+        counter_type: crate::object::CounterType,
+        amount: impl Into<crate::effect::Value>,
+        follow_up: Option<ironsmith_core::CounterRemovalFollowUp>,
+    ) -> Self {
+        Self::new(PreventDamageToSelfRemoveCounter::new_with_follow_up(
+            counter_type,
+            amount,
+            follow_up,
+        ))
     }
 
     pub fn prevent_damage_to_self_put_counters_instead(

@@ -2,11 +2,10 @@ use super::super::super::clause_pattern_helpers::parse_choose_target_prelude_sen
 use super::super::super::clause_primitives::parse_choose_card_name_clause;
 use super::super::super::dispatch_entry::{
     ConsultCastCost, consult_cast_effects, consult_stop_rule_is_single_match,
-    find_from_among_looked_cards_phrase, parse_bargained_face_down_cast_mana_value_gate,
-    parse_consult_bottom_remainder_clause, parse_consult_cast_clause,
-    parse_consult_traversal_sentence, parse_if_declined_put_match_into_hand,
-    parse_if_you_cant_sentence, parse_if_you_dont_sentence, parse_looked_card_choice_filter,
-    parse_top_cards_view_sentence,
+    parse_bargained_face_down_cast_mana_value_gate, parse_consult_bottom_remainder_clause,
+    parse_consult_cast_clause, parse_consult_traversal_sentence,
+    parse_if_declined_put_match_into_hand, parse_if_you_cant_sentence, parse_if_you_dont_sentence,
+    parse_looked_card_choice_filter, parse_top_cards_view_sentence,
 };
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IfResultPredicate, LibraryConsultModeAst,
@@ -18,22 +17,15 @@ use crate::effect::{ChoiceCount, Value};
 use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
-use crate::runtime_backend::front_end::lexer::{OwnedLexToken, find_token_word};
-use crate::runtime_backend::lexer::{
-    TokenWordView, word_slice_contains_all_words, word_slice_contains_any_phrase,
-    word_slice_contains_phrase, word_slice_ends_with, word_slice_eq, word_slice_eq_any,
-    word_slice_find_phrase_start, word_slice_find_word, word_slice_starts_with,
-    word_slice_starts_with_any,
+use crate::runtime_backend::front_end::grammar::sentence_markers::{
+    self, ConditionalFollowupActor, LeadingMayActor,
+};
+use crate::runtime_backend::front_end::lexer::OwnedLexToken;
+use crate::runtime_backend::grammar::effects::{
+    looked_card_shapes as looked_grammar, triple_sequence_shapes as triple_grammar,
 };
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
-use crate::runtime_backend::token_primitives::{
-    LeadingMayActor, parse_leading_may_action_lexed, slice_contains, slice_ends_with,
-    slice_starts_with, strip_leading_if_you_do_lexed,
-};
-use crate::runtime_backend::util::{
-    helper_tag_for_tokens, non_article_word_refs, parse_choice_count_token_prefix_consumed,
-    parse_number_word_u32, trim_commas, word_refs_at_is_article,
-};
+use crate::runtime_backend::util::{helper_tag_for_tokens, trim_commas};
 use crate::target::ChooseSpec;
 use crate::target::{PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
@@ -48,248 +40,6 @@ fn look_at_top_cards_parts(effect: &EffectAst) -> Option<(PlayerAst, Value)> {
         return None;
     };
     Some((*player, count.clone()))
-}
-
-fn looked_cards_choice_count(
-    tokens: &[OwnedLexToken],
-) -> Option<(ChoiceCount, Vec<OwnedLexToken>)> {
-    let trimmed = trim_commas(tokens);
-    if let Some((count, used)) = parse_choice_count_token_prefix_consumed(&trimmed) {
-        return Some((count, trim_commas(&trimmed[used..])));
-    }
-    Some((ChoiceCount::up_to(1), trimmed))
-}
-
-const ABUNDANT_HARVEST_CHOICE_WORDS: &[&str] = &["choose", "land", "or", "nonland"];
-const ABUNDANT_HARVEST_REVEAL_PREFIX: &[&str] = &[
-    "reveal", "cards", "from", "the", "top", "of", "your", "library",
-];
-const ABUNDANT_HARVEST_REVEAL_SUFFIX: &[&str] = &["a", "card", "of", "the", "chosen", "kind"];
-const PUT_MATCH_INTO_HAND_PREFIXES: &[&[&str]] = &[
-    &["put", "that", "card", "into", "your", "hand"],
-    &["put", "it", "into", "your", "hand"],
-];
-const OPPONENT_SUBJECT_WORDS: &[&str] = &["opponent"];
-const PUT_REST_INTO_YOUR_HAND_WORDS: &[&str] = &["you", "put", "rest", "into", "your", "hand"];
-const OPPONENT_MAY_CAST_EXILED_CARD_FREE_WORDS: &[&str] = &[
-    "that", "opponent", "may", "cast", "exiled", "card", "without", "paying", "its", "mana", "cost",
-];
-const THAT_PLAYER_CHOOSES_CARD_NAME_WORDS: &[&[&str]] = &[
-    &["that", "player", "chooses", "a", "card", "name"],
-    &["that", "player", "choose", "a", "card", "name"],
-];
-const SEARCH_THAT_PLAYER_LIBRARY_FOR_CARD_WORDS: &[&[&str]] = &[
-    &["search", "that", "player's", "library", "for", "a", "card"],
-    &["search", "that", "players", "library", "for", "a", "card"],
-];
-const THEN_THAT_PLAYER_SHUFFLES_WORDS: &[&[&str]] = &[
-    &["then", "that", "player", "shuffles"],
-    &["then", "that", "player", "shuffle"],
-];
-const PUT_ONE_SEARCH_RESULT_HAND_PREFIXES: &[&[&str]] = &[
-    &["put", "one", "into", "your", "hand"],
-    &["put", "one", "of", "them", "into", "your", "hand"],
-];
-const OTHER_SEARCH_RESULT_GRAVEYARD_PHRASES: &[&[&str]] = &[
-    &["other", "into", "your", "graveyard"],
-    &["other", "into", "graveyard"],
-];
-const SHUFFLE_SENTENCE_WORDS: &[&[&str]] = &[&["then", "shuffle"], &["shuffle"]];
-const REVEAL_WORD: &str = "reveal";
-const REVEAL_AND_PUT_IT_INTO_HAND_PREFIXES: &[&[&str]] =
-    &[&["and", "put", "it", "into"], &["put", "it", "into"]];
-const INTO_HAND_PREFIX: &[&str] = &["into"];
-const PUT_REST_GRAVEYARD_PREFIXES: &[&[&str]] = &[&["put"], &["puts"]];
-const AND_OR_WORD: &str = "and/or";
-const INTO_HAND_ZONE_PREFIXES: &[&[&str]] = &[&["into", "your", "hand"], &["into", "hand"]];
-const ONTO_BATTLEFIELD_TAPPED_ZONE_PREFIXES: &[&[&str]] = &[
-    &["onto", "the", "battlefield", "tapped"],
-    &["onto", "battlefield", "tapped"],
-];
-const ONTO_BATTLEFIELD_ZONE_PREFIXES: &[&[&str]] =
-    &[&["onto", "the", "battlefield"], &["onto", "battlefield"]];
-const PUT_ONE_LOOKED_CARD_INTO_HAND_PREFIXES: &[&[&str]] = &[
-    &["put", "one", "of", "them", "into", "your", "hand"],
-    &["put", "one", "of", "those", "cards", "into", "your", "hand"],
-    &["put", "one", "into", "your", "hand"],
-];
-const PUT_OTHER_LOOKED_CARDS_ON_BOTTOM_PHRASES: &[&[&str]] = &[
-    &["other", "on", "bottom"],
-    &["other", "onto", "bottom"],
-    &["rest", "on", "bottom"],
-    &["rest", "onto", "bottom"],
-];
-const IF_CAST_NON_HAND_PUT_EACH_LOOKED_INTO_HAND_INSTEAD_WORDS: &[&str] = &[
-    "if", "this", "spell", "was", "cast", "from", "anywhere", "other", "than", "your", "hand",
-    "put", "each", "of", "those", "cards", "into", "your", "hand", "instead",
-];
-const WITHOUT_PAYING_ITS_MANA_COST_PREFIX: &[&str] = &["without", "paying", "its", "mana", "cost"];
-const REVEALED_CARDS_INTO_HAND_TAIL_PREFIXES: &[&[&str]] = &[
-    &["and", "put", "the", "revealed"],
-    &["and", "put", "those", "cards"],
-    &["and", "put", "them"],
-];
-const PUT_ALL_WITH_CHOSEN_NAME_INTO_HAND_PREFIXES: &[&[&str]] = &[
-    &[
-        "and", "put", "all", "of", "them", "with", "that", "name", "into",
-    ],
-    &[
-        "and", "puts", "all", "of", "them", "with", "that", "name", "into",
-    ],
-    &[
-        "and", "put", "all", "of", "those", "cards", "with", "that", "name", "into",
-    ],
-    &[
-        "and", "puts", "all", "of", "those", "cards", "with", "that", "name", "into",
-    ],
-    &[
-        "and", "put", "all", "of", "them", "with", "the", "chosen", "name", "into",
-    ],
-    &[
-        "and", "puts", "all", "of", "them", "with", "the", "chosen", "name", "into",
-    ],
-];
-const AND_WORD: &str = "and";
-const SPELL_OR_SPELLS_WORDS: &[&str] = &["spell", "spells"];
-const YOU_CAST_THIS_TURN_TAILS: &[&[&str]] = &[
-    &["youve", "cast", "this", "turn"],
-    &["you", "have", "cast", "this", "turn"],
-    &["you", "cast", "this", "turn"],
-];
-const ONE_CHOSEN_TO_BATTLEFIELD_PREFIX: &[&str] = &[
-    "put",
-    "one",
-    "of",
-    "the",
-    "chosen",
-    "cards",
-    "onto",
-    "the",
-    "battlefield",
-];
-const ONE_CHOSEN_TO_BATTLEFIELD_REQUIRED_PHRASES: &[&[&str]] = &[
-    &["the", "other", "chosen", "cards", "into", "your", "hand"],
-    &["the", "rest", "into", "your", "graveyard"],
-];
-const FOR_EACH_CARD_TYPE_AMONG_PREFIX: &[&str] = &["for", "each", "card", "type", "among"];
-const FOR_EACH_CARD_TYPE_PREFIX: &[&str] = &["for", "each", "card", "type"];
-const CARD_OF_THAT_TYPE_FROM_REVEALED_INTO_HAND_PREFIX: &[&str] = &[
-    "card", "of", "that", "type", "from", "among", "the", "revealed", "cards", "into",
-];
-const REVEALED_PICK_INTO_HAND_PREFIXES: &[&[&str]] = &[
-    &["and", "put", "it", "into"],
-    &["put", "it", "into"],
-    &["and", "put", "them", "into"],
-    &["put", "them", "into"],
-    &["and", "put", "that", "card", "into"],
-    &["put", "that", "card", "into"],
-];
-const REVEALED_PICK_ON_TOP_LIBRARY_PREFIXES: &[&[&str]] = &[
-    &["and", "put", "it", "on", "top"],
-    &["put", "it", "on", "top"],
-    &["and", "put", "that", "card", "on", "top"],
-    &["put", "that", "card", "on", "top"],
-];
-const CHOSEN_NONLAND_BATTLEFIELD_PHRASE: &[&str] = &[
-    "all",
-    "nonland",
-    "cards",
-    "chosen",
-    "this",
-    "way",
-    "onto",
-    "the",
-    "battlefield",
-];
-const CHOSEN_LAND_BATTLEFIELD_TAPPED_PHRASE: &[&str] = &[
-    "all",
-    "land",
-    "cards",
-    "chosen",
-    "this",
-    "way",
-    "onto",
-    "the",
-    "battlefield",
-    "tapped",
-];
-const PUT_ONE_HAND_BOTTOM_EXILE_PREFIX: &[&str] =
-    &["put", "one", "of", "them", "into", "your", "hand"];
-const PUT_ONE_HAND_BOTTOM_EXILE_BOTTOM_PHRASES: &[&[&str]] = &[
-    &[
-        "put", "one", "of", "them", "on", "the", "bottom", "of", "your", "library",
-    ],
-    &[
-        "put", "one", "of", "them", "on", "bottom", "of", "your", "library",
-    ],
-];
-const PUT_ONE_HAND_BOTTOM_EXILE_EXILE_PHRASE: &[&str] = &["exile", "one", "of", "them"];
-const THEN_WORD: &str = "then";
-const EXILES_WORD: &str = "exiles";
-const IF_YOU_SEARCHED_FOR_PREFIX: &[&str] = &["if", "you", "searched", "for"];
-const CREATURE_CARD_PREFIX: &[&str] = &["creature", "card"];
-const DOESNT_HAVE_THAT_NAME_PREFIXES: &[&[&str]] = &[
-    &["doesn't", "have", "that", "name"],
-    &["doesnt", "have", "that", "name"],
-    &["doesn", "t", "have", "that", "name"],
-];
-const YOU_MAY_PUT_IT_BATTLEFIELD_CONTROL_PREFIX: &[&str] = &[
-    "you",
-    "may",
-    "put",
-    "it",
-    "onto",
-    "the",
-    "battlefield",
-    "under",
-    "your",
-    "control",
-];
-const MANA_VALUE_PREFIX: &[&str] = &["mana", "value"];
-const AND_SO_ON_FOR_PREFIX: &[&str] = &["and", "so", "on", "for"];
-const YOU_MAY_PUT_PREFIX: &[&str] = &["you", "may", "put"];
-const AMONG_WORD: &str = "among";
-
-fn triple_find_prefix_start(words: &[&str], prefix: &[&str]) -> Option<usize> {
-    (0..words.len()).find(|&idx| word_slice_starts_with(&words[idx..], prefix))
-}
-
-fn triple_find_any_prefix_start(words: &[&str], prefixes: &[&[&str]]) -> Option<usize> {
-    (0..words.len()).find(|&idx| word_slice_starts_with_any(&words[idx..], prefixes))
-}
-
-fn triple_words_start_put_or_puts_and_contain_all(words: &[&str], required: &[&str]) -> bool {
-    word_slice_starts_with_any(words, PUT_REST_GRAVEYARD_PREFIXES)
-        && word_slice_contains_all_words(words, required)
-}
-
-fn triple_revealed_pick_into_hand(words: &[&str]) -> bool {
-    word_slice_starts_with_any(words, REVEALED_PICK_INTO_HAND_PREFIXES)
-        && word_slice_find_word(words, "hand").is_some()
-}
-
-fn triple_revealed_pick_on_top_library(words: &[&str]) -> bool {
-    word_slice_starts_with_any(words, REVEALED_PICK_ON_TOP_LIBRARY_PREFIXES)
-        && word_slice_find_word(words, "library").is_some()
-}
-
-fn triple_mana_value_or_less_tail_bound(words: &[&str]) -> Option<u32> {
-    let [count_word, "or", "less"] = words else {
-        return None;
-    };
-    count_word
-        .parse::<u32>()
-        .ok()
-        .or_else(|| ironsmith_core::parse_cardinal_word(count_word))
-}
-
-fn abundant_harvest_choice_sentence(words: &[&str]) -> bool {
-    word_slice_eq(words, ABUNDANT_HARVEST_CHOICE_WORDS)
-}
-
-fn abundant_harvest_reveal_sentence(words: &[&str]) -> bool {
-    word_slice_starts_with(words, ABUNDANT_HARVEST_REVEAL_PREFIX)
-        && words.ends_with(ABUNDANT_HARVEST_REVEAL_SUFFIX)
 }
 
 fn abundant_harvest_branch_effects(
@@ -338,37 +88,12 @@ pub(crate) fn parse_choose_two_targets_counter_first_if_power_then_fight(
     }
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_word_refs = TokenWordView::new(&second_tokens).word_refs();
-    if !word_slice_starts_with(
-        &second_word_refs,
-        &[
-            "put", "a", "+1/+1", "counter", "on", "the", "creature", "you", "control", "if", "it",
-            "has", "power",
-        ],
-    ) {
-        return Ok(None);
-    }
-    let Some(power_idx) = word_slice_find_word(&second_word_refs, "power") else {
-        return Ok(None);
-    };
-    let Some(power_word) = second_word_refs.get(power_idx + 1) else {
-        return Ok(None);
-    };
-    let Some(required_power) = parse_number_word_u32(power_word) else {
-        return Ok(None);
-    };
-    if second_word_refs.get(power_idx + 2..power_idx + 4) != Some(&["or", "greater"][..]) {
-        return Ok(None);
-    }
-
     let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
-    let third_word_refs = TokenWordView::new(&third_tokens).word_refs();
-    if !word_slice_eq(
-        &third_word_refs,
-        &["then", "those", "creatures", "fight", "each", "other"],
-    ) {
+    let Some(shape) = triple_grammar::parse_counter_then_fight_shape(&second_tokens, &third_tokens)
+    else {
         return Ok(None);
-    }
+    };
+    let required_power = shape.required_power;
 
     let first_tag = TagKey::from("targeted_0");
     let second_tag = TagKey::from("targeted_1");
@@ -396,6 +121,35 @@ pub(crate) fn parse_choose_two_targets_counter_first_if_power_then_fight(
     Ok(Some(effects))
 }
 
+pub(crate) fn parse_reveal_top_opponent_chooses_one_then_move_and_followup(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((mut effects, chosen_tag, PlayerAst::TargetOpponent, None)) =
+        super::pairs::parse_reveal_top_and_choose_one_of_revealed(
+            sentences[sentence_idx].lowered(),
+            sentences[sentence_idx + 1].lowered(),
+        )?
+    else {
+        return Ok(None);
+    };
+    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    let Some(shape) = looked_grammar::parse_chosen_card_move_followup_shape(&third_tokens) else {
+        return Ok(None);
+    };
+    let followup_tokens = trim_commas(&third_tokens[shape.followup]);
+    let followups = effect_sentences::parse_effect_sentence_lexed(&followup_tokens)?;
+    if followups.is_empty() {
+        return Ok(None);
+    }
+    effects.push(super::pairs::move_tagged_to_looked_destination(
+        chosen_tag,
+        shape.destination,
+    ));
+    effects.extend(followups);
+    Ok(Some(effects))
+}
+
 pub(crate) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -404,25 +158,10 @@ pub(crate) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
     let second = trim_commas(sentences[sentence_idx + 1].lowered());
     let third = trim_commas(sentences[sentence_idx + 2].lowered());
 
-    let first_words = crate::runtime_backend::token_word_refs(&first);
-    if !abundant_harvest_choice_sentence(&first_words) {
+    if !triple_grammar::is_abundant_harvest_sequence_shape(&first, &second, &third) {
         return Ok(None);
     }
-
-    let second_words = crate::runtime_backend::token_word_refs(&second);
-    if !abundant_harvest_reveal_sentence(&second_words) {
-        return Ok(None);
-    }
-
-    let third_words = crate::runtime_backend::token_word_refs(&third);
-    if !word_slice_starts_with_any(&third_words, PUT_MATCH_INTO_HAND_PREFIXES)
-        || word_slice_find_word(&third_words, "rest").is_none()
-    {
-        return Ok(None);
-    }
-    let Some(order) =
-        super::super::super::dispatch_entry::parse_consult_remainder_order(&third_words)
-    else {
+    let Some(order) = triple_grammar::parse_consult_remainder_order_tokens(&third) else {
         return Ok(None);
     };
 
@@ -574,11 +313,13 @@ pub(crate) fn parse_mill_then_optional_payment_if_you_do_put_from_among_into_han
         return Ok(None);
     };
 
-    let stripped_third = strip_leading_if_you_do_lexed(third);
-    if stripped_third.len() == third.len() {
+    let Some(followup) = sentence_markers::parse_conditional_followup_tokens(third) else {
+        return Ok(None);
+    };
+    if followup.actor != ConditionalFollowupActor::You {
         return Ok(None);
     }
-    let third = trim_commas(stripped_third);
+    let third = trim_commas(followup.tail_tokens);
     let Some((chooser, filter)) = super::pairs::parse_may_put_filtered_card_from_among_into_hand(
         &third,
         *player,
@@ -680,12 +421,7 @@ pub(crate) fn parse_each_player_mill_then_exile_milled_creatures_then_create_pow
         return Ok(None);
     }
 
-    let words = TokenWordView::new(&second).word_refs();
-    if !word_slice_starts_with(&words, &["exile", "up", "to", "two"])
-        || !word_slice_contains_phrase(&words, &["creature", "cards"])
-        || !(word_slice_contains_phrase(&words, &["put", "into", "graveyards", "this", "way"])
-            || word_slice_contains_phrase(&words, &["put", "into", "graveyard", "this", "way"]))
-    {
+    if !triple_grammar::is_milled_creature_exile_shape(&second) {
         return Ok(None);
     }
 
@@ -747,45 +483,15 @@ pub(crate) fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
     }
 
     let second = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = TokenWordView::new(&second);
-    let second_word_refs = second_words.word_refs();
-    let Some(then_word_idx) = word_slice_find_word(&second_word_refs, THEN_WORD) else {
-        return Ok(None);
-    };
-    let Some(then_token_idx) = second_words.token_index_for_word_index(then_word_idx) else {
-        return Ok(None);
-    };
-    let exile_tokens = trim_commas(&second[..then_token_idx]);
-    let rest_tokens = trim_commas(&second[then_token_idx + 1..]);
-
-    let exile_words = TokenWordView::new(&exile_tokens);
-    let exile_word_refs = exile_words.word_refs();
-    let Some(exile_word_idx) = word_slice_find_word(&exile_word_refs, EXILES_WORD) else {
-        return Ok(None);
-    };
-    let actor_words =
-        crate::runtime_backend::util::non_article_word_refs(&exile_word_refs[..exile_word_idx]);
-    if !word_slice_eq(&actor_words, OPPONENT_SUBJECT_WORDS) {
-        return Ok(None);
-    }
-    let Some(exile_tail_start) = exile_words.token_index_after_words(exile_word_idx + 1) else {
-        return Ok(None);
-    };
-    let exile_tail = trim_commas(&exile_tokens[exile_tail_start..]);
-    let exile_tail_words = TokenWordView::new(&exile_tail);
-    let Some((from_among_word_idx, from_among_len)) =
-        find_from_among_looked_cards_phrase(&exile_tail_words)
-    else {
-        return Ok(None);
-    };
-    let Some(filter_end) = exile_tail_words.token_index_for_word_index(from_among_word_idx) else {
+    let third = trim_commas(sentences[sentence_idx + 2].lowered());
+    let Some(shape) = triple_grammar::parse_opponent_exile_then_hand_shape(&second, &third) else {
         return Ok(None);
     };
 
     let revealed_tag = helper_tag_for_tokens(&first, "revealed");
     let exiled_tag = helper_tag_for_tokens(&first, "exiled");
     let mut exile_filter =
-        if let Some(filter) = parse_looked_card_choice_filter(&exile_tail[..filter_end]) {
+        if let Some(filter) = parse_looked_card_choice_filter(&second[shape.exile_filter]) {
             filter
         } else {
             return Ok(None);
@@ -793,27 +499,6 @@ pub(crate) fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
     exile_filter.zone = Some(Zone::Library);
     exile_filter =
         exile_filter.match_tagged(revealed_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
-
-    let after_from_among = &exile_tail_words.word_refs()[from_among_word_idx + from_among_len..];
-    if !after_from_among.is_empty() {
-        return Ok(None);
-    }
-
-    let rest_words = TokenWordView::new(&rest_tokens).word_refs();
-    let rest_without_articles = non_article_word_refs(&rest_words);
-    if !word_slice_eq(&rest_without_articles, PUT_REST_INTO_YOUR_HAND_WORDS) {
-        return Ok(None);
-    }
-
-    let third = trim_commas(sentences[sentence_idx + 2].lowered());
-    let third_words = TokenWordView::new(&third).word_refs();
-    let third_without_articles = non_article_word_refs(&third_words);
-    if !word_slice_eq(
-        &third_without_articles,
-        OPPONENT_MAY_CAST_EXILED_CARD_FREE_WORDS,
-    ) {
-        return Ok(None);
-    }
 
     let rest_filter = ObjectFilter::tagged(revealed_tag.clone())
         .not_tagged(exiled_tag.clone())
@@ -856,24 +541,13 @@ pub(crate) fn parse_search_then_player_names_card_conditional_put_then_shuffle(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first = trim_commas(sentences[sentence_idx].lowered());
-    let Some(then_idx) = find_token_word(&first, "then") else {
+    let Some(_shape) = triple_grammar::parse_search_then_name_shape(
+        &first,
+        sentences[sentence_idx + 1].lowered(),
+        sentences[sentence_idx + 2].lowered(),
+    ) else {
         return Ok(None);
     };
-    let search_tokens = trim_commas(&first[..then_idx]);
-    let name_tokens = trim_commas(&first[then_idx + 1..]);
-    if search_tokens.is_empty() || name_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let name_words = TokenWordView::new(&name_tokens).word_refs();
-    if !word_slice_eq_any(&name_words, THAT_PLAYER_CHOOSES_CARD_NAME_WORDS) {
-        return Ok(None);
-    }
-
-    let search_words = TokenWordView::new(&search_tokens).word_refs();
-    if !word_slice_eq_any(&search_words, SEARCH_THAT_PLAYER_LIBRARY_FOR_CARD_WORDS) {
-        return Ok(None);
-    }
     let searched_tag = TagKey::from("searched");
     let mut search_filter = ObjectFilter::default();
     search_filter.owner = Some(PlayerFilter::DamagedPlayer);
@@ -888,24 +562,6 @@ pub(crate) fn parse_search_then_player_names_card_conditional_put_then_shuffle(
         search_mode: Some(crate::effect::SearchSelectionMode::Exact),
     }];
     let chosen_name_tag = TagKey::from("__chosen_name__");
-
-    let second_words = TokenWordView::new(sentences[sentence_idx + 1].lowered()).word_refs();
-    let has_searched_creature_card =
-        triple_find_prefix_start(&second_words, IF_YOU_SEARCHED_FOR_PREFIX).is_some()
-            && triple_find_prefix_start(&second_words, CREATURE_CARD_PREFIX).is_some();
-    let has_doesnt_have_name =
-        triple_find_any_prefix_start(&second_words, DOESNT_HAVE_THAT_NAME_PREFIXES).is_some();
-    let has_may_put_battlefield =
-        triple_find_prefix_start(&second_words, YOU_MAY_PUT_IT_BATTLEFIELD_CONTROL_PREFIX)
-            .is_some();
-    if !has_searched_creature_card || !has_doesnt_have_name || !has_may_put_battlefield {
-        return Ok(None);
-    }
-
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered()).word_refs();
-    if !word_slice_eq_any(&third_words, THEN_THAT_PLAYER_SHUFFLES_WORDS) {
-        return Ok(None);
-    }
 
     let mut creature_filter = ObjectFilter::default();
     creature_filter.card_types.push(CardType::Creature);
@@ -974,36 +630,16 @@ pub(crate) fn parse_choose_name_reveal_top_matching_hand_rest_graveyard(
     };
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = TokenWordView::new(&second_tokens);
-    let second_word_refs = second_words.word_refs();
-    let Some(and_idx) = triple_find_any_prefix_start(
-        &second_word_refs,
-        PUT_ALL_WITH_CHOSEN_NAME_INTO_HAND_PREFIXES,
+    let Some(shape) = triple_grammar::parse_chosen_name_reveal_shape(
+        &second_tokens,
+        sentences[sentence_idx + 2].lowered(),
     ) else {
         return Ok(None);
     };
-    let Some(and_token_idx) = second_words.token_index_for_word_index(and_idx) else {
-        return Ok(None);
-    };
-    let view_tokens = trim_commas(&second_tokens[..and_token_idx]);
+    let view_tokens = trim_commas(&second_tokens[shape.view]);
     let Some((player, count, true)) = parse_top_cards_view_sentence(&view_tokens) else {
         return Ok(None);
     };
-    if word_slice_find_word(&second_word_refs[and_idx..], "hand").is_none() {
-        return Ok(None);
-    }
-
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    let third_word_refs = third_words.word_refs();
-    let third_rest_words = if third_word_refs.first() == Some(&THEN_WORD) {
-        &third_word_refs[1..]
-    } else {
-        &third_word_refs[..]
-    };
-    if !triple_words_start_put_or_puts_and_contain_all(third_rest_words, &["rest", "graveyard"]) {
-        return Ok(None);
-    }
-
     let looked_tag = helper_tag_for_tokens(&view_tokens, "revealed");
     let mut name_match_filter = ObjectFilter::default();
     name_match_filter
@@ -1082,7 +718,7 @@ pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
                     search_mode,
                     ..
                 },
-            ] if zones.as_slice() == [Zone::Library] => (
+            ] if zones.len() == 1 && zones.first().is_some_and(|zone| *zone == Zone::Library) => (
                 filter.clone(),
                 *count,
                 count_value.clone(),
@@ -1097,19 +733,9 @@ pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
     }
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = TokenWordView::new(&second_tokens).word_refs();
-    let content_words = non_article_word_refs(&second_words);
-    let puts_one_hand =
-        word_slice_starts_with_any(&content_words, PUT_ONE_SEARCH_RESULT_HAND_PREFIXES);
-    let puts_other_graveyard =
-        word_slice_contains_any_phrase(&content_words, OTHER_SEARCH_RESULT_GRAVEYARD_PHRASES);
-    if !puts_one_hand || !puts_other_graveyard {
-        return Ok(None);
-    }
-
     let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
-    let third_words = TokenWordView::new(&third_tokens).word_refs();
-    if !word_slice_eq_any(&third_words, SHUFFLE_SENTENCE_WORDS) {
+    if !triple_grammar::is_search_two_disposition_then_shuffle_shape(&second_tokens, &third_tokens)
+    {
         return Ok(None);
     }
 
@@ -1377,73 +1003,37 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
     let Some(action_match) =
-        parse_leading_may_action_lexed(&second_tokens, &["reveal", "put"], true)
+        sentence_markers::parse_leading_may_action_tokens(&second_tokens, &["reveal", "put"], true)
     else {
         return Ok(None);
     };
     let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, player);
-    let reveal_chosen = action_match.verb == REVEAL_WORD;
+    let reveal_chosen = action_match.verb == "reveal";
     let action_tokens = trim_commas(action_match.tail_tokens);
-    let action_words = TokenWordView::new(&action_tokens);
-    if action_words.is_empty() {
-        return Ok(None);
-    }
-    let action_word_refs = action_words.word_refs();
-
-    let Some((from_among_word_idx, from_among_len)) =
-        effect_sentences::find_from_among_looked_cards_phrase(&action_words)
+    let Some(shape) = triple_grammar::parse_looked_hand_action_shape(&action_tokens, reveal_chosen)
     else {
         return Ok(None);
     };
-
-    let filter_end = action_words
-        .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(action_tokens.len());
-    let Some((mut choice_count, count_stripped_tokens)) =
-        looked_cards_choice_count(&action_tokens[..filter_end])
-    else {
-        return Ok(None);
-    };
+    let mut choice_count = shape.count;
     if !matches!(action_match.actor, LeadingMayActor::Default) && choice_count.min > 0 {
         choice_count = ChoiceCount::up_to(choice_count.max.unwrap_or(choice_count.min));
     }
     let filter = if let Some(filter) =
-        effect_sentences::parse_looked_card_choice_filter(&count_stripped_tokens)
+        effect_sentences::parse_looked_card_choice_filter(&action_tokens[shape.filter])
     {
         filter
     } else {
         return Ok(None);
     };
-    let filter_words = crate::runtime_backend::token_word_refs(&action_tokens[..filter_end]);
-
-    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
-    let moves_into_hand = if reveal_chosen {
-        word_slice_starts_with_any(after_from_words, REVEAL_AND_PUT_IT_INTO_HAND_PREFIXES)
-            && word_slice_find_word(after_from_words, "hand").is_some()
-    } else {
-        word_slice_starts_with(after_from_words, INTO_HAND_PREFIX)
-            && word_slice_find_word(after_from_words, "hand").is_some()
-    };
-    if !moves_into_hand {
-        return Ok(None);
-    }
-
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    let third_word_refs = third_words.word_refs();
-    let third_rest_words = if third_word_refs.first() == Some(&THEN_WORD) {
-        &third_word_refs[1..]
-    } else {
-        &third_word_refs[..]
-    };
-    let puts_rest_graveyard =
-        triple_words_start_put_or_puts_and_contain_all(third_rest_words, &["rest", "graveyard"]);
-    if !puts_rest_graveyard {
+    if triple_grammar::parse_looked_remainder_shape(sentences[sentence_idx + 2].lowered())
+        != Some(triple_grammar::LookedRemainderShape::Graveyard)
+    {
         return Ok(None);
     }
 
     if choice_count == ChoiceCount::up_to(1)
         && filter.card_types.len() > 1
-        && filter_words.iter().any(|word| *word == AND_OR_WORD)
+        && shape.filter_uses_and_or
         && filter.all_card_types.is_empty()
         && filter.subtypes.is_empty()
         && filter.static_abilities.is_empty()
@@ -1660,44 +1250,12 @@ fn parse_any_number_revealed_this_way_choice(
     tokens: &[OwnedLexToken],
 ) -> Option<(ChoiceCount, ObjectFilter)> {
     let choice_tokens = trim_commas(tokens);
-    let choice_words = TokenWordView::new(&choice_tokens);
-    if !choice_words.first_is("choose") {
-        return None;
-    }
-    let tail_start = choice_words.token_index_after_words(1)?;
-    let tail_tokens = trim_commas(&choice_tokens[tail_start..]);
-    let Some((count, count_used)) = parse_choice_count_token_prefix_consumed(&tail_tokens) else {
-        return None;
-    };
-    if count != ChoiceCount::any_number() {
-        return None;
-    }
-
-    let after_count = trim_commas(&tail_tokens[count_used..]);
-    let after_count_words = TokenWordView::new(&after_count);
-    let revealed_idx =
-        word_slice_find_phrase_start(&after_count_words.word_refs(), &["revealed", "this", "way"])?;
-    if after_count_words.word_refs()[revealed_idx..] != ["revealed", "this", "way"] {
-        return None;
-    }
-    let filter_end = after_count_words
-        .token_index_for_word_index(revealed_idx)
-        .unwrap_or(after_count.len());
-    let filter_tokens = trim_commas(&after_count[..filter_end]);
+    let shape = triple_grammar::parse_any_number_revealed_choice_shape(&choice_tokens)?;
+    let filter_tokens = trim_commas(&choice_tokens[shape.filter]);
     let mut filter = effect_sentences::parse_looked_card_choice_filter(&filter_tokens)?;
     effect_sentences::normalize_search_library_filter(&mut filter);
     filter.zone = None;
-    Some((count, filter))
-}
-
-fn chosen_land_nonland_split_bottom_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    word_slice_starts_with(&words, PUT_REST_GRAVEYARD_PREFIXES[0])
-        && word_slice_contains_phrase(&words, CHOSEN_NONLAND_BATTLEFIELD_PHRASE)
-        && word_slice_contains_phrase(&words, CHOSEN_LAND_BATTLEFIELD_TAPPED_PHRASE)
-        && word_slice_contains_all_words(&words, &["rest", "bottom", "library"])
-        && effect_sentences::parse_consult_remainder_order(&words)
-            == Some(crate::cards::builders::LibraryBottomOrderAst::Random)
+    Some((shape.count, filter))
 }
 
 fn looked_choice_filter_can_include_card_type(filter: &ObjectFilter, card_type: CardType) -> bool {
@@ -1725,7 +1283,7 @@ pub(crate) fn parse_reveal_top_choose_any_revealed_land_nonland_split_rest_botto
     if !looked_choice_filter_can_include_card_type(&filter, CardType::Land) {
         return Ok(None);
     }
-    if !chosen_land_nonland_split_bottom_sentence(sentences[sentence_idx + 2].lowered()) {
+    if !triple_grammar::is_land_nonland_split_bottom_shape(sentences[sentence_idx + 2].lowered()) {
         return Ok(None);
     }
 
@@ -1783,51 +1341,20 @@ pub(crate) fn parse_reveal_top_one_hand_gain_mana_value_rest_graveyard(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first = trim_commas(sentences[sentence_idx].lowered());
-    let first_words = TokenWordView::new(&first);
-    let first_refs = first_words.word_refs();
-    let Some(and_put_idx) = word_slice_find_phrase_start(&first_refs, &["and", "put"]) else {
-        return Ok(None);
-    };
-    let Some(prefix_end) = first_words.token_index_for_word_index(and_put_idx) else {
-        return Ok(None);
-    };
-    let Some(tail_start) = first_words.token_index_for_word_index(and_put_idx + 1) else {
-        return Ok(None);
-    };
-    let Some((player, count, true)) = parse_top_cards_view_sentence(&first[..prefix_end]) else {
-        return Ok(None);
-    };
-
-    let tail_words = TokenWordView::new(&first[tail_start..]).word_refs();
-    if !word_slice_starts_with_any(&tail_words, PUT_ONE_LOOKED_CARD_INTO_HAND_PREFIXES) {
-        return Ok(None);
-    }
-
     let second = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = TokenWordView::new(&second).word_refs();
-    if !word_slice_starts_with(&second_words, &["you", "gain", "life"])
-        || !word_slice_contains_phrase(&second_words, &["mana", "value"])
-        || !second_words.iter().any(|word| word.starts_with("card"))
-    {
+    let Some(shape) = triple_grammar::parse_reveal_one_gain_mana_value_shape(
+        &first,
+        &second,
+        sentences[sentence_idx + 2].lowered(),
+    ) else {
         return Ok(None);
-    }
+    };
+    let Some((player, count, true)) = parse_top_cards_view_sentence(&first[shape.view]) else {
+        return Ok(None);
+    };
     let Ok(mut gain_effects) = effect_sentences::parse_effect_sentence_lexed(&second) else {
         return Ok(None);
     };
-
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered()).word_refs();
-    let third_rest_words = if third_words.first() == Some(&THEN_WORD) {
-        &third_words[1..]
-    } else {
-        &third_words[..]
-    };
-    if !word_slice_starts_with_any(third_rest_words, PUT_REST_GRAVEYARD_PREFIXES)
-        || !third_rest_words.contains(&"other")
-        || !third_rest_words.contains(&"revealed")
-        || !third_rest_words.contains(&"graveyard")
-    {
-        return Ok(None);
-    }
 
     let revealed_tag = helper_tag_for_tokens(&first, "revealed");
     let chosen_tag = helper_tag_for_tokens(&first, "chosen");
@@ -1980,47 +1507,34 @@ pub(crate) fn parse_counted_from_looked_cards_action(
     Option<PlayerAst>,
 )> {
     let action_tokens = trim_commas(tokens);
-    let (count, filter_tokens) = looked_cards_choice_count(&action_tokens)?;
-    let action_words = TokenWordView::new(&filter_tokens);
-    let action_word_refs = action_words.word_refs();
-
-    let Some((from_among_word_idx, from_among_len)) =
-        effect_sentences::find_from_among_looked_cards_phrase(&action_words)
-    else {
-        return None;
-    };
-    if from_among_word_idx == 0 {
-        return None;
-    }
-    let filter_end = action_words
-        .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(filter_tokens.len());
-    let choice_filter_tokens = trim_commas(&filter_tokens[..filter_end]);
+    let shape = triple_grammar::parse_looked_move_action_shape(&action_tokens)?;
+    let choice_filter_tokens = trim_commas(&action_tokens[shape.filter]);
     let mut filter = effect_sentences::parse_looked_card_choice_filter(&choice_filter_tokens)?;
     effect_sentences::normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
-    let (zone, tapped) = if word_slice_starts_with_any(after_from_words, INTO_HAND_ZONE_PREFIXES) {
-        (Zone::Hand, false)
-    } else if word_slice_starts_with_any(after_from_words, ONTO_BATTLEFIELD_TAPPED_ZONE_PREFIXES) {
-        (Zone::Battlefield, true)
-    } else if word_slice_starts_with_any(after_from_words, ONTO_BATTLEFIELD_ZONE_PREFIXES) {
-        (Zone::Battlefield, false)
-    } else {
-        return None;
-    };
-    let attacking =
-        zone == Zone::Battlefield && word_slice_contains_phrase(after_from_words, &["attacking"]);
-    let attack_target_player = if attacking
-        && word_slice_contains_phrase(after_from_words, &["attacking", "that", "player"])
-    {
-        Some(PlayerAst::Defending)
-    } else {
-        None
+    let (zone, tapped, attacking, attack_target_player) = match shape.destination {
+        triple_grammar::LookedMoveDestinationShape::Hand => (Zone::Hand, false, false, None),
+        triple_grammar::LookedMoveDestinationShape::Battlefield {
+            tapped,
+            attacking,
+            attacks_that_player,
+        } => (
+            Zone::Battlefield,
+            tapped,
+            attacking,
+            attacks_that_player.then_some(PlayerAst::Defending),
+        ),
     };
 
-    Some((count, filter, zone, tapped, attacking, attack_target_player))
+    Some((
+        shape.count,
+        filter,
+        zone,
+        tapped,
+        attacking,
+        attack_target_player,
+    ))
 }
 
 pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
@@ -2034,7 +1548,9 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
     };
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let Some(action_match) = parse_leading_may_action_lexed(&second_tokens, &["put"], true) else {
+    let Some(action_match) =
+        sentence_markers::parse_leading_may_action_tokens(&second_tokens, &["put"], true)
+    else {
         return Ok(None);
     };
     let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, player);
@@ -2050,30 +1566,14 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         choice_count = ChoiceCount::up_to(1);
     }
 
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    let third_word_refs = third_words.word_refs();
-    let third_rest_words = if third_word_refs.first() == Some(&THEN_WORD) {
-        &third_word_refs[1..]
-    } else {
-        &third_word_refs[..]
-    };
-    let puts_rest_bottom = triple_words_start_put_or_puts_and_contain_all(
-        third_rest_words,
-        &["rest", "bottom", "library"],
-    );
-    let puts_rest_graveyard =
-        triple_words_start_put_or_puts_and_contain_all(third_rest_words, &["rest", "graveyard"]);
-    if !puts_rest_bottom && !puts_rest_graveyard {
+    let Some(remainder) =
+        triple_grammar::parse_looked_remainder_shape(sentences[sentence_idx + 2].lowered())
+    else {
         return Ok(None);
-    }
-    let order = if puts_rest_bottom {
-        let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
-        else {
-            return Ok(None);
-        };
-        Some(order)
-    } else {
-        None
+    };
+    let order = match remainder {
+        triple_grammar::LookedRemainderShape::LibraryBottom(order) => Some(order),
+        triple_grammar::LookedRemainderShape::Graveyard => None,
     };
 
     let looked_tag = helper_tag_for_tokens(
@@ -2148,32 +1648,18 @@ fn parse_cast_from_among_looked_cards_action(
     default_player: PlayerAst,
 ) -> Result<Option<(PlayerAst, ObjectFilter)>, CardTextError> {
     let sentence_tokens = trim_commas(tokens);
-    let Some(action_match) = parse_leading_may_action_lexed(&sentence_tokens, &["cast"], true)
+    let Some(action_match) =
+        sentence_markers::parse_leading_may_action_tokens(&sentence_tokens, &["cast"], true)
     else {
         return Ok(None);
     };
     let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, default_player);
     let action_tokens = trim_commas(action_match.tail_tokens);
-    let action_words = TokenWordView::new(&action_tokens);
-    let action_word_refs = action_words.word_refs();
-    let Some((from_among_word_idx, from_among_len)) =
-        effect_sentences::find_from_among_looked_cards_phrase(&action_words)
-    else {
+    let Some(shape) = triple_grammar::parse_looked_cast_action_shape(&action_tokens) else {
         return Ok(None);
     };
-    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
-    if !word_slice_starts_with(after_from_words, WITHOUT_PAYING_ITS_MANA_COST_PREFIX) {
-        return Ok(None);
-    }
-
-    let filter_end = action_words
-        .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(action_tokens.len());
-    let filter_tokens = trim_commas(&action_tokens[..filter_end]);
-    let filter_words = TokenWordView::new(&filter_tokens).word_refs();
-    let mentions_spell = filter_words
-        .iter()
-        .any(|word| SPELL_OR_SPELLS_WORDS.contains(word));
+    let filter_tokens = trim_commas(&action_tokens[shape.filter]);
+    let mentions_spell = shape.mentions_spell;
     let mut filter =
         if let Some(filter) = effect_sentences::parse_looked_card_choice_filter(&filter_tokens) {
             filter
@@ -2190,10 +1676,7 @@ fn parse_cast_from_among_looked_cards_action(
     filter.stack_kind = None;
     filter.has_mana_cost = false;
     if filter.mana_value.is_none()
-        && let Some(mana_value_idx) = triple_find_prefix_start(&filter_words, MANA_VALUE_PREFIX)
-        && let Some(bound) = filter_words
-            .get(mana_value_idx + 2..mana_value_idx + 5)
-            .and_then(triple_mana_value_or_less_tail_bound)
+        && let Some(bound) = shape.mana_value_limit
     {
         filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(bound as i32));
     }
@@ -2216,21 +1699,8 @@ pub(crate) fn parse_top_cards_may_cast_match_rest_bottom(
         return Ok(None);
     };
 
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    let third_word_refs = third_words.word_refs();
-    let third_rest_words = if third_word_refs.first() == Some(&THEN_WORD) {
-        &third_word_refs[1..]
-    } else {
-        &third_word_refs[..]
-    };
-    let puts_rest_bottom = triple_words_start_put_or_puts_and_contain_all(
-        third_rest_words,
-        &["rest", "bottom", "library"],
-    );
-    if !puts_rest_bottom {
-        return Ok(None);
-    }
-    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    let Some(triple_grammar::LookedRemainderShape::LibraryBottom(order)) =
+        triple_grammar::parse_looked_remainder_shape(sentences[sentence_idx + 2].lowered())
     else {
         return Ok(None);
     };
@@ -2291,47 +1761,33 @@ fn parse_reveal_matching_from_looked_cards_into_hand_action(
     default_player: PlayerAst,
 ) -> Result<Option<(PlayerAst, ChoiceCount, ObjectFilter, bool)>, CardTextError> {
     let second_tokens = trim_commas(tokens);
-    let Some(action_match) = parse_leading_may_action_lexed(&second_tokens, &["reveal"], true)
+    let Some(action_match) =
+        sentence_markers::parse_leading_may_action_tokens(&second_tokens, &["reveal"], true)
     else {
         return Ok(None);
     };
     let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, default_player);
     let action_tokens = trim_commas(action_match.tail_tokens);
-    let action_words = TokenWordView::new(&action_tokens);
-    let action_word_refs = action_words.word_refs();
-    let Some((from_among_word_idx, from_among_len)) =
-        effect_sentences::find_from_among_looked_cards_phrase(&action_words)
-    else {
+    let Some(shape) = triple_grammar::parse_looked_hand_action_shape(&action_tokens, true) else {
         return Ok(None);
     };
-    let filter_end = action_words
-        .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(action_tokens.len());
-    let Some((mut choice_count, filter_tokens)) =
-        looked_cards_choice_count(&action_tokens[..filter_end])
-    else {
-        return Ok(None);
-    };
+    let mut choice_count = shape.count;
     if !matches!(action_match.actor, LeadingMayActor::Default) && choice_count.min > 0 {
         choice_count = ChoiceCount::up_to(choice_count.max.unwrap_or(choice_count.min));
     }
-    let filter_tokens = trim_commas(&filter_tokens);
-    let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
+    let filter_tokens = trim_commas(&action_tokens[shape.filter]);
     let mut filter =
         effect_sentences::parse_looked_card_choice_filter(&filter_tokens).ok_or_else(|| {
             CardTextError::ParseError("unable to parse revealed looked-card filter".to_string())
         })?;
     filter.zone = Some(Zone::Library);
 
-    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
-    let puts_revealed_into_hand =
-        word_slice_starts_with_any(after_from_words, REVEALED_CARDS_INTO_HAND_TAIL_PREFIXES)
-            && word_slice_find_word(after_from_words, "hand").is_some();
-    if !puts_revealed_into_hand {
-        return Ok(None);
-    }
-    let filter_uses_and_or = filter_words.iter().any(|word| *word == AND_OR_WORD);
-    Ok(Some((chooser, choice_count, filter, filter_uses_and_or)))
+    Ok(Some((
+        chooser,
+        choice_count,
+        filter,
+        shape.filter_uses_and_or,
+    )))
 }
 
 fn looked_card_choice_filter_branches(filter: &ObjectFilter) -> Option<Vec<ObjectFilter>> {
@@ -2386,21 +1842,8 @@ pub(crate) fn parse_top_cards_reveal_any_matching_to_hand_rest_bottom(
     else {
         return Ok(None);
     };
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    let third_word_refs = third_words.word_refs();
-    let third_rest_words = if third_word_refs.first() == Some(&THEN_WORD) {
-        &third_word_refs[1..]
-    } else {
-        &third_word_refs[..]
-    };
-    let puts_rest_bottom = triple_words_start_put_or_puts_and_contain_all(
-        third_rest_words,
-        &["rest", "bottom", "library"],
-    );
-    if !puts_rest_bottom {
-        return Ok(None);
-    }
-    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    let Some(triple_grammar::LookedRemainderShape::LibraryBottom(order)) =
+        triple_grammar::parse_looked_remainder_shape(sentences[sentence_idx + 2].lowered())
     else {
         return Ok(None);
     };
@@ -2477,61 +1920,17 @@ pub(crate) fn parse_top_cards_reveal_any_matching_to_hand_rest_bottom(
     Ok(Some(effects))
 }
 
-fn trim_keyword_choice_segment(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut start = 0usize;
-    let mut end = tokens.len();
-    while start < end
-        && (tokens[start].is_comma()
-            || tokens[start].is_period()
-            || tokens[start].as_word().is_some_and(|word| word == AND_WORD))
-    {
-        start += 1;
-    }
-    while end > start
-        && (tokens[end - 1].is_comma()
-            || tokens[end - 1].is_period()
-            || tokens[end - 1]
-                .as_word()
-                .is_some_and(|word| word == AND_WORD))
-    {
-        end -= 1;
-    }
-    tokens[start..end].to_vec()
-}
-
-fn split_keyword_choice_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
-    let mut segments = Vec::new();
-    let mut current = Vec::new();
-    for token in tokens {
-        if token.is_comma() {
-            let trimmed = trim_keyword_choice_segment(&current);
-            if !trimmed.is_empty() {
-                segments.push(trimmed);
-            }
-            current.clear();
-            continue;
-        }
-        current.push(token.clone());
-    }
-    let trimmed = trim_keyword_choice_segment(&current);
-    if !trimmed.is_empty() {
-        segments.push(trimmed);
-    }
-    segments
-}
-
 fn parse_keyword_choice_filter(segment: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let trimmed = trim_keyword_choice_segment(segment);
-    if trimmed.is_empty() {
+    if segment.is_empty() {
         return None;
     }
-    effect_sentences::parse_looked_card_choice_filter(&trimmed).or_else(|| {
+    effect_sentences::parse_looked_card_choice_filter(segment).or_else(|| {
         let mut expanded = vec![
             OwnedLexToken::word("a".to_string(), TextSpan::synthetic()),
             OwnedLexToken::word("card".to_string(), TextSpan::synthetic()),
             OwnedLexToken::word("with".to_string(), TextSpan::synthetic()),
         ];
-        expanded.extend(trimmed);
+        expanded.extend_from_slice(segment);
         effect_sentences::parse_looked_card_choice_filter(&expanded)
     })
 }
@@ -2540,49 +1939,15 @@ fn parse_choose_from_looked_cards_for_each_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<ObjectFilter>>, CardTextError> {
     let sentence_tokens = trim_commas(tokens);
-    let words = TokenWordView::new(&sentence_tokens);
-    if !words.first_is("choose") {
-        return Ok(None);
-    }
-
-    let Some((from_among_word_idx, from_among_len)) = find_from_among_looked_cards_phrase(&words)
-    else {
+    let Some(shape) = triple_grammar::parse_keyword_choice_segments_shape(&sentence_tokens) else {
         return Ok(None);
     };
-    if from_among_word_idx != 1 {
-        return Ok(None);
-    }
-
-    let tail_start = words
-        .token_index_after_words(from_among_word_idx + from_among_len)
-        .unwrap_or(sentence_tokens.len());
-    let tail_tokens = trim_commas(&sentence_tokens[tail_start..]);
-    let tail_words = TokenWordView::new(&tail_tokens);
-    let tail_refs = tail_words.word_refs();
-    let Some(and_so_on_idx) = triple_find_prefix_start(&tail_refs, AND_SO_ON_FOR_PREFIX) else {
-        return Ok(None);
-    };
-
-    let prelude_end = tail_words
-        .token_index_for_word_index(and_so_on_idx)
-        .unwrap_or(tail_tokens.len());
-    let suffix_start = tail_words
-        .token_index_after_words(and_so_on_idx + 4)
-        .unwrap_or(tail_tokens.len());
 
     let mut filters = Vec::new();
-    for segment in split_keyword_choice_segments(&tail_tokens[..prelude_end]) {
-        let Some(filter) = parse_keyword_choice_filter(&segment) else {
+    for segment in shape.segments {
+        let Some(filter) = parse_keyword_choice_filter(&sentence_tokens[segment]) else {
             return Err(CardTextError::ParseError(
-                "unable to parse initial looked-card choice filter".to_string(),
-            ));
-        };
-        filters.push(filter);
-    }
-    for segment in split_keyword_choice_segments(&tail_tokens[suffix_start..]) {
-        let Some(filter) = parse_keyword_choice_filter(&segment) else {
-            return Err(CardTextError::ParseError(
-                "unable to parse repeated looked-card choice filter".to_string(),
+                "unable to parse looked-card keyword choice filter".to_string(),
             ));
         };
         filters.push(filter);
@@ -2592,16 +1957,6 @@ fn parse_choose_from_looked_cards_for_each_filter(
         return Ok(None);
     }
     Ok(Some(filters))
-}
-
-fn is_one_chosen_to_battlefield_others_to_hand_rest_to_graveyard(tokens: &[OwnedLexToken]) -> bool {
-    let trimmed = trim_commas(tokens);
-    let words = TokenWordView::new(&trimmed);
-    let word_refs = words.word_refs();
-    word_slice_starts_with(&word_refs, ONE_CHOSEN_TO_BATTLEFIELD_PREFIX)
-        && ONE_CHOSEN_TO_BATTLEFIELD_REQUIRED_PHRASES
-            .iter()
-            .all(|phrase| word_slice_contains_phrase(&word_refs, phrase))
 }
 
 pub(crate) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_graveyard(
@@ -2618,7 +1973,7 @@ pub(crate) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand
     else {
         return Ok(None);
     };
-    if !is_one_chosen_to_battlefield_others_to_hand_rest_to_graveyard(
+    if !triple_grammar::is_one_chosen_battlefield_others_hand_rest_graveyard_shape(
         sentences[sentence_idx + 2].lowered(),
     ) {
         return Ok(None);
@@ -2739,57 +2094,21 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
     }
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = TokenWordView::new(&second_tokens);
-    let word_refs = second_words.word_refs();
-    if !word_slice_starts_with(&word_refs, FOR_EACH_CARD_TYPE_AMONG_PREFIX) {
-        return Ok(None);
-    }
-
-    let Some(put_idx) = triple_find_prefix_start(&word_refs[5..], YOU_MAY_PUT_PREFIX) else {
-        return Ok(None);
-    };
-    let put_idx = put_idx + 5;
-    let mut tail_idx = put_idx + 3;
-    if word_refs_at_is_article(&word_refs, tail_idx) {
-        tail_idx += 1;
-    }
-    if !word_slice_starts_with(
-        &word_refs[tail_idx..],
-        CARD_OF_THAT_TYPE_FROM_REVEALED_INTO_HAND_PREFIX,
-    ) || word_slice_find_word(&word_refs[tail_idx..], "hand").is_none()
-    {
-        return Ok(None);
-    }
-
-    let filter_start = second_words
-        .token_index_for_word_index(5)
-        .unwrap_or(second_tokens.len());
-    let filter_end = second_words
-        .token_index_for_word_index(put_idx)
-        .unwrap_or(second_tokens.len());
-    let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
-    let filter_word_view = TokenWordView::new(&filter_tokens);
-    let filter_words = filter_word_view.word_refs();
-    let Some(cast_tail) = YOU_CAST_THIS_TURN_TAILS
-        .iter()
-        .find(|tail| word_slice_ends_with(&filter_words, tail))
+    let Some(triple_grammar::CardTypeIterationShape::AmongCastSpells { spell_filter }) =
+        triple_grammar::parse_card_type_iteration_shape(
+            &second_tokens,
+            sentences[sentence_idx + 2].lowered(),
+        )
     else {
         return Ok(None);
     };
-    let spell_filter_word_end = filter_words.len() - cast_tail.len();
-    let filter_token_end = filter_word_view
-        .token_index_for_word_index(spell_filter_word_end)
-        .unwrap_or(filter_tokens.len());
-    let filter_prefix_tokens = trim_commas(&filter_tokens[..filter_token_end]);
+    let filter_prefix_tokens = trim_commas(&second_tokens[spell_filter]);
     let mut spell_filter = crate::runtime_backend::parse_spell_filter_lexed(&filter_prefix_tokens);
     spell_filter.zone = Some(Zone::Stack);
     spell_filter.has_mana_cost = true;
 
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    if !third_words.first_is_any(&["put", "puts"]) || third_words.find_word("rest").is_none() {
-        return Ok(None);
-    }
-    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    let Some(order) =
+        triple_grammar::parse_card_type_iteration_order(sentences[sentence_idx + 2].lowered())
     else {
         return Ok(None);
     };
@@ -2836,36 +2155,15 @@ pub(crate) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bot
     }
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = TokenWordView::new(&second_tokens);
-    let word_refs = second_words.word_refs();
-    if !word_slice_starts_with(&word_refs, FOR_EACH_CARD_TYPE_PREFIX) {
-        return Ok(None);
-    }
-    if word_refs.get(4) == Some(&AMONG_WORD) {
-        return Ok(None);
-    }
-
-    let Some(put_idx) = triple_find_prefix_start(&word_refs[4..], YOU_MAY_PUT_PREFIX) else {
-        return Ok(None);
-    };
-    let put_idx = put_idx + 4;
-    let mut tail_idx = put_idx + 3;
-    if word_refs_at_is_article(&word_refs, tail_idx) {
-        tail_idx += 1;
-    }
-    if !word_slice_starts_with(
-        &word_refs[tail_idx..],
-        CARD_OF_THAT_TYPE_FROM_REVEALED_INTO_HAND_PREFIX,
-    ) || word_slice_find_word(&word_refs[tail_idx..], "hand").is_none()
+    if triple_grammar::parse_card_type_iteration_shape(
+        &second_tokens,
+        sentences[sentence_idx + 2].lowered(),
+    ) != Some(triple_grammar::CardTypeIterationShape::All)
     {
         return Ok(None);
     }
-
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    if !third_words.first_is_any(&["put", "puts"]) || third_words.find_word("rest").is_none() {
-        return Ok(None);
-    }
-    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    let Some(order) =
+        triple_grammar::parse_card_type_iteration_order(sentences[sentence_idx + 2].lowered())
     else {
         return Ok(None);
     };
@@ -2898,16 +2196,6 @@ pub(crate) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bot
     Ok(Some(effects))
 }
 
-fn is_put_one_looked_card_hand_one_bottom_exile_one(tokens: &[OwnedLexToken]) -> bool {
-    let trimmed = trim_commas(tokens);
-    let words = TokenWordView::new(&trimmed);
-    let word_refs = words.word_refs();
-
-    word_slice_starts_with(&word_refs, PUT_ONE_HAND_BOTTOM_EXILE_PREFIX)
-        && word_slice_contains_any_phrase(&word_refs, PUT_ONE_HAND_BOTTOM_EXILE_BOTTOM_PHRASES)
-        && word_slice_contains_phrase(&word_refs, PUT_ONE_HAND_BOTTOM_EXILE_EXILE_PHRASE)
-}
-
 pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -2917,7 +2205,7 @@ pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
     else {
         return Ok(None);
     };
-    if !is_put_one_looked_card_hand_one_bottom_exile_one(sentences[sentence_idx + 1].lowered()) {
+    if !triple_grammar::is_hand_bottom_exile_split_shape(sentences[sentence_idx + 1].lowered()) {
         return Ok(None);
     }
 
@@ -3031,21 +2319,9 @@ pub(crate) fn parse_look_at_top_put_one_hand_bottom_cast_non_hand_put_all_hand(
     }
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = crate::runtime_backend::token_word_refs(&second_tokens);
-    if !word_slice_starts_with_any(&second_words, PUT_ONE_LOOKED_CARD_INTO_HAND_PREFIXES) {
-        return Ok(None);
-    }
-    let content_words = non_article_word_refs(&second_words);
-    if !word_slice_contains_any_phrase(&content_words, PUT_OTHER_LOOKED_CARDS_ON_BOTTOM_PHRASES)
-        || word_slice_find_word(&content_words, "library").is_none()
-    {
-        return Ok(None);
-    }
-
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    if !word_slice_eq(
-        &third_words.word_refs(),
-        IF_CAST_NON_HAND_PUT_EACH_LOOKED_INTO_HAND_INSTEAD_WORDS,
+    if !triple_grammar::is_nonhand_replacement_looked_split_shape(
+        &second_tokens,
+        sentences[sentence_idx + 2].lowered(),
     ) {
         return Ok(None);
     }
@@ -3096,6 +2372,7 @@ pub(crate) fn parse_look_at_top_put_one_hand_bottom_cast_non_hand_put_all_hand(
         predicate: PredicateAst::ThisSpellWasCastFromNonHand,
         if_true: replacement_effects,
         if_false: default_effects,
+        attach_to_previous_ability: false,
     }]))
 }
 
@@ -3116,11 +2393,8 @@ pub(crate) fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_res
         return Ok(None);
     };
 
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    if !third_words.first_is_any(&["put", "puts"]) || third_words.find_word("rest").is_none() {
-        return Ok(None);
-    }
-    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    let Some(triple_grammar::LookedRemainderShape::LibraryBottom(order)) =
+        triple_grammar::parse_looked_remainder_shape(sentences[sentence_idx + 2].lowered())
     else {
         return Ok(None);
     };
@@ -3261,67 +2535,32 @@ pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(
     };
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let Some(action_match) = parse_leading_may_action_lexed(&second_tokens, &["reveal"], true)
+    let Some(action_match) =
+        sentence_markers::parse_leading_may_action_tokens(&second_tokens, &["reveal"], true)
     else {
         return Ok(None);
     };
     let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, player);
     let reveal_tokens = trim_commas(action_match.tail_tokens);
-    let reveal_words = TokenWordView::new(&reveal_tokens);
-    if reveal_words.is_empty() {
-        return Ok(None);
-    }
-    let reveal_word_refs = reveal_words.word_refs();
-
-    let Some((from_among_word_idx, from_among_len)) =
-        effect_sentences::find_from_among_looked_cards_phrase(&reveal_words)
-    else {
+    let Some(shape) = triple_grammar::parse_looked_hand_action_shape(&reveal_tokens, true) else {
         return Ok(None);
     };
-
-    let filter_end = reveal_words
-        .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(reveal_tokens.len());
-    let filter_tokens = trim_commas(&reveal_tokens[..filter_end]);
-    if filter_tokens.is_empty() {
-        return Ok(None);
-    }
-    let Some((mut choice_count, filter_tokens)) = looked_cards_choice_count(&filter_tokens) else {
-        return Ok(None);
-    };
+    let mut choice_count = shape.count;
     if !matches!(action_match.actor, LeadingMayActor::Default) && choice_count.min > 0 {
         choice_count = ChoiceCount::up_to(choice_count.max.unwrap_or(choice_count.min));
     }
-    let mut filter =
-        if let Some(filter) = effect_sentences::parse_looked_card_reveal_filter(&filter_tokens) {
-            filter
-        } else {
-            return Ok(None);
-        };
+    let mut filter = if let Some(filter) =
+        effect_sentences::parse_looked_card_reveal_filter(&reveal_tokens[shape.filter])
+    {
+        filter
+    } else {
+        return Ok(None);
+    };
     effect_sentences::normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_words = &reveal_word_refs[from_among_word_idx + from_among_len..];
-    let puts_into_hand = triple_revealed_pick_into_hand(after_from_words);
-    if !puts_into_hand {
-        return Ok(None);
-    }
-
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    let third_word_refs = third_words.word_refs();
-    let third_rest_words = if third_word_refs.first() == Some(&THEN_WORD) {
-        &third_word_refs[1..]
-    } else {
-        &third_word_refs[..]
-    };
-    let puts_rest_bottom = triple_words_start_put_or_puts_and_contain_all(
-        third_rest_words,
-        &["rest", "bottom", "library"],
-    );
-    if !puts_rest_bottom {
-        return Ok(None);
-    }
-    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    let Some(triple_grammar::LookedRemainderShape::LibraryBottom(order)) =
+        triple_grammar::parse_looked_remainder_shape(sentences[sentence_idx + 2].lowered())
     else {
         return Ok(None);
     };
@@ -3388,61 +2627,28 @@ pub(crate) fn parse_look_at_top_reveal_match_put_top_rest_bottom(
     };
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let Some(action_match) = parse_leading_may_action_lexed(&second_tokens, &["reveal"], true)
+    let Some(action_match) =
+        sentence_markers::parse_leading_may_action_tokens(&second_tokens, &["reveal"], true)
     else {
         return Ok(None);
     };
     let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, player);
     let reveal_tokens = trim_commas(action_match.tail_tokens);
-    let reveal_words = TokenWordView::new(&reveal_tokens);
-    if reveal_words.is_empty() {
-        return Ok(None);
-    }
-    let reveal_word_refs = reveal_words.word_refs();
-
-    let Some((from_among_word_idx, from_among_len)) =
-        effect_sentences::find_from_among_looked_cards_phrase(&reveal_words)
-    else {
+    let Some(shape) = triple_grammar::parse_looked_top_action_shape(&reveal_tokens) else {
         return Ok(None);
     };
-
-    let filter_end = reveal_words
-        .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(reveal_tokens.len());
-    let filter_tokens = trim_commas(&reveal_tokens[..filter_end]);
-    if filter_tokens.is_empty() {
+    let mut filter = if let Some(filter) =
+        effect_sentences::parse_looked_card_reveal_filter(&reveal_tokens[shape.filter])
+    {
+        filter
+    } else {
         return Ok(None);
-    }
-    let mut filter =
-        if let Some(filter) = effect_sentences::parse_looked_card_reveal_filter(&filter_tokens) {
-            filter
-        } else {
-            return Ok(None);
-        };
+    };
     effect_sentences::normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_words = &reveal_word_refs[from_among_word_idx + from_among_len..];
-    let puts_on_top = triple_revealed_pick_on_top_library(after_from_words);
-    if !puts_on_top {
-        return Ok(None);
-    }
-
-    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    let third_word_refs = third_words.word_refs();
-    let third_rest_words = if third_word_refs.first() == Some(&THEN_WORD) {
-        &third_word_refs[1..]
-    } else {
-        &third_word_refs[..]
-    };
-    let puts_rest_bottom = triple_words_start_put_or_puts_and_contain_all(
-        third_rest_words,
-        &["rest", "bottom", "library"],
-    );
-    if !puts_rest_bottom {
-        return Ok(None);
-    }
-    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    let Some(triple_grammar::LookedRemainderShape::LibraryBottom(order)) =
+        triple_grammar::parse_looked_remainder_shape(sentences[sentence_idx + 2].lowered())
     else {
         return Ok(None);
     };

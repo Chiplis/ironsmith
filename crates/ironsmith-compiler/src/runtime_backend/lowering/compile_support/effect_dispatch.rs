@@ -45,6 +45,49 @@ fn bind_source_value_to_damage_source(value: &Value, source: &ChooseSpec) -> Val
     }
 }
 
+fn bind_explicit_that_card_token_stat_reference(
+    value: &Value,
+    ctx: &EffectLoweringContext,
+) -> Value {
+    let reference_tag = ctx
+        .last_exiled_collection_tag
+        .as_deref()
+        .map(TagKey::from)
+        .or_else(|| current_reference_env(ctx).known_last_object_tag().cloned());
+    let bind_spec = |spec: &ChooseSpec| {
+        if matches!(
+            spec.base(),
+            ChooseSpec::Tagged(tag)
+                if tag.as_str()
+                    == crate::runtime_backend::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG
+        ) {
+            reference_tag
+                .as_ref()
+                .map(|tag| ChooseSpec::Tagged(tag.clone()))
+                .unwrap_or_else(|| spec.clone())
+        } else {
+            spec.clone()
+        }
+    };
+    match value {
+        Value::PowerOf(spec) => Value::PowerOf(Box::new(bind_spec(spec))),
+        Value::ToughnessOf(spec) => Value::ToughnessOf(Box::new(bind_spec(spec))),
+        Value::Add(left, right) => Value::Add(
+            Box::new(bind_explicit_that_card_token_stat_reference(left, ctx)),
+            Box::new(bind_explicit_that_card_token_stat_reference(right, ctx)),
+        ),
+        Value::Scaled(inner, multiplier) => Value::Scaled(
+            Box::new(bind_explicit_that_card_token_stat_reference(inner, ctx)),
+            *multiplier,
+        ),
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_explicit_that_card_token_stat_reference(value, ctx)),
+            hints: hints.clone(),
+        },
+        _ => value.clone(),
+    }
+}
+
 fn bind_iterated_value_to_choose_spec(value: &Value, spec: &ChooseSpec) -> Value {
     match value {
         Value::PowerOf(inner) if matches!(inner.base(), ChooseSpec::Iterated) => {
@@ -237,7 +280,10 @@ pub(crate) fn compile_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    stacker::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
+    // `compile_subject_verb_effect` has a large debug-build frame because it lowers the
+    // complete typed action enum. Keep the recursive lowering guard consistent with the
+    // other typed effect entry points; a 2 MiB alternate stack is smaller than that frame.
+    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         compile_effect_inner(effect, ctx)
     })
 }
@@ -439,6 +485,11 @@ fn compile_effect_inner(
     ) {
         return Err(CardTextError::ParseError(
             "unsupported repeat this process effect tail".to_string(),
+        ));
+    }
+    if matches!(effect, EffectAst::SelfReplacement { .. }) {
+        return Err(CardTextError::ParseError(
+            "unsupported nested self-replacement effect".to_string(),
         ));
     }
     if let Some(compiled) = try_compile_effect_via_handlers(effect, ctx)? {
@@ -724,10 +775,13 @@ fn compile_subject_verb_effect(
                     "unsupported negative endure count".to_string(),
                 ));
             }
-            let token_text = format!("{token_size}/{token_size} white Spirit creature token");
-            let token = token_definition_for(token_text.as_str()).ok_or_else(|| {
-                CardTextError::ParseError("unsupported endure Spirit token".to_string())
-            })?;
+            let token = CardDefinitionBuilder::new(CardId::new(), "Spirit")
+                .token()
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Spirit])
+                .color_indicator(ColorSet::WHITE)
+                .power_toughness(PowerToughness::fixed(token_size, token_size))
+                .build();
             let amount_text = describe_value_for_mode(&amount);
             let counter_description = if amount == Value::Fixed(1) {
                 "Put a +1/+1 counter on it".to_string()
@@ -1857,6 +1911,7 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::GrantProtectionChoice {
             target,
             allow_colorless,
+            allow_artifacts,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1865,6 +1920,21 @@ fn compile_subject_verb_effect(
                 let ability = StaticAbility::protection(crate::ability::ProtectionFrom::Colorless);
                 modes.push(EffectMode {
                     source_text: "Colorless".to_string(),
+                    effects: vec![Effect::new(
+                        crate::effects::GrantAbilitiesTargetEffect::new(
+                            spec.clone(),
+                            vec![ability],
+                            crate::effect::Until::EndOfTurn,
+                        ),
+                    )],
+                });
+            }
+            if *allow_artifacts {
+                let ability = StaticAbility::protection(crate::ability::ProtectionFrom::CardType(
+                    crate::types::CardType::Artifact,
+                ));
+                modes.push(EffectMode {
+                    source_text: "Artifacts".to_string(),
                     effects: vec![Effect::new(
                         crate::effects::GrantAbilitiesTargetEffect::new(
                             spec.clone(),
@@ -2747,6 +2817,11 @@ fn compile_subject_verb_effect(
                 *allow_land,
                 *allow_any_color_for_cast,
             );
+            if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
+                && ctx.last_exiled_collection_is_plural
+            {
+                grant_play = grant_play.cast_pool_is_plural(true);
+            }
             if let Some(filter) = filter.clone() {
                 grant_play = grant_play.with_filter(filter);
             }
@@ -2786,16 +2861,19 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            Ok((
-                vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
-                    resolved_tag,
-                    player_filter,
-                    crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource,
-                    *allow_land,
-                    *allow_any_color_for_cast,
-                ))],
-                Vec::new(),
-            ))
+            let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
+                resolved_tag.clone(),
+                player_filter,
+                crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource,
+                *allow_land,
+                *allow_any_color_for_cast,
+            );
+            if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
+                && ctx.last_exiled_collection_is_plural
+            {
+                grant_play = grant_play.cast_pool_is_plural(true);
+            }
+            Ok((vec![Effect::new(grant_play)], Vec::new()))
         }
         SubjectVerbActionAst::ExileUntilSourceLeaves {
             target,
@@ -2832,6 +2910,12 @@ fn compile_subject_verb_effect(
             let from_exile_tag = choose_spec_references_exiled_tag(&spec);
             let use_move_to_zone =
                 from_exile_tag || !matches!(controller, ReturnControllerAst::Preserve);
+            let implicit_chooser =
+                if ctx.iterated_player && choose_spec_owned_by_iterated_player(&spec) {
+                    PlayerFilter::IteratedPlayer
+                } else {
+                    PlayerFilter::You
+                };
             let mut effects = Vec::new();
             let resolved_spec = if !spec.is_target() {
                 match &spec {
@@ -2844,7 +2928,7 @@ fn compile_subject_verb_effect(
                         effects.push(Effect::choose_objects(
                             filter.clone(),
                             1usize,
-                            PlayerFilter::You,
+                            implicit_chooser.clone(),
                             tag.clone(),
                         ));
                         ChooseSpec::tagged(tag)
@@ -2862,7 +2946,7 @@ fn compile_subject_verb_effect(
                             crate::effects::ChooseObjectsEffect::new(
                                 filter.clone(),
                                 *count,
-                                PlayerFilter::You,
+                                implicit_chooser.clone(),
                                 tag.clone(),
                             )
                             .with_count_value_opt(count_value.clone()),
@@ -3153,6 +3237,17 @@ fn compile_subject_verb_effect(
                     )],
                     choices,
                 ));
+            }
+            if matches!(
+                spec.base(),
+                ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            ) && let Some(tag) = ctx.last_exiled_collection_tag.clone()
+            {
+                spec = if ctx.last_exiled_collection_is_plural {
+                    ChooseSpec::All(ObjectFilter::tagged(tag).in_zone(Zone::Exile))
+                } else {
+                    ChooseSpec::Tagged(TagKey::from(tag))
+                };
             }
             if *zone != Zone::Battlefield
                 && let ChooseSpec::Object(filter) = spec.base()
@@ -3816,8 +3911,14 @@ fn compile_subject_verb_effect(
                 .transpose()?;
 
             compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+                let source_reference_surface = spec.source_reference_surface().cloned();
+                let effect_spec = if matches!(spec.unhinted(), ChooseSpec::Source) {
+                    spec.into_unhinted()
+                } else {
+                    spec
+                };
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
-                    spec,
+                    effect_spec,
                     first_modification.clone(),
                     duration.clone(),
                 );
@@ -3827,6 +3928,9 @@ fn compile_subject_verb_effect(
                 }
                 if let Some(condition) = &resolved_condition {
                     apply = apply.with_condition(condition.clone());
+                }
+                if let Some(surface) = source_reference_surface {
+                    apply = apply.with_source_reference_surface(surface);
                 }
 
                 Effect::new(apply)
@@ -3888,8 +3992,14 @@ fn compile_subject_verb_effect(
             };
 
             compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+                let source_reference_surface = spec.source_reference_surface().cloned();
+                let effect_spec = if matches!(spec.unhinted(), ChooseSpec::Source) {
+                    spec.into_unhinted()
+                } else {
+                    spec
+                };
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
-                    spec,
+                    effect_spec,
                     crate::continuous::Modification::RemoveAbility(first_ability.clone().into()),
                     duration.clone(),
                 );
@@ -3898,6 +4008,10 @@ fn compile_subject_verb_effect(
                     apply = apply.with_additional_modification(
                         crate::continuous::Modification::RemoveAbility(ability.clone().into()),
                     );
+                }
+
+                if let Some(surface) = source_reference_surface {
+                    apply = apply.with_source_reference_surface(surface);
                 }
 
                 Effect::new(apply)
@@ -3939,6 +4053,7 @@ fn compile_subject_verb_effect(
             mode,
             filter,
             stop_rule,
+            max_exposed,
             all_tag,
             match_tag,
         } => {
@@ -3958,6 +4073,10 @@ fn compile_subject_verb_effect(
                     )
                 }
             };
+            let resolved_max_exposed = max_exposed
+                .as_ref()
+                .map(|value| subject.resolve_object_refs_and_bind_player_refs_in_value(value, ctx))
+                .transpose()?;
             let resolved_mode = match mode {
                 crate::cards::builders::LibraryConsultModeAst::Reveal => {
                     crate::effects::consult_helpers::LibraryConsultMode::Reveal
@@ -3968,17 +4087,18 @@ fn compile_subject_verb_effect(
             };
             ctx.last_object_tag = Some(resolved_match_tag.as_str().to_string());
             ctx.last_player_filter = Some(player_filter.clone());
-            Ok((
-                vec![Effect::consult_top_of_library(
-                    player_filter,
-                    resolved_mode,
-                    resolved_filter,
-                    resolved_stop_rule,
-                    resolved_all_tag,
-                    resolved_match_tag,
-                )],
-                subject.into_choices(),
-            ))
+            let mut consult = crate::effects::ConsultTopOfLibraryEffect::new(
+                player_filter,
+                resolved_mode,
+                resolved_filter,
+                resolved_stop_rule,
+                resolved_all_tag,
+                resolved_match_tag,
+            );
+            if let Some(max_exposed) = resolved_max_exposed {
+                consult = consult.with_max_exposed(max_exposed);
+            }
+            Ok((vec![Effect::new(consult)], subject.into_choices()))
         }
         SubjectVerbActionAst::SearchLibrary {
             filter,
@@ -4133,6 +4253,7 @@ fn compile_subject_verb_effect(
         }
         SubjectVerbActionAst::CreateTokenWithMods {
             name,
+            definition,
             count,
             dynamic_power_toughness,
             player: action_player,
@@ -4146,12 +4267,7 @@ fn compile_subject_verb_effect(
             next_end_step_player,
             granted_abilities,
         } => {
-            let mut token = token_definition_for(name.as_str())
-                .or_else(|| {
-                    dynamic_power_toughness
-                        .as_ref()
-                        .and_then(|_| token_definition_for(format!("0/0 {name}").as_str()))
-                })
+            let mut token = lower_token_definition_shape(definition.clone())
                 .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
             token
                 .abilities
@@ -4194,9 +4310,11 @@ fn compile_subject_verb_effect(
             let resolved_dynamic_pt = dynamic_power_toughness
                 .as_ref()
                 .map(|(power, toughness)| {
+                    let power = bind_explicit_that_card_token_stat_reference(power, ctx);
+                    let toughness = bind_explicit_that_card_token_stat_reference(toughness, ctx);
                     Ok::<_, CardTextError>((
-                        resolve_value_it_tag(power, &current_reference_env(ctx))?,
-                        resolve_value_it_tag(toughness, &current_reference_env(ctx))?,
+                        resolve_value_it_tag(&power, &current_reference_env(ctx))?,
+                        resolve_value_it_tag(&toughness, &current_reference_env(ctx))?,
                     ))
                 })
                 .transpose()?;
@@ -4740,6 +4858,14 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::TapAll { filter } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("tapped");
+                prelude.push(Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+                    resolved_filter.clone(),
+                    tag.clone(),
+                )));
+                ctx.last_object_tag = Some(tag);
+            }
             prelude.push(Effect::tap_all(resolved_filter));
             Ok((prelude, choices))
         }
@@ -5058,10 +5184,23 @@ fn compile_subject_verb_effect(
                     crate::effects::ExileEffect::with_spec(spec.clone()).with_face_down(*face_down),
                 )
             };
-            if spec.is_target() {
-                let tag = ctx.next_tag("exiled");
-                effect = effect.tag(tag.clone());
-                ctx.last_object_tag = Some(tag);
+            if ctx.auto_tag_object_targets {
+                if let ChooseSpec::Tagged(tag) = spec.base()
+                    && is_sentence_helper_exiled_collection_tag(tag.as_str())
+                {
+                    effect = effect.tag(tag.clone());
+                    ctx.last_object_tag = Some(tag.as_str().to_string());
+                } else if spec.is_target() {
+                    let tag = ctx.next_tag("exiled");
+                    effect = effect.tag(tag.clone());
+                    ctx.last_object_tag = Some(tag);
+                } else if choose_spec_targets_object(&spec)
+                    || matches!(spec.base(), ChooseSpec::Source)
+                {
+                    // MoveToZone/Exile populate the source-exiled link without
+                    // needing a second runtime tag wrapper.
+                    ctx.last_object_tag = Some(crate::tag::SOURCE_EXILED_TAG.to_string());
+                }
             }
             Ok((vec![effect], choices))
         }
@@ -5984,8 +6123,8 @@ fn compile_subject_verb_effect(
                 Effect::take_initiative_player(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::CreateEmblem { text } => {
-            let emblem = compile_emblem_description_from_text(text)?;
+        SubjectVerbActionAst::CreateEmblem { emblem } => {
+            let emblem = compile_emblem_description(emblem)?;
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let filter = subject.clone_player_filter();
             let effect = if matches!(&filter, PlayerFilter::You) {

@@ -1,4 +1,5 @@
 use super::*;
+use winnow::error::{ContextError, ErrMode};
 
 const ENTERED_SINCE_LAST_TURN_WITH_THAT_PREFIX: &[&str] =
     &["that", "entered", "since", "your", "last", "turn", "ended"];
@@ -58,9 +59,12 @@ const REFERENCE_OBJECT_NOUN_WORDS: &[&str] = &[
     "source",
 ];
 const SHARE_WORDS: &[&str] = &["share", "shares"];
-const CARD_OR_PERMANENT_WORDS: &[&str] = &["card", "permanent"];
-const SHARES_CARD_TYPE_REQUIRED_WORDS: &[&str] = &["card", "type"];
-const SHARES_CARD_TYPE_WITH_TAGGED_REQUIRED_WORDS: &[&str] = &["type", "it"];
+const SHARED_CARD_TYPE_PHRASES: &[&[&str]] = &[
+    &["card", "type"],
+    &["card", "types"],
+    &["permanent", "type"],
+    &["permanent", "types"],
+];
 const SHARES_COLOR_WITH_TAGGED_REQUIRED_WORDS: &[&str] = &["shares", "color", "it"];
 const CREATURE_TYPE_PHRASES: &[&[&str]] = &[&["creature", "type"], &["creature", "types"]];
 const EXILED_CARD_REFERENCE_PHRASES: &[&[&str]] = &[
@@ -71,14 +75,9 @@ const EXILED_CARD_REFERENCE_PHRASES: &[&[&str]] = &[
 ];
 const NO_WORD: &str = "no";
 const OR_WORD: &str = "or";
-const ARTICLE_WORDS: &[&str] = &["a", "an"];
 const ABILITY_OR_ABILITIES_WORDS: &[&str] = &["ability", "abilities"];
 const COLORLESS_WORD: &str = "colorless";
 const MULTICOLORED_WORD: &str = "multicolored";
-const POWER_TOUGHNESS_STICKER_ON_IT_PREFIXES: &[&[&str]] = &[
-    &["a", "power", "and", "toughness", "sticker", "on", "it"],
-    &["power", "and", "toughness", "sticker", "on", "it"],
-];
 const ODD_MANA_VALUE_PHRASES: &[&[&str]] = &[&["odd", "mana", "value"], &["odd", "mana", "values"]];
 const EVEN_MANA_VALUE_PHRASES: &[&[&str]] =
     &[&["even", "mana", "value"], &["even", "mana", "values"]];
@@ -212,25 +211,80 @@ const SAME_NAME_AS_TAGGED_OBJECT_PHRASES: &[&[&str]] = &[
 ];
 
 fn find_any_phrase_start(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
-    phrases.iter().find_map(|phrase| {
-        words
-            .windows(phrase.len())
-            .position(|window| window == *phrase)
-    })
+    let mut start = 0usize;
+    while start < words.len() {
+        let mut input: primitives::WordSliceInput<'_> = &words[start..];
+        if parse_any_word_phrase(&mut input, phrases).is_ok() {
+            return Some(start);
+        }
+        start += 1;
+    }
+    None
 }
 
 fn find_phrase_start(words: &[&str], phrase: &[&str]) -> Option<usize> {
-    words
-        .windows(phrase.len())
-        .position(|window| window == phrase)
+    find_any_phrase_start(words, &[phrase])
 }
 
-fn contains_any_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
-    find_any_phrase_start(words, phrases).is_some()
+fn words_start_with_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_word_phrase(&mut input, phrase).is_ok()
+}
+
+fn words_start_with_any_phrase(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_any_word_phrase(&mut input, phrases).ok()?;
+    words.len().checked_sub(input.len())
+}
+
+fn parse_any_word_phrase(
+    input: &mut primitives::WordSliceInput<'_>,
+    phrases: &[&[&str]],
+) -> Result<(), ErrMode<ContextError>> {
+    for phrase in phrases {
+        let mut probe = *input;
+        if parse_word_phrase(&mut probe, phrase).is_ok() {
+            *input = probe;
+            return Ok(());
+        }
+    }
+    Err(primitives::backtrack_err(
+        "filter phrase",
+        "one of the expected filter phrases",
+    ))
+}
+
+fn parse_word_phrase(
+    input: &mut primitives::WordSliceInput<'_>,
+    phrase: &[&str],
+) -> Result<(), ErrMode<ContextError>> {
+    for expected in phrase {
+        let Some((actual, rest)) = input.split_first() else {
+            return Err(primitives::backtrack_err(
+                "filter phrase",
+                "expected filter word",
+            ));
+        };
+        if actual != expected {
+            return Err(primitives::backtrack_err(
+                "filter phrase",
+                "expected filter word",
+            ));
+        }
+        *input = rest;
+    }
+    Ok(())
 }
 
 fn word_is_any(word: &str, expected: &[&str]) -> bool {
-    expected.contains(&word)
+    let mut idx = 0usize;
+    while idx < expected.len() {
+        if expected[idx] == word {
+            return true;
+        }
+        idx += 1;
+    }
+    false
 }
 
 fn words_contain_word(words: &[&str], expected: &str) -> bool {
@@ -245,11 +299,15 @@ fn words_contain_all(words: &[&str], expected: &[&str]) -> bool {
     expected.iter().all(|word| words_contain_word(words, word))
 }
 
-fn token_word_is_any(token: &OwnedLexToken, expected: &[&str]) -> bool {
-    token
-        .parser_word_pieces()
-        .iter()
-        .any(|piece| word_is_any(piece.text.as_str(), expected))
+fn word_index_for_exact(words: &[&str], expected: &str) -> Option<usize> {
+    let mut idx = 0usize;
+    while idx < words.len() {
+        if words[idx] == expected {
+            return Some(idx);
+        }
+        idx += 1;
+    }
+    None
 }
 
 pub(super) fn remove_word_range(words: &mut Vec<&str>, start: usize, end: usize) {
@@ -298,8 +356,7 @@ where
     F: Fn(usize) -> Option<usize>,
     G: Fn(usize) -> Option<usize>,
 {
-    let Some(named_idx) = lower_words_find_index(all_words.as_slice(), |word| word == NAMED_WORD)
-    else {
+    let Some(named_idx) = word_index_for_exact(all_words.as_slice(), NAMED_WORD) else {
         return Ok(false);
     };
     let (name, name_end) = extract_name_clause_text(
@@ -317,9 +374,9 @@ where
 }
 
 pub(super) fn parse_entered_since_your_last_turn_ended_words(words: &[&str]) -> Option<usize> {
-    if word_slice_starts_with(words, ENTERED_SINCE_LAST_TURN_WITH_THAT_PREFIX) {
+    if words_start_with_phrase(words, ENTERED_SINCE_LAST_TURN_WITH_THAT_PREFIX) {
         Some(ENTERED_SINCE_LAST_TURN_WITH_THAT_PREFIX.len())
-    } else if word_slice_starts_with(words, ENTERED_SINCE_LAST_TURN_PREFIX) {
+    } else if words_start_with_phrase(words, ENTERED_SINCE_LAST_TURN_PREFIX) {
         Some(ENTERED_SINCE_LAST_TURN_PREFIX.len())
     } else {
         None
@@ -371,7 +428,7 @@ fn parse_color_count_number_words(words: &[&str]) -> Option<(u32, usize)> {
 }
 
 fn parse_min_color_count_quantity_prefix(words: &[&str]) -> Option<(u32, usize)> {
-    if word_slice_starts_with(words, &["at", "least"]) {
+    if words_start_with_phrase(words, &["at", "least"]) {
         let (count, used) = parse_color_count_number_words(words.get(2..).unwrap_or_default())?;
         return Some((count, used + 2));
     }
@@ -450,9 +507,9 @@ pub(super) fn try_apply_pt_literal_prefix(
 }
 
 pub(super) fn parse_not_all_colors_words(words: &[&str]) -> Option<usize> {
-    if word_slice_starts_with(words, NOT_ALL_COLORS_WITH_THAT_PREFIX) {
+    if words_start_with_phrase(words, NOT_ALL_COLORS_WITH_THAT_PREFIX) {
         Some(NOT_ALL_COLORS_WITH_THAT_PREFIX.len())
-    } else if word_slice_starts_with(words, NOT_ALL_COLORS_PREFIX) {
+    } else if words_start_with_phrase(words, NOT_ALL_COLORS_PREFIX) {
         Some(NOT_ALL_COLORS_PREFIX.len())
     } else {
         None
@@ -474,9 +531,9 @@ pub(super) fn try_apply_not_all_colors_clause(
 }
 
 pub(super) fn parse_not_exactly_two_colors_words(words: &[&str]) -> Option<usize> {
-    if word_slice_starts_with(words, NOT_EXACTLY_TWO_COLORS_WITH_THAT_PREFIX) {
+    if words_start_with_phrase(words, NOT_EXACTLY_TWO_COLORS_WITH_THAT_PREFIX) {
         Some(NOT_EXACTLY_TWO_COLORS_WITH_THAT_PREFIX.len())
-    } else if word_slice_starts_with(words, NOT_EXACTLY_TWO_COLORS_PREFIX) {
+    } else if words_start_with_phrase(words, NOT_EXACTLY_TWO_COLORS_PREFIX) {
         Some(NOT_EXACTLY_TWO_COLORS_PREFIX.len())
     } else {
         None
@@ -498,9 +555,9 @@ pub(super) fn try_apply_not_exactly_two_colors_clause(
 }
 
 fn source_counter_tail_consumed(words: &[&str]) -> Option<usize> {
-    if word_slice_starts_with(words, ON_THIS_ARTIFACT_TAIL) {
+    if words_start_with_phrase(words, ON_THIS_ARTIFACT_TAIL) {
         Some(ON_THIS_ARTIFACT_TAIL.len())
-    } else if word_slice_starts_with(words, ON_IT_TAIL) {
+    } else if words_start_with_phrase(words, ON_IT_TAIL) {
         Some(ON_IT_TAIL.len())
     } else {
         None
@@ -541,31 +598,31 @@ pub(super) fn parse_mana_value_counters_on_source_words(
     Option<crate::object::CounterType>,
     usize,
 )> {
-    if !word_slice_starts_with(words, MANA_VALUE_COUNTERS_ON_SOURCE_PREFIX) {
+    if !words_start_with_phrase(words, MANA_VALUE_COUNTERS_ON_SOURCE_PREFIX) {
         return None;
     }
     let after_axis = &words[MANA_VALUE_COUNTERS_ON_SOURCE_PREFIX.len()..];
-    let (operator, operator_len) = if word_slice_starts_with(after_axis, MANA_VALUE_LTE_WORDS) {
+    let (operator, operator_len) = if words_start_with_phrase(after_axis, MANA_VALUE_LTE_WORDS) {
         (
             crate::effect::ValueComparisonOperator::LessThanOrEqual,
             MANA_VALUE_LTE_WORDS.len(),
         )
-    } else if word_slice_starts_with(after_axis, MANA_VALUE_GTE_WORDS) {
+    } else if words_start_with_phrase(after_axis, MANA_VALUE_GTE_WORDS) {
         (
             crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             MANA_VALUE_GTE_WORDS.len(),
         )
-    } else if word_slice_starts_with(after_axis, MANA_VALUE_EQUAL_WORDS) {
+    } else if words_start_with_phrase(after_axis, MANA_VALUE_EQUAL_WORDS) {
         (
             crate::effect::ValueComparisonOperator::Equal,
             MANA_VALUE_EQUAL_WORDS.len(),
         )
-    } else if word_slice_starts_with(after_axis, MANA_VALUE_LT_WORDS) {
+    } else if words_start_with_phrase(after_axis, MANA_VALUE_LT_WORDS) {
         (
             crate::effect::ValueComparisonOperator::LessThan,
             MANA_VALUE_LT_WORDS.len(),
         )
-    } else if word_slice_starts_with(after_axis, MANA_VALUE_GT_WORDS) {
+    } else if words_start_with_phrase(after_axis, MANA_VALUE_GT_WORDS) {
         (
             crate::effect::ValueComparisonOperator::GreaterThan,
             MANA_VALUE_GT_WORDS.len(),
@@ -579,7 +636,7 @@ pub(super) fn parse_mana_value_counters_on_source_words(
         after_operator = &after_operator[1..];
         optional_article_len = 1;
     }
-    if !word_slice_starts_with(after_operator, NUMBER_OF_WORDS) {
+    if !words_start_with_phrase(after_operator, NUMBER_OF_WORDS) {
         return None;
     }
     let counter_idx = NUMBER_OF_WORDS.len();
@@ -631,13 +688,11 @@ pub(super) fn try_apply_mana_value_counters_on_source_clause(
     let segment_words = segment_words_view.to_word_refs();
     let segment_match = find_mana_value_counter_phrase_bounds(&segment_words);
     if let Some((start_word_idx, end_word_idx)) = segment_match
-        && let Some(start_token_idx) = segment_words_view.token_index_for_word_index(start_word_idx)
+        && let Some(token_range) =
+            segment_words_view.token_span_for_words(start_word_idx, end_word_idx)
     {
-        let end_token_idx = segment_words_view
-            .token_index_after_words(end_word_idx)
-            .unwrap_or(segment_tokens.len());
-        if start_token_idx < end_token_idx && end_token_idx <= segment_tokens.len() {
-            segment_tokens.drain(start_token_idx..end_token_idx);
+        if token_range.start < token_range.end && token_range.end <= segment_tokens.len() {
+            segment_tokens.drain(token_range);
         }
     }
 
@@ -650,7 +705,7 @@ pub(super) fn try_apply_attached_exclusion_phrases(
 ) {
     let mut idx = 0usize;
     while idx + 2 < all_words.len() {
-        if !word_slice_starts_with(&all_words[idx..], OTHER_THAN_PREFIX) {
+        if !words_start_with_phrase(&all_words[idx..], OTHER_THAN_PREFIX) {
             idx += 1;
             continue;
         }
@@ -680,10 +735,10 @@ pub(super) fn try_apply_attached_exclusion_phrases(
 }
 
 pub(super) fn strip_object_filter_leading_prefixes(all_words: &mut Vec<&str>) {
-    while word_slice_starts_with(all_words.as_slice(), ONE_OF_PREFIX) {
+    while words_start_with_phrase(all_words.as_slice(), ONE_OF_PREFIX) {
         all_words.drain(0..ONE_OF_PREFIX.len());
     }
-    while word_slice_starts_with(all_words.as_slice(), DIFFERENT_ONE_OF_PREFIX) {
+    while words_start_with_phrase(all_words.as_slice(), DIFFERENT_ONE_OF_PREFIX) {
         all_words.drain(0..DIFFERENT_ONE_OF_PREFIX.len());
     }
     while all_words
@@ -695,7 +750,7 @@ pub(super) fn strip_object_filter_leading_prefixes(all_words: &mut Vec<&str>) {
 }
 
 pub(super) fn parse_spell_filter_power_or_toughness_words(words: &[&str]) -> Option<usize> {
-    word_slice_starts_with(words, POWER_OR_TOUGHNESS_PREFIX)
+    words_start_with_phrase(words, POWER_OR_TOUGHNESS_PREFIX)
         .then_some(POWER_OR_TOUGHNESS_PREFIX.len())
 }
 
@@ -827,22 +882,24 @@ pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
 fn apply_spell_filter_source_creature_type_relation(filter: &mut ObjectFilter, words: &[&str]) {
     let shares_creature_type = words_contain_all(words, &["creature", "type"])
         && words_contain_any_word(words, SHARE_WORDS);
-    let references_source = contains_any_phrase(
+    let references_source = find_any_phrase_start(
         words,
         &[
             &["with", "this", "creature"],
             &["with", "this", "permanent"],
         ],
-    );
+    )
+    .is_some();
     if shares_creature_type && references_source {
         filter.shares_creature_type_with_source = true;
     }
 }
 
 fn apply_spell_filter_tagged_relations(filter: &mut ObjectFilter, words: &[&str]) {
-    let shares_card_type = words_contain_all(words, SHARES_CARD_TYPE_REQUIRED_WORDS)
+    let shares_card_type = find_any_phrase_start(words, SHARED_CARD_TYPE_PHRASES).is_some()
         && words_contain_any_word(words, SHARE_WORDS);
-    let references_exiled_card = contains_any_phrase(words, EXILED_CARD_REFERENCE_PHRASES);
+    let references_exiled_card =
+        find_any_phrase_start(words, EXILED_CARD_REFERENCE_PHRASES).is_some();
 
     if shares_card_type && references_exiled_card {
         filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -861,15 +918,9 @@ pub(super) fn try_apply_with_clause_tail(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
-    if word_slice_starts_with_any(words, POWER_TOUGHNESS_STICKER_ON_IT_PREFIXES) {
-        *filter = filter
-            .clone()
-            .with_ability_marker("a power and toughness sticker on it");
-        return Some(if word_is_any(words[0], ARTICLE_WORDS) {
-            7
-        } else {
-            6
-        });
+    if let Some((sticker, consumed)) = parse_sticker_filter_words(words) {
+        filter.sticker = Some(sticker);
+        return Some(consumed);
     }
 
     if let Some(consumed) = parse_with_no_abilities_words(words) {
@@ -931,10 +982,10 @@ pub(super) fn try_apply_without_clause_tail(
 }
 
 pub(super) fn apply_spell_filter_parity_phrases(words: &[&str], filter: &mut ObjectFilter) {
-    if contains_any_phrase(words, ODD_MANA_VALUE_PHRASES) {
+    if find_any_phrase_start(words, ODD_MANA_VALUE_PHRASES).is_some() {
         filter.mana_value_parity = Some(crate::filter::ParityRequirement::Odd);
     }
-    if contains_any_phrase(words, EVEN_MANA_VALUE_PHRASES) {
+    if find_any_phrase_start(words, EVEN_MANA_VALUE_PHRASES).is_some() {
         filter.mana_value_parity = Some(crate::filter::ParityRequirement::Even);
     }
     if find_phrase_start(words, ODD_POWER_PHRASE).is_some() {
@@ -960,16 +1011,16 @@ pub(super) fn attacking_player_filter_from_words(
     words: &[&str],
     pronoun_player_filter: &PlayerFilter,
 ) -> Option<PlayerFilter> {
-    if contains_any_phrase(words, ATTACKING_THAT_PLAYER_PHRASES) {
+    if find_any_phrase_start(words, ATTACKING_THAT_PLAYER_PHRASES).is_some() {
         return Some(PlayerFilter::IteratedPlayer);
     }
-    if contains_any_phrase(words, ATTACKING_DEFENDING_PLAYER_PHRASES) {
+    if find_any_phrase_start(words, ATTACKING_DEFENDING_PLAYER_PHRASES).is_some() {
         return Some(PlayerFilter::Defending);
     }
-    if contains_any_phrase(words, ATTACKING_TARGET_PLAYER_PHRASES) {
+    if find_any_phrase_start(words, ATTACKING_TARGET_PLAYER_PHRASES).is_some() {
         return Some(PlayerFilter::target_player());
     }
-    if contains_any_phrase(words, ATTACKING_TARGET_OPPONENT_PHRASES) {
+    if find_any_phrase_start(words, ATTACKING_TARGET_OPPONENT_PHRASES).is_some() {
         return Some(PlayerFilter::target_opponent());
     }
     if find_phrase_start(words, ATTACKING_YOU_PHRASE).is_some() {
@@ -978,7 +1029,7 @@ pub(super) fn attacking_player_filter_from_words(
     if find_phrase_start(words, ATTACKING_THEM_PHRASE).is_some() {
         return Some(pronoun_player_filter.clone());
     }
-    if contains_any_phrase(words, ATTACKING_OPPONENT_PHRASES) {
+    if find_any_phrase_start(words, ATTACKING_OPPONENT_PHRASES).is_some() {
         return Some(PlayerFilter::Opponent);
     }
 
@@ -1000,11 +1051,17 @@ fn find_blocking_or_blocked_by_source_phrase(words: &[&str]) -> Option<usize> {
         ],
     )
     .or_else(|| {
-        words.windows(4).enumerate().find_map(|(idx, window)| {
-            (window == ["blocking", "or", "blocked", "by"]
-                && is_source_reference_words(&words[idx + 4..]))
-            .then_some(idx)
-        })
+        const BLOCKING_OR_BLOCKED_BY_PHRASE: &[&str] = &["blocking", "or", "blocked", "by"];
+        let mut idx = 0usize;
+        while idx + BLOCKING_OR_BLOCKED_BY_PHRASE.len() <= words.len() {
+            if words_start_with_phrase(&words[idx..], BLOCKING_OR_BLOCKED_BY_PHRASE)
+                && is_source_reference_words(&words[idx + BLOCKING_OR_BLOCKED_BY_PHRASE.len()..])
+            {
+                return Some(idx);
+            }
+            idx += 1;
+        }
+        None
     })
 }
 
@@ -1062,7 +1119,7 @@ fn drain_source_reference_prefix_tokens(
     prefix_word_len: usize,
 ) {
     let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
-    let Some(end_token_idx) = segment_words_view.token_index_for_word_or_end(prefix_word_len)
+    let Some(end_token_idx) = segment_words_view.token_boundary_for_word_or_end(prefix_word_len)
     else {
         return;
     };
@@ -1108,13 +1165,13 @@ pub(super) fn apply_reference_and_tag_stage(
         *all_words = normalized;
     }
 
-    if let Some(attached_idx) = lower_words_find_index(all_words, |word| word == ATTACHED_WORD)
+    if let Some(attached_idx) = word_index_for_exact(all_words, ATTACHED_WORD)
         && all_words
             .get(attached_idx + 1)
             .is_some_and(|word| *word == TO_WORD)
     {
         let attached_to_words = &all_words[attached_idx + 2..];
-        if word_slice_starts_with(attached_to_words, ENCHANTED_PLAYER_PREFIX) {
+        if words_start_with_phrase(attached_to_words, ENCHANTED_PLAYER_PREFIX) {
             let trim_start = if attached_idx >= 2
                 && all_words[attached_idx - 2] == THAT_WORD
                 && word_is_any(all_words[attached_idx - 1], BE_VERB_WORDS)
@@ -1131,7 +1188,8 @@ pub(super) fn apply_reference_and_tag_stage(
             };
         }
         let references_it =
-            word_slice_starts_with_any(attached_to_words, ATTACHED_TO_TAGGED_OBJECT_PREFIXES);
+            words_start_with_any_phrase(attached_to_words, ATTACHED_TO_TAGGED_OBJECT_PREFIXES)
+                .is_some();
         if references_it {
             let trim_start = if attached_idx >= 2
                 && all_words[attached_idx - 2] == THAT_WORD
@@ -1154,7 +1212,8 @@ pub(super) fn apply_reference_and_tag_stage(
         all_words.truncate(relation_idx);
     }
 
-    let starts_with_exiled_card = word_slice_starts_with_any(all_words, EXILED_CARD_PREFIXES);
+    let starts_with_exiled_card =
+        words_start_with_any_phrase(all_words, EXILED_CARD_PREFIXES).is_some();
     if starts_with_exiled_card {
         filter.zone.get_or_insert(Zone::Exile);
     }
@@ -1206,47 +1265,48 @@ pub(super) fn apply_reference_and_tag_stage(
         }
         let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
         let segment_words = segment_words_view.to_word_refs();
-        if let Some(exiled_with_idx) = find_phrase_start(&segment_words, EXILED_WITH_PHRASE)
-            && let Some(exiled_with_token_idx) =
-                segment_words_view.token_index_for_word_index(exiled_with_idx)
-        {
-            let mut reference_end = exiled_with_token_idx + 2;
-            if segment_tokens
-                .get(reference_end)
-                .is_some_and(|token| token_word_is_any(token, REFERENCE_HEAD_WORDS))
+        if let Some(exiled_with_idx) = find_phrase_start(&segment_words, EXILED_WITH_PHRASE) {
+            let mut reference_end_word = exiled_with_idx + EXILED_WITH_PHRASE.len();
+            if segment_words
+                .get(reference_end_word)
+                .is_some_and(|word| word_is_any(word, REFERENCE_HEAD_WORDS))
             {
-                reference_end += 1;
+                reference_end_word += 1;
             }
-            if segment_tokens
-                .get(reference_end)
-                .is_some_and(|token| token_word_is_any(token, REFERENCE_OBJECT_NOUN_WORDS))
+            if segment_words
+                .get(reference_end_word)
+                .is_some_and(|word| word_is_any(word, REFERENCE_OBJECT_NOUN_WORDS))
             {
-                reference_end += 1;
+                reference_end_word += 1;
             }
-            if reference_end > exiled_with_idx + 1 {
-                segment_tokens.drain(exiled_with_token_idx + 1..reference_end);
+            if reference_end_word > exiled_with_idx + 1
+                && let Some(token_range) =
+                    segment_words_view.token_span_for_words(exiled_with_idx + 1, reference_end_word)
+            {
+                segment_tokens.drain(token_range);
             }
         }
         let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
         let segment_words = segment_words_view.to_word_refs();
-        if let Some(used_to_craft_idx) = find_phrase_start(&segment_words, USED_TO_CRAFT_PHRASE)
-            && let Some(used_to_craft_token_idx) =
-                segment_words_view.token_index_for_word_index(used_to_craft_idx)
-        {
-            let mut reference_end = used_to_craft_token_idx + 3;
-            if segment_tokens
-                .get(reference_end)
-                .is_some_and(|token| token_word_is_any(token, REFERENCE_HEAD_WORDS))
+        if let Some(used_to_craft_idx) = find_phrase_start(&segment_words, USED_TO_CRAFT_PHRASE) {
+            let mut reference_end_word = used_to_craft_idx + USED_TO_CRAFT_PHRASE.len();
+            if segment_words
+                .get(reference_end_word)
+                .is_some_and(|word| word_is_any(word, REFERENCE_HEAD_WORDS))
             {
-                reference_end += 1;
+                reference_end_word += 1;
             }
-            if segment_tokens
-                .get(reference_end)
-                .is_some_and(|token| token_word_is_any(token, REFERENCE_OBJECT_NOUN_WORDS))
+            if segment_words
+                .get(reference_end_word)
+                .is_some_and(|word| word_is_any(word, REFERENCE_OBJECT_NOUN_WORDS))
             {
-                reference_end += 1;
+                reference_end_word += 1;
             }
-            segment_tokens.drain(used_to_craft_token_idx..reference_end);
+            if let Some(token_range) =
+                segment_words_view.token_span_for_words(used_to_craft_idx, reference_end_word)
+            {
+                segment_tokens.drain(token_range);
+            }
         }
     }
 
@@ -1267,7 +1327,7 @@ pub(super) fn apply_reference_and_tag_stage(
         all_words.remove(0);
     }
 
-    if word_slice_starts_with_any(all_words, REVEALED_CARD_PREFIXES) {
+    if words_start_with_any_phrase(all_words, REVEALED_CARD_PREFIXES).is_some() {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -1275,35 +1335,41 @@ pub(super) fn apply_reference_and_tag_stage(
         all_words.drain(..2);
     }
 
-    let has_share_card_type =
-        words_contain_all(all_words, SHARES_CARD_TYPE_WITH_TAGGED_REQUIRED_WORDS)
-            && words_contain_any_word(all_words, SHARE_WORDS)
-            && words_contain_any_word(all_words, CARD_OR_PERMANENT_WORDS);
+    let references_sacrifice_cost_object =
+        find_any_phrase_start(all_words, SACRIFICE_COST_OBJECT_REFERENCE_PHRASES).is_some();
+    let has_share_card_type = find_any_phrase_start(all_words, SHARED_CARD_TYPE_PHRASES).is_some()
+        && words_contain_any_word(all_words, SHARE_WORDS)
+        && (words_contain_any_word(all_words, IT_OR_THEM_WORDS)
+            || references_sacrifice_cost_object);
     let has_share_color = words_contain_all(all_words, SHARES_COLOR_WITH_TAGGED_REQUIRED_WORDS);
-    let has_share_creature_type = contains_any_phrase(all_words, CREATURE_TYPE_PHRASES)
+    let has_share_creature_type = find_any_phrase_start(all_words, CREATURE_TYPE_PHRASES).is_some()
         && words_contain_any_word(all_words, SHARE_WORDS)
         && words_contain_any_word(all_words, IT_OR_THEM_WORDS);
     let has_same_mana_value = find_phrase_start(all_words, SAME_MANA_VALUE_AS_PHRASE).is_some();
     let has_equal_or_lesser_mana_value =
         find_phrase_start(all_words, EQUAL_OR_LESSER_MANA_VALUE_PHRASE).is_some();
     let has_lte_mana_value_than_that_spell =
-        contains_any_phrase(all_words, LTE_MANA_VALUE_THAN_THAT_SPELL_PHRASES);
+        find_any_phrase_start(all_words, LTE_MANA_VALUE_THAN_THAT_SPELL_PHRASES).is_some();
     let has_lte_mana_value_as_tagged =
-        contains_any_phrase(all_words, LTE_MANA_VALUE_AS_TAGGED_PHRASES)
+        find_any_phrase_start(all_words, LTE_MANA_VALUE_AS_TAGGED_PHRASES).is_some()
             || has_equal_or_lesser_mana_value;
     let has_lt_mana_value_as_tagged = find_phrase_start(all_words, LESSER_MANA_VALUE_PHRASE)
         .is_some()
         && !has_equal_or_lesser_mana_value;
-    let references_sacrifice_cost_object =
-        contains_any_phrase(all_words, SACRIFICE_COST_OBJECT_REFERENCE_PHRASES);
     let references_it_for_mana_value = words_contain_any_word(all_words, IT_OR_ITS_REFERENCE_WORDS)
-        || contains_any_phrase(all_words, TAGGED_OBJECT_REFERENCE_FOR_MANA_VALUE_PHRASES);
+        || find_any_phrase_start(all_words, TAGGED_OBJECT_REFERENCE_FOR_MANA_VALUE_PHRASES)
+            .is_some();
     let has_same_name_as_tagged_object =
-        contains_any_phrase(all_words, SAME_NAME_AS_TAGGED_OBJECT_PHRASES);
+        find_any_phrase_start(all_words, SAME_NAME_AS_TAGGED_OBJECT_PHRASES).is_some();
 
     if has_share_card_type {
+        let tag = if references_sacrifice_cost_object {
+            TagKey::from("sacrificed_0")
+        } else {
+            IT_TAG.into()
+        };
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: IT_TAG.into(),
+            tag,
             relation: TaggedOpbjectRelation::SharesCardType,
         });
     }
@@ -1356,7 +1422,7 @@ pub(super) fn apply_reference_and_tag_stage(
         });
     }
 
-    if contains_any_phrase(all_words, CONVOKED_THIS_SPELL_TAG_PHRASES) {
+    if find_any_phrase_start(all_words, CONVOKED_THIS_SPELL_TAG_PHRASES).is_some() {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("convoked_this_spell"),
             relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -1374,13 +1440,13 @@ pub(super) fn apply_reference_and_tag_stage(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
-    if contains_any_phrase(all_words, AMASSED_ARMY_TAG_PHRASES) {
+    if find_any_phrase_start(all_words, AMASSED_ARMY_TAG_PHRASES).is_some() {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
-    if contains_any_phrase(all_words, THIS_WAY_TAG_PHRASES) {
+    if find_any_phrase_start(all_words, THIS_WAY_TAG_PHRASES).is_some() {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,

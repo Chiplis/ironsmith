@@ -23,15 +23,9 @@ fn public_identity_after_hidden_position_reveal(
             || previous_public_commitment != incoming_public_commitment);
 
     if preserve_existing_public_identity {
-        (
-            Some(previous_public_slot),
-            Some(previous_public_commitment),
-        )
+        (Some(previous_public_slot), Some(previous_public_commitment))
     } else {
-        (
-            Some(input_position),
-            Some(incoming_public_commitment),
-        )
+        (Some(input_position), Some(incoming_public_commitment))
     }
 }
 
@@ -148,17 +142,10 @@ mod dispatch_tests {
         };
 
         let (public_slot, public_commitment) =
-            public_identity_after_hidden_position_reveal(
-                &info,
-                10,
-                Some("ziffle:initial-deck:10"),
-            );
+            public_identity_after_hidden_position_reveal(&info, 10, Some("ziffle:initial-deck:10"));
 
         assert_eq!(public_slot, Some(51));
-        assert_eq!(
-            public_commitment.as_deref(),
-            Some("ziffle:shuffle-deck:51")
-        );
+        assert_eq!(public_commitment.as_deref(), Some("ziffle:shuffle-deck:51"));
     }
 
     #[test]
@@ -173,17 +160,10 @@ mod dispatch_tests {
         };
 
         let (public_slot, public_commitment) =
-            public_identity_after_hidden_position_reveal(
-                &info,
-                10,
-                Some("ziffle:initial-deck:10"),
-            );
+            public_identity_after_hidden_position_reveal(&info, 10, Some("ziffle:initial-deck:10"));
 
         assert_eq!(public_slot, Some(10));
-        assert_eq!(
-            public_commitment.as_deref(),
-            Some("ziffle:initial-deck:10")
-        );
+        assert_eq!(public_commitment.as_deref(), Some("ziffle:initial-deck:10"));
     }
 
     #[test]
@@ -247,9 +227,9 @@ mod dispatch_tests {
         .supertypes(vec![ironsmith::types::Supertype::Legendary])
         .card_types(vec![ironsmith::types::CardType::Artifact])
         .build();
-        let keep_id = wasm
-            .game
-            .create_object_from_card(&legend, alice, ironsmith::zone::Zone::Battlefield);
+        let keep_id =
+            wasm.game
+                .create_object_from_card(&legend, alice, ironsmith::zone::Zone::Battlefield);
         wasm.game
             .create_object_from_card(&legend, alice, ironsmith::zone::Zone::Battlefield);
 
@@ -266,7 +246,10 @@ mod dispatch_tests {
             "prompt should be the legend-rule decision"
         );
         assert!(
-            legend_ctx.candidates.iter().any(|candidate| candidate.id == keep_id),
+            legend_ctx
+                .candidates
+                .iter()
+                .any(|candidate| candidate.id == keep_id),
             "the selected legend should be a legal candidate"
         );
         assert!(
@@ -278,15 +261,12 @@ mod dispatch_tests {
         );
         assert!(
             !replay_can_apply_legend_rule_choice_live(
-                &ReplayRoot::Response(PriorityResponse::PriorityAction(
-                    LegalAction::PassPriority,
-                )),
+                &ReplayRoot::Response(PriorityResponse::PriorityAction(LegalAction::PassPriority,)),
                 &DecisionContext::SelectObjects(legend_ctx),
             ),
             "non-advance replay roots still use root reexecution"
         );
     }
-
 }
 
 #[wasm_bindgen]
@@ -861,10 +841,7 @@ impl WasmGame {
             self.apply_validated_hidden_position_reveal(reveal)?;
         }
         let recompute_decision = input.recompute_decision
-            || input
-                .reveals
-                .iter()
-                .any(|reveal| reveal.recompute_decision);
+            || input.reveals.iter().any(|reveal| reveal.recompute_decision);
         self.finish_hidden_card_reveal(recompute_decision)
     }
 
@@ -938,7 +915,10 @@ impl WasmGame {
             .find_card_definition(&input.card_name)
             .cloned()
             .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {}", input.card_name)))?;
-        let Some(existing_name) = self.game.object(object_id).map(|object| object.name.clone())
+        let Some(existing_name) = self
+            .game
+            .object(object_id)
+            .map(|object| object.name.clone())
         else {
             return Err(JsValue::from_str(
                 "hidden ziffle object is not present in this engine",
@@ -1145,7 +1125,9 @@ impl WasmGame {
             let reordered_set = reordered_library.iter().copied().collect::<HashSet<_>>();
             if reordered_library.len() != current_library.len()
                 || reordered_set.len() != current_library_set.len()
-                || !current_library_set.iter().all(|id| reordered_set.contains(id))
+                || !current_library_set
+                    .iter()
+                    .all(|id| reordered_set.contains(id))
             {
                 return Err(JsValue::from_str(
                     "verified hidden shuffle order does not cover the current library",
@@ -2609,7 +2591,9 @@ impl WasmGame {
                 else {
                     self.pending_decision = Some(pending_ctx);
                     self.pending_replay_action = Some(replay);
-                    return Err(JsValue::from_str("unexpected command for legend rule decision"));
+                    return Err(JsValue::from_str(
+                        "unexpected command for legend rule decision",
+                    ));
                 };
                 let object_ids = match normalize_select_object_choice_ids(
                     &self.game,
@@ -2647,19 +2631,16 @@ impl WasmGame {
                     self.pending_replay_action = Some(replay);
                     return Err(JsValue::from_str("legend rule requires one chosen object"));
                 };
-                for candidate in objects
-                    .candidates
+                let legend_group = legal_ids
                     .iter()
-                    .filter(|candidate| candidate.legal && candidate.id != keep_id)
-                {
-                    if self.game.battlefield.contains(&candidate.id) {
-                        self.game.move_object(
-                            candidate.id,
-                            Zone::Graveyard,
-                            ironsmith::events::cause::EventCause::from_legend_rule(objects.player),
-                        );
-                    }
-                }
+                    .copied()
+                    .map(ObjectId::from_raw)
+                    .collect::<Vec<_>>();
+                ironsmith::rules::state_based::apply_legend_rule_choice_from_group(
+                    &mut self.game,
+                    keep_id,
+                    &legend_group,
+                );
                 drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
                 self.pending_action_checkpoint = None;
                 self.pending_replay_action = None;
