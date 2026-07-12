@@ -1854,9 +1854,8 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
     let choose = effects
         .get(1)?
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let exile = effects
-        .get(2)?
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let exile =
+        unwrap_tag_wrappers(effects.get(2)?).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let rest = effects
         .get(3)?
         .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;

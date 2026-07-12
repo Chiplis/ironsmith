@@ -3258,7 +3258,6 @@ pub(super) fn test_parse_overload_keyword_line_compiles_to_alternative_cast_and_
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-#[ignore = "revealed render debt: the color-count search renders as 'color count equal to the number of colors among permanent plus 1'; the oracle-style wording previously pinned here came from a deleted scored-text gate"]
 pub(super) fn test_parse_evolving_door_compiles_color_count_search_and_may_cast() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Evolving Door Probe")
         .mana_cost(ManaCost::from_pips(vec![
@@ -3366,7 +3365,6 @@ pub(super) fn test_parse_doubling_chant_compiles_search_put_onto_battlefield_and
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-#[ignore = "revealed render debt: the raw render leaks the __source_exiled__ tag marker; a deleted scored-text gate was hiding the leak"]
 pub(super) fn test_parse_feral_encounter_avoids_tagged_play_marker_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Feral Encounter")
         .mana_cost(ManaCost::from_pips(vec![
@@ -3388,13 +3386,21 @@ pub(super) fn test_parse_feral_encounter_avoids_tagged_play_marker_text() {
         "expected Feral Encounter cast permission text, got {rendered}"
     );
     assert!(
+        rendered.contains("you may exile a creature card from among them")
+            && rendered.contains("put the rest on the bottom of your library in a random order"),
+        "expected Feral Encounter optional exile and library-bottom wording, got {rendered}"
+    );
+    assert!(
         rendered.contains(
             "deals damage equal to its power to up to one target creature you don't control"
         ),
         "expected Feral Encounter damage text, got {rendered}"
     );
     assert!(
-        !rendered.contains("tagged object") && !rendered.contains("tagged '"),
+        !rendered.contains("tagged object")
+            && !rendered.contains("tagged '")
+            && !rendered.contains("tagged cards")
+            && !rendered.contains("you choose up to one creature cards"),
         "expected Feral Encounter to avoid internal tagged markers, got {rendered}"
     );
 }

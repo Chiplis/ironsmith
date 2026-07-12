@@ -1523,14 +1523,6 @@ pub(super) fn test_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_
     );
 }
 
-#[test]
-#[ignore = "profiling helper"]
-pub(super) fn profile_exchange_of_words_swapped_myr_moonvessel_dies_trigger_repeatedly() {
-    for _ in 0..1000 {
-        run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornithopter_is_sacrificed();
-    }
-}
-
 pub(super) fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter()
 -> (GameState, ObjectId, ObjectId) {
     use crate::ability::AbilityKind;
@@ -1806,109 +1798,6 @@ pub(super) fn test_compute_legal_actions_after_exchange_of_words_sees_borrowed_a
         }),
         "Yawgmoth should no longer expose its old activated abilities after its text box is exchanged away"
     );
-}
-
-pub(super) fn run_double_exchange_of_words_cast_from_hand_on_alices_yawgmoth_and_ornithopter()
--> GameState {
-    struct LocalExchangeTargetsDecisionMaker {
-        first: ObjectId,
-        second: ObjectId,
-    }
-
-    impl DecisionMaker for LocalExchangeTargetsDecisionMaker {
-        fn decide_targets(
-            &mut self,
-            _game: &GameState,
-            ctx: &crate::decisions::context::TargetsContext,
-        ) -> Vec<Target> {
-            let Some(requirement) = ctx.requirements.first() else {
-                return Vec::new();
-            };
-
-            [Target::Object(self.first), Target::Object(self.second)]
-                .into_iter()
-                .filter(|target| requirement.legal_targets.contains(target))
-                .collect()
-        }
-    }
-
-    let alice = PlayerId::from_index(0);
-    let (mut game, ornithopter_id, yawgmoth_id) =
-        run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
-    let exchange = CardDefinitionBuilder::new(CardId::from_raw(700_401), "Exchange of Words")
-        .mana_cost(ManaCost::from_pips(vec![
-            vec![ManaSymbol::Generic(1)],
-            vec![ManaSymbol::Blue],
-            vec![ManaSymbol::Blue],
-        ]))
-        .card_types(vec![CardType::Enchantment])
-        .parse_text(
-            "When this enchantment enters, choose two target creatures. For as long as this enchantment remains on the battlefield, exchange the text boxes of those creatures.",
-        )
-        .expect("Exchange of Words should parse");
-    let second_exchange_id = game.create_object_from_definition(&exchange, alice, Zone::Hand);
-
-    let second_exchange_cast_method = crate::decision::compute_legal_actions(&game, alice)
-        .into_iter()
-        .find_map(|action| match action {
-            crate::decision::LegalAction::CastSpell {
-                spell_id,
-                from_zone: Zone::Hand,
-                casting_method,
-            } if spell_id == second_exchange_id && casting_method != CastingMethod::Normal => {
-                Some(casting_method)
-            }
-            _ => None,
-        })
-        .expect("Omniscience should offer a free cast for the second Exchange of Words");
-
-    let stack_id = super::priority_mana::propose_spell_cast(
-        &mut game,
-        second_exchange_id,
-        Zone::Hand,
-        alice,
-        &second_exchange_cast_method,
-    )
-    .expect("second Exchange of Words should move from hand to stack");
-    game.stack.push(
-        StackEntry::new(stack_id, alice).with_casting_method(second_exchange_cast_method.clone()),
-    );
-
-    let mut trigger_queue = TriggerQueue::new();
-    let mut dm = LocalExchangeTargetsDecisionMaker {
-        first: yawgmoth_id,
-        second: ornithopter_id,
-    };
-
-    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
-        .expect("second Exchange of Words spell should resolve from the stack");
-    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
-        .expect("second Exchange of Words ETB trigger should go on the stack");
-    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
-        .expect("second Exchange of Words ETB trigger should resolve");
-    game.refresh_continuous_state();
-    game
-}
-
-#[test]
-#[ignore = "profiling helper"]
-pub(super) fn profile_compute_legal_actions_after_double_exchange_of_words() {
-    let game = run_double_exchange_of_words_cast_from_hand_on_alices_yawgmoth_and_ornithopter();
-    let alice = PlayerId::from_index(0);
-    let _actions = crate::decision::compute_legal_actions(&game, alice);
-    println!(
-        "compute legal actions perf: {:?}",
-        crate::decision::last_compute_legal_actions_perf()
-    );
-}
-
-#[test]
-#[ignore = "profiling helper"]
-pub(super) fn profile_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter_repeatedly()
- {
-    for _ in 0..3000 {
-        let _ = run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
-    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

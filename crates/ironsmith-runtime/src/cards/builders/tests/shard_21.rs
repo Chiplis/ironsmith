@@ -1284,7 +1284,6 @@ pub(super) fn parse_uchuulon_keeps_if_you_do_exile_followup() {
 }
 
 #[test]
-#[ignore = "revealed parser bug: X compiles as \"a card in your hand's mana value\" instead of the exiled card's mana value; a deleted scored-text gate was rewriting the referent and masking this"]
 pub(super) fn parse_nyla_shirshu_sleuth_keeps_if_you_do_exile_followup() {
     let def = parse_oracle_card_definition("Nyla, Shirshu Sleuth");
     let rendered = unprocessed_compiled_lines(&def)

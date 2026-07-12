@@ -599,10 +599,38 @@ pub(super) fn object_filters_equivalent_ignoring_source_surface(
 }
 
 pub(super) fn describe_conditional_branch_effect_list(effects: &[Effect]) -> Option<String> {
-    describe_destroy_no_regeneration_this_way_branch(effects)
+    describe_lose_life_then_create_shared_dynamic_branch(effects)
+        .or_else(|| describe_destroy_no_regeneration_this_way_branch(effects))
         .or_else(|| describe_conditional_dynamic_token_branch(effects))
         .or_else(|| describe_compact_choose_mode_branch(effects))
         .or_else(|| describe_source_labeled_choose_mode_branch(effects))
+}
+
+pub(super) fn describe_lose_life_then_create_shared_dynamic_branch(
+    effects: &[Effect],
+) -> Option<String> {
+    let [lose_effect, create_effect] = effects else {
+        return None;
+    };
+    let lose =
+        unwrap_basic_tag_wrappers(lose_effect).downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    let create = unwrap_basic_tag_wrappers(create_effect)
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if !values_equivalent_ignoring_source_surface(&lose.amount, &create.count) {
+        return None;
+    }
+
+    let where_x = describe_where_x_basis(&lose.amount)?;
+    let suffix = format!(", where X is {where_x}");
+    let lose_text = describe_effect(lose_effect);
+    let create_text = describe_effect(create_effect);
+    let lose_clause = lose_text.strip_suffix(&suffix)?;
+    let create_clause = create_text.strip_suffix(&suffix)?;
+
+    Some(format!(
+        "{lose_clause} and {}{suffix}",
+        lowercase_first(create_clause)
+    ))
 }
 
 pub(super) fn describe_compact_choose_mode_branch(effects: &[Effect]) -> Option<String> {
@@ -2253,7 +2281,14 @@ pub(crate) fn describe_search_choose_then_exile_and_cast(
     }
 
     let cast_tagged = extract_cast_tagged(cast_effect)?;
-    if cast_tagged.tag != choose.tag && cast_tagged.tag.as_str() != crate::tag::SOURCE_EXILED_TAG {
+    let move_wrapper_tag = move_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| &tagged.tag);
+    if cast_tagged.tag != choose.tag
+        && cast_tagged.tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+        && !crate::cards::is_sentence_helper_tag(cast_tagged.tag.as_str(), "exiled")
+        && move_wrapper_tag != Some(&cast_tagged.tag)
+    {
         return None;
     }
 

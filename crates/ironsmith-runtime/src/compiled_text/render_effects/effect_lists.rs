@@ -3412,6 +3412,14 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
                     .is_none()
         })
         .collect::<Vec<_>>();
+    if let [choose_effect, move_effect, shuffle_effect, cast_effect] = visible_refs.as_slice()
+        && let Some(choose) = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && let Some(shuffle) = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+        && let Some(compact) =
+            describe_search_choose_then_exile_and_cast(choose, move_effect, shuffle, cast_effect)
+    {
+        return Some(cleanup_decompiled_text(&lowercase_first(&compact)));
+    }
     if let Some(compact) = describe_choose_each_basic_land_type_then_destroy(&visible_refs) {
         return Some(compact);
     }
