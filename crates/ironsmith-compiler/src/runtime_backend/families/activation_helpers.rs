@@ -24,7 +24,7 @@ pub(crate) use super::util::{
     trim_edge_punctuation_tokens, value_contains_unbound_x, word_refs_at_is_article,
     word_refs_except,
 };
-pub(crate) use super::value_helpers::{
+pub(crate) use crate::runtime_backend::grammar::shared_util::value_semantics::{
     parse_equal_to_aggregate_filter_value, parse_filter_comparison_tokens,
 };
 

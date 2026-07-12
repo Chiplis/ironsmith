@@ -872,6 +872,7 @@ pub(crate) fn compile_effects_in_iterated_player_context(
         // an outer player antecedent with an artificial iterated player.
         iterated_frame.last_object_tag = Some(IT_TAG.to_string());
         iterated_frame.last_it_choice_is_set = false;
+        iterated_frame.iterated_object = true;
     } else {
         iterated_frame.iterated_player = true;
         iterated_frame.last_player_filter = Some(PlayerFilter::IteratedPlayer);
@@ -882,7 +883,7 @@ pub(crate) fn compile_effects_in_iterated_player_context(
         compile_effects_with_explicit_frame(effects, &mut id_gen, iterated_frame)?;
     let choices = choices
         .into_iter()
-        .filter(|choice| !format!("{choice:?}").contains("IteratedPlayer"))
+        .filter(|choice| !choose_spec_mentions_iterated_player(choice))
         .collect();
     ctx.apply_id_gen_context(id_gen);
     let produced_last_tag = if tagged_object.is_none() {
@@ -909,13 +910,14 @@ pub(crate) fn compile_effects_in_iterated_object_context(
     iterated_frame.last_effect_id = None;
     iterated_frame.last_object_tag = Some(IT_TAG.to_string());
     iterated_frame.last_it_choice_is_set = false;
+    iterated_frame.iterated_object = true;
 
     let mut id_gen = ctx.id_gen_context();
     let (compiled, choices, _frame_out) =
         compile_effects_with_explicit_frame(effects, &mut id_gen, iterated_frame)?;
     let choices = choices
         .into_iter()
-        .filter(|choice| !format!("{choice:?}").contains("IteratedPlayer"))
+        .filter(|choice| !choose_spec_mentions_iterated_player(choice))
         .collect();
     ctx.apply_id_gen_context(id_gen);
     ctx.apply_lowering_frame(saved_frame);
@@ -957,7 +959,8 @@ fn is_secret_choice_related_predicate(predicate: &PredicateAst) -> bool {
 }
 
 fn compiled_vote_option_uses_iterated_player(effects: &[Effect], choices: &[ChooseSpec]) -> bool {
-    format!("{effects:?}{choices:?}").contains("IteratedPlayer")
+    effects_mention_iterated_player(effects)
+        || choices.iter().any(choose_spec_mentions_iterated_player)
 }
 
 pub(crate) fn compile_vote_sequence(

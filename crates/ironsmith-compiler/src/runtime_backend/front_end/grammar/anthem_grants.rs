@@ -14,6 +14,7 @@ use super::{leaf, primitives};
 mod addition_shapes;
 mod anthem_keyword_shapes;
 mod clause_shapes;
+mod compound_shapes;
 mod condition_quantities;
 mod condition_shapes;
 mod continuing_shapes;
@@ -35,12 +36,19 @@ mod granted_tail_shapes;
 mod misc_shapes;
 mod soulbond_shapes;
 mod special_grant_shapes;
+mod static_grant_facts;
 mod subject_shapes;
 mod tail_static_shapes;
 
 pub(crate) use clause_shapes::{
     AnthemPrefixConditionKind, AnthemTailShape, parse_modifier_shape, parse_prefix_condition_shape,
     parse_tail_shape, parse_word_token_candidates,
+};
+pub(crate) use compound_shapes::{
+    CarriedConditionalAnthemGrantShape, CarriedSubjectTypeAdditionShape,
+    ConditionalAnthemOtherwiseShape, ConditionalAnthemReplacementShape,
+    parse_carried_conditional_anthem_grant, parse_carried_subject_type_addition,
+    parse_conditional_anthem_otherwise, parse_conditional_anthem_replacement,
 };
 pub(crate) use condition_shapes::{
     BlockingSourceConditionShape, ConjoinedConditionSplit, DevotionConditionError,
@@ -68,19 +76,28 @@ pub(crate) use granted_tail_shapes::{
     split_granted_ability_condition, split_type_addition_subject,
 };
 pub(crate) use misc_shapes::{
-    parse_equipment_equip_shape, parse_keyword_if_color_shape, split_keyword_if_color_segments,
-    split_trailing_grant_segments,
+    TrailingGrantSegmentShape, parse_equipment_equip_shape, parse_keyword_if_color_shape,
+    parse_trailing_grant_segment, split_keyword_if_color_segments, split_trailing_grant_segments,
 };
 pub(crate) use soulbond_shapes::{SoulbondSharedEffect, parse_soulbond_shared_shape};
 pub(crate) use special_grant_shapes::{
-    AnthemGoadedShape, ColoredSpellProtectionShape, CommanderCreatureSubject,
-    parse_anthem_goaded_shape, parse_colored_spell_protection_tokens,
-    parse_commander_creature_subject_tokens, parse_unblockable_keyword_fragment_tokens,
+    AnthemGoadedShape, AnthemNoDefenderGrantShape, ColoredSpellProtectionShape,
+    CommanderCreatureSubject, SubjectColorAndGrantShape, parse_anthem_goaded_shape,
+    parse_anthem_no_defender_grant_tokens, parse_colored_spell_protection_tokens,
+    parse_commander_creature_subject_tokens, parse_no_defender_granted_fragment_tokens,
+    parse_subject_color_and_grant_tokens, parse_unblockable_keyword_fragment_tokens,
 };
-pub(crate) use subject_shapes::{AnthemSubjectGrammarMatch, parse_exact_anthem_subject_grammar};
+pub(crate) use static_grant_facts::{
+    FirstSpellEachTurnSubject, GrantedAlternativeCastKeyword, StaticGrantDurationFact,
+    parse_every_subtype_family_tokens, parse_first_spell_each_turn_subject_tokens,
+    parse_granted_alternative_cast_keyword_tokens, parse_static_grant_duration_fact,
+};
+pub(crate) use subject_shapes::{
+    AnthemSubjectGrammarMatch, object_filter_specificity_score, parse_exact_anthem_subject_grammar,
+};
 pub(crate) use tail_static_shapes::{
-    BasePowerToughnessGrantShape, BasePowerToughnessShape, IsntCreatureShape,
-    IsntCreatureShapeError, parse_base_power_toughness_grant_shape,
+    BasePowerGrantShape, BasePowerToughnessGrantShape, BasePowerToughnessShape, IsntCreatureShape,
+    IsntCreatureShapeError, parse_base_power_grant_shape, parse_base_power_toughness_grant_shape,
     parse_base_power_toughness_shape, parse_isnt_creature_shape, parse_multi_subject_segments,
     persistent_anthem_subject_facts,
 };
@@ -294,22 +311,21 @@ pub(crate) struct GetsAttacksShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AnthemGrantedTailKind {
     CantBeBlocked,
-    BeEverySubtype,
+    BeEverySubtype(crate::types::SubtypeFamily),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemAndGrantedTail<'a> {
+pub(crate) struct AnthemAndGrantedTail {
     pub(crate) get_token: usize,
     pub(crate) and_token: usize,
     pub(crate) tail_kind: AnthemGrantedTailKind,
-    pub(crate) family_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SubjectEverySubtypeShape<'a> {
     pub(crate) condition_tokens: Option<&'a [OwnedLexToken]>,
     pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) family_tokens: &'a [OwnedLexToken],
+    pub(crate) family: crate::types::SubtypeFamily,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1208,7 +1224,7 @@ pub(crate) fn parse_gets_attacks_shape(tokens: &[OwnedLexToken]) -> Option<GetsA
 
 pub(crate) fn parse_anthem_and_granted_tail(
     tokens: &[OwnedLexToken],
-) -> Option<AnthemAndGrantedTail<'_>> {
+) -> Option<AnthemAndGrantedTail> {
     let tokens = trim_anthem_clause_tokens(tokens);
     let get_token = first_token_word(tokens, AnthemWordClass::Get)?;
     let relative_and = first_token_word(&tokens[get_token + 1..], AnthemWordClass::And)?;
@@ -1226,18 +1242,17 @@ pub(crate) fn parse_anthem_and_granted_tail(
             get_token,
             and_token,
             tail_kind: AnthemGrantedTailKind::CantBeBlocked,
-            family_tokens: &[],
         });
     }
     let (_, family_tokens) = primitives::parse_prefix(
         tail,
         alt((primitives::kw("is"), primitives::kw("are"))).void(),
     )?;
-    (!family_tokens.is_empty()).then_some(AnthemAndGrantedTail {
+    let family = parse_every_subtype_family_tokens(family_tokens)?;
+    Some(AnthemAndGrantedTail {
         get_token,
         and_token,
-        tail_kind: AnthemGrantedTailKind::BeEverySubtype,
-        family_tokens,
+        tail_kind: AnthemGrantedTailKind::BeEverySubtype(family),
     })
 }
 
@@ -1265,10 +1280,11 @@ pub(crate) fn parse_subject_every_subtype_shape(
     }
     let subject_tokens = trim_lexed_commas(&clause_tokens[..be_token]);
     let family_tokens = trim_lexed_commas(&clause_tokens[be_token + 1..]);
-    (!subject_tokens.is_empty() && !family_tokens.is_empty()).then_some(SubjectEverySubtypeShape {
+    let family = parse_every_subtype_family_tokens(family_tokens)?;
+    (!subject_tokens.is_empty()).then_some(SubjectEverySubtypeShape {
         condition_tokens,
         subject_tokens,
-        family_tokens,
+        family,
     })
 }
 
@@ -1292,7 +1308,7 @@ pub(crate) fn parse_anthem_modifier_head(tokens: &[OwnedLexToken]) -> Option<Ant
         get_token,
         modifier_token,
         has_target: first_word_offset(&words, &["target"]).is_some(),
-        temporary: word_phrase_occurs(&words, &["until", "end", "of", "turn"]),
+        temporary: parse_static_grant_duration_fact(tokens).is_some(),
     })
 }
 

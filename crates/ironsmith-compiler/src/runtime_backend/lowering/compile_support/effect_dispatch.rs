@@ -1021,6 +1021,11 @@ fn compile_subject_verb_effect(
                 )
             })
         }
+        SubjectVerbActionAst::ChooseLandType { exclude_basic } => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::choose_land_type(subject.into_player_filter(), *exclude_basic)
+            })
+        }
         SubjectVerbActionAst::ChooseCardName { filter, tag } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();
@@ -2959,6 +2964,7 @@ fn compile_subject_verb_effect(
                 spec.clone()
             };
             let resolved_spec = if !ctx.iterated_player
+                && !ctx.iterated_object
                 && ctx.last_object_tag.as_deref() == Some(IT_TAG)
                 && *controller == ReturnControllerAst::Owner
                 && matches!(resolved_spec.base(), ChooseSpec::Iterated)
@@ -3113,6 +3119,7 @@ fn compile_subject_verb_effect(
                 spec = ChooseSpec::All(filter);
             }
             if !ctx.iterated_player
+                && !ctx.iterated_object
                 && ctx.last_object_tag.as_deref() == Some(IT_TAG)
                 && (ctx.last_it_choice_is_set
                     || (*zone == Zone::Battlefield
@@ -5507,9 +5514,7 @@ fn compile_subject_verb_effect(
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let from_graveyard = target_mentions_graveyard(target);
-            if from_graveyard
-                && !ctx.iterated_player
-                && format!("{spec:?}").contains("IteratedPlayer")
+            if from_graveyard && !ctx.iterated_player && choose_spec_mentions_iterated_player(&spec)
             {
                 replace_iterated_player_with_target_player_in_choose_spec(&mut spec);
             }
@@ -5911,13 +5916,36 @@ fn compile_subject_verb_effect(
                 },
             )
         }
-        SubjectVerbActionAst::PayMana { cost } => {
-            compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
-                Effect::new(crate::effects::PayManaEffect::new(
-                    cost.clone(),
-                    ChooseSpec::Player(subject.into_player_filter()),
-                ))
-            })
+        SubjectVerbActionAst::PayMana { cost, x_value } => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            let x_value = x_value
+                .as_ref()
+                .map(|value| subject.resolve_object_refs_and_bind_player_refs_in_value(value, ctx))
+                .transpose()?;
+            compile_player_effect_from_resolved_filter(
+                subject.into_player_filter(),
+                subject.into_choices(),
+                || {
+                    let mut effect = crate::effects::PayManaEffect::new(
+                        cost.clone(),
+                        ChooseSpec::Player(PlayerFilter::You),
+                    );
+                    if let Some(x_value) = x_value.clone() {
+                        effect = effect.with_x_value(x_value);
+                    }
+                    Effect::new(effect)
+                },
+                |filter| {
+                    let mut effect = crate::effects::PayManaEffect::new(
+                        cost.clone(),
+                        ChooseSpec::Player(filter),
+                    );
+                    if let Some(x_value) = x_value.clone() {
+                        effect = effect.with_x_value(x_value);
+                    }
+                    Effect::new(effect)
+                },
+            )
         }
         SubjectVerbActionAst::DoubleManaPool => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {

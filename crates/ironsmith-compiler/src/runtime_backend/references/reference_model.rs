@@ -23,6 +23,7 @@ pub(crate) struct ReferenceFrame {
     pub(crate) source_object_antecedent: bool,
     pub(crate) recent_player_choice_tags: Vec<String>,
     pub(crate) iterated_player: bool,
+    pub(crate) iterated_object: bool,
     pub(crate) auto_tag_object_targets: bool,
     pub(crate) force_auto_tag_object_targets: bool,
     pub(crate) allow_life_event_value: bool,
@@ -41,6 +42,7 @@ impl ReferenceFrame {
             source_object_antecedent: frame.source_object_antecedent,
             recent_player_choice_tags: frame.recent_player_choice_tags.clone(),
             iterated_player: frame.iterated_player,
+            iterated_object: frame.iterated_object,
             auto_tag_object_targets: frame.auto_tag_object_targets,
             force_auto_tag_object_targets: frame.force_auto_tag_object_targets,
             allow_life_event_value: frame.allow_life_event_value,
@@ -64,6 +66,7 @@ impl ReferenceFrame {
             source_object_antecedent: self.source_object_antecedent,
             recent_player_choice_tags: self.recent_player_choice_tags.clone(),
             iterated_player: self.iterated_player,
+            iterated_object: self.iterated_object,
             auto_tag_object_targets: self.auto_tag_object_targets,
             force_auto_tag_object_targets: self.force_auto_tag_object_targets,
             allow_life_event_value: self.allow_life_event_value,
@@ -102,6 +105,7 @@ impl<T: Clone + PartialEq> RefState<T> {
 pub(crate) struct ReferenceImports {
     pub(crate) last_object_tag: Option<TagKey>,
     pub(crate) last_it_choice_is_set: bool,
+    pub(crate) iterated_object: bool,
     pub(crate) last_player_filter: Option<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
     pub(crate) last_effect_id: Option<EffectId>,
@@ -112,6 +116,7 @@ impl ReferenceImports {
     pub(crate) fn is_empty(&self) -> bool {
         self.last_object_tag.is_none()
             && !self.last_it_choice_is_set
+            && !self.iterated_object
             && self.last_player_filter.is_none()
             && !self.source_object_antecedent
             && self.last_effect_id.is_none()
@@ -122,6 +127,7 @@ impl ReferenceImports {
         Self {
             last_object_tag: Some(tag.into()),
             last_it_choice_is_set: false,
+            iterated_object: false,
             ..Default::default()
         }
     }
@@ -130,6 +136,7 @@ impl ReferenceImports {
         Self {
             last_object_tag: frame.last_object_tag.as_ref().map(TagKey::from),
             last_it_choice_is_set: frame.last_it_choice_is_set,
+            iterated_object: frame.iterated_object,
             last_player_filter: frame.last_player_filter.clone(),
             source_object_antecedent: frame.source_object_antecedent,
             last_effect_id: frame.last_effect_id,
@@ -156,6 +163,7 @@ pub(crate) struct ReferenceEnv {
     pub(crate) last_effect_id: RefState<EffectId>,
     pub(crate) last_library_search_effect_id: RefState<EffectId>,
     pub(crate) iterated_player: bool,
+    pub(crate) iterated_object: bool,
     pub(crate) allow_life_event_value: bool,
     pub(crate) bind_unbound_x_to_last_effect: bool,
 }
@@ -171,6 +179,7 @@ impl Default for ReferenceEnv {
             last_effect_id: RefState::Unknown,
             last_library_search_effect_id: RefState::Unknown,
             iterated_player: false,
+            iterated_object: false,
             allow_life_event_value: false,
             bind_unbound_x_to_last_effect: false,
         }
@@ -198,6 +207,7 @@ impl ReferenceEnv {
                 imports.last_library_search_effect_id,
             ),
             iterated_player,
+            iterated_object: imports.iterated_object,
             allow_life_event_value,
             bind_unbound_x_to_last_effect,
         }
@@ -217,6 +227,7 @@ impl ReferenceEnv {
                 frame.last_library_search_effect_id,
             ),
             iterated_player: frame.iterated_player,
+            iterated_object: frame.iterated_object,
             allow_life_event_value: frame.allow_life_event_value,
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
         }
@@ -245,6 +256,7 @@ impl ReferenceEnv {
             source_object_antecedent: self.source_object_antecedent,
             recent_player_choice_tags: Vec::new(),
             iterated_player: self.iterated_player,
+            iterated_object: self.iterated_object,
             auto_tag_object_targets: auto_tag_object_targets || force_auto_tag_object_targets,
             force_auto_tag_object_targets,
             allow_life_event_value: self.allow_life_event_value,
@@ -345,6 +357,7 @@ impl ReferenceExports {
         ReferenceImports {
             last_object_tag: self.last_object_tag.clone().into_option(),
             last_it_choice_is_set: self.last_it_choice_is_set,
+            iterated_object: false,
             last_player_filter: self.last_player_filter.clone().into_option(),
             source_object_antecedent: self.source_object_antecedent,
             last_effect_id: self.last_effect_id.clone().into_option(),

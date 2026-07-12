@@ -612,21 +612,10 @@ pub fn apply_priority_response_with_dm(
                 mana_cost.as_ref(),
             );
 
-            let mut optional_costs_paid = game
+            let optional_costs_paid = game
                 .object(stack_id)
-                .map(|obj| OptionalCostsPaid::from_costs(&obj.optional_costs))
+                .map(|obj| obj.optional_costs_paid.clone())
                 .unwrap_or_default();
-            if player == game.turn.active_player
-                && matches!(
-                    game.turn.phase,
-                    crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
-                )
-            {
-                optional_costs_paid.mark_label_paid("CastDuringYourMainPhase");
-            }
-            if let Some(obj) = game.object_mut(stack_id) {
-                obj.optional_costs_paid = optional_costs_paid.clone();
-            }
 
             if needs_x {
                 // Extract target requirements for later (use stack_id since spell is on stack)

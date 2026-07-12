@@ -47,6 +47,7 @@ pub(crate) enum EnchantedObjectTargetKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TargetUnionShape {
+    PriorPlayerOrPlaneswalker,
     AttackedPlayerOrPlaneswalker,
     CreatureOrPlayer,
 }
@@ -106,6 +107,15 @@ pub(crate) fn parse_enchanted_object_target_kind(
 }
 
 pub(crate) fn parse_target_union_shape(words: &[&str]) -> Option<TargetUnionShape> {
+    if [
+        &["that", "player", "or", "planeswalker"][..],
+        &["that", "planeswalker", "or", "player"][..],
+    ]
+    .iter()
+    .any(|phrase| exact_phrase(words, phrase))
+    {
+        return Some(TargetUnionShape::PriorPlayerOrPlaneswalker);
+    }
     if phrase_choice_present(words, ATTACKED_PLAYER_OR_PLANESWALKER_PHRASES)
         && word_present(words, "attacking")
         && ["its", "it", "thats", "that"]
@@ -116,6 +126,11 @@ pub(crate) fn parse_target_union_shape(words: &[&str]) -> Option<TargetUnionShap
     }
     phrase_choice_present(words, CREATURE_OR_PLAYER_PHRASES)
         .then_some(TargetUnionShape::CreatureOrPlayer)
+}
+
+fn exact_phrase(words: &[&str], expected: &[&str]) -> bool {
+    let mut input: WordSliceInput<'_> = words;
+    parse_dynamic_phrase(&mut input, expected).is_ok() && input.is_empty()
 }
 
 pub(crate) fn parse_target_for_each_suffix(
@@ -221,6 +236,10 @@ mod tests {
 
     #[test]
     fn union_shapes_are_typed() {
+        assert_eq!(
+            parse_target_union_shape(&["that", "player", "or", "planeswalker"]),
+            Some(TargetUnionShape::PriorPlayerOrPlaneswalker)
+        );
         assert_eq!(
             parse_target_union_shape(&["player", "or", "planeswalker", "its", "attacking"]),
             Some(TargetUnionShape::AttackedPlayerOrPlaneswalker)

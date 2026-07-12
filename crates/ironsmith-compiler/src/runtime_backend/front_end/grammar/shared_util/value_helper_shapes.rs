@@ -43,30 +43,11 @@ pub(crate) enum AggregateKind {
     Greatest,
 }
 
-impl AggregateKind {
-    pub(crate) fn parser_text(self) -> &'static str {
-        match self {
-            Self::Total => "total",
-            Self::Greatest => "greatest",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AggregateValueKind {
     Power,
     Toughness,
     ManaValue,
-}
-
-impl AggregateValueKind {
-    pub(crate) fn parser_text(self) -> &'static str {
-        match self {
-            Self::Power => "power",
-            Self::Toughness => "toughness",
-            Self::ManaValue => "mana_value",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -252,13 +233,6 @@ pub(crate) fn starts_equal_to_opponents_you_have(words: &[&str]) -> bool {
 pub(crate) fn starts_or_power_toughness(words: &[&str]) -> bool {
     permission_shapes::prefix_words(words, &["or", "power"])
         || permission_shapes::prefix_words(words, &["or", "toughness"])
-}
-
-pub(crate) fn find_any_phrase_start(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
-    phrases
-        .iter()
-        .filter_map(|phrase| permission_shapes::find_words(words, phrase))
-        .min()
 }
 
 fn has_word(words: &[&str], expected: &str) -> bool {

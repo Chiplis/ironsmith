@@ -705,9 +705,9 @@ fn migrated_line_families_consume_typed_grammar_results() {
         (
             "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/activation_costs.rs",
             &[
-                "grammar::activation_costs::cant_shapes::{self, CantPattern}",
-                "cant_shapes::matches_cant_pattern(",
-                "grammar::conditions::parse_control_condition_words(",
+                "grammar::activation_costs::cant_shapes::{",
+                "cant_shapes::parse_direct_cant_fact_tokens(tokens)",
+                "cant_shapes::parse_attack_unless_condition_tokens(tokens)",
             ],
         ),
         (
@@ -715,7 +715,7 @@ fn migrated_line_families_consume_typed_grammar_results() {
             &[
                 "grammar::activation_restrictions::{",
                 "parse_static_restriction_condition_shape_tokens(tokens)",
-                "grammar::activation_restrictions::parse_activation_cast_limit_qualifier_words",
+                "restriction_grammar::parse_activation_cast_limit_qualifier_words",
             ],
         ),
         (
@@ -1135,7 +1135,7 @@ fn document_partner_parenthetical_trims_use_token_kinds() {
     let adapter = function_source(
         &caller,
         "fn partner_with_name_from_line",
-        "fn source_before_reminder_or_period",
+        "pub(super) fn run_combined_static_line_family",
     );
 
     assert!(
@@ -1236,8 +1236,9 @@ fn document_prefix_punctuation_checks_use_char_helpers() {
     }
 
     assert!(
-        numeric_result_prefix.contains("looks_like_numeric_result_prefix_lexed(&tokens)"),
-        "{relative} should classify numeric result prefixes through the lexed helper"
+        numeric_result_prefix
+            .contains("document_grammar::parse_numeric_result_prefix_tokens(&tokens)"),
+        "{relative} should classify numeric result prefixes through the typed document grammar"
     );
     for required in [
         "fn line_starts_with_lparen_token(line: &PreprocessedLine)",
@@ -2012,9 +2013,9 @@ fn keyword_static_draw_replacement_shape_gates_use_clause_shapes() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        "DRAW_REPLACEMENT_EXILE_TOP_PLAY_PREFIX_PATTERN.matches(clause)",
-        ".is_some_and(|tail| DRAW_REPLACEMENT_EXILE_TOP_PLAY_TAIL_PATTERN.matches(tail))",
+        "late_static_facts::parse_draw_replacement_exile_top_and_play_count(tokens)",
+        "StaticAbility::draw_replacement_exile_top_and_play(",
+        "count,",
     ] {
         assert!(
             parser.contains(required),
@@ -2125,18 +2126,17 @@ fn keyword_static_cost_target_specs_use_clause_shapes() {
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
-        "pub(crate) fn parse_this_spell_target_condition",
-        "pub(crate) fn parse_cost_modifier_prefix_condition",
+        "pub(crate) fn parse_this_spell_cost_condition",
+        "fn parse_conjoined_this_spell_cost_condition",
     );
 
     for required in [
-        "let target_clause = LexedClause::new(&target_tokens)",
-        "YOU_TARGET_PREFIX_PATTERN.matches(target_clause)",
-        "OPPONENT_TARGET_PREFIX_PATTERN.matches(target_clause)",
-        "PLAYER_TARGET_PREFIX_PATTERN.matches(target_clause)",
-        "let target_clause = LexedClause::new(target_tokens)",
-        "OPPONENT_OR_OPPONENTS_TARGET_PREFIX_PATTERN.matches(target_clause)",
-        "PLAYER_OR_PLAYERS_TARGET_PREFIX_PATTERN.matches(target_clause)",
+        "static_mid_facts::parse_known_spell_cost_condition(tokens)",
+        "Fact::Target(target)",
+        "static_mid_facts::CostTargetFact::You",
+        "static_mid_facts::CostTargetFact::Opponent",
+        "static_mid_facts::CostTargetFact::AnyPlayer",
+        "static_mid_facts::CostTargetFact::Object(filter)",
     ] {
         assert!(
             parser.contains(required),
@@ -2171,15 +2171,15 @@ fn keyword_static_this_spell_cost_condition_quantity_tails_use_clause_shapes() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        ".is_some_and(|tail| POISON_COUNTERS_TAIL_PATTERN.matches(tail))",
-        ".is_some_and(|tail| CARDS_IN_OPPONENT_GRAVEYARD_TAIL_PATTERN.matches(tail))",
-        ".is_some_and(|tail| LANDS_TAIL_PATTERN.matches(tail))",
-        ".is_some_and(|tail| MORE_CREATURES_THAN_YOU_TAIL_PATTERN.matches(tail))",
-        "TOTAL_CREATURE_CARDS_IN_ALL_GRAVEYARDS_TAIL_PATTERN.matches(tail)",
-        ".is_some_and(|tail| SPELLS_THIS_TURN_TAIL_PATTERN.matches(tail))",
-        ".is_some_and(|tail| CARDS_THIS_TURN_TAIL_PATTERN.matches(tail))",
-        ".is_some_and(|tail| CREATURES_THIS_TURN_TAIL_PATTERN.matches(tail))",
+        "static_mid_facts::parse_known_spell_cost_condition(tokens)",
+        "Fact::OpponentHasPoisonCountersOrMore(count)",
+        "Fact::OpponentHasCardsInGraveyardOrMore(count)",
+        "Fact::OpponentControlsLandsOrMore(count)",
+        "Fact::OpponentControlsMoreCreaturesThanYou(count)",
+        "Fact::TotalCreatureCardsInAllGraveyardsOrMore(count)",
+        "Fact::OpponentCastSpellsThisTurnOrMore(count)",
+        "Fact::OpponentDrewCardsThisTurnOrMore(count)",
+        "Fact::YouWereDealtDamageByCreaturesThisTurnOrMore(count)",
     ] {
         assert!(
             parser.contains(required),
@@ -2215,12 +2215,9 @@ fn keyword_static_all_creatures_are_color_uses_token_word_ranges() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        "let words = clause.words()",
-        "clause.between_word_range(are_idx + 1, words.len())",
-        ".filter_map(OwnedLexToken::as_word)",
-        ".between_word_range(0, are_idx)",
-        "parse_object_filter_lexed(subject_tokens, false)",
+        "type_and_color_facts::parse_subject_color_tokens(tokens)",
+        "parse_object_filter_lexed(fact.subject_tokens, false)",
+        "StaticAbility::set_colors(filter, fact.color)",
     ] {
         assert!(
             parser.contains(required),
@@ -2258,14 +2255,10 @@ fn keyword_static_subjects_are_basic_uses_token_word_ranges() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        "let words = clause.words()",
-        "clause.between_word_range(be_idx + 1, words.len())",
-        "BASIC_TAIL_PATTERN.matches(tail_clause)",
-        ".between_word_range(0, be_idx)",
-        "trim_lexed_commas(clause.tokens())",
-        "split_lexed_slices_on_and(subject_tokens)",
-        "parse_object_filter_lexed(subject_tokens, false)",
+        "type_and_color_facts::parse_subjects_are_basic_tokens(tokens)",
+        "split_lexed_slices_on_and(fact.subject_tokens)",
+        "parse_object_filter_lexed(fact.subject_tokens, false)",
+        "StaticAbility::add_supertypes(",
     ] {
         assert!(
             parser.contains(required),
@@ -2302,17 +2295,12 @@ fn keyword_static_land_type_parsers_use_token_word_ranges() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        "let words = clause.words()",
-        "clause.between_word_range(subtype_idx, words.len())",
-        ".filter_map(OwnedLexToken::as_word)",
-        "clause.between_word_range(0, be_idx)",
-        "parse_object_filter_lexed(subject_tokens, false)",
-        "subject_clause.words().contains_window_by(1",
-        "clause.between_word_range(be_idx + 1, words.len())",
-        "EVERY_BASIC_LAND_TYPE_ADDITION_TAIL_PATTERN.matches(after_be_clause)",
-        "clause.between_word_range(subtype_word_idx + 1, words.len())",
-        "LAND_TYPE_ADDITION_TAIL_PATTERN.matches(tail_clause)",
+        "type_and_color_facts::parse_basic_land_subtype_tokens(tokens)",
+        "parse_object_filter_lexed(fact.subject_tokens, false)",
+        "StaticAbility::set_land_subtypes(",
+        "type_and_color_facts::parse_land_type_addition_tokens(tokens)",
+        "type_and_color_facts::LandTypeAdditionFact::EveryBasic",
+        "type_and_color_facts::LandTypeAdditionFact::One",
     ] {
         assert!(
             parser.contains(required),
@@ -2353,12 +2341,9 @@ fn keyword_static_land_animation_uses_token_word_ranges() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        "let words = clause.words()",
-        "clause.between_word_range(be_idx + 3, words.len())",
-        "STILL_LAND_ANIMATION_TAIL_PATTERN.matches(tail_clause)",
-        ".between_word_range(0, be_idx)",
-        "parse_object_filter_lexed(filter_tokens, false)",
+        "type_and_color_facts::parse_land_animation_tokens(tokens)",
+        "parse_object_filter_lexed(fact.subject_tokens, false)",
+        "StaticAbility::set_base_power_toughness(filter, fact.power, fact.toughness)",
     ] {
         assert!(
             parser.contains(required),
@@ -2421,12 +2406,11 @@ fn keyword_static_heterogeneous_animation_attached_probe_uses_token_word_view() 
         "static_keyword_line_shapes::parse_animation_creature_word(&before_has_words)",
         "let clause_words = LexedClause::new(tokens).word_refs()",
         "let attached_subject = LexedClause::new(&subject_tokens)",
-        ".words()",
-        ".first()",
         "let before_has_clause = LexedClause::new(&before_has)",
         "let raw_before_has_words = before_has_clause.word_refs()",
+        "type_and_color_facts::parse_other_type_addition_tail_tokens(",
         ".between_word_range(tail_start_word, tail_end_word)",
-        ".is_some_and(|tail_clause| OTHER_TYPE_ADDITION_TAIL_PATTERN.matches(tail_clause))",
+        ".map(|tail_clause| tail_clause.tokens())",
     ] {
         assert!(
             consumer.contains(required),
@@ -2462,11 +2446,10 @@ fn keyword_static_pay_life_etb_gates_use_clause_shapes() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        "let words = clause.word_refs()",
-        "AS_THIS_CONTAINS_PAY_LIFE_PATTERN.matches(clause)",
-        "IF_YOU_DONT_PHRASE_PATTERN.matches(clause)",
-        ".is_some_and(|trailing| PAY_LIFE_ENTER_TAPPED_TAIL_PATTERN.matches(trailing))",
+        "late_static_facts::parse_pay_life_or_enter_tapped_tokens(tokens)",
+        "late_static_facts::PayLifeOrEnterTappedError::MissingPay",
+        "late_static_facts::PayLifeOrEnterTappedError::UnsupportedTail",
+        "StaticAbility::pay_life_or_enter_tapped(fact.amount)",
     ] {
         assert!(
             parser.contains(required),
@@ -2499,11 +2482,10 @@ fn keyword_static_copy_activated_abilities_gates_use_clause_shapes() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        ".is_some_and(|tail| HAS_ALL_ACTIVATED_ABILITIES_OF_PATTERN.matches(tail))",
-        "let filter_clause = LexedClause::new(&filter_tokens)",
-        ".is_some_and(|window| ACTIVATE_EACH_OF_THOSE_ONCE_TAIL_PATTERN.matches(window))",
-        ".is_some_and(|window| SAME_NAME_AS_SOURCE_CREATURE_PATTERN.matches(window))",
+        "late_static_facts::parse_copy_activated_abilities_tokens(tokens)",
+        "tokens[fact.filter_start_token..fact.filter_end_token]",
+        "fact.once_each_turn_word_start.is_some()",
+        "fact.exclude_source_name",
     ] {
         assert!(
             parser.contains(required),
@@ -2535,13 +2517,10 @@ fn keyword_static_choose_not_untap_uses_token_word_ranges() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        "YOU_MAY_CHOOSE_NOT_TO_UNTAP_PREFIX_PATTERN.matches(clause)",
-        "DURING_YOUR_UNTAP_STEP_TAIL_PATTERN.matches(clause)",
-        "let words = clause.words()",
-        "clause.between_word_range(6, words.len() - 4)",
-        "MAY_CHOOSE_NOT_UNTAP_SOURCE_SUBJECT_PATTERN.matches(subject_clause)",
-        "let subject = subject_clause.text()",
+        "late_static_facts::parse_may_choose_not_untap_tokens(tokens)",
+        "parser_token_word_refs(fact.subject_tokens)",
+        "fact.simple_source_subject",
+        "render_token_slice(fact.subject_tokens)",
     ] {
         assert!(
             parser.contains(required),
@@ -2581,21 +2560,18 @@ fn keyword_static_search_attack_land_and_retrace_gates_use_clause_shapes() {
     let retrace = function_source(
         &content,
         "pub(crate) fn parse_graveyard_cards_have_retrace_line",
-        "fn parse_retrace_grant_card_types",
+        "pub(crate) fn parse_cast_spells_from_hand_without_paying_mana_costs_line",
     );
 
     for required in [
-        "CONTROL_OPPONENTS_WHILE_SEARCHING_PATTERN.matches(LexedClause::new(tokens))",
-        "OPPONENT_SEARCH_EXILE_FOUND_CARDS_PATTERN.matches(LexedClause::new(tokens))",
-        "CAST_THIS_CARD_FROM_LIBRARY_WHILE_SEARCHING_PATTERN.matches(LexedClause::new(tokens))",
-        "ATTACHED_CONTROLLER_ATTACK_EACH_COMBAT_PATTERN.matches(clause)",
-        ".is_some_and(|tail| ATTACK_EACH_COMBAT_IF_ABLE_TAIL_PATTERN.matches(tail))",
-        "YOU_MAY_PLAY_PREFIX_PATTERN.matches(clause)",
-        ".is_some_and(|tail| UP_TO_PREFIX_PATTERN.matches(tail))",
-        ".is_some_and(|tail| ADDITIONAL_LAND_PLAY_TAIL_PATTERN.matches(tail))",
-        ".is_some_and(|tail| RETRACE_TAIL_PATTERN.matches(tail))",
-        "let Some(prefix_clause) = clause.between_word_range(prefix_start, have_idx) else",
-        "STATIC_IN_YOUR_GRAVEYARD_SUFFIX_PATTERN.matches(prefix_clause)",
+        "late_static_facts::is_control_opponents_while_searching(tokens)",
+        "late_static_facts::is_opponent_search_exile_found_cards(tokens)",
+        "late_static_facts::is_cast_this_card_from_library_while_searching(tokens)",
+        "late_static_facts::parse_attack_each_combat_if_able_tokens(tokens)",
+        "late_static_facts::AttackEachCombatFact::AttachedController",
+        "late_static_facts::parse_additional_land_play_count(tokens)",
+        "late_static_facts::parse_retrace_grant_tokens(tokens)",
+        "card_types: fact.card_types",
     ] {
         assert!(
             search.contains(required)
@@ -2738,10 +2714,8 @@ fn keyword_static_surveilled_graveyard_permission_uses_clause_shape() {
     );
 
     assert!(
-        parser.contains(
-            "SURVEILLED_GRAVEYARD_PLAY_LIFE_COST_PATTERN.matches(LexedClause::new(tokens))"
-        ),
-        "{relative} should parse surveilled graveyard life-cost permission through a clause shape"
+        parser.contains("late_static_facts::is_surveilled_graveyard_play_life_cost(tokens)"),
+        "{relative} should consume the typed surveilled graveyard permission fact"
     );
     for forbidden in [
         "let words = parser_token_word_refs(tokens)",
@@ -2768,11 +2742,10 @@ fn keyword_static_you_may_static_grant_uses_clause_shapes() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        "SOURCE_LINKED_EXILE_CAST_PREFIX_PATTERN.matches(clause)",
-        "ANY_MANA_CAST_SUFFIX_PATTERN.matches(clause)",
-        "clause.word_len() > 19 + 11",
-        "CAST_SINGLE_SPELL_PATTERN.matches(clause)",
+        "late_static_facts::is_source_linked_exile_cast_with_any_mana(tokens)",
+        "parse_permission_clause_spec(tokens)?",
+        "late_static_facts::contains_singular_cast_spell(tokens)",
+        "crate::grant::Grantable::AlternativeCast(method)",
     ] {
         assert!(
             parser.contains(required),
@@ -2806,10 +2779,9 @@ fn keyword_static_play_from_haste_followup_uses_clause_shape() {
     );
 
     assert!(
-        parser.contains(
-            "CAST_CREATURE_THIS_WAY_HASTE_SENTENCE_PATTERN.matches(LexedClause::new(haste_sentence))"
-        ),
-        "{relative} should parse cast-this-way haste follow-up through a clause shape"
+        parser.contains("late_static_facts::parse_play_permission_with_haste_followup(tokens)")
+            && parser.contains("parse_permission_clause_spec(permission_sentence)?"),
+        "{relative} should consume a typed permission sentence after the grammar validates the haste follow-up"
     );
     for forbidden in [
         "let haste_words = parser_token_word_refs(haste_sentence)",
@@ -2840,10 +2812,10 @@ fn keyword_static_count_as_card_named_uses_token_clause_shapes() {
 
     for required in [
         "fn parse_count_as_card_named_for_spell_effect_line(tokens: &[OwnedLexToken])",
-        "let clause = LexedClause::new(tokens)",
-        "COUNT_AS_CARD_NAMED_GRAVEYARD_PREFIX_PATTERN.matches(clause)",
-        ".between_word_range(count_idx, count_idx + 6)",
-        ".is_some_and(|tail| COUNT_IT_AS_A_CARD_NAMED_PATTERN.matches(tail))",
+        "let words = LexedClause::new(tokens).word_refs()",
+        "early_static_facts::parse_count_as_card_named_shape_words(&words)",
+        "words.get(shape.spell_name_words)?",
+        "words.get(shape.counted_name_words)?",
         "parse_count_as_card_named_for_spell_effect_line(tokens)",
     ] {
         assert!(
@@ -2898,7 +2870,8 @@ fn keyword_static_ward_wrapper_uses_token_shapes() {
     for required in [
         "tokens.first().is_some_and(|token| token.is_word(\"ward\"))",
         "keyword_static_lines::parse_ward_abilities_dont_trigger_marker_tokens(tokens)",
-        "let cost_tokens = trim_commas(&tokens[1..])",
+        "keyword_static_lines::parse_ward_cost_tokens(tokens)",
+        "let cost_tokens = trim_commas(ward.cost_tokens)",
         "parse_payment_clause_as_total_cost(&cost_tokens)",
         "render_token_slice(tokens)",
     ] {
@@ -3789,21 +3762,21 @@ fn predicate_or_parser_uses_token_slices_for_split_and_prefix_fallback() {
 #[test]
 fn combat_restriction_control_conditions_use_shared_capture_parser() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/activation_costs.rs";
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/activation_costs/cant_shapes/attack_unless.rs";
     let content = read_repo_file(&root, relative);
     let helper = function_source(
         &content,
-        "fn player_controls_at_least_condition_from_tail",
-        "fn control_creature_with_power_condition_from_tail",
+        "fn parse_controller_control_requirement_inner",
+        "fn parse_minimum_count_lexed",
     );
 
     assert!(
-        helper.contains("grammar::conditions::parse_control_condition")
-            && helper.contains("ControlConditionOptions")
-            && helper.contains("control_condition.quantity_token_count == 0")
-            && helper.contains("control_condition.at_least_count()")
+        helper.contains("conditions::parse_control_condition")
+            && helper.contains("conditions::ControlConditionOptions")
+            && helper.contains("parsed.has_explicit_quantity()")
+            && helper.contains(".at_least_count()")
             && helper.contains("ConditionExpr::PlayerHasAtLeast"),
-        "{relative} should parse combat-restriction control tails through the shared captured control-condition parser"
+        "{relative} should parse combat-restriction control tails into a typed condition through the shared capture parser"
     );
     for forbidden in [
         "parse_greater_than_or_equal_count_prefix_from_words(tail.get(2..)",
@@ -4196,21 +4169,19 @@ fn this_spell_cost_conditions_use_clause_shapes_and_life_change_capture_parser()
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
-        "pub(crate) fn parse_this_spell_target_condition",
+        "pub(crate) fn parse_this_spell_cost_condition",
         "fn parse_conjoined_this_spell_cost_condition",
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        "IT_TARGETS_PREFIX_PATTERN.matches(clause)",
-        "THIS_SPELL_TARGETS_PREFIX_PATTERN.matches(clause)",
-        "let target_clause = clause.after_words(target_start)?",
         "parse_player_life_change_this_turn_condition(tokens)",
         "this_spell_cost_condition_from_life_change_this_turn",
-        "LIFE_TOTAL_LESS_THAN_STARTING_PATTERN.matches(clause)",
-        "YOU_ATTACKED_THIS_TURN_PATTERN.matches(clause)",
-        "OPPONENT_CONTROLS_PREFIX_PATTERN.matches(clause)",
-        "ASSASSIN_OR_COMMANDER_COMBAT_DAMAGE_PATTERN.matches(clause)",
+        "static_mid_facts::parse_known_spell_cost_condition(tokens)",
+        "Fact::LifeTotalLessThanStarting",
+        "Fact::AttackedThisTurn",
+        "Fact::Target(target)",
+        "Fact::OpponentControlsLandsOrMore(count)",
+        "Fact::AssassinOrCommanderDealtCombatDamage",
     ] {
         assert!(
             parser.contains(required),
@@ -4521,10 +4492,8 @@ fn keyword_static_marker_support_uses_token_shapes() {
     }
 
     for expected in [
-        "let clause = LexedClause::new(tokens)",
-        "TOUGHNESS_CREWS_VEHICLES_MARKER_PATTERN.matches(clause)",
-        "POWER_GREATER_CREWS_VEHICLES_MARKER_PATTERN.matches(clause)",
-        "LOYALTY_COUNTER_INSTEAD_OF_CREW_COST_MARKER_PATTERN.matches(clause)",
+        "is_core_keyword_marker_text(&text)",
+        "early_static_facts::parse_early_keyword_marker_tokens(tokens).is_some()",
     ] {
         assert!(
             marker_support.contains(expected),
@@ -4556,9 +4525,8 @@ fn keyword_static_damage_doubling_marker_uses_lexed_clause_shape() {
     );
 
     for required in [
-        "let clause = LexedClause::new(tokens)",
-        "DAMAGE_DOUBLING_MANA_VALUE_MARKER_PATTERN.matches(clause)",
-        "DAMAGE_DOUBLING_TO_TARGET_PATTERN.matches(clause)",
+        "early_static_facts::parse_damage_doubling_mana_value_marker_tokens(tokens)",
+        "keyword_static_marker(tokens)",
     ] {
         assert!(
             parser.contains(required),
@@ -5181,13 +5149,12 @@ fn chosen_option_context_flow_uses_typed_cst_ir_fact() {
         "{ir_relative} should carry typed chosen-option and threshold facts"
     );
 
-    let relative =
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/rewrite_sentence_grouping.rs";
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_line_parsing/chosen_options.rs";
     let content = read_repo_file(&root, relative);
     let helper = function_source(
         &content,
         "pub(crate) fn condition_for_chosen_option",
-        "pub(crate) fn strip_non_keyword_label_prefix_for_lowering_lexed",
+        "pub(crate) fn wrap_chosen_option_static_chunk",
     );
 
     assert!(
@@ -5322,9 +5289,9 @@ fn semantic_line_hideaway_special_case_uses_token_words() {
 
     assert!(
         helper.contains("try_lower_hideaway_tokens(parse_tokens")
-            && helper.contains("parser_token_word_refs(parse_tokens)")
-            && helper.contains("render_token_slice(parse_tokens)"),
-        "{relative} should lower hideaway special cases and diagnostics from parse tokens"
+            && helper.contains("semantic_grammar::parse_hideaway_keyword_tokens(parse_tokens)?")
+            && helper.contains("hideaway_line_ast(shape.count)"),
+        "{relative} should lower hideaway from the typed grammar capture"
     );
     for forbidden in [
         "try_lower_hideaway_tokens(parse_tokens, line.info.raw_line.as_str())",

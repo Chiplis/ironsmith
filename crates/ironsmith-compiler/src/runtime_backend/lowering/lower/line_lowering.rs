@@ -229,7 +229,10 @@ fn rewrite_prior_token_placeholder_effect(
             player,
             ..
         } = &mut subject_verb.action
-        && matches!(name.as_str(), "of those" | "those")
+        && matches!(
+            definition,
+            crate::runtime_backend::token_definition::TokenDefinitionSpec::PriorCreated
+        )
     {
         *name = token_info.0.clone();
         *definition = token_info.1.clone();
@@ -297,7 +300,10 @@ fn rewrite_prior_token_placeholder_effect_from_template(
             granted_abilities,
             ..
         } = &mut subject_verb.action
-        && matches!(name.as_str(), "of those" | "those")
+        && matches!(
+            definition,
+            crate::runtime_backend::token_definition::TokenDefinitionSpec::PriorCreated
+        )
     {
         *name = template_name.clone();
         *definition = template_definition.clone();
@@ -332,8 +338,11 @@ fn rewrite_prior_token_placeholders_from_template(
 
 fn effect_references_prior_token_placeholder(effect: &EffectAst) -> bool {
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::CreateTokenWithMods { name, .. } = &subject_verb.action
-        && matches!(name.as_str(), "of those" | "those")
+        && let SubjectVerbActionAst::CreateTokenWithMods { definition, .. } = &subject_verb.action
+        && matches!(
+            definition,
+            crate::runtime_backend::token_definition::TokenDefinitionSpec::PriorCreated
+        )
     {
         return true;
     }
@@ -1390,6 +1399,25 @@ fn lower_statement_chunk(
     let compiled = lowered.effects;
     state.latest_spell_exports = lowered.exports;
 
+    // A front-end bundle that already owns both sides of a kicked
+    // self-replacement is a complete semantic program. Do not reinterpret its
+    // trailing "instead" surface as a follow-up to the program it just built.
+    if matches!(
+        effects_ast.as_slice(),
+        [EffectAst::SelfReplacement {
+            predicate: PredicateAst::ThisSpellWasKicked,
+            attach_to_previous_ability: false,
+            ..
+        }]
+    ) {
+        if let Some(existing) = builder.spell_effect.as_mut() {
+            existing.extend(compiled);
+        } else {
+            builder.spell_effect = Some(compiled);
+        }
+        return Ok(builder);
+    }
+
     let statement_facts = &semantic_facts.statement;
     let instead_semantics = statement_facts.instead_followup.semantics;
     let trailing_instead_if_condition = if matches!(
@@ -1770,7 +1798,46 @@ fn lower_optional_cost_chunk(
     let NormalizedLineChunk::OptionalCost(cost) = parsed else {
         unreachable!("optional-cost lowerer received mismatched chunk");
     };
-    Ok(builder.optional_cost(cost))
+    let kind = cost.kind.clone();
+    let reference = cost.cost_ref();
+    let mut builder = builder.optional_cost(cost);
+    match kind {
+        crate::cost::OptionalCostKind::Squad => {
+            builder = builder.with_ability(Ability::triggered(
+                crate::triggers::Trigger::this_enters_battlefield(),
+                vec![crate::effect::Effect::new(
+                    crate::effects::CreateTokenCopyEffect::new(
+                        ChooseSpec::Source,
+                        crate::effect::Value::TimesPaidLabel(reference),
+                        PlayerFilter::You,
+                    ),
+                )],
+            ));
+        }
+        crate::cost::OptionalCostKind::Offspring => {
+            builder = builder.with_ability(Ability {
+                kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                    trigger: crate::triggers::Trigger::this_enters_battlefield(),
+                    effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                        crate::effect::Effect::new(
+                            crate::effects::CreateTokenCopyEffect::new(
+                                ChooseSpec::Source,
+                                crate::effect::Value::WasPaidLabel(reference.clone()),
+                                PlayerFilter::You,
+                            )
+                            .set_base_power_toughness(1, 1),
+                        ),
+                    ]),
+                    choices: vec![],
+                    intervening_if: Some(crate::effect::Condition::ThisSpellPaidLabel(reference)),
+                    presentation_label: None,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            });
+        }
+        _ => {}
+    }
+    Ok(builder)
 }
 
 fn lower_gift_keyword_chunk(

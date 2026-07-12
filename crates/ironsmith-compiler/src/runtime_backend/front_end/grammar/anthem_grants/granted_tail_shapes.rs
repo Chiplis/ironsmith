@@ -283,6 +283,21 @@ mod tests {
         assert!(!split.base_subject_tokens.is_empty());
         assert!(!split.addition_tokens.is_empty());
 
+        let subject = lex_line(
+            "Clues you control are Equipment in addition to their other types and",
+            0,
+        )
+        .unwrap();
+        let split = split_type_addition_subject(&subject).unwrap();
+        assert_eq!(
+            super::super::super::super::lexer::render_token_slice(split.base_subject_tokens),
+            "Clues you control"
+        );
+        assert_eq!(
+            super::super::super::super::lexer::render_token_slice(split.addition_tokens),
+            "are Equipment in addition to their other types"
+        );
+
         let ability = lex_line("flying as long as you control an artifact", 0).unwrap();
         let split =
             split_granted_ability_condition(&ability, GrantedAbilityConditionKind::AsLongAs)

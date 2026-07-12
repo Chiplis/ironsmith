@@ -8,35 +8,6 @@ use crate::cards::builders::TextSpan;
 use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordPiece, trim_lexed_commas};
 use super::primitives as grammar;
 
-// Transitional names remain as import aliases while their callers migrate. The
-// implementations below are typed winnow entrypoints rather than parser-shape
-// helpers; aliases keep this namespace move source-compatible.
-pub(crate) use self::{
-    complete_token_word_sequence as token_slice_words_eq,
-    complete_token_word_sequence_choice as token_slice_words_eq_any,
-    complete_word_sequence_at as word_slice_eq_at,
-    complete_word_sequence_choice as word_slice_eq_any,
-    complete_word_sequence_choice_at as word_slice_eq_any_at,
-    complete_word_sequence_surface as word_slice_eq, every_word_present as words_have_all,
-    locate_last_token_word as rfind_token_word, locate_last_word_by as word_slice_rfind_word_where,
-    locate_token_kind as find_token_kind, locate_token_word as find_token_word,
-    locate_token_word_choice as find_token_any_word, locate_word as word_slice_find_word,
-    locate_word_by as word_slice_find_word_where, locate_word_choice as word_slice_find_any_word,
-    locate_word_sequence as word_slice_find_phrase_start,
-    locate_word_sequence_choice_span as word_slice_find_any_phrase_span,
-    token_prefix_choice_present as tokens_start_with_any,
-    token_prefix_present as tokens_start_with, token_prefix_present_at as tokens_start_with_at,
-    token_word_suffix_present as tokens_end_with, word_choice_absent as words_have_none,
-    word_choice_present as words_have_any, word_prefix_choice_present as words_start_with_any,
-    word_prefix_present as words_start_with, word_prefix_present_at as words_start_with_at,
-    word_present as words_have,
-    word_sequence_choice_or_empty_present as words_have_any_phrase_or_empty,
-    word_sequence_choice_present as words_have_any_phrase,
-    word_sequence_or_empty_present as words_have_phrase_or_empty,
-    word_sequence_present as words_have_phrase, word_suffix_choice_present as words_end_with_any,
-    word_suffix_present as words_end_with,
-};
-
 type WordInput<'a> = &'a [&'a str];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

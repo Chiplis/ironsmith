@@ -2116,11 +2116,21 @@ impl BecomeColorChoiceEffect {
 pub struct PayManaEffect {
     pub cost: crate::mana::ManaCost,
     pub player: ChooseSpec,
+    pub x_value: Option<Value>,
 }
 
 impl PayManaEffect {
     pub fn new(cost: crate::mana::ManaCost, player: ChooseSpec) -> Self {
-        Self { cost, player }
+        Self {
+            cost,
+            player,
+            x_value: None,
+        }
+    }
+
+    pub fn with_x_value(mut self, x_value: Value) -> Self {
+        self.x_value = Some(x_value);
+        self
     }
 }
 

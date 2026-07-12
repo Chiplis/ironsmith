@@ -13,7 +13,7 @@ use super::grammar::primitives::split_lexed_slices_on_or;
 use super::keyword_static::parse_pt_modifier;
 use super::lexer::{OwnedLexToken, TokenWordView, parser_token_word_refs, token_slice_at_is};
 use super::util::{is_demonstrative_object_head, is_source_reference_words, non_article_word_refs};
-use super::value_helpers::parse_filter_comparison_tokens;
+use crate::runtime_backend::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
 
 #[cfg(test)]
 const OBJECT_FILTER_ENCHANTED_TAG: &str = "enchanted";

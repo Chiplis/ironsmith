@@ -10,6 +10,7 @@ use super::activation_helpers::{
     strip_leading_article_tokens, trim_edge_punctuation_tokens, value_contains_unbound_x,
     word_refs_at_is_article, word_refs_except,
 };
+use super::cst_lowering::lower_activation_cost_cst;
 use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
 use super::effect_sentences::find_verb;
 use super::effect_sentences::{
@@ -19,22 +20,23 @@ use super::effect_sentences::{
     parse_subtype_word, parse_supertype_word, replace_unbound_x_in_effect_anywhere,
     strip_leading_articles, trim_edge_punctuation,
 };
+use super::grammar::activation_costs::parse_activation_cost_tokens;
 use super::grammar::primitives as grammar;
 use super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_cost_modifier_amount, parse_cost_modifier_mana_cost,
     parse_dynamic_cost_modifier_value, parse_static_condition_clause, parse_value_binding_clause,
     parse_value_binding_clause_lexed,
 };
-use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{
-    LexedClause, OwnedLexToken, TokenKind, contains_token_kind, token_slice_at_is,
-    token_slice_at_is_any, token_slice_first_is, token_slice_first_is_any, token_slice_first_kind,
-    tokens_start_with, tokens_start_with_at, word_slice_at_is, word_slice_at_is_any, word_slice_eq,
-    word_slice_eq_any, word_slice_find_phrase_start_or_zero, word_slice_first_is,
-    word_slice_first_is_any, word_slice_last_is, words_end_with, words_end_with_any, words_have,
-    words_have_all, words_have_any, words_have_any_phrase, words_have_any_phrase_or_empty,
-    words_have_phrase, words_have_phrase_or_empty, words_start_with, words_start_with_any,
-    words_start_with_at,
+    LexedClause, OwnedLexToken, TokenKind, complete_word_sequence_choice,
+    complete_word_sequence_surface, contains_token_kind, every_word_present, token_prefix_present,
+    token_prefix_present_at, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
+    token_slice_first_is_any, token_slice_first_kind, word_choice_present,
+    word_prefix_choice_present, word_prefix_present, word_prefix_present_at, word_present,
+    word_sequence_choice_or_empty_present, word_sequence_choice_present,
+    word_sequence_or_empty_present, word_sequence_present, word_slice_at_is, word_slice_at_is_any,
+    word_slice_find_phrase_start_or_zero, word_slice_first_is, word_slice_first_is_any,
+    word_slice_last_is, word_suffix_choice_present, word_suffix_present,
 };
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::token_primitives::{
@@ -80,6 +82,7 @@ pub(crate) mod choice_object_clauses;
 pub(crate) mod keyword_action_costs;
 #[path = "keyword_activated_lines.rs"]
 pub(crate) mod keyword_activated_lines;
+#[path = "../../front_end/grammar/trigger_clauses/semantic.rs"]
 pub(crate) mod trigger_clause_core;
 pub(crate) mod trigger_subject_filters;
 

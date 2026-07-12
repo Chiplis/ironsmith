@@ -1,5 +1,5 @@
 use super::super::grammar::effects as search_grammar;
-use super::super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
+use super::super::grammar::primitives as grammar;
 use super::super::grammar::values::parse_value_comparison_tokens;
 use super::super::lexer::{
     OwnedLexToken, find_token_word_sequence_span, token_word_refs, trim_lexed_commas,
@@ -61,35 +61,6 @@ pub(crate) fn parse_search_library_sentence(
 #[allow(dead_code)]
 pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
     search_grammar::search_library_has_unsupported_top_position_probe(words)
-}
-
-pub(crate) fn parse_search_library_disjunction_filter(
-    filter_tokens: &[OwnedLexToken],
-) -> Option<ObjectFilter> {
-    let segments = split_lexed_slices_on_or(filter_tokens);
-    if segments.len() < 2 {
-        return None;
-    }
-
-    let mut branches = Vec::new();
-    for segment in segments {
-        let trimmed = trim_commas(segment);
-        if trimmed.is_empty() {
-            return None;
-        }
-        let Ok(filter) = parse_object_filter_lexed(&trimmed, false) else {
-            return None;
-        };
-        branches.push(filter);
-    }
-
-    if branches.len() < 2 {
-        return None;
-    }
-
-    let mut filter = ObjectFilter::default();
-    filter.any_of = branches;
-    Some(filter)
 }
 
 pub(crate) fn parse_restriction_duration_lexed(

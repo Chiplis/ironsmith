@@ -1,97 +1,27 @@
 use super::*;
-use crate::runtime_backend::effect_sentences::find_verb_words;
 use crate::runtime_backend::grammar::choices::{
-    ChoiceBattlefieldController, ChoiceBecomeKind, ChoiceBecomeSubject, ChoiceBecomeSyntaxError,
-    ChoiceClauseActor, ChoiceObjectClauseKind, ChoiceObjectClauseSyntaxError,
-    ChoiceObjectCountSource, ChoiceObjectFilterFacts, ChoicePlayerClauseSyntaxError,
+    ChoiceBattlefieldController, ChoiceBecomeKind, ChoiceBecomeSyntaxError, ChoiceClauseActor,
+    ChoiceObjectClauseSyntaxError, ChoiceObjectCountSource, ChoicePlayerClauseSyntaxError,
     ChoiceTypePhraseSyntaxError, ChosenCantBlockSyntaxError, TargetPlayerChoiceActor,
+    TypedChoiceBecomeSubject, TypedChoiceObjectClauseKind,
     parse_choice_basic_land_type_phrase_words, parse_choice_battlefield_move_shape,
-    parse_choice_become_shape,
     parse_choice_card_type_phrase_words as parse_typed_choice_card_type_phrase_words,
     parse_choice_card_type_reveal_shape_words,
     parse_choice_color_phrase_words as parse_typed_choice_color_phrase_words,
     parse_choice_creature_type_phrase_words as parse_typed_choice_creature_type_phrase_words,
     parse_choice_land_type_phrase_words as parse_typed_choice_land_type_phrase_words,
-    parse_choice_library_move_shape, parse_choice_object_clause_tokens,
-    parse_choice_player_clause_tokens,
+    parse_choice_library_move_shape, parse_choice_player_clause_tokens,
     parse_choice_player_phrase_words as parse_typed_choice_player_phrase_words,
-    parse_chosen_cant_block_shape, parse_target_player_choice_tokens, parse_that_type_tokens,
+    parse_that_type_tokens, parse_typed_choice_become_shape,
+    parse_typed_choice_object_clause_tokens, parse_typed_chosen_cant_block_tokens,
+    parse_typed_target_player_choice_tokens,
 };
-
-fn expand_graveyard_or_hand_disjunction_filter(
-    mut filter: ObjectFilter,
-    facts: ChoiceObjectFilterFacts,
-) -> ObjectFilter {
-    if !facts.graveyard_and_hand {
-        return filter;
-    }
-
-    filter.zone = None;
-    filter.controller = None;
-    filter.any_of = vec![
-        ObjectFilter {
-            zone: Some(Zone::Graveyard),
-            ..ObjectFilter::default()
-        },
-        ObjectFilter {
-            zone: Some(Zone::Hand),
-            ..ObjectFilter::default()
-        },
-    ];
-    filter
-}
-
-fn expand_tagged_hand_or_graveyard_disjunction_filter(
-    mut filter: ObjectFilter,
-    facts: ChoiceObjectFilterFacts,
-) -> ObjectFilter {
-    if !facts.tagged_graveyard_disjunction {
-        return filter;
-    }
-    let graveyard_arm_is_plain_card = facts.graveyard_arm_is_plain_card;
-
-    let mut hand_arm = filter.clone();
-    hand_arm.zone = Some(Zone::Hand);
-    hand_arm.controller = None;
-    hand_arm.owner = None;
-    hand_arm.any_of.clear();
-    if !hand_arm
-        .tagged_constraints
-        .iter()
-        .any(|constraint| constraint.tag.as_str() == IT_TAG)
-    {
-        hand_arm.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
-    }
-
-    let mut graveyard_arm = filter.clone();
-    graveyard_arm.zone = Some(Zone::Graveyard);
-    graveyard_arm.any_of.clear();
-    graveyard_arm
-        .tagged_constraints
-        .retain(|constraint| constraint.tag.as_str() != IT_TAG);
-    if graveyard_arm_is_plain_card {
-        graveyard_arm.excluded_card_types.clear();
-    }
-
-    filter.zone = None;
-    filter.controller = None;
-    filter.owner = None;
-    filter.tagged_constraints.clear();
-    if graveyard_arm_is_plain_card {
-        filter.excluded_card_types.clear();
-    }
-    filter.any_of = vec![hand_arm, graveyard_arm];
-    filter
-}
 
 pub(crate) fn parse_target_player_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let parsed = match parse_target_player_choice_tokens(tokens) {
+    let parsed = match parse_typed_target_player_choice_tokens(tokens) {
         Ok(Some(parsed)) => parsed,
         Ok(None) => return Ok(None),
         Err(ChoiceObjectClauseSyntaxError::MissingObject) => {
@@ -106,26 +36,20 @@ pub(crate) fn parse_target_player_choose_objects_clause(
                 clause_words.join(" ")
             )));
         }
+        Err(ChoiceObjectClauseSyntaxError::UnsupportedFilter) => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported chosen object filter in target-player choose clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
     };
-    if parsed.filter_is_player_target {
-        return Ok(None);
-    }
-    if find_verb(parsed.filter_tokens).is_some() {
-        return Ok(None);
-    }
 
     let mut chooser = match parsed.actor {
         TargetPlayerChoiceActor::TargetPlayer => PlayerAst::Target,
         TargetPlayerChoiceActor::TargetOpponent => PlayerAst::TargetOpponent,
         TargetPlayerChoiceActor::ThatPlayer | TargetPlayerChoiceActor::Voter => PlayerAst::That,
     };
-    let mut choose_filter = parse_object_filter(parsed.filter_tokens, false).map_err(|_| {
-        CardTextError::ParseError(format!(
-            "unsupported chosen object filter in target-player choose clause (clause: '{}')",
-            clause_words.join(" ")
-        ))
-    })?;
-    choose_filter = expand_graveyard_or_hand_disjunction_filter(choose_filter, parsed.filter_facts);
+    let mut choose_filter = parsed.filter;
     if chooser == PlayerAst::That
         && choose_filter.controller.is_none()
         && choose_filter.owner.is_none()
@@ -169,9 +93,9 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
     let trimmed_tokens = trim_edge_punctuation(tokens);
     let tokens = trimmed_tokens.as_slice();
     let clause_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
-    let parsed = match parse_choice_object_clause_tokens(tokens) {
-        Ok(Some(ChoiceObjectClauseKind::Object(parsed))) => parsed,
-        Ok(Some(ChoiceObjectClauseKind::CardName)) | Ok(None) => return Ok(None),
+    let parsed = match parse_typed_choice_object_clause_tokens(tokens) {
+        Ok(Some(TypedChoiceObjectClauseKind::Object(parsed))) => parsed,
+        Ok(Some(TypedChoiceObjectClauseKind::CardName)) | Ok(None) => return Ok(None),
         Err(ChoiceObjectClauseSyntaxError::MissingObject) => {
             return Err(CardTextError::ParseError(format!(
                 "missing chosen object after choose clause (clause: '{}')",
@@ -184,81 +108,27 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
                 clause_words.join(" ")
             )));
         }
+        Err(ChoiceObjectClauseSyntaxError::UnsupportedFilter) => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported chosen object filter in choose clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
     };
-    let choose_words_storage = parsed.filter_words;
-    let choose_words = choose_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
     let references_it = parsed.references.references_it;
-    let references_container_it = parsed.references.references_container_it;
-    let explicit_container_reference = parsed.references.explicit_container_reference;
-    let filter_facts = parsed.filter_facts;
     let count_value = parsed.count_source.map(|source| match source {
         ChoiceObjectCountSource::CardsDiscardedThisWay => {
             Value::Count(ObjectFilter::tagged(TagKey::from(IT_TAG)))
         }
     });
-
-    let controller_tail = crate::runtime_backend::object_filters::parse_simple_object_filter_words(
-        &choose_words,
-        false,
-    )
-    .is_some_and(|filter| filter.controller.is_some());
-    if find_verb_words(&choose_words).is_some() && !controller_tail {
-        return Ok(None);
-    }
-
-    let mut choose_filter = if references_it && filter_facts.bare_card {
-        ObjectFilter::default()
-    } else {
-        crate::runtime_backend::object_filters::parse_object_filter_words(&choose_words, false)
-            .map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported chosen object filter in choose clause (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?
-    };
-    choose_filter = expand_graveyard_or_hand_disjunction_filter(choose_filter, filter_facts);
-    if references_it {
-        if explicit_container_reference
-            && matches!(choose_filter.zone, None | Some(Zone::Battlefield))
-        {
-            choose_filter.zone = Some(Zone::Hand);
-        } else if references_container_it && choose_filter.zone.is_none() {
-            choose_filter.zone = Some(Zone::Hand);
-        }
-        if !choose_filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG)
-        {
-            choose_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
-                    relation: TaggedOpbjectRelation::IsTaggedObject,
-                });
-        }
-        choose_filter =
-            expand_tagged_hand_or_graveyard_disjunction_filter(choose_filter, filter_facts);
-    }
-    if matches!(
-        choose_filter.zone,
-        Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile)
-    ) {
-        choose_filter.controller = None;
-    }
+    let mut choose_filter = parsed.filter;
     let chooser = match parsed.actor {
         ChoiceClauseActor::Implicit => PlayerAst::Implicit,
         ChoiceClauseActor::You => PlayerAst::You,
     };
 
-    if references_it {
-        choose_filter.controller = None;
-        choose_filter.owner = None;
-    } else if chooser == PlayerAst::You
+    if !references_it
+        && chooser == PlayerAst::You
         && choose_filter.controller.is_none()
         && choose_filter.owner.is_none()
         && choose_filter.could_be_targeted_by.is_none()
@@ -307,7 +177,7 @@ pub(crate) fn parse_target_player_chooses_then_other_cant_block(
     }
 
     let second_words = crate::runtime_backend::token_word_refs(second);
-    let shape = match parse_chosen_cant_block_shape(second) {
+    let shape = match parse_typed_chosen_cant_block_tokens(second) {
         Ok(Some(shape)) => shape,
         Ok(None) => return Ok(None),
         Err(ChosenCantBlockSyntaxError::MissingSubject) => {
@@ -322,18 +192,15 @@ pub(crate) fn parse_target_player_chooses_then_other_cant_block(
                 second_words.join(" ")
             )));
         }
-    };
-
-    let mut restriction_filter = if shape.bare_other_reference {
-        ObjectFilter::default()
-    } else {
-        parse_object_filter(shape.subject_tokens, false).map_err(|_| {
-            CardTextError::ParseError(format!(
+        Err(ChosenCantBlockSyntaxError::UnsupportedObjectFilter) => {
+            return Err(CardTextError::ParseError(format!(
                 "unsupported cant-block subject filter (clause: '{}')",
                 second_words.join(" ")
-            ))
-        })?
+            )));
+        }
     };
+
+    let mut restriction_filter = shape.filter;
     if restriction_filter.card_types.is_empty() {
         restriction_filter.card_types.push(CardType::Creature);
     }
@@ -868,7 +735,7 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_words = crate::runtime_backend::token_word_refs(first);
     let second_words = crate::runtime_backend::token_word_refs(second);
-    let shape = match parse_choice_become_shape(first, second) {
+    let shape = match parse_typed_choice_become_shape(first, second) {
         Ok(Some(shape)) => shape,
         Ok(None) => return Ok(None),
         Err(ChoiceBecomeSyntaxError::MissingCreatureSubtypeExclusion) => {
@@ -907,6 +774,12 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
                 second_words.join(" ")
             )));
         }
+        Err(ChoiceBecomeSyntaxError::UnsupportedObjectFilter) => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported object filter in creature-type become clause (clause: '{}')",
+                second_words.join(" ")
+            )));
+        }
     };
 
     let (duration, become_tokens) =
@@ -920,16 +793,8 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
     }
 
     let target = match shape.subject {
-        ChoiceBecomeSubject::AllObjects(filter_tokens) => {
-            let filter = parse_object_filter(filter_tokens, false).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported object filter in creature-type become clause (clause: '{}')",
-                    second_words.join(" ")
-                ))
-            })?;
-            TargetAst::Object(filter, None, None)
-        }
-        ChoiceBecomeSubject::Target(subject_tokens) => parse_target_phrase(subject_tokens)?,
+        TypedChoiceBecomeSubject::AllObjects(filter) => TargetAst::Object(filter, None, None),
+        TypedChoiceBecomeSubject::Target(subject_tokens) => parse_target_phrase(subject_tokens)?,
     };
 
     let effect = match shape.kind {

@@ -23,6 +23,7 @@ pub(crate) struct ChosenCantBlockShape<'a> {
 pub(crate) enum ChosenCantBlockSyntaxError {
     MissingSubject,
     MissingObjectFilter,
+    UnsupportedObjectFilter,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +53,7 @@ pub(crate) enum ChoiceBecomeSyntaxError {
     UnsupportedBasicLandTypeClause,
     MissingSubject,
     MissingObjectFilter,
+    UnsupportedObjectFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

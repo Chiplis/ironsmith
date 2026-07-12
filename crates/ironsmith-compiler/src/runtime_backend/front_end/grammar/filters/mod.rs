@@ -5,11 +5,12 @@ use winnow::error::{ContextError, ErrMode};
 use super::super::activation_and_restrictions::activated_line_core::parse_named_number;
 use super::super::keyword_static::parse_pt_modifier;
 use super::super::lexer::{
-    OwnedLexToken, token_slice_at_is, token_slice_at_is_any, token_slice_first_is_any,
-    tokens_start_with_at, word_slice_at_is, word_slice_at_is_any, word_slice_eq, word_slice_eq_any,
-    word_slice_find_any_phrase_start, word_slice_find_word, word_slice_first_is,
-    word_slice_first_is_any, word_slice_last_is, word_slice_last_is_any, words_end_with,
-    words_have, words_have_any_phrase, words_start_with, words_start_with_any, words_start_with_at,
+    OwnedLexToken, complete_word_sequence_choice, complete_word_sequence_surface, locate_word,
+    token_prefix_present_at, token_slice_at_is, token_slice_at_is_any, token_slice_first_is_any,
+    word_prefix_choice_present, word_prefix_present, word_prefix_present_at, word_present,
+    word_sequence_choice_present, word_slice_at_is, word_slice_at_is_any,
+    word_slice_find_any_phrase_start, word_slice_first_is, word_slice_first_is_any,
+    word_slice_last_is, word_slice_last_is_any, word_suffix_present,
 };
 use super::super::object_filters::{
     parse_attached_reference_or_another_disjunction, parse_object_filter_lexed, push_unique,
@@ -33,7 +34,6 @@ use super::super::util::{
     source_reference_surface_for_words, strip_leading_article_word_refs,
     this_source_surface_for_words, trim_commas, word_refs_except,
 };
-use super::super::value_helpers::parse_filter_comparison_tokens;
 use super::primitives::{self, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or};
 use super::values::parse_mana_symbol;
 use crate::cards::TextSpan;
@@ -43,12 +43,14 @@ use crate::effect::Value;
 use crate::effects::VOTE_WINNERS_TAG;
 use crate::filter::TaggedObjectConstraint;
 use crate::mana::ManaSymbol;
+use crate::runtime_backend::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
 use crate::target::{
     ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation, TargetabilityConstraint,
 };
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
+mod chosen_type_references;
 mod color_and_sticker_facts;
 mod counter_constraints;
 mod decorations;
@@ -62,6 +64,7 @@ mod reference_tag_word_facts;
 mod simple;
 pub(crate) mod spell_filters;
 
+pub(super) use chosen_type_references::*;
 pub(super) use color_and_sticker_facts::*;
 pub(super) use counter_constraints::*;
 pub(super) use domain_unions::*;

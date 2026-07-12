@@ -1492,6 +1492,35 @@ fn evaluate_condition_shared_core(
                     .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
             )
         }
+        Condition::AttachedToSourceMatches(filter) => {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            Some(
+                game.object(ctx.source)
+                    .and_then(|source| source.attached_to)
+                    .and_then(|target| target.object_id())
+                    .and_then(|id| game.object(id))
+                    .is_some_and(|object| filter.matches(object, &filter_ctx, game)),
+            )
+        }
+        Condition::MatchingObjectAttachedToMatchingObject {
+            attachment,
+            attached_to,
+        } => {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            Some(game.battlefield.iter().copied().any(|attachment_id| {
+                let Some(object) = game.object(attachment_id) else {
+                    return false;
+                };
+                if !attachment.matches(object, &filter_ctx, game) {
+                    return false;
+                }
+                object
+                    .attached_to
+                    .and_then(|target| target.object_id())
+                    .and_then(|id| game.object(id))
+                    .is_some_and(|target| attached_to.matches(target, &filter_ctx, game))
+            }))
+        }
         Condition::SourceCameUnderYourControlThisTurn => {
             Some(game.object(ctx.source).is_some_and(|obj| {
                 game.turn_store
@@ -1620,6 +1649,8 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceIsMonstrous => {}
         Condition::SourceIsFaceDown => {}
         Condition::SourceMatches(..) => {}
+        Condition::AttachedToSourceMatches(..) => {}
+        Condition::MatchingObjectAttachedToMatchingObject { .. } => {}
         Condition::SourceHasNoCounter(..) => {}
         Condition::SourceHasCounterAtLeast { .. } => {}
         Condition::SourceHasCountersAtLeast(..) => {}
@@ -2487,6 +2518,31 @@ pub fn evaluate_condition_external(
             game.object(ctx.source)
                 .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
         }
+        Condition::AttachedToSourceMatches(filter) => {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            game.object(ctx.source)
+                .and_then(|source| source.attached_to)
+                .and_then(|target| target.object_id())
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+        }
+        Condition::MatchingObjectAttachedToMatchingObject {
+            attachment,
+            attached_to,
+        } => {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            game.battlefield.iter().copied().any(|attachment_id| {
+                let Some(object) = game.object(attachment_id) else {
+                    return false;
+                };
+                attachment.matches(object, &filter_ctx, game)
+                    && object
+                        .attached_to
+                        .and_then(|target| target.object_id())
+                        .and_then(|id| game.object(id))
+                        .is_some_and(|target| attached_to.matches(target, &filter_ctx, game))
+            })
+        }
         Condition::TargetMatches(filter) => {
             let filter_ctx = condition_filter_context(
                 game,
@@ -3342,6 +3398,8 @@ fn evaluate_condition_simple(
         | Condition::SourceIsMonstrous
         | Condition::SourceIsFaceDown
         | Condition::SourceMatches(_)
+        | Condition::AttachedToSourceMatches(_)
+        | Condition::MatchingObjectAttachedToMatchingObject { .. }
         | Condition::SourcePowerAtLeast(_) => false,
         Condition::Custom(_)
         | Condition::LifeTotalOrLess(_)
@@ -4179,6 +4237,32 @@ fn evaluate_condition(
             Ok(game
                 .object(ctx.source)
                 .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)))
+        }
+        Condition::AttachedToSourceMatches(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            Ok(game
+                .object(ctx.source)
+                .and_then(|source| source.attached_to)
+                .and_then(|target| target.object_id())
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| filter.matches(object, &filter_ctx, game)))
+        }
+        Condition::MatchingObjectAttachedToMatchingObject {
+            attachment,
+            attached_to,
+        } => {
+            let filter_ctx = ctx.filter_context(game);
+            Ok(game.battlefield.iter().copied().any(|attachment_id| {
+                let Some(object) = game.object(attachment_id) else {
+                    return false;
+                };
+                attachment.matches(object, &filter_ctx, game)
+                    && object
+                        .attached_to
+                        .and_then(|target| target.object_id())
+                        .and_then(|id| game.object(id))
+                        .is_some_and(|target| attached_to.matches(target, &filter_ctx, game))
+            }))
         }
         Condition::SourcePowerAtLeast(min_power) => Ok(game
             .calculated_power(ctx.source)

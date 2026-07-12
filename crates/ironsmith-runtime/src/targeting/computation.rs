@@ -971,14 +971,32 @@ fn compute_object_targets_with_view(
         filter_ctx = filter_ctx.with_tagged_objects(tagged);
     }
 
-    let candidate_ids = view.candidate_ids_for_filter_with_context(filter, &filter_ctx);
     // Target selection commonly follows a zone change (for example, moving a
     // spell from hand to the stack), while continuous state is deliberately
-    // still dirty.  Without a batch prewarm, every candidate below performs
-    // its own full layer calculation against the same effect set.  On wide
-    // boards that turns a single-target spell into one full-board continuous
-    // calculation per possible target.
-    view.prewarm_characteristics(&candidate_ids);
+    // still dirty. Candidate narrowing itself can inspect derived card types
+    // and controllers, so the batch must happen before that narrowing. Doing
+    // it afterwards lets a creature-target filter run one full layer pass per
+    // battlefield object before reaching the prewarm below the cliff.
+    //
+    // Preserve the cheap path for a filter naming one specific object: the
+    // broad zone candidate set would otherwise prewarm an entire battlefield
+    // for a single-id query.
+    let mut prewarm_ids = filter.specific.map_or_else(
+        || view.candidate_ids_for_filter(filter),
+        |object_id| vec![object_id],
+    );
+    // Protection and source-qualified targeting rules can inspect the live
+    // source's derived colors, types, or abilities. Include it in the same
+    // batch so the first protected candidate cannot trigger a singleton
+    // full-board baseline after candidate prewarming has completed.
+    if let Some(source_id) = source_id
+        && !prewarm_ids.contains(&source_id)
+    {
+        prewarm_ids.push(source_id);
+    }
+    view.prewarm_characteristics(&prewarm_ids);
+
+    let candidate_ids = view.candidate_ids_for_filter_with_context(filter, &filter_ctx);
     for object_id in candidate_ids {
         let Some(object) = game.object(object_id) else {
             continue;
@@ -1155,6 +1173,154 @@ mod tests {
             kind: AbilityKind::Static(ability),
             functional_zones: vec![Zone::Battlefield],
         });
+    }
+
+    #[test]
+    fn dirty_wide_creature_target_enumeration_batches_before_candidate_narrowing() {
+        use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let creatures = (1..=96)
+            .map(|id| {
+                let mut creature = create_creature(id, &format!("Creature {id}"), alice);
+                if id == 1 {
+                    // Force target legality to inspect the live spell source's
+                    // derived color after the broad candidate batch.
+                    add_static_ability(
+                        &mut creature,
+                        StaticAbility::protection(ProtectionFrom::Color(ColorSet::from(
+                            Color::Red,
+                        ))),
+                    );
+                }
+                let creature_id = creature.id;
+                game.add_object(creature);
+                creature_id
+            })
+            .collect::<Vec<_>>();
+
+        let spell_card = CardBuilder::new(CardId::from_raw(10_000), "Targeted Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = ObjectId::from_raw(10_000);
+        game.add_object(Object::from_card(spell_id, &spell_card, alice, Zone::Stack));
+
+        for modification in [
+            Modification::AddAbility(StaticAbility::flying()),
+            Modification::AddAbility(StaticAbility::vigilance()),
+            Modification::ModifyPowerToughness {
+                power: 1,
+                toughness: 1,
+            },
+            Modification::ModifyPowerToughness {
+                power: 2,
+                toughness: 2,
+            },
+        ] {
+            game.effect_store
+                .continuous_effects
+                .add_effect(ContinuousEffect::new(
+                    creatures[0],
+                    alice,
+                    EffectTarget::AllCreatures,
+                    modification,
+                ));
+        }
+        game.refresh_continuous_state();
+
+        // The cast pipeline mutates announced/optional-cost state after moving
+        // a spell to the stack. `object_mut` conservatively dirties continuous
+        // state, matching the state in which target options are enumerated.
+        game.object_mut(spell_id)
+            .expect("spell should exist")
+            .optional_costs_paid = Default::default();
+        assert!(!game.continuous_state_is_clean());
+
+        let before = game.work_counters();
+        let legal_targets = compute_legal_targets(
+            &game,
+            &ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature())),
+            alice,
+            Some(spell_id),
+        );
+        let after = game.work_counters();
+
+        assert_eq!(legal_targets.len(), creatures.len());
+        assert!(
+            after.characteristics_full_recomputes <= before.characteristics_full_recomputes + 1,
+            "wide target enumeration must not run one characteristic pass per candidate: before={before:?}, after={after:?}"
+        );
+        assert!(
+            after.dependency_sorts <= before.dependency_sorts + 2,
+            "the two layered effect groups should be sorted once per batch, not once per candidate: before={before:?}, after={after:?}"
+        );
+        assert!(
+            after.dependency_pairs_probed <= before.dependency_pairs_probed + 32,
+            "dependency probes should scale with the effect set, not the target count: before={before:?}, after={after:?}"
+        );
+    }
+
+    #[test]
+    fn dirty_nonbattlefield_target_filter_reuses_view_prewarms() {
+        use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let sources = [
+            create_creature(1, "Layer Source One", alice),
+            create_creature(2, "Layer Source Two", alice),
+        ];
+        for source in sources {
+            game.add_object(source);
+        }
+        for card_type in [CardType::Artifact, CardType::Enchantment] {
+            game.effect_store
+                .continuous_effects
+                .add_effect(ContinuousEffect::new(
+                    ObjectId::from_raw(1),
+                    alice,
+                    EffectTarget::AllCreatures,
+                    Modification::AddCardTypes(vec![card_type]),
+                ));
+        }
+
+        let hand_ids = (0..32)
+            .map(|index| {
+                let card = CardBuilder::new(
+                    CardId::from_raw(20_000 + index),
+                    &format!("Hand Creature {index}"),
+                )
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build();
+                game.create_object_from_card(&card, alice, Zone::Hand)
+            })
+            .collect::<Vec<_>>();
+        game.refresh_continuous_state();
+        game.object_mut(hand_ids[0])
+            .expect("hand card should exist")
+            .optional_costs_paid = Default::default();
+
+        let before = game.work_counters();
+        let legal_targets = compute_legal_targets(
+            &game,
+            &ChooseSpec::Object(ObjectFilter::creature().in_zone(Zone::Hand)),
+            alice,
+            None,
+        );
+        let after = game.work_counters();
+
+        assert_eq!(legal_targets.len(), hand_ids.len());
+        assert_eq!(
+            after.characteristics_full_recomputes, before.characteristics_full_recomputes,
+            "nonbattlefield candidates should read their pass-local prewarmed characteristics"
+        );
+        assert!(
+            after.dependency_sorts <= before.dependency_sorts + 1,
+            "nonbattlefield filter matching should sort the type layer once, not once per card: before={before:?}, after={after:?}"
+        );
     }
 
     #[test]

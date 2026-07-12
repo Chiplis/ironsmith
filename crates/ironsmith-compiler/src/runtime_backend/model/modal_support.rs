@@ -10,16 +10,17 @@ use super::activation_and_restrictions::activated_line_core::{
     infer_activated_functional_zones_lexed, parse_activate_only_timing_lexed,
 };
 use super::clause_support::{parse_effect_sentences_lexed, parse_trigger_clause_lexed};
+use super::cst_lowering::lower_activation_cost_cst;
 use super::effect_ast_traversal::try_for_each_nested_effects_mut;
+use super::grammar::activation_costs::parse_activation_cost_tokens;
 use super::grammar::primitives as grammar;
 use super::grammar::structure::{
     parse_modal_header_choose_spec, scan_modal_header_flags, split_lexed_sentences,
     split_trailing_modal_gate_clause,
 };
 use super::keyword_static::parse_value_binding_clause_lexed;
-use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{
-    OwnedLexToken, TokenKind, contains_token_word, find_token_any_word, render_token_slice,
+    OwnedLexToken, TokenKind, contains_token_word, locate_token_word_choice, render_token_slice,
     trim_lexed_commas,
 };
 use super::modal_helpers::{replace_unbound_x_with_value, value_contains_unbound_x};
@@ -87,7 +88,7 @@ pub(crate) fn parse_modal_header(
         let cost_raw = render_token_slice(cost_tokens);
         let cost_raw = cost_raw.trim();
         if !cost_raw.is_empty() {
-            let cost_cst = parse_activation_cost_tokens_rewrite(cost_tokens)?;
+            let cost_cst = parse_activation_cost_tokens(cost_tokens)?;
             let mana_cost = lower_activation_cost_cst(&cost_cst)?;
             let prechoose_tokens = trim_lexed_commas(&tokens[colon_idx + 1..choose_idx]);
             let effect_sentences = if prechoose_tokens.is_empty() {
@@ -176,17 +177,18 @@ fn parse_x_is_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
         return None;
     }
 
-    if find_token_any_word(tokens, &["spell", "spells"]).is_some()
-        && find_token_any_word(tokens, &["cast", "casts"]).is_some()
+    if locate_token_word_choice(tokens, &["spell", "spells"]).is_some()
+        && locate_token_word_choice(tokens, &["cast", "casts"]).is_some()
         && contains_token_word(tokens, "turn")
     {
-        let player = if find_token_any_word(tokens, &["you", "your", "youve", "you've"]).is_some() {
-            PlayerFilter::You
-        } else if find_token_any_word(tokens, &["opponent", "opponents"]).is_some() {
-            PlayerFilter::Opponent
-        } else {
-            PlayerFilter::Any
-        };
+        let player =
+            if locate_token_word_choice(tokens, &["you", "your", "youve", "you've"]).is_some() {
+                PlayerFilter::You
+            } else if locate_token_word_choice(tokens, &["opponent", "opponents"]).is_some() {
+                PlayerFilter::Opponent
+            } else {
+                PlayerFilter::Any
+            };
         return Some(Value::SpellsCastThisTurn(player));
     }
 
@@ -351,6 +353,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ChooseCardType { .. }
             | SubjectVerbActionAst::ChooseNamedOption { .. }
             | SubjectVerbActionAst::ChooseCreatureType { .. }
+            | SubjectVerbActionAst::ChooseLandType { .. }
             | SubjectVerbActionAst::ChooseCardName { .. }
             | SubjectVerbActionAst::ChoosePlayer { .. }
             | SubjectVerbActionAst::NoteLifeTotal

@@ -7,7 +7,7 @@ use crate::target::{ChooseSpec, ObjectFilter};
 use super::{
     EffectPreludeTag, LoweredEffects, PreparedEffectsForLowering, PreparedPredicateForLowering,
     PreparedTriggeredEffectsForLowering, ReferenceEnv, ReferenceExports, ReferenceImports,
-    compile_annotated_effects_with_context, compile_condition_from_predicate_ast,
+    compile_annotated_effects_with_context, compile_condition_from_predicate_ast, push_choice,
     rewrite_prepare_effects_for_lowering,
 };
 
@@ -158,8 +158,13 @@ fn materialize_trailing_self_replacement(
         };
 
         let mut choices = prefix_lowered.choices;
-        choices.extend(default_lowered.choices);
-        choices.extend(replacement_lowered.choices);
+        for choice in default_lowered
+            .choices
+            .into_iter()
+            .chain(replacement_lowered.choices)
+        {
+            push_choice(&mut choices, choice);
+        }
         return Ok(Some(LoweredEffects {
             effects: crate::resolution::ResolutionProgram::new(vec![
                 crate::resolution::ResolutionSegment {

@@ -1,4 +1,4 @@
-use super::leaf::ActivationCostCst;
+use super::grammar::activation_costs::ActivationCostCst;
 use super::lexer::OwnedLexToken;
 use super::shared_types::{LineInfo, MetadataLine};
 use crate::ability::PresentationLabel;

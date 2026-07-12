@@ -3768,6 +3768,9 @@ fn compact_temporary_additional_block_surface(line: &str) -> Option<String> {
 
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    normalized = normalized
+        .replace("creatures that shares ", "creatures that share ")
+        .replace("Creatures that shares ", "Creatures that share ");
     if normalized.trim_end_matches('.')
         == "This creature's power is this creature's power, and its toughness is the number of Knights you control"
     {
@@ -11435,9 +11438,19 @@ pub(super) fn describe_apply_continuous_target(
     {
         return (subject, true);
     }
-    effect_text_shared::describe_apply_continuous_target(effect, describe_choose_spec, |filter| {
-        pluralize_noun_phrase(&filter.description())
-    })
+    let (target, plural) = effect_text_shared::describe_apply_continuous_target(
+        effect,
+        describe_choose_spec,
+        |filter| pluralize_noun_phrase(&filter.description()),
+    );
+    let target = if plural || target.contains("creatures that shares ") {
+        target
+            .replace(" that shares ", " that share ")
+            .replace(" that object", " it")
+    } else {
+        target
+    };
+    (target, plural)
 }
 
 fn describe_attached_and_related_creatures_filter(filter: &ObjectFilter) -> Option<String> {
@@ -12549,6 +12562,12 @@ fn apply_continuous_text_with_tail(
 }
 
 fn normalize_each_other_continuous_subject(text: String) -> String {
+    let text = if text.contains("creatures that shares ") {
+        text.replace("creatures that shares ", "creatures that share ")
+            .replace("that object", "it")
+    } else {
+        text
+    };
     let (prefix, rest) = if let Some(rest) = text.strip_prefix("Each other ") {
         ("Other", rest)
     } else if let Some(rest) = text.strip_prefix("each other ") {
@@ -15058,6 +15077,21 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 format!("this permanent is {}", ensure_indefinite_article(&desc))
             }
         }
+        Condition::AttachedToSourceMatches(filter) => {
+            let desc = filter.description();
+            format!(
+                "the permanent this source is attached to is {}",
+                ensure_indefinite_article(&desc)
+            )
+        }
+        Condition::MatchingObjectAttachedToMatchingObject {
+            attachment,
+            attached_to,
+        } => format!(
+            "{} is attached to {}",
+            with_indefinite_article(&attachment.description()),
+            with_indefinite_article(&attached_to.description())
+        ),
         Condition::SourceHasNoCounter(counter_type) => {
             format!("there are no {} counters on it", counter_type.description())
         }

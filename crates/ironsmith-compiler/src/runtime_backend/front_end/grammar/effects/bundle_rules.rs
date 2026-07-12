@@ -1,4 +1,4 @@
-//! Typed grammar results for multi-sentence and exact-surface effect bundles.
+//! Typed grammar results for multi-sentence effect bundles.
 
 use std::ops::Range;
 
@@ -12,13 +12,25 @@ use crate::filter::AlternativeCastKind;
 use crate::runtime_backend::front_end::grammar::leaf;
 use crate::runtime_backend::front_end::grammar::primitives::{self, WordSliceInput};
 use crate::runtime_backend::front_end::lexer::{
-    LexStream, OwnedLexToken, TokenWordView, parser_token_word_refs, split_lexed_sentences,
-    trim_lexed_commas,
+    LexStream, OwnedLexToken, TokenWordView, parser_token_word_refs, render_token_slice,
+    split_lexed_sentences, trim_lexed_commas,
 };
 
-#[path = "bundle_rules/exact.rs"]
-mod exact;
-pub(crate) use exact::*;
+#[path = "bundle_rules/replacement_sequences.rs"]
+mod replacement_sequences;
+pub(crate) use replacement_sequences::*;
+
+#[path = "bundle_rules/consult_sequences.rs"]
+mod consult_sequences;
+pub(crate) use consult_sequences::*;
+
+#[path = "bundle_rules/selection_sequences.rs"]
+mod selection_sequences;
+pub(crate) use selection_sequences::*;
+
+#[path = "bundle_rules/resource_sequences.rs"]
+mod resource_sequences;
+pub(crate) use resource_sequences::*;
 
 fn atom<'a>(
     expected: &'static str,
@@ -671,6 +683,18 @@ fn parse_slot_items(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>>
     (items.len() >= 2).then_some(items)
 }
 
+pub(crate) fn parse_explicit_card_name_surface_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
+    let words = parser_token_word_refs(tokens);
+    let named_word = atom_offset(&words, "named")?;
+    let name_start = named_word.checked_add(1)?;
+    if name_start >= words.len() {
+        return None;
+    }
+    let name_tokens = token_slice_for_words(tokens, name_start..words.len())?;
+    let name = render_token_slice(name_tokens).trim().to_string();
+    (!name.is_empty()).then_some(name)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SearchLibrarySlotsShape {
     pub(crate) multi_zone: bool,
@@ -845,18 +869,11 @@ mod tests {
     }
 
     #[test]
-    fn exact_bundle_shapes_reject_near_misses() {
-        assert!(
-            parse_tap_lands_empty_mana_shape(&lex(
-                "Tap all lands target player controls, and that player loses all unspent mana."
-            ))
-            .is_some()
-        );
-        assert!(
-            parse_tap_lands_empty_mana_shape(&lex(
-                "Tap all creatures target player controls, and that player loses all unspent mana."
-            ))
-            .is_none()
+    fn explicit_slot_name_preserves_internal_punctuation() {
+        let tokens = lex("a card named Nissa, Genesis Mage");
+        assert_eq!(
+            parse_explicit_card_name_surface_tokens(&tokens).as_deref(),
+            Some("Nissa, Genesis Mage")
         );
     }
 }

@@ -64,3 +64,23 @@ fn parses_quoted_counter_entry_ability_tail() {
         Some(EntersWithAddedAbilitiesTail::CanAttackAsThoughNoDefender)
     );
 }
+
+#[test]
+fn parses_dual_for_each_counter_entry_to_typed_value() {
+    let tokens = lex_line(
+        "This creature enters with a +1/+1 counter on it for each other red creature you control and a +1/+1 counter on it for each other green creature you control.",
+        0,
+    )
+    .unwrap();
+    let shape = parse_enters_with_dual_for_each_counter_tokens(&tokens).unwrap();
+    assert_eq!(shape.counter_type, CounterType::PlusOnePlusOne);
+    let Value::Add(first, second) = shape.count else {
+        panic!("expected additive typed count");
+    };
+    let (Value::Count(first), Value::Count(second)) = (*first, *second) else {
+        panic!("expected two matching-filter counts");
+    };
+    assert_eq!(first.colors, Some(crate::color::ColorSet::RED));
+    assert_eq!(second.colors, Some(crate::color::ColorSet::GREEN));
+    assert!(first.other && second.other);
+}

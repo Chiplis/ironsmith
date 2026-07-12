@@ -11,6 +11,10 @@ use super::super::super::lexer::{
 };
 use super::super::{filters, leaf, primitives};
 
+#[path = "counter_entry/condition_shapes.rs"]
+mod condition_shapes;
+use condition_shapes::parse_enters_with_counter_condition_shape_lexed;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EtbTriggerIntro {
     If,
@@ -59,6 +63,12 @@ pub(crate) struct EntersWithCounterConditionTail<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct EntersWithCounterChoice {
     pub(crate) counter_types: Vec<CounterType>,
+    pub(crate) count: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct EntersWithDualForEachCounterShape {
+    pub(crate) counter_type: CounterType,
     pub(crate) count: Value,
 }
 
@@ -158,6 +168,110 @@ pub(crate) fn parse_enters_with_counter_choice_tokens(
         "enters-with-counter-choice",
     )
     .ok()
+}
+
+pub(crate) fn parse_enters_with_dual_for_each_counter_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<EntersWithDualForEachCounterShape> {
+    primitives::parse_all(
+        tokens,
+        parse_enters_with_dual_for_each_counter,
+        "enters-with dual for-each counter",
+    )
+    .ok()
+}
+
+fn counter_noun(input: &mut LexStream<'_>) -> WResult<()> {
+    alt((primitives::kw("counter"), primitives::kw("counters")))
+        .void()
+        .parse_next(input)
+}
+
+fn parse_fixed_counter_clause(input: &mut LexStream<'_>) -> WResult<(CounterType, i32)> {
+    let count = alt((
+        alt((primitives::kw("a"), primitives::kw("an"))).value(1_u32),
+        leaf::parse_leaf_number_prefix_lexed,
+    ))
+    .parse_next(input)?;
+    let descriptor = repeat_till(1.., any.void(), peek(counter_noun))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    counter_noun.parse_next(input)?;
+    let counter_type = filters::parse_counter_type_from_tokens(descriptor)
+        .ok_or_else(|| primitives::backtrack_err("dual ETB counters", "known counter type"))?;
+    let count = i32::try_from(count)
+        .map_err(|_| primitives::backtrack_err("dual ETB counters", "signed counter count"))?;
+    Ok((counter_type, count))
+}
+
+fn parse_second_for_each_counter_start(input: &mut LexStream<'_>) -> WResult<()> {
+    primitives::kw("and").parse_next(input)?;
+    parse_fixed_counter_clause(input)?;
+    primitives::phrase(&["on", "it", "for", "each"])
+        .void()
+        .parse_next(input)
+}
+
+fn count_matching_filter(filter: crate::target::ObjectFilter, multiplier: i32) -> Value {
+    if multiplier == 1 {
+        Value::Count(filter)
+    } else {
+        Value::CountScaled(filter, multiplier)
+    }
+}
+
+fn parse_enters_with_dual_for_each_counter(
+    input: &mut LexStream<'_>,
+) -> WResult<EntersWithDualForEachCounterShape> {
+    let subject_tokens = repeat_till(1.., any.void(), peek(parse_enter_or_enters))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    parse_enter_or_enters.parse_next(input)?;
+    primitives::kw("with").parse_next(input)?;
+    let (first_counter_type, first_multiplier) = parse_fixed_counter_clause(input)?;
+    primitives::phrase(&["on", "it", "for", "each"]).parse_next(input)?;
+    let first_filter_tokens =
+        repeat_till(1.., any.void(), peek(parse_second_for_each_counter_start))
+            .map(|((), _)| ())
+            .take()
+            .parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    let (second_counter_type, second_multiplier) = parse_fixed_counter_clause(input)?;
+    primitives::phrase(&["on", "it", "for", "each"]).parse_next(input)?;
+    let second_filter_tokens = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+
+    if parse_etb_source_reference_tokens(subject_tokens).is_none()
+        || first_counter_type != second_counter_type
+    {
+        return Err(primitives::backtrack_err(
+            "dual ETB counters",
+            "source reference and matching counter types",
+        ));
+    }
+    let first_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
+        trim_lexed_commas(first_filter_tokens),
+        false,
+    )
+    .map_err(|_| primitives::backtrack_err("dual ETB counters", "first object filter"))?;
+    let second_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
+        trim_lexed_commas(second_filter_tokens),
+        false,
+    )
+    .map_err(|_| primitives::backtrack_err("dual ETB counters", "second object filter"))?;
+
+    Ok(EntersWithDualForEachCounterShape {
+        counter_type: first_counter_type,
+        count: Value::Add(
+            Box::new(count_matching_filter(first_filter, first_multiplier)),
+            Box::new(count_matching_filter(second_filter, second_multiplier)),
+        ),
+    })
 }
 
 pub(crate) fn parse_enters_with_added_abilities_tail_tokens(
@@ -529,219 +643,6 @@ fn parse_enters_with_counter_plus_tail_lexed<'a>(
         return Ok(EntersWithCounterPlusTail::Unsupported);
     };
     Ok(EntersWithCounterPlusTail::ForEach(&body[first..]))
-}
-
-fn parse_enters_with_counter_condition_shape_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<EntersWithCounterConditionShape<'a>> {
-    alt((
-        parse_fixed_counter_condition_shape,
-        parse_x_value_condition_shape,
-        parse_cast_spells_condition_shape,
-        parse_colors_mana_spent_condition_shape,
-    ))
-    .parse_next(input)
-}
-
-fn parse_fixed_counter_condition_shape<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<EntersWithCounterConditionShape<'a>> {
-    alt((
-        (
-            alt((
-                primitives::phrase(&["you", "attacked", "this", "turn"]),
-                primitives::phrase(&["youve", "attacked", "this", "turn"]),
-                primitives::phrase(&["you've", "attacked", "this", "turn"]),
-                primitives::phrase(&["you", "ve", "attacked", "this", "turn"]),
-            )),
-            primitives::sentence_end(),
-        )
-            .value(EntersWithCounterConditionShape::AttackedThisTurn),
-        (
-            alt((
-                primitives::phrase(&["you", "cast", "it"]),
-                primitives::phrase(&["you", "cast", "this"]),
-                primitives::phrase(&["you", "cast", "this", "spell"]),
-            )),
-            primitives::sentence_end(),
-        )
-            .value(EntersWithCounterConditionShape::SourceWasCast),
-        (
-            alt((
-                primitives::phrase(&["this", "spell", "was", "kicked"]),
-                primitives::phrase(&["this", "creature", "was", "kicked"]),
-                primitives::phrase(&["this", "permanent", "was", "kicked"]),
-                primitives::phrase(&["it", "was", "kicked"]),
-            )),
-            primitives::sentence_end(),
-        )
-            .value(EntersWithCounterConditionShape::ThisSpellWasKicked),
-        (
-            alt((
-                primitives::phrase(&["this", "spell", "escaped"]),
-                primitives::phrase(&["it", "escaped"]),
-            )),
-            primitives::sentence_end(),
-        )
-            .value(EntersWithCounterConditionShape::ThisSpellEscaped),
-        (
-            alt((
-                primitives::phrase(&["a", "creature", "died", "this", "turn"]),
-                primitives::phrase(&["one", "or", "more", "creatures", "died", "this", "turn"]),
-            )),
-            primitives::sentence_end(),
-        )
-            .value(EntersWithCounterConditionShape::CreatureDiedThisTurn),
-        (
-            alt((
-                primitives::phrase(&["an", "opponent", "lost", "life", "this", "turn"]),
-                primitives::phrase(&[
-                    "one",
-                    "or",
-                    "more",
-                    "opponents",
-                    "lost",
-                    "life",
-                    "this",
-                    "turn",
-                ]),
-            )),
-            primitives::sentence_end(),
-        )
-            .value(EntersWithCounterConditionShape::OpponentLostLifeThisTurn),
-        (
-            alt((
-                primitives::phrase(&[
-                    "a",
-                    "permanent",
-                    "left",
-                    "the",
-                    "battlefield",
-                    "under",
-                    "your",
-                    "control",
-                    "this",
-                    "turn",
-                ]),
-                primitives::phrase(&[
-                    "one",
-                    "or",
-                    "more",
-                    "permanents",
-                    "left",
-                    "the",
-                    "battlefield",
-                    "under",
-                    "your",
-                    "control",
-                    "this",
-                    "turn",
-                ]),
-            )),
-            primitives::sentence_end(),
-        )
-            .value(EntersWithCounterConditionShape::PermanentLeftUnderYourControl),
-        (
-            alt((
-                primitives::phrase(&[
-                    "it", "wasnt", "cast", "or", "no", "mana", "was", "spent", "to", "cast", "it",
-                ]),
-                primitives::phrase(&[
-                    "it", "wasn't", "cast", "or", "no", "mana", "was", "spent", "to", "cast", "it",
-                ]),
-            )),
-            primitives::sentence_end(),
-        )
-            .value(EntersWithCounterConditionShape::NotCastOrNoManaSpent),
-    ))
-    .parse_next(input)
-}
-
-fn parse_x_value_condition_shape<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<EntersWithCounterConditionShape<'a>> {
-    primitives::phrase(&["x", "is"]).parse_next(input)?;
-    let amount = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
-        .map(|((), ())| ())
-        .take()
-        .parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(EntersWithCounterConditionShape::XValueAtLeast(amount))
-}
-
-fn parse_cast_spells_condition_shape<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<EntersWithCounterConditionShape<'a>> {
-    alt((
-        primitives::phrase(&["youve", "cast"]),
-        primitives::phrase(&["you've", "cast"]),
-        primitives::phrase(&["you", "ve", "cast"]),
-        primitives::phrase(&["you", "have", "cast"]),
-        primitives::phrase(&["you", "cast"]),
-    ))
-    .parse_next(input)?;
-    let amount = repeat_till(
-        1..,
-        any.void(),
-        peek((
-            alt((primitives::kw("spell"), primitives::kw("spells"))),
-            primitives::phrase(&["this", "turn"]),
-        )),
-    )
-    .map(|((), _)| ())
-    .take()
-    .parse_next(input)?;
-    alt((primitives::kw("spell"), primitives::kw("spells"))).parse_next(input)?;
-    primitives::phrase(&["this", "turn"]).parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(EntersWithCounterConditionShape::YouCastSpellsThisTurn(
-        amount,
-    ))
-}
-
-fn parse_colors_mana_spent_condition_shape<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<EntersWithCounterConditionShape<'a>> {
-    let amount = repeat_till(
-        1..,
-        any.void(),
-        peek((
-            alt((
-                primitives::kw("color"),
-                primitives::kw("colors"),
-                primitives::kw("colour"),
-                primitives::kw("colours"),
-            )),
-            primitives::phrase(&["of", "mana"]),
-        )),
-    )
-    .map(|((), _)| ())
-    .take()
-    .parse_next(input)?;
-    alt((
-        primitives::kw("color"),
-        primitives::kw("colors"),
-        primitives::kw("colour"),
-        primitives::kw("colours"),
-    ))
-    .parse_next(input)?;
-    primitives::phrase(&["of", "mana"]).parse_next(input)?;
-    repeat_till(
-        0..,
-        any.void(),
-        peek(primitives::phrase(&["spent", "to", "cast"])),
-    )
-    .map(|((), ())| ())
-    .parse_next(input)?;
-    primitives::phrase(&["spent", "to", "cast"]).parse_next(input)?;
-    alt((
-        primitives::kw("it").void(),
-        primitives::kw("this").void(),
-        primitives::phrase(&["this", "spell"]),
-    ))
-    .parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(EntersWithCounterConditionShape::ColorsOfManaSpent(amount))
 }
 
 fn parse_enter_or_enters<'a>(input: &mut LexStream<'a>) -> WResult<()> {

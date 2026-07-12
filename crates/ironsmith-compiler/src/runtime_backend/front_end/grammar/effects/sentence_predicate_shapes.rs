@@ -3,7 +3,6 @@ use super::*;
 use crate::filter::CounterConstraint;
 use crate::object::CounterType;
 use crate::runtime_backend::front_end::grammar::{filters, leaf};
-use crate::runtime_backend::front_end::shared::util::is_source_reference_words;
 use ironsmith_core::{EffectMetric, EffectMetricSource};
 use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
@@ -1033,14 +1032,10 @@ fn parse_counter_reference_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult
             .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
 
-    let counter_type = match descriptor {
-        [] => None,
-        [token] => filters::parse_counter_type_word(
-            token
-                .as_word()
-                .ok_or_else(|| primitives::backtrack_err("counter type", "counter type word"))?,
-        ),
-        _ => None,
+    let counter_type = if descriptor.is_empty() {
+        None
+    } else {
+        filters::parse_counter_type_from_tokens(descriptor)
     };
     if !descriptor.is_empty() && counter_type.is_none() {
         return Err(primitives::backtrack_err(
@@ -1050,7 +1045,7 @@ fn parse_counter_reference_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult
     }
 
     let reference_words = parser_token_word_refs(reference_tokens);
-    let reference = if is_source_reference_words(&reference_words) {
+    let reference = if leaf::parse_leaf_source_anaphor_words(&reference_words).is_some() {
         WhereXReferenceShape::Source
     } else {
         primitives::parse_all(

@@ -34,7 +34,12 @@ pub(crate) struct ChosenNameRevealShape {
     pub(crate) view: Range<usize>,
 }
 
-const ABUNDANT_MOVE_MATCH: &[&[&str]] = &[
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LandOrNonlandConsultSequenceShape {
+    pub(crate) remainder_order: LibraryBottomOrderAst,
+}
+
+const CHOSEN_KIND_TO_HAND: &[&[&str]] = &[
     &["put", "that", "card", "into", "your", "hand"],
     &["put", "it", "into", "your", "hand"],
 ];
@@ -85,21 +90,27 @@ pub(crate) fn parse_counter_then_fight_shape(
     Some(CounterThenFightShape { required_power })
 }
 
-pub(crate) fn is_abundant_harvest_sequence_shape(
+pub(crate) fn parse_land_or_nonland_consult_sequence_tokens(
     choice: &[OwnedLexToken],
     reveal: &[OwnedLexToken],
     move_match: &[OwnedLexToken],
-) -> bool {
-    matches_complete_sequence(choice, &[&["choose", "land", "or", "nonland"]])
-        && starts_sequence(
+) -> Option<LandOrNonlandConsultSequenceShape> {
+    if !matches_complete_sequence(choice, &[&["choose", "land", "or", "nonland"]])
+        || !starts_sequence(
             reveal,
             &[&[
                 "reveal", "cards", "from", "the", "top", "of", "your", "library",
             ]],
         )
-        && contains_sequence_phrase(reveal, &[&["a", "card", "of", "the", "chosen", "kind"]])
-        && starts_sequence(move_match, ABUNDANT_MOVE_MATCH)
-        && contains_sequence_word(move_match, "rest")
+        || !contains_sequence_phrase(reveal, &[&["a", "card", "of", "the", "chosen", "kind"]])
+        || !starts_sequence(move_match, CHOSEN_KIND_TO_HAND)
+        || !contains_sequence_word(move_match, "rest")
+    {
+        return None;
+    }
+    Some(LandOrNonlandConsultSequenceShape {
+        remainder_order: parse_consult_remainder_order_tokens(move_match)?,
+    })
 }
 
 pub(crate) fn is_milled_creature_exile_shape(tokens: &[OwnedLexToken]) -> bool {

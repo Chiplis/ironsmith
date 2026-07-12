@@ -882,6 +882,14 @@ pub enum Condition {
     SourceIsMonstrous,
     SourceIsFaceDown,
     SourceMatches(ObjectFilter),
+    /// The battlefield object this Aura or Equipment source is attached to
+    /// matches the filter.
+    AttachedToSourceMatches(ObjectFilter),
+    /// A matching battlefield object is attached to another matching object.
+    MatchingObjectAttachedToMatchingObject {
+        attachment: ObjectFilter,
+        attached_to: ObjectFilter,
+    },
     SourceHasNoCounter(CounterType),
     SourceHasCounterAtLeast {
         counter_type: CounterType,

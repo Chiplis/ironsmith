@@ -1,245 +1,5 @@
 use super::*;
-use crate::runtime_backend::grammar::trigger_subjects::{TriggerSurface, trigger_surface};
-
-const ONE_OR_MORE_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(exact & ["one", "or", "more"]);
-const CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
-const AND_OR_CONNECTOR_WORDS: &[&str] = &["and", "or"];
-const OTHER_OR_ANOTHER_WORDS: &[&str] = &["another", "other"];
-const RELATIVE_PRONOUN_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(exact_any & [&["that"], &["which"], &["who"], &["whom"]]);
-const EACH_WITH_PATTERN: TriggerSurface<'static> = trigger_surface!(exact & ["each", "with"]);
-const YOU_TRIGGER_SUBJECT_PATTERN: TriggerSurface<'static> = trigger_surface!(exact & ["you"]);
-const ANOTHER_PLAYER_TRIGGER_SUBJECT_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    exact_any
-        & [
-            &["another", "player"],
-            &["a", "player", "other", "than", "you"],
-            &["a", "player", "other", "than", "yourself"],
-        ]
-);
-const CHOSEN_PLAYER_TRIGGER_SUBJECT_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(exact_any & [&["the", "chosen", "player"], &["chosen", "player"]]);
-const ENCHANTED_PLAYER_TRIGGER_SUBJECT_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(exact_any & [&["enchanted", "player"], &["the", "enchanted", "player"]]);
-const EFFECT_CONTROLLER_TRIGGER_SUBJECT_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    prefix_any
-        & [
-            &["the", "player", "who", "cast"],
-            &["player", "who", "cast"]
-        ]
-);
-const ANY_PLAYER_TRIGGER_SUBJECT_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    exact_any
-        & [
-            &["a", "player"],
-            &["any", "player"],
-            &["player"],
-            &["one", "or", "more", "players"],
-        ]
-);
-const OPPONENT_TRIGGER_SUBJECT_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    exact_any
-        & [
-            &["an", "opponent"],
-            &["opponent"],
-            &["opponents"],
-            &["your", "opponents"],
-            &["one", "of", "your", "opponents"],
-            &["one", "or", "more", "of", "your", "opponents"],
-            &["one", "of", "the", "opponents"],
-            &["one", "or", "more", "opponents"],
-            &["each", "opponent"],
-        ]
-);
-const OPPONENT_WORDS: &[&str] = &["opponent", "opponents"];
-const ON_YOUR_TEAM_TRIGGER_SUBJECT_PATTERN: TriggerSurface<'static> = trigger_surface!(suffix & ["on", "your", "team"]; contains_any_words & [&["player", "players"]]);
-const ENCHANTED_PLAYER_WORD_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    contains_any_phrases & [&[&["enchanted", "player"], &["enchanted", "players"]]]
-);
-const CHOSEN_PLAYER_WORD_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(contains_any_phrases & [&[&["chosen", "player"], &["chosen", "players"]]]);
-const YOUR_TEAM_WORD_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(contains_any_phrases & [&[&["your", "team"], &["on", "your", "team"]]]);
-const YOU_WORD_PATTERN: TriggerSurface<'static> = trigger_surface!(contains_words & ["you"]);
-const SHUFFLE_CAUSED_BY_SPELL_OR_ABILITY_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(prefix & ["a", "spell", "or", "ability", "causes"]; suffix & ["to"]);
-const ITS_CONTROLLER_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(exact & ["its", "controller"]);
-const ANY_SOURCE_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(exact_any & [&["a", "source"], &["source"], &["any", "source"]]);
-const POWER_GREATER_THAN_BASE_POWER_PATTERN: TriggerSurface<'static> = trigger_surface!(contains_phrases & [&["power", "greater", "than", "its", "base", "power"]]; contains_any_words & [&["creature", "creatures"]]);
-const SPELL_NOUN_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(contains_any_words & [&["spell", "spells"]]);
-const SPELL_NOUN_EXACT_WORDS: &[&str] = &["spell", "spells"];
-const FIRST_WORD: &str = "first";
-const DURING_THEIR_TURN_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    contains_any_phrases
-        & [&[
-            &["during", "their", "turn"],
-            &["during", "that", "players", "turn"]
-        ]]
-);
-const DURING_YOUR_TURN_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(contains_phrases & [&["during", "your", "turn"]]);
-const DURING_OPPONENT_TURN_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    contains_any_phrases
-        & [&[
-            &["during", "an", "opponents", "turn"],
-            &["during", "an", "opponent's", "turn"],
-            &["during", "an", "opponent", "s", "turn"],
-            &["during", "opponents", "turn"],
-            &["during", "opponent's", "turn"],
-            &["during", "opponent", "s", "turn"],
-            &["during", "each", "opponents", "turn"],
-            &["during", "each", "opponent's", "turn"],
-            &["during", "each", "opponent", "s", "turn"],
-        ]]
-);
-const FIRST_SPELL_TURN_CONTEXT_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    contains_any_phrases
-        & [&[
-            &["each", "turn"],
-            &["this", "turn"],
-            &["of", "a", "turn"],
-            &["during", "your", "turn"],
-            &["during", "their", "turn"],
-            &["during", "an", "opponents", "turn"],
-            &["during", "an", "opponent's", "turn"],
-            &["during", "an", "opponent", "s", "turn"],
-            &["during", "opponents", "turn"],
-            &["during", "opponent's", "turn"],
-            &["during", "opponent", "s", "turn"],
-            &["during", "each", "opponents", "turn"],
-            &["during", "each", "opponent's", "turn"],
-            &["during", "each", "opponent", "s", "turn"],
-        ]]
-);
-const SECOND_SPELL_TURN_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    contains_any_phrases
-        & [&[
-            &["second", "spell", "cast", "this", "turn"],
-            &["second", "spell", "this", "turn"],
-            &["your", "second", "spell", "each", "turn"],
-            &["their", "second", "spell", "each", "turn"],
-            &["your", "second", "spell", "this", "turn"],
-            &["their", "second", "spell", "this", "turn"],
-            &["second", "spell", "each", "turn"],
-            &["second", "spell", "during", "your", "turn"],
-            &["second", "spell", "during", "their", "turn"],
-            &["second", "spell", "during", "an", "opponents", "turn"],
-            &["second", "spell", "during", "opponents", "turn"],
-            &["second", "spell", "during", "each", "opponents", "turn"],
-        ]]
-);
-const OTHER_THAN_FIRST_SPELL_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    contains_any_phrases
-        & [&[
-            &["other", "than", "your", "first", "spell"],
-            &["other", "than", "the", "first", "spell"],
-        ]]
-);
-const OTHER_THAN_FIRST_CASTS_TURN_PATTERN: TriggerSurface<'static> = trigger_surface!(contains_phrases & [&["other", "than", "the", "first"]]; contains_words & ["spell", "casts", "turn"]);
-const FROM_ANYWHERE_NOT_HAND_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    contains_any_phrases
-        & [&[
-            &["from", "anywhere", "other", "than", "your", "hand"],
-            &["from", "anywhere", "other", "than", "their", "hand"],
-            &["from", "anywhere", "other", "than", "hand"],
-        ]]
-);
-const FROM_ANYWHERE_OTHER_THAN_WORDS: &[&str] = &["from", "anywhere", "other", "than"];
-const FROM_ANYWHERE_OTHER_THAN_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(exact & FROM_ANYWHERE_OTHER_THAN_WORDS);
-const UNQUALIFIED_SPELL_WORDS_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(exact_any & [&["a", "spell"], &["spells"], &["spell"]]);
-const SPELL_OR_SPELLS_SUFFIX_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(suffix_any & [&["spell"], &["spells"]]);
-const SPELL_AUXILIARY_WORD_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(exact_any & [&["is"], &["are"], &["was"], &["were"], &["be"], &["been"]]);
-const CHOSEN_COLOR_SPELL_QUALIFIER_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    exact_any
-        & [
-            &["of", "the", "chosen", "color"],
-            &["of", "chosen", "color"]
-        ]
-);
-const SPELL_ORIGIN_GRAVEYARD_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(contains_words & ["graveyard"]);
-const SPELL_ORIGIN_EXILE_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(contains_words & ["exile"]);
-const SPELL_ORIGIN_HAND_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(contains_words & ["hand"]);
-const YOUR_WORD_PATTERN: TriggerSurface<'static> = trigger_surface!(contains_words & ["your"]);
-const OPPONENT_OR_THEIR_WORD_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(contains_any_words & [&["opponent", "their"]]);
-const CAST_OR_COPY_SEPARATOR_PATTERN: TriggerSurface<'static> = trigger_surface!(exact & ["or"]);
-const HAND_EXACT_WORD: &str = "hand";
-const ROUND_UP_EACH_TIME_PREFIX_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(prefix & ["round", "up", "each", "time"]);
-const IF_YOU_DO_PREFIX_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(prefix & ["if", "you", "do"]);
-const EXILED_CARDS_OWNER_MAY_PREFIX_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(prefix & ["the", "exiled", "cards", "owner", "may"]);
-const IT_REFERENCE_PREFIX_PATTERN: TriggerSurface<'static> = trigger_surface!(prefix & ["it"]);
-const THAT_CARD_REFERENCE_PREFIX_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(prefix & ["that", "card"]);
-const EXILED_CARD_REFERENCE_PREFIX_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(prefix & ["the", "exiled", "card"]);
-const REVEALED_CARD_REFERENCE_PREFIX_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(prefix_any & [&["the", "revealed", "card"], &["that", "revealed", "card"]]);
-const COPY_REFERENCE_PREFIX_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(prefix_any & [&["the", "copy"], &["that", "copy"], &["a", "copy"]]);
-const WITHOUT_PAYING_MANA_COST_TAIL_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(exact & ["without", "paying", "its", "mana", "cost"]);
-const WITHOUT_PAYING_MANA_COST_MV_LTE_PREFIX_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    prefix
-        & [
-            "without", "paying", "its", "mana", "cost", "if", "its", "a", "spell", "with", "mana",
-            "value", "less", "than", "or", "equal", "to",
-        ]
-);
-const YOU_MAY_PREFIX_PATTERN: TriggerSurface<'static> = trigger_surface!(prefix & ["you", "may"]);
-const TOKEN_MANA_REMINDER_PREFIX_PATTERN: TriggerSurface<'static> = trigger_surface!(
-    prefix_any
-        & [
-            &["they", "have"],
-            &["it", "has"],
-            &["this", "token", "has"],
-            &["those", "tokens", "have"],
-        ]
-);
-const TOKEN_MANA_REMINDER_WORDS_PATTERN: TriggerSurface<'static> =
-    trigger_surface!(contains_words & ["sacrifice", "add", "c"]);
-const CREATE_WORD_PATTERN: TriggerSurface<'static> = trigger_surface!(contains_words & ["create"]);
-const TOKEN_WORD_PATTERN: TriggerSurface<'static> = trigger_surface!(contains_words & ["token"]);
-const WITH_WORD: &str = "with";
-const T_WORD: &str = "t";
-fn trigger_surface_accepts<'a>(words: &[&str], shape: TriggerSurface<'a>) -> bool {
-    shape.accepts_words(words)
-}
-
-fn trigger_subject_word_is_any(word: &str, expected: &[&str]) -> bool {
-    expected.contains(&word)
-}
-
-fn trigger_subject_word_is(word: &str, expected: &str) -> bool {
-    trigger_subject_word_is_any(word, &[expected])
-}
-
-fn trigger_subject_token_word_is(token: &OwnedLexToken, expected: &str) -> bool {
-    token
-        .as_word()
-        .is_some_and(|word| trigger_subject_word_is(word, expected))
-}
-
-fn find_words_matching_shape(
-    words: &[&str],
-    phrase_len: usize,
-    shape: TriggerSurface<'static>,
-) -> Option<usize> {
-    shape.locate_window(words, phrase_len)
-}
+use crate::runtime_backend::grammar::trigger_subjects as trigger_subject_grammar;
 
 fn trigger_controller_player_filter(
     reference: crate::runtime_backend::grammar::trigger_subjects::TriggerControllerReference,
@@ -262,10 +22,6 @@ fn trigger_controller_player_filter(
 fn trigger_source_words(words: &[&str]) -> bool {
     crate::runtime_backend::grammar::trigger_subjects::parse_trigger_source_subject_words(words)
         .is_some()
-}
-
-fn find_trigger_subject_token_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
-    crate::runtime_backend::grammar::trigger_subjects::parse_trigger_word_token(tokens, &[expected])
 }
 
 pub(crate) fn parse_discard_trigger_card_filter(
@@ -292,7 +48,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
     };
     let mut qualifier_tokens = strip_leading_articles(envelope.qualifier);
     let qualifier_words = crate::runtime_backend::token_word_refs(&qualifier_tokens);
-    if trigger_surface_accepts(&qualifier_words, ONE_OR_MORE_PATTERN) {
+    if trigger_subject_grammar::trigger_words_are_one_or_more(&qualifier_words) {
         qualifier_tokens.clear();
     }
     if qualifier_tokens.len() >= 2
@@ -304,7 +60,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
         && qualifier_tokens
             .get(1)
             .and_then(OwnedLexToken::as_word)
-            .is_some_and(|word| trigger_subject_word_is_any(word, AND_OR_CONNECTOR_WORDS))
+            .is_some_and(trigger_subject_grammar::trigger_word_is_connector)
     {
         qualifier_tokens = qualifier_tokens[2..].to_vec();
     } else if qualifier_tokens
@@ -336,7 +92,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
     let mut fallback = ObjectFilter::default();
     let mut parsed_any = false;
     for word in qualifier_words {
-        if trigger_subject_word_is_any(word, AND_OR_CONNECTOR_WORDS) {
+        if trigger_subject_grammar::trigger_word_is_connector(word) {
             continue;
         }
         if let Some(non_type) = parse_non_type(word) {
@@ -389,7 +145,7 @@ pub(crate) fn parse_subtype_list_enters_trigger_filter(
 
     let mut subtypes = Vec::new();
     for word in &words[..subject_end] {
-        if trigger_subject_word_is_any(word, AND_OR_CONNECTOR_WORDS) {
+        if trigger_subject_grammar::trigger_word_is_connector(word) {
             continue;
         }
         if let Some(subtype) = parse_subtype_flexible(word) {
@@ -447,13 +203,14 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
 }
 
 pub(crate) fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
-    if contains_your_team_words(words) || trigger_surface_accepts(words, YOU_WORD_PATTERN) {
+    let facts = trigger_subject_grammar::parse_trigger_subject_surface_facts(words);
+    if facts.on_your_team || facts.contains_you {
         PlayerFilter::You
-    } else if trigger_surface_accepts(words, ENCHANTED_PLAYER_WORD_PATTERN) {
+    } else if facts.contains_enchanted_player {
         PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))
-    } else if trigger_surface_accepts(words, CHOSEN_PLAYER_WORD_PATTERN) {
+    } else if facts.contains_chosen_player {
         PlayerFilter::ChosenPlayer
-    } else if contains_opponent_word(words) {
+    } else if facts.contains_opponent {
         PlayerFilter::Opponent
     } else {
         PlayerFilter::Any
@@ -461,43 +218,17 @@ pub(crate) fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter
 }
 
 pub(crate) fn contains_opponent_word(words: &[&str]) -> bool {
-    words
-        .iter()
-        .any(|word| trigger_subject_word_is_any(word, OPPONENT_WORDS))
+    trigger_subject_grammar::parse_trigger_subject_surface_facts(words).contains_opponent
 }
 
 pub(crate) fn contains_your_team_words(words: &[&str]) -> bool {
-    trigger_surface_accepts(words, YOUR_TEAM_WORD_PATTERN)
+    trigger_subject_grammar::parse_trigger_subject_surface_facts(words).on_your_team
 }
 
 pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter> {
-    if trigger_surface_accepts(subject, YOU_TRIGGER_SUBJECT_PATTERN) {
-        return Some(PlayerFilter::You);
-    }
-    if trigger_surface_accepts(subject, ANOTHER_PLAYER_TRIGGER_SUBJECT_PATTERN) {
-        return Some(PlayerFilter::NotYou);
-    }
-    if trigger_surface_accepts(subject, CHOSEN_PLAYER_TRIGGER_SUBJECT_PATTERN) {
-        return Some(PlayerFilter::ChosenPlayer);
-    }
-    if trigger_surface_accepts(subject, ENCHANTED_PLAYER_TRIGGER_SUBJECT_PATTERN) {
-        return Some(PlayerFilter::TaggedPlayer(crate::tag::TagKey::from(
-            "enchanted",
-        )));
-    }
-    if trigger_surface_accepts(subject, EFFECT_CONTROLLER_TRIGGER_SUBJECT_PATTERN) {
-        return Some(PlayerFilter::EffectController);
-    }
-    if trigger_surface_accepts(subject, ANY_PLAYER_TRIGGER_SUBJECT_PATTERN) {
-        return Some(PlayerFilter::Any);
-    }
-    if trigger_surface_accepts(subject, OPPONENT_TRIGGER_SUBJECT_PATTERN) {
-        return Some(PlayerFilter::Opponent);
-    }
-    if trigger_surface_accepts(subject, ON_YOUR_TEAM_TRIGGER_SUBJECT_PATTERN) {
-        return Some(PlayerFilter::You);
-    }
-    None
+    trigger_subject_grammar::parse_trigger_subject_surface_facts(subject)
+        .player
+        .map(trigger_controller_player_filter)
 }
 
 pub(crate) fn split_target_clause_before_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -507,22 +238,12 @@ pub(crate) fn split_target_clause_before_comma(tokens: &[OwnedLexToken]) -> Vec<
 pub(crate) fn parse_shuffle_trigger_subject(
     subject: &[&str],
 ) -> Option<(PlayerFilter, bool, bool)> {
-    if let Some(player) = parse_trigger_subject_player_filter(subject) {
-        return Some((player, false, false));
-    }
-
-    if !(trigger_surface_accepts(subject, SHUFFLE_CAUSED_BY_SPELL_OR_ABILITY_PATTERN)
-        && subject.len() > 6)
-    {
-        return None;
-    }
-
-    let caused_player_words = &subject[5..subject.len() - 1];
-    if trigger_surface_accepts(caused_player_words, ITS_CONTROLLER_PATTERN) {
-        return Some((PlayerFilter::Any, true, true));
-    }
-
-    parse_trigger_subject_player_filter(caused_player_words).map(|player| (player, true, false))
+    let facts = trigger_subject_grammar::parse_shuffle_trigger_subject_facts(subject)?;
+    Some((
+        trigger_controller_player_filter(facts.player),
+        facts.caused_by_spell_or_ability,
+        facts.use_effect_controller,
+    ))
 }
 
 pub(crate) fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
@@ -545,7 +266,7 @@ pub(crate) fn parse_trigger_subject_filter(
     if subject_tokens
         .first()
         .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| trigger_subject_word_is_any(word, OTHER_OR_ANOTHER_WORDS))
+        .is_some_and(trigger_subject_grammar::trigger_word_is_other_modifier)
     {
         other = true;
         subject_tokens = &subject_tokens[1..];
@@ -568,13 +289,12 @@ pub(crate) fn parse_trigger_subject_filter(
         filter.controller = Some(trigger_controller_player_filter(suffix.controller));
         return Ok(Some(filter));
     }
-    if trigger_surface_accepts(&subject_words, ANY_SOURCE_PATTERN) {
+    let subject_facts =
+        trigger_subject_grammar::parse_trigger_subject_surface_facts(&subject_words);
+    if subject_facts.any_source {
         return Ok(Some(ObjectFilter::default()));
     }
-    if subject_words
-        .iter()
-        .any(|word| trigger_surface_accepts(&[*word], RELATIVE_PRONOUN_PATTERN))
-    {
+    if subject_facts.relative_pronoun {
         return Err(CardTextError::ParseError(format!(
             "unsupported trigger subject filter (clause: '{}')",
             subject_words.join(" ")
@@ -650,7 +370,7 @@ pub(crate) fn parse_subtype_list_enters_trigger_filter_lexed(
 
     let mut subtypes = Vec::new();
     for word in &words[..subject_end] {
-        if trigger_subject_word_is_any(word, AND_OR_CONNECTOR_WORDS) {
+        if trigger_subject_grammar::trigger_word_is_connector(word) {
             continue;
         }
         if let Some(subtype) = parse_subtype_flexible(word) {
@@ -721,7 +441,7 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
     if subject_tokens
         .first()
         .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| trigger_subject_word_is_any(word, OTHER_OR_ANOTHER_WORDS))
+        .is_some_and(trigger_subject_grammar::trigger_word_is_other_modifier)
     {
         other = true;
         subject_tokens = &subject_tokens[1..];
@@ -758,20 +478,19 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
         filter.controller = Some(trigger_controller_player_filter(suffix.controller));
         return Ok(Some(filter));
     }
-    if trigger_surface_accepts(&subject_words, ANY_SOURCE_PATTERN) {
+    let subject_facts =
+        trigger_subject_grammar::parse_trigger_subject_surface_facts(&subject_words);
+    if subject_facts.any_source {
         return Ok(Some(ObjectFilter::default()));
     }
-    if subject_words
-        .iter()
-        .any(|word| trigger_surface_accepts(&[*word], RELATIVE_PRONOUN_PATTERN))
-    {
+    if subject_facts.relative_pronoun {
         return Err(CardTextError::ParseError(format!(
             "unsupported trigger subject filter (clause: '{}')",
             subject_words.join(" ")
         )));
     }
 
-    if trigger_surface_accepts(&subject_words, POWER_GREATER_THAN_BASE_POWER_PATTERN) {
+    if subject_facts.power_greater_than_base_power {
         let mut filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
         filter.power_greater_than_base_power = true;
         if other {
@@ -789,30 +508,8 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
         return Ok(Some(filter));
     }
 
-    let mut normalized_subject_tokens = subject_tokens.to_vec();
-    if find_window_by(&normalized_subject_tokens, 2, |window| {
-        let words = ActivationRestrictionCompatWords::new(window).to_word_refs();
-        trigger_surface_accepts(&words, EACH_WITH_PATTERN)
-    })
-    .is_some()
-    {
-        let mut normalized = Vec::with_capacity(normalized_subject_tokens.len());
-        let mut idx = 0usize;
-        while idx < normalized_subject_tokens.len() {
-            let next_two_words = normalized_subject_tokens
-                .get(idx..idx + 2)
-                .map(ActivationRestrictionCompatWords::new)
-                .map(|view| view.to_word_refs())
-                .unwrap_or_default();
-            if trigger_surface_accepts(&next_two_words, EACH_WITH_PATTERN) {
-                idx += 1;
-                continue;
-            }
-            normalized.push(normalized_subject_tokens[idx].clone());
-            idx += 1;
-        }
-        normalized_subject_tokens = normalized;
-    }
+    let mut normalized_subject_tokens =
+        trigger_subject_grammar::normalize_each_with_tokens(subject_tokens);
 
     let mut controller_override = None;
     let word_view = ActivationRestrictionCompatWords::new(&normalized_subject_tokens);
@@ -899,198 +596,20 @@ pub(crate) fn parse_attack_trigger_subject_filter_lexed(
     Ok(Some(filter))
 }
 
-pub(crate) fn parse_exact_spell_count_each_turn(words: &[&str]) -> Option<u32> {
-    for (ordinal, count) in [
-        ("third", 3u32),
-        ("fourth", 4u32),
-        ("fifth", 5u32),
-        ("sixth", 6u32),
-        ("seventh", 7u32),
-        ("eighth", 8u32),
-        ("ninth", 9u32),
-        ("tenth", 10u32),
-    ] {
-        let patterns: &[&[&str]] = &[
-            &[ordinal, "spell", "cast", "this", "turn"],
-            &[ordinal, "spell", "this", "turn"],
-            &["your", ordinal, "spell", "each", "turn"],
-            &["their", ordinal, "spell", "each", "turn"],
-            &["your", ordinal, "spell", "this", "turn"],
-            &["their", ordinal, "spell", "this", "turn"],
-            &[ordinal, "spell", "each", "turn"],
-        ];
-        if trigger_surface_accepts(
-            words,
-            TriggerSurface::new().contains_any_phrases(&[patterns]),
-        ) {
-            return Some(count);
-        }
-    }
-    None
-}
-
 pub(crate) fn parse_exact_draw_count_each_turn(words: &[&str]) -> Option<u32> {
-    for pattern in [
-        &[
-            "a", "card", "except", "the", "first", "one", "they", "draw", "in", "each", "of",
-            "their", "draw", "steps",
-        ][..],
-        &[
-            "a", "card", "except", "the", "first", "card", "they", "draw", "in", "each", "of",
-            "their", "draw", "steps",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "one", "you", "draw", "in", "each", "of",
-            "your", "draw", "steps",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "card", "you", "draw", "in", "each", "of",
-            "your", "draw", "steps",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "one", "they", "draw", "in", "their", "draw",
-            "step",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "card", "they", "draw", "in", "their", "draw",
-            "step",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "one", "you", "draw", "in", "your", "draw",
-            "step",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "card", "you", "draw", "in", "your", "draw",
-            "step",
-        ],
-    ] {
-        if trigger_surface_accepts(words, TriggerSurface::new().contains_phrases(&[pattern])) {
-            return Some(2);
-        }
-    }
-
-    for (ordinal, count) in [
-        ("second", 2u32),
-        ("third", 3u32),
-        ("fourth", 4u32),
-        ("fifth", 5u32),
-        ("sixth", 6u32),
-        ("seventh", 7u32),
-        ("eighth", 8u32),
-        ("ninth", 9u32),
-        ("tenth", 10u32),
-    ] {
-        let patterns: &[&[&str]] = &[
-            &[ordinal, "card", "each", "turn"],
-            &[ordinal, "cards", "each", "turn"],
-            &["your", ordinal, "card", "each", "turn"],
-            &["your", ordinal, "cards", "each", "turn"],
-            &["their", ordinal, "card", "each", "turn"],
-            &["their", ordinal, "cards", "each", "turn"],
-            &[ordinal, "card", "this", "turn"],
-            &[ordinal, "cards", "this", "turn"],
-            &["your", ordinal, "card", "this", "turn"],
-            &["your", ordinal, "cards", "this", "turn"],
-            &["their", ordinal, "card", "this", "turn"],
-            &["their", ordinal, "cards", "this", "turn"],
-        ];
-        if trigger_surface_accepts(
-            words,
-            TriggerSurface::new().contains_any_phrases(&[patterns]),
-        ) {
-            return Some(count);
-        }
-    }
-    None
+    trigger_subject_grammar::parse_draw_turn_surface_facts(words).exact_draws_this_turn
 }
 
 pub(crate) fn has_draw_except_first_in_draw_step_pattern(words: &[&str]) -> bool {
-    let patterns: &[&[&str]] = &[
-        &[
-            "a", "card", "except", "the", "first", "one", "they", "draw", "in", "each", "of",
-            "their", "draw", "steps",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "card", "they", "draw", "in", "each", "of",
-            "their", "draw", "steps",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "one", "you", "draw", "in", "each", "of",
-            "your", "draw", "steps",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "card", "you", "draw", "in", "each", "of",
-            "your", "draw", "steps",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "one", "they", "draw", "in", "their", "draw",
-            "step",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "card", "they", "draw", "in", "their", "draw",
-            "step",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "one", "you", "draw", "in", "your", "draw",
-            "step",
-        ],
-        &[
-            "a", "card", "except", "the", "first", "card", "you", "draw", "in", "your", "draw",
-            "step",
-        ],
-    ];
-    trigger_surface_accepts(
-        words,
-        TriggerSurface::new().contains_any_phrases(&[patterns]),
-    )
-}
-
-pub(crate) fn has_first_spell_each_turn_pattern(words: &[&str]) -> bool {
-    if !trigger_surface_accepts(words, FIRST_SPELL_TURN_CONTEXT_PATTERN) {
-        return false;
-    }
-
-    for (idx, word) in words.iter().enumerate() {
-        if !trigger_subject_word_is(word, FIRST_WORD) {
-            continue;
-        }
-        let window_end = (idx + 5).min(words.len());
-        if words[idx + 1..window_end]
-            .iter()
-            .any(|candidate| trigger_subject_word_is_any(candidate, SPELL_NOUN_EXACT_WORDS))
-        {
-            return true;
-        }
-    }
-    false
-}
-
-fn trim_trailing_spell_auxiliary_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let mut prefix_tokens = tokens;
-    while let Some(last_word) = prefix_tokens.last().and_then(OwnedLexToken::as_word) {
-        if trigger_surface_accepts(&[last_word], SPELL_AUXILIARY_WORD_PATTERN) {
-            prefix_tokens = &prefix_tokens[..prefix_tokens.len() - 1];
-        } else {
-            break;
-        }
-    }
-    prefix_tokens
-}
-
-fn token_slice_has_spell_noun(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    trigger_surface_accepts(&words, SPELL_NOUN_PATTERN)
-}
-
-pub(crate) fn has_second_spell_turn_pattern(words: &[&str]) -> bool {
-    trigger_surface_accepts(words, SECOND_SPELL_TURN_PATTERN)
+    trigger_subject_grammar::parse_draw_turn_surface_facts(words).except_first_in_draw_step
 }
 
 pub(crate) fn parse_spell_activity_trigger(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !trigger_surface_accepts(&clause_words, SPELL_NOUN_PATTERN) {
+    let activity_facts = trigger_subject_grammar::parse_spell_activity_surface_facts(&clause_words);
+    if !activity_facts.has_spell_noun {
         return Ok(None);
     }
 
@@ -1103,15 +622,10 @@ pub(crate) fn parse_spell_activity_trigger(
     }
 
     let mut actor = parse_subject_clause_player_filter(&clause_words);
-    let during_their_turn = trigger_surface_accepts(&clause_words, DURING_THEIR_TURN_PATTERN);
-    let mut during_turn = if trigger_surface_accepts(&clause_words, DURING_YOUR_TURN_PATTERN) {
-        Some(PlayerFilter::You)
-    } else if trigger_surface_accepts(&clause_words, DURING_OPPONENT_TURN_PATTERN) {
-        Some(PlayerFilter::Opponent)
-    } else {
-        None
-    };
-    if during_their_turn {
+    let mut during_turn = activity_facts
+        .during_turn
+        .map(trigger_controller_player_filter);
+    if activity_facts.during_their_turn {
         if matches!(actor, PlayerFilter::Any) {
             actor = PlayerFilter::Active;
             during_turn = None;
@@ -1119,36 +633,9 @@ pub(crate) fn parse_spell_activity_trigger(
             during_turn = Some(actor.clone());
         }
     }
-    let has_other_than_first_spell_pattern =
-        trigger_surface_accepts(&clause_words, OTHER_THAN_FIRST_SPELL_PATTERN)
-            || trigger_surface_accepts(&clause_words, OTHER_THAN_FIRST_CASTS_TURN_PATTERN);
-    let second_spell_turn_pattern = has_second_spell_turn_pattern(&clause_words);
-    let first_spell_each_turn =
-        !has_other_than_first_spell_pattern && has_first_spell_each_turn_pattern(&clause_words);
-    let exact_spells_this_turn = parse_exact_spell_count_each_turn(&clause_words)
-        .or_else(|| first_spell_each_turn.then_some(1))
-        .or_else(|| {
-            (!has_other_than_first_spell_pattern && second_spell_turn_pattern).then_some(2)
-        });
-    let min_spells_this_turn = if exact_spells_this_turn.is_some() {
-        None
-    } else if has_other_than_first_spell_pattern {
-        Some(2)
-    } else {
-        None
-    };
-    let from_not_hand = trigger_surface_accepts(&clause_words, FROM_ANYWHERE_NOT_HAND_PATTERN)
-        || find_words_matching_shape(
-            &clause_words,
-            FROM_ANYWHERE_OTHER_THAN_WORDS.len(),
-            FROM_ANYWHERE_OTHER_THAN_PATTERN,
-        )
-        .is_some_and(|idx| {
-            clause_words[idx + 4..]
-                .iter()
-                .take(4)
-                .any(|word| trigger_subject_word_is(word, HAND_EXACT_WORD))
-        });
+    let exact_spells_this_turn = activity_facts.exact_spells_this_turn;
+    let min_spells_this_turn = activity_facts.min_spells_this_turn;
+    let from_not_hand = activity_facts.from_not_hand;
 
     let parse_filter =
         |filter_tokens: &[OwnedLexToken]| -> Result<Option<ObjectFilter>, CardTextError> {
@@ -1161,55 +648,41 @@ pub(crate) fn parse_spell_activity_trigger(
                 .iter()
                 .filter_map(OwnedLexToken::as_word)
                 .collect();
-            let is_unqualified_spell =
-                trigger_surface_accepts(&filter_words, UNQUALIFIED_SPELL_WORDS_PATTERN);
-            if filter_tokens.is_empty() || is_unqualified_spell {
+            let filter_facts =
+                trigger_subject_grammar::parse_spell_filter_surface_facts(&filter_words);
+            if filter_tokens.is_empty() || filter_facts.is_unqualified_spell {
                 Ok(None)
             } else {
                 let parse_spell_origin_zone_filter = || -> Option<ObjectFilter> {
-                    let zone =
-                        if trigger_surface_accepts(&filter_words, SPELL_ORIGIN_GRAVEYARD_PATTERN) {
-                            Some(Zone::Graveyard)
-                        } else if trigger_surface_accepts(&filter_words, SPELL_ORIGIN_EXILE_PATTERN)
-                        {
-                            Some(Zone::Exile)
-                        } else if trigger_surface_accepts(&filter_words, SPELL_ORIGIN_HAND_PATTERN)
-                        {
-                            Some(Zone::Hand)
-                        } else {
-                            None
-                        }?;
-                    if !trigger_surface_accepts(&filter_words, SPELL_NOUN_PATTERN) {
+                    use trigger_subject_grammar::{SpellOriginSurface, SpellOwnerSurface};
+
+                    let zone = match filter_facts.origin? {
+                        SpellOriginSurface::Graveyard => Zone::Graveyard,
+                        SpellOriginSurface::Exile => Zone::Exile,
+                        SpellOriginSurface::Hand => Zone::Hand,
+                    };
+                    if !filter_facts.has_spell_noun {
                         return None;
                     }
                     let mut filter = ObjectFilter::spell().in_zone(zone);
-                    if trigger_surface_accepts(&filter_words, YOUR_WORD_PATTERN) {
-                        filter.owner = Some(actor.clone());
-                    } else if trigger_surface_accepts(&filter_words, OPPONENT_OR_THEIR_WORD_PATTERN)
-                    {
-                        filter.owner = Some(PlayerFilter::Opponent);
+                    match filter_facts.owner {
+                        Some(SpellOwnerSurface::SubjectActor) => {
+                            filter.owner = Some(actor.clone());
+                        }
+                        Some(SpellOwnerSurface::Opponent) => {
+                            filter.owner = Some(PlayerFilter::Opponent);
+                        }
+                        None => {}
                     }
                     Some(filter)
                 };
-                let compact_words = non_article_word_refs(&filter_words);
-                if trigger_surface_accepts(&compact_words, SPELL_OR_SPELLS_SUFFIX_PATTERN) {
-                    let mut qualifier_words = compact_words.clone();
-                    qualifier_words.pop();
-                    let qualifier_words = word_refs_except(&qualifier_words, &["or", "and"]);
-                    if trigger_surface_accepts(
-                        &qualifier_words,
-                        CHOSEN_COLOR_SPELL_QUALIFIER_PATTERN,
-                    ) {
-                        return Ok(Some(ObjectFilter::spell().of_chosen_color()));
-                    }
+                if filter_facts.chosen_color_qualifier {
+                    return Ok(Some(ObjectFilter::spell().of_chosen_color()));
                 }
                 match parse_object_filter(filter_tokens, false) {
                     Ok(filter) => Ok(Some(filter)),
                     Err(err) => {
-                        let mut compact_words = compact_words;
-                        if trigger_surface_accepts(&compact_words, SPELL_OR_SPELLS_SUFFIX_PATTERN) {
-                            compact_words.pop();
-                            let color_words = word_refs_except(&compact_words, &["or", "and"]);
+                        if let Some(color_words) = filter_facts.qualifier_words.as_deref() {
                             if !color_words.is_empty()
                                 && color_words.iter().all(|word| parse_color(word).is_some())
                             {
@@ -1222,10 +695,7 @@ pub(crate) fn parse_spell_activity_trigger(
                                 filter.colors = Some(colors);
                                 return Ok(Some(filter));
                             }
-                            if trigger_surface_accepts(
-                                &color_words,
-                                CHOSEN_COLOR_SPELL_QUALIFIER_PATTERN,
-                            ) {
+                            if filter_facts.chosen_color_qualifier {
                                 return Ok(Some(ObjectFilter::spell().of_chosen_color()));
                             }
                         }
@@ -1246,7 +716,7 @@ pub(crate) fn parse_spell_activity_trigger(
             (copy, cast, false)
         };
         let between_words = crate::runtime_backend::token_word_refs(&tokens[first + 1..second]);
-        if trigger_surface_accepts(&between_words, CAST_OR_COPY_SEPARATOR_PATTERN) {
+        if trigger_subject_grammar::spell_activity_words_are_or_separator(&between_words) {
             let filter = parse_filter(tokens.get(second + 1..).unwrap_or_default())?;
             let cast_trigger = TriggerSpec::SpellCast {
                 filter: filter.clone(),
@@ -1271,8 +741,9 @@ pub(crate) fn parse_spell_activity_trigger(
     if let Some(cast) = cast_idx {
         let mut filter_tokens = tokens.get(cast + 1..).unwrap_or_default();
         if filter_tokens.is_empty() {
-            let prefix_tokens = trim_trailing_spell_auxiliary_tokens(&tokens[..cast]);
-            if token_slice_has_spell_noun(prefix_tokens) {
+            let prefix_tokens =
+                trigger_subject_grammar::trim_trailing_spell_auxiliary_tokens(&tokens[..cast]);
+            if trigger_subject_grammar::spell_tokens_have_noun(prefix_tokens) {
                 filter_tokens = prefix_tokens;
             }
         }
@@ -1299,14 +770,11 @@ pub(crate) fn parse_spell_activity_trigger(
 }
 
 pub(crate) fn is_spawn_scion_token_mana_reminder(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    trigger_surface_accepts(&words, TOKEN_MANA_REMINDER_PREFIX_PATTERN)
-        && trigger_surface_accepts(&words, TOKEN_MANA_REMINDER_WORDS_PATTERN)
+    trigger_subject_grammar::parse_trigger_sentence_surface_facts(tokens).spawn_scion_mana_reminder
 }
 
 pub(crate) fn is_round_up_each_time_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    trigger_surface_accepts(&words, ROUND_UP_EACH_TIME_PREFIX_PATTERN)
+    trigger_subject_grammar::parse_trigger_sentence_surface_facts(tokens).round_up_each_time
 }
 
 pub(crate) enum MayCastItVerb {
@@ -1326,137 +794,73 @@ pub(crate) struct MayCastTaggedSpec {
 
 pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTaggedSpec> {
     let clause_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
-    let mut clause_words =
-        crate::runtime_backend::util::strip_leading_word_refs_any(&clause_words, &["then", "and"])
-            .to_vec();
+    let facts = trigger_subject_grammar::parse_may_cast_sentence_facts(&clause_words)?;
+    use trigger_subject_grammar::{
+        MayCastManaValueParity, MayCastSurfaceReference, MayCastSurfaceSubject, MayCastSurfaceVerb,
+        MayCastTailSurface,
+    };
 
-    if trigger_surface_accepts(&clause_words, IF_YOU_DO_PREFIX_PATTERN) {
-        clause_words = crate::runtime_backend::util::strip_leading_word_refs_any(
-            &clause_words[3..],
-            &["then", "and"],
-        )
-        .to_vec();
-    }
-
-    let (player, subject_tag, verb_idx) = if clause_words.len() >= 4
-        && trigger_surface_accepts(&clause_words, YOU_MAY_PREFIX_PATTERN)
-    {
-        (PlayerAst::Implicit, None, 2usize)
-    } else if clause_words.len() >= 7
-        && trigger_surface_accepts(&clause_words, EXILED_CARDS_OWNER_MAY_PREFIX_PATTERN)
-    {
-        (
+    let (player, subject_tag) = match facts.subject {
+        MayCastSurfaceSubject::You => (PlayerAst::Implicit, None),
+        MayCastSurfaceSubject::ExiledCardsOwner => (
             PlayerAst::ItsOwner,
             Some(TagKey::from(crate::tag::SOURCE_EXILED_TAG)),
-            5usize,
-        )
-    } else {
-        return None;
+        ),
+    };
+    let verb = match facts.verb {
+        MayCastSurfaceVerb::Cast => MayCastItVerb::Cast,
+        MayCastSurfaceVerb::Play => MayCastItVerb::Play,
+    };
+    let (tag, as_copy) = match facts.reference {
+        MayCastSurfaceReference::It => (TagKey::from(IT_TAG), false),
+        MayCastSurfaceReference::ThatCard => {
+            (subject_tag.unwrap_or_else(|| TagKey::from(IT_TAG)), false)
+        }
+        MayCastSurfaceReference::ExiledCard => (TagKey::from(crate::tag::SOURCE_EXILED_TAG), false),
+        MayCastSurfaceReference::RevealedCard => (TagKey::from("__last_revealed__"), false),
+        MayCastSurfaceReference::Copy => (TagKey::from(IT_TAG), true),
+    };
+    let (without_paying_mana_cost, predicate) = match facts.tail {
+        MayCastTailSurface::None => (false, None),
+        MayCastTailSurface::WithoutPayingManaCost => (true, None),
+        MayCastTailSurface::ManaValueAtMost { value_words } => {
+            let value_words = clause_words.get(value_words)?;
+            let (value, used) = parse_value_expr_words(value_words)?;
+            if used != value_words.len() {
+                return None;
+            }
+            (
+                true,
+                Some(PredicateAst::ItMatches(
+                    ObjectFilter::default().with_mana_value(
+                        crate::filter::Comparison::LessThanOrEqualExpr(Box::new(value)),
+                    ),
+                )),
+            )
+        }
+        MayCastTailSurface::ManaValueParity(parity) => {
+            let parity = match parity {
+                MayCastManaValueParity::Odd => crate::filter::ParityRequirement::Odd,
+                MayCastManaValueParity::Even => crate::filter::ParityRequirement::Even,
+            };
+            (
+                true,
+                Some(PredicateAst::ItMatches(
+                    ObjectFilter::default().with_mana_value_parity(parity),
+                )),
+            )
+        }
     };
 
-    if clause_words.len() <= verb_idx + 1 {
-        return None;
-    }
-
-    let verb = match clause_words[verb_idx] {
-        "cast" => MayCastItVerb::Cast,
-        "play" => MayCastItVerb::Play,
-        _ => return None,
-    };
-
-    let rest = &clause_words[verb_idx + 1..];
-    let (tag, as_copy, consumed) = if trigger_surface_accepts(rest, IT_REFERENCE_PREFIX_PATTERN) {
-        (TagKey::from(IT_TAG), false, 1usize)
-    } else if trigger_surface_accepts(rest, THAT_CARD_REFERENCE_PREFIX_PATTERN) {
-        (
-            subject_tag.unwrap_or_else(|| TagKey::from(IT_TAG)),
-            false,
-            2usize,
-        )
-    } else if trigger_surface_accepts(rest, EXILED_CARD_REFERENCE_PREFIX_PATTERN) {
-        (TagKey::from(crate::tag::SOURCE_EXILED_TAG), false, 3usize)
-    } else if trigger_surface_accepts(rest, REVEALED_CARD_REFERENCE_PREFIX_PATTERN) {
-        (TagKey::from("__last_revealed__"), false, 3usize)
-    } else if trigger_surface_accepts(rest, COPY_REFERENCE_PREFIX_PATTERN) {
-        (TagKey::from(IT_TAG), true, 2usize)
-    } else {
-        return None;
-    };
-
-    let tail = &rest[consumed..];
-    if tail.is_empty() {
-        return Some(MayCastTaggedSpec {
-            tag,
-            player,
-            verb,
-            as_copy,
-            without_paying_mana_cost: false,
-            predicate: None,
-            cost_reduction: None,
-        });
-    }
-    if trigger_surface_accepts(tail, WITHOUT_PAYING_MANA_COST_TAIL_PATTERN) {
-        return Some(MayCastTaggedSpec {
-            tag,
-            player,
-            verb,
-            as_copy,
-            without_paying_mana_cost: true,
-            predicate: None,
-            cost_reduction: None,
-        });
-    }
-    if tail.len() >= 13
-        && trigger_surface_accepts(tail, WITHOUT_PAYING_MANA_COST_MV_LTE_PREFIX_PATTERN)
-        && let Some((value, used)) = parse_value_expr_words(&tail[17..])
-        && used == tail.len().saturating_sub(17)
-    {
-        return Some(MayCastTaggedSpec {
-            tag,
-            player,
-            verb,
-            as_copy,
-            without_paying_mana_cost: true,
-            predicate: Some(PredicateAst::ItMatches(
-                ObjectFilter::default().with_mana_value(
-                    crate::filter::Comparison::LessThanOrEqualExpr(Box::new(value)),
-                ),
-            )),
-            cost_reduction: None,
-        });
-    }
-    if let [
-        "without",
-        "paying",
-        "its",
-        "mana",
-        "cost",
-        "if",
-        "its",
-        "mana",
-        "value",
-        "is",
-        parity,
-    ] = tail
-    {
-        let parity = match *parity {
-            "odd" => crate::filter::ParityRequirement::Odd,
-            "even" => crate::filter::ParityRequirement::Even,
-            _ => return None,
-        };
-        return Some(MayCastTaggedSpec {
-            tag,
-            player,
-            verb,
-            as_copy,
-            without_paying_mana_cost: true,
-            predicate: Some(PredicateAst::ItMatches(
-                ObjectFilter::default().with_mana_value_parity(parity),
-            )),
-            cost_reduction: None,
-        });
-    }
-    None
+    Some(MayCastTaggedSpec {
+        tag,
+        player,
+        verb,
+        as_copy,
+        without_paying_mana_cost,
+        predicate,
+        cost_reduction: None,
+    })
 }
 
 pub(crate) fn parse_copy_reference_cost_reduction_sentence(
@@ -1691,17 +1095,9 @@ pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bo
 }
 
 pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let words_all = crate::runtime_backend::token_word_refs(tokens);
-    if !trigger_surface_accepts(&words_all, CREATE_WORD_PATTERN)
-        || !trigger_surface_accepts(&words_all, TOKEN_WORD_PATTERN)
+    if let Some(with_idx) =
+        trigger_subject_grammar::parse_embedded_token_rules_boundary_tokens(tokens)
     {
-        return tokens.to_vec();
-    }
-    let Some(with_idx) = find_trigger_subject_token_word(tokens, WITH_WORD) else {
-        return tokens.to_vec();
-    };
-    let next_word = tokens.get(with_idx + 1).and_then(OwnedLexToken::as_word);
-    if next_word.is_some_and(|word| trigger_subject_word_is(word, T_WORD)) {
         return tokens[..with_idx].to_vec();
     }
     tokens.to_vec()
@@ -1843,5 +1239,56 @@ pub(crate) fn append_token_reminder_to_effect(
             });
             applied
         }
+    }
+}
+
+#[cfg(test)]
+mod typed_trigger_subject_migration_tests {
+    use super::*;
+    use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn typed_spell_activity_facts_preserve_trigger_spec_fields() {
+        let tokens = lex_line("you cast a spell during your turn", 0).unwrap();
+        let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
+        assert!(matches!(
+            trigger,
+            TriggerSpec::SpellCast {
+                filter: None,
+                caster: PlayerFilter::You,
+                during_turn: Some(PlayerFilter::You),
+                min_spells_this_turn: None,
+                exact_spells_this_turn: None,
+                from_not_hand: false,
+            }
+        ));
+    }
+
+    #[test]
+    fn typed_subject_facts_preserve_object_filter_semantics() {
+        let tokens = lex_line("other creature you control", 0).unwrap();
+        let filter = parse_trigger_subject_filter_lexed(&tokens)
+            .unwrap()
+            .unwrap();
+        assert!(filter.other);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+    }
+
+    #[test]
+    fn typed_may_cast_facts_preserve_tagged_semantics() {
+        let tokens = lex_line(
+            "the exiled cards owner may play that card without paying its mana cost",
+            0,
+        )
+        .unwrap();
+        let spec = parse_may_cast_it_sentence(&tokens).unwrap();
+        assert_eq!(spec.tag.as_str(), crate::tag::SOURCE_EXILED_TAG);
+        assert!(matches!(spec.player, PlayerAst::ItsOwner));
+        assert!(matches!(spec.verb, MayCastItVerb::Play));
+        assert!(!spec.as_copy);
+        assert!(spec.without_paying_mana_cost);
+        assert!(spec.predicate.is_none());
     }
 }

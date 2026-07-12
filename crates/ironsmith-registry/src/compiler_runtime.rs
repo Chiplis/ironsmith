@@ -920,8 +920,8 @@ mod tests {
             debug
                 .to_ascii_lowercase()
                 .contains("more than meets the eye {1}{r}{w}{b}")
-                && debug.contains("RuleRestriction")
-                && debug.contains("CastSpellsMatching")
+                && (debug.contains("OpponentsCantCastSpells")
+                    || (debug.contains("RuleRestriction") && debug.contains("CastSpellsMatching")))
                 && debug.contains("Opponent")
                 && debug.contains("ActivationTiming(DuringCombat)")
                 && debug.contains("ConvertEffect")

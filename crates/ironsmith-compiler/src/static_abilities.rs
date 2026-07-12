@@ -1,6 +1,6 @@
 pub use ironsmith_core::{
-    ActivatedAbilityCostCondition, Anthem, AnthemCountExpression, AnthemValue,
-    AttachedChosenLandwalkGrant, AttackCostCondition, AttackingGroupAttackCondition,
+    ActivatedAbilityCostCondition, Anthem, AnthemCountExpression, AnthemReplacementSurface,
+    AnthemValue, AttachedChosenLandwalkGrant, AttackCostCondition, AttackingGroupAttackCondition,
     CantAttackUnlessConditionSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
     CopyActivatedAbilities, CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost,
     CostReduction, CostReductionManaCost, CounterRemovalFollowUp, DefendingPlayerAttackCondition,

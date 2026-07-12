@@ -131,3 +131,21 @@ fn parses_trigger_subject_and_origin_surfaces_as_typed_facts() {
         Some(RollResultShape::Fixed(6))
     );
 }
+
+#[test]
+fn grouped_opponent_life_loss_reaches_the_typed_trigger_ast() {
+    let tokens = tokenize_line("one or more opponents lose life", 0);
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .unwrap();
+    assert_eq!(
+        parsed,
+        crate::runtime_backend::ast::TriggerSpec::PlayersLoseLifeOneOrMore(PlayerFilter::Opponent,)
+    );
+    assert_eq!(
+        crate::runtime_backend::compile_support::compile_trigger_spec(parsed),
+        crate::triggers::Trigger::players_lose_life_one_or_more(PlayerFilter::Opponent),
+    );
+}

@@ -546,6 +546,23 @@ struct PaymentRestrictionPresenceCache {
     may_have_restriction: bool,
 }
 
+#[derive(Debug, Clone)]
+struct EnterAsCopySourceCache {
+    mutation_revision: u64,
+    effect_revision: u64,
+    zone_revision: u64,
+    continuous_context_revision: u64,
+    turn_number: u32,
+    active_player: PlayerId,
+    phase: Phase,
+    step: Option<Step>,
+    /// `None` means a continuous ability modification can change whether the
+    /// ability exists, so callers must use layered characteristics. `Some`
+    /// contains the exact active printed/level/temporary abilities that can be
+    /// inspected without entering the layer system.
+    sparse_candidates: Option<Arc<Vec<(ObjectId, StaticAbility)>>>,
+}
+
 #[derive(Debug)]
 struct RuntimeCacheState {
     random_state: Cell<u64>,
@@ -572,6 +589,7 @@ struct RuntimeCacheState {
     effects_snapshot: RefCell<Option<(u64, Arc<Vec<ContinuousEffect>>)>>,
     controller_cache: RefCell<Option<ControllerCache>>,
     payment_restriction_presence: Cell<Option<PaymentRestrictionPresenceCache>>,
+    enter_as_copy_sources: RefCell<Option<EnterAsCopySourceCache>>,
     static_effects_cache: RefCell<crate::static_ability_processor::StaticEffectsCache>,
     trigger_registry: RefCell<Option<crate::triggers::check::TriggerRegistry>>,
     object_snapshot_cache: RefCell<ObjectSnapshotCache>,
@@ -605,6 +623,7 @@ impl Clone for RuntimeCacheState {
             effects_snapshot: RefCell::new(self.effects_snapshot.borrow().clone()),
             controller_cache: RefCell::new(self.controller_cache.borrow().clone()),
             payment_restriction_presence: Cell::new(self.payment_restriction_presence.get()),
+            enter_as_copy_sources: RefCell::new(self.enter_as_copy_sources.borrow().clone()),
             static_effects_cache: RefCell::new(self.static_effects_cache.borrow().clone()),
             trigger_registry: RefCell::new(self.trigger_registry.borrow().clone()),
             object_snapshot_cache: RefCell::new(self.object_snapshot_cache.borrow().clone()),
@@ -634,6 +653,7 @@ impl RuntimeCacheState {
             effects_snapshot: RefCell::new(None),
             controller_cache: RefCell::new(None),
             payment_restriction_presence: Cell::new(None),
+            enter_as_copy_sources: RefCell::new(None),
             static_effects_cache: RefCell::new(
                 crate::static_ability_processor::StaticEffectsCache::default(),
             ),
@@ -7992,27 +8012,7 @@ impl GameState {
     }
 
     pub fn minimum_total_spell_mana_payment(&self) -> Option<u32> {
-        let all_effects = self.all_continuous_effects();
-        let mut minimum = None;
-        for &perm_id in &self.battlefield {
-            let Some(_object) = self.object(perm_id) else {
-                continue;
-            };
-            let static_abilities = self
-                .calculated_characteristics_with_effects(perm_id, &all_effects)
-                .map(|chars| chars.static_abilities)
-                .unwrap_or_default();
-            for static_ability in static_abilities {
-                if !static_ability.is_active(self, perm_id) {
-                    continue;
-                }
-                if let Some(candidate) = static_ability.minimum_total_spell_mana() {
-                    minimum =
-                        Some(minimum.map_or(candidate, |current: u32| current.max(candidate)));
-                }
-            }
-        }
-        minimum
+        DerivedGameView::new(self).minimum_total_spell_mana_payment()
     }
 
     pub fn player_cant_pay_life_to_cast_or_activate(&self, player: PlayerId) -> bool {
@@ -8151,6 +8151,170 @@ impl GameState {
     ) -> bool {
         ability.forbids_paying_life_for_cast_or_activate()
             || ability.forbids_sacrificing_nonland_for_cast_or_activate()
+    }
+
+    /// Return the active non-layered battlefield abilities that can make
+    /// another permanent enter as a copy.
+    ///
+    /// `None` is a deliberate fallback signal: at least one continuous effect
+    /// can introduce or remove such an ability, so the caller must inspect
+    /// fully calculated characteristics. `Some` is safe to use directly and
+    /// is cached by every revision that can alter ability presence/activity.
+    pub(crate) fn sparse_enter_as_copy_source_abilities(
+        &self,
+    ) -> Option<Arc<Vec<(ObjectId, StaticAbility)>>> {
+        let cache_key = EnterAsCopySourceCache {
+            mutation_revision: self.mutation_revision,
+            effect_revision: self.effect_store.continuous_effects.revision(),
+            zone_revision: self.zone_revisions.battlefield,
+            continuous_context_revision: self.continuous_context_revision(),
+            turn_number: self.turn.turn_number,
+            active_player: self.turn.active_player,
+            phase: self.turn.phase,
+            step: self.turn.step,
+            sparse_candidates: None,
+        };
+        if let Some(cached) = self.runtime_cache.enter_as_copy_sources.borrow().as_ref()
+            && cached.mutation_revision == cache_key.mutation_revision
+            && cached.effect_revision == cache_key.effect_revision
+            && cached.zone_revision == cache_key.zone_revision
+            && cached.continuous_context_revision == cache_key.continuous_context_revision
+            && cached.turn_number == cache_key.turn_number
+            && cached.active_player == cache_key.active_player
+            && cached.phase == cache_key.phase
+            && cached.step == cache_key.step
+        {
+            return cached.sparse_candidates.clone();
+        }
+
+        let all_effects = if self.continuous_state_is_clean() {
+            self.cached_continuous_effects_snapshot_arc()
+        } else {
+            Arc::new(self.all_continuous_effects())
+        };
+        let requires_layered_fallback = all_effects.iter().any(|effect| {
+            Self::modification_may_change_enter_as_copy_presence(&effect.modification)
+        });
+
+        let sparse_candidates = (!requires_layered_fallback).then(|| {
+            let mut candidates = Vec::new();
+            for &object_id in &self.battlefield {
+                let Some(object) = self.object(object_id) else {
+                    continue;
+                };
+                let mut active_abilities = Vec::new();
+
+                for ability in object.abilities.iter() {
+                    let AbilityKind::Static(static_ability) = &ability.kind else {
+                        continue;
+                    };
+                    if ability.functions_in(&object.zone)
+                        && static_ability.enter_as_copy_as_enters().is_some()
+                        && static_ability.is_active(self, object_id)
+                        && !active_abilities.contains(static_ability)
+                    {
+                        active_abilities.push(static_ability.clone());
+                    }
+                }
+                for static_ability in object.level_granted_abilities() {
+                    if static_ability.enter_as_copy_as_enters().is_some()
+                        && static_ability.is_active(self, object_id)
+                        && !active_abilities.contains(&static_ability)
+                    {
+                        active_abilities.push(static_ability);
+                    }
+                }
+                for grant in &object.temporary_static_ability_grants {
+                    let Some(static_ability) = grant.materialize() else {
+                        continue;
+                    };
+                    if static_ability.enter_as_copy_as_enters().is_some()
+                        && static_ability.is_active(self, object_id)
+                        && !active_abilities.contains(&static_ability)
+                    {
+                        active_abilities.push(static_ability);
+                    }
+                }
+
+                candidates.extend(
+                    active_abilities
+                        .into_iter()
+                        .map(|ability| (object_id, ability)),
+                );
+            }
+            Arc::new(candidates)
+        });
+
+        *self.runtime_cache.enter_as_copy_sources.borrow_mut() = Some(EnterAsCopySourceCache {
+            sparse_candidates: sparse_candidates.clone(),
+            ..cache_key
+        });
+        sparse_candidates
+    }
+
+    fn modification_may_change_enter_as_copy_presence(modification: &Modification) -> bool {
+        match modification {
+            Modification::CopyOf { .. }
+            | Modification::ChangeText { .. }
+            | Modification::SetTextBox(_)
+            | Modification::SetAbilities(_)
+            | Modification::RemoveAllAbilities
+            | Modification::RemoveAllAbilitiesExceptMana => true,
+            Modification::AddAbility(static_ability)
+            | Modification::RemoveAbility(static_ability) => {
+                Self::static_ability_may_provide_enter_as_copy(static_ability)
+            }
+            Modification::AddAbilityGeneric(ability)
+            | Modification::RemoveAbilityGeneric(ability) => matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if Self::static_ability_may_provide_enter_as_copy(static_ability)
+            ),
+            Modification::ChangeController(_)
+            | Modification::SetName(_)
+            | Modification::AddCardTypes(_)
+            | Modification::RemoveCardTypes(_)
+            | Modification::SetCardTypes(_)
+            | Modification::AddSubtypes(_)
+            | Modification::AddAllSubtypesOfFamily(_)
+            | Modification::RemoveSubtypes(_)
+            | Modification::RemoveAllSubtypesOfFamily(_)
+            | Modification::SetSubtypes(_)
+            | Modification::SetAuraAttachmentFilter(_)
+            | Modification::AddSupertypes(_)
+            | Modification::RemoveSupertypes(_)
+            | Modification::RemoveAllCreatureTypes
+            | Modification::AddColors(_)
+            | Modification::RemoveColors(_)
+            | Modification::SetColors(_)
+            | Modification::MakeColorless
+            | Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyTriggeredAbilities { .. }
+            | Modification::AddCombatDamageDrawAbility
+            | Modification::CantBeBlocked
+            | Modification::CantAttack
+            | Modification::CantBlock
+            | Modification::DoesntUntap
+            | Modification::SetPower { .. }
+            | Modification::SetToughness { .. }
+            | Modification::SetPowerToughness { .. }
+            | Modification::ModifyPower(_)
+            | Modification::ModifyToughness(_)
+            | Modification::ModifyPowerToughness { .. }
+            | Modification::ModifyPowerToughnessByColorCount { .. }
+            | Modification::SwitchPowerToughness => false,
+        }
+    }
+
+    fn static_ability_may_provide_enter_as_copy(static_ability: &StaticAbility) -> bool {
+        static_ability.enter_as_copy_as_enters().is_some()
+            || static_ability.level_abilities().is_some_and(|levels| {
+                levels.iter().any(|tier| {
+                    tier.abilities
+                        .iter()
+                        .any(Self::static_ability_may_provide_enter_as_copy)
+                })
+            })
     }
 
     pub fn player_skips_upkeep_step(&self, player: PlayerId) -> bool {
@@ -10815,10 +10979,18 @@ impl GameState {
             | crate::ConditionExpr::EquippedCreatureUntapped
             | crate::ConditionExpr::SourceIsUntapped => true,
             crate::ConditionExpr::SourceMatches(filter)
+            | crate::ConditionExpr::AttachedToSourceMatches(filter)
             | crate::ConditionExpr::TargetMatches(filter)
             | crate::ConditionExpr::TaggedObjectMatches(_, filter)
             | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. } => {
                 Self::filter_reads_tapped_state(filter)
+            }
+            crate::ConditionExpr::MatchingObjectAttachedToMatchingObject {
+                attachment,
+                attached_to,
+            } => {
+                Self::filter_reads_tapped_state(attachment)
+                    || Self::filter_reads_tapped_state(attached_to)
             }
             crate::ConditionExpr::SourceCrewedByExactly { filter, .. } => {
                 Self::filter_reads_tapped_state(filter)
@@ -10912,10 +11084,18 @@ impl GameState {
         match condition {
             crate::ConditionExpr::SourceIsFaceDown => true,
             crate::ConditionExpr::SourceMatches(filter)
+            | crate::ConditionExpr::AttachedToSourceMatches(filter)
             | crate::ConditionExpr::TargetMatches(filter)
             | crate::ConditionExpr::TaggedObjectMatches(_, filter)
             | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. } => {
                 Self::filter_reads_face_down_state(filter)
+            }
+            crate::ConditionExpr::MatchingObjectAttachedToMatchingObject {
+                attachment,
+                attached_to,
+            } => {
+                Self::filter_reads_face_down_state(attachment)
+                    || Self::filter_reads_face_down_state(attached_to)
             }
             crate::ConditionExpr::SourceCrewedByExactly { filter, .. } => {
                 Self::filter_reads_face_down_state(filter)
@@ -11015,11 +11195,19 @@ impl GameState {
     fn condition_reads_summoning_sickness_state(condition: &crate::ConditionExpr) -> bool {
         match condition {
             crate::ConditionExpr::SourceMatches(filter)
+            | crate::ConditionExpr::AttachedToSourceMatches(filter)
             | crate::ConditionExpr::TargetMatches(filter)
             | crate::ConditionExpr::TaggedObjectMatches(_, filter)
             | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. }
             | crate::ConditionExpr::SourceCrewedByExactly { filter, .. } => {
                 Self::filter_reads_summoning_sickness_state(filter)
+            }
+            crate::ConditionExpr::MatchingObjectAttachedToMatchingObject {
+                attachment,
+                attached_to,
+            } => {
+                Self::filter_reads_summoning_sickness_state(attachment)
+                    || Self::filter_reads_summoning_sickness_state(attached_to)
             }
             crate::ConditionExpr::CountComparison { count, .. }
             | crate::ConditionExpr::CountParity { count, .. } => {

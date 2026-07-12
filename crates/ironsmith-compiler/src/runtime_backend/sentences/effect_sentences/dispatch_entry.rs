@@ -23,10 +23,10 @@ use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_leading_result_prefix_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    LexStream, LexedClause, OwnedLexToken, TokenKind, contains_token_word_sequence, lex_line,
-    split_lexed_sentences, token_slice_at_is, word_slice_eq, word_slice_eq_any,
-    word_slice_find_phrase_start, word_slice_first_is, words_have_any_phrase, words_have_phrase,
-    words_start_with_any,
+    LexStream, LexedClause, OwnedLexToken, TokenKind, complete_word_sequence_choice,
+    complete_word_sequence_surface, contains_token_word_sequence, lex_line, locate_word_sequence,
+    split_lexed_sentences, token_slice_at_is, word_prefix_choice_present,
+    word_sequence_choice_present, word_sequence_present, word_slice_first_is,
 };
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
@@ -43,11 +43,11 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     helper_tag_for_tokens, is_article, mana_pips_from_token, parse_color, parse_counter_type_words,
-    parse_number, parse_number_word_refs, parse_subject, parse_target_phrase, span_from_tokens,
-    token_boundary_for_word, trim_commas, words,
+    parse_number, parse_subject, parse_target_phrase, span_from_tokens, token_boundary_for_word,
+    trim_commas, words,
 };
 use super::bundle_rules::{
-    parse_exact_card_effect_bundle_lexed, parse_same_sentence_copy_and_may_cast_copy,
+    parse_same_sentence_copy_and_may_cast_copy, parse_typed_effect_bundle_lexed,
 };
 use super::consult_family;
 use super::divvy::try_parse_divvy_sentence_sequence;
@@ -57,8 +57,8 @@ use super::sequence_rules::{subject_verb_sequence_route, try_parse_subject_verb_
 use super::zone_handlers::parse_exile_top_library_clause;
 use super::{
     SubjectVerbPrimitiveClause, find_verb, parse_effect_sentence_lexed, parse_restriction_duration,
-    parse_search_library_disjunction_filter, parse_subtype_word,
-    parse_token_copy_modifier_sentence, trim_edge_punctuation, try_build_unless,
+    parse_subtype_word, parse_token_copy_modifier_sentence, trim_edge_punctuation,
+    try_build_unless,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -182,6 +182,14 @@ fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration: &Un
                 ..
             }
             | SubjectVerbActionAst::GrantAbilitiesToTarget {
+                duration: effect_duration,
+                ..
+            }
+            | SubjectVerbActionAst::GrantAbilitiesAll {
+                duration: effect_duration,
+                ..
+            }
+            | SubjectVerbActionAst::GrantAbilitiesChoiceAll {
                 duration: effect_duration,
                 ..
             }
@@ -1057,9 +1065,23 @@ fn parse_effect_sentences_from_sentence_inputs(
     sentences: Vec<SentenceInput>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
     fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
-        let shape =
-            effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)?;
-        parse_value_binding_clause(shape.binding_tokens)
+        let binding_tokens =
+            effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)
+                .map(|shape| shape.binding_tokens)
+                .or_else(|| {
+                    effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens)
+                        .map(|shape| shape.where_tokens)
+                })?;
+        if let Some((_, value)) =
+            effect_grammar::sentence_predicate_shapes::parse_where_x_value_shape_tokens(
+                binding_tokens,
+                false,
+            )
+            .and_then(super::dispatch_inner::lower_where_x_shape)
+        {
+            return Some(value.with_surface_hint(ValueSurfaceHint::WhereXIs));
+        }
+        parse_value_binding_clause(binding_tokens)
             .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
     }
 
@@ -1609,11 +1631,11 @@ fn parse_effect_sentences_lexed_inner(
         return Ok(vec![effect]);
     }
 
-    if let Some(mut effects) = parse_exact_card_effect_bundle_lexed(tokens) {
+    if let Some(mut effects) = parse_typed_effect_bundle_lexed(tokens) {
         apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
         maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
         parse_trace::event(format!(
-            "exact effect bundle -> {}",
+            "typed effect bundle -> {}",
             summarize_effects(&effects)
         ));
         return Ok(effects);
@@ -1810,10 +1832,10 @@ mod tests {
         ConsultCastCost, ConsultCastTiming, Verb, parse_bargained_face_down_cast_mana_value_gate,
         parse_consult_cast_clause, parse_consult_condition_value,
         parse_consult_mana_value_condition_tokens,
-        parse_counted_looked_cards_into_your_hand_tokens, parse_exact_card_effect_bundle_lexed,
-        parse_if_you_dont_sentence, parse_looked_card_reveal_filter,
+        parse_counted_looked_cards_into_your_hand_tokens, parse_if_you_dont_sentence,
+        parse_looked_card_reveal_filter,
         parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
-        parse_top_cards_view_sentence,
+        parse_top_cards_view_sentence, parse_typed_effect_bundle_lexed,
     };
 
     #[test]
@@ -2012,8 +2034,8 @@ mod tests {
         )
         .expect("rewrite lexer should classify choose/for-each bundle");
 
-        let parsed = parse_exact_card_effect_bundle_lexed(&tokens)
-            .expect("choose/for-each bundle should parse");
+        let parsed =
+            parse_typed_effect_bundle_lexed(&tokens).expect("choose/for-each bundle should parse");
 
         assert!(matches!(
             parsed.as_slice(),
@@ -2052,7 +2074,7 @@ mod tests {
             "expected permission clause to parse"
         );
 
-        let parsed = parse_exact_card_effect_bundle_lexed(&tokens)
+        let parsed = parse_typed_effect_bundle_lexed(&tokens)
             .expect("subject-first exile/play bundle should parse directly");
 
         let debug = format!("{parsed:#?}").to_ascii_lowercase();
@@ -2074,7 +2096,7 @@ mod tests {
         )
         .expect("rewrite lexer should classify source-leaves exile bundle");
 
-        let parsed = parse_exact_card_effect_bundle_lexed(&tokens)
+        let parsed = parse_typed_effect_bundle_lexed(&tokens)
             .or_else(|| parse_effect_chain(&tokens).ok())
             .expect("source-leaves exile bundle should parse through a supported sentence path");
 
@@ -2246,6 +2268,70 @@ mod tests {
     }
 
     #[test]
+    fn clash_win_branch_keeps_additional_pump_and_keyword_grant_together() {
+        let tokens = lex_line(
+            "Target creature gets +2/+2 until end of turn. Clash with an opponent. If you win, that creature gets an additional +2/+2 and gains trample until end of turn.",
+            0,
+        )
+        .expect("rewrite lexer should classify the clash sequence");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("typed clash result sequence should parse");
+        assert!(matches!(
+            parsed.get(1),
+            Some(crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::Clash { .. },
+                    ..
+                }
+            ))
+        ));
+        let Some(crate::cards::builders::EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects,
+        }) = parsed.last()
+        else {
+            panic!("expected a typed result branch, got {parsed:#?}");
+        };
+        assert_eq!(
+            effects.len(),
+            2,
+            "both rewards must stay gated: {effects:#?}"
+        );
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::Pump { .. },
+                    ..
+                }
+            )
+        )));
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::GrantAbilitiesToTarget {
+                            ..
+                        },
+                    ..
+                }
+            )
+        )));
+
+        let lowered = crate::runtime_backend::compile_support::compile_statement_effects(&parsed)
+            .expect("typed clash result branch should lower normally");
+        let lowered_debug = format!("{lowered:#?}");
+        assert!(
+            lowered_debug.contains("ClashEffect")
+                && lowered_debug.contains("IfEffect")
+                && lowered_debug.contains("Trample"),
+            "lowered branch must retain the clash condition and both rewards: {lowered_debug}"
+        );
+    }
+
+    #[test]
     fn if_you_dont_clause_reports_missing_comma_after_matched_prefix() {
         let tokens = lex_line("If you don't draw a card", 0)
             .expect("rewrite lexer should classify if-you-don't clause");
@@ -2257,6 +2343,45 @@ mod tests {
             err.to_string().contains("comma after if-you-don't clause"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn prior_token_instead_followup_builds_typed_self_replacement() {
+        let tokens = lex_line(
+            "Create a tapped 1/1 black Skeleton creature token. If a creature died this turn, create two of those tokens instead.",
+            0,
+        )
+        .expect("lex prior-token replacement");
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("parse typed prior-token replacement");
+        let [
+            crate::cards::builders::EffectAst::SelfReplacement {
+                predicate,
+                if_true,
+                if_false,
+                attach_to_previous_ability,
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected typed self-replacement, got {parsed:#?}");
+        };
+        assert!(matches!(
+            predicate,
+            crate::cards::builders::PredicateAst::CreatureDiedThisTurn
+        ));
+        assert_eq!(if_true.len(), 1, "{if_true:#?}");
+        assert_eq!(if_false.len(), 1, "{if_false:#?}");
+        assert!(!attach_to_previous_ability);
+
+        let lowered =
+            crate::runtime_backend::compile_support::compile_statement_effects_with_imports(
+                &parsed,
+                &crate::runtime_backend::reference_model::ReferenceImports::default(),
+            )
+            .expect("lower typed prior-token replacement");
+        let debug = format!("{lowered:#?}");
+        assert!(debug.contains("self_replacements"), "{debug}");
+        assert!(debug.contains("CreatureDiedThisTurn"), "{debug}");
     }
 }
 
@@ -2692,6 +2817,13 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             SubjectVerbActionAst::CounterUnlessPays { cost, .. } => {
                 replace_values_in_total_cost(cost, replacement, clause)?;
             }
+            SubjectVerbActionAst::PayMana { cost, x_value } => {
+                if cost.has_x() && x_value.is_none() {
+                    *x_value = Some(replacement.clone());
+                } else if let Some(x_value) = x_value.as_mut() {
+                    replace_value(x_value, replacement, clause)?;
+                }
+            }
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {
                 amount: Some(amount),
                 ..
@@ -2779,6 +2911,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ChooseCardType { .. }
             | SubjectVerbActionAst::ChooseNamedOption { .. }
             | SubjectVerbActionAst::ChooseCreatureType { .. }
+            | SubjectVerbActionAst::ChooseLandType { .. }
             | SubjectVerbActionAst::ChooseCardName { .. }
             | SubjectVerbActionAst::ChoosePlayer { .. }
             | SubjectVerbActionAst::NoteLifeTotal
@@ -2816,7 +2949,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayAnyLife { .. }
-            | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }
             | SubjectVerbActionAst::Goad { .. }

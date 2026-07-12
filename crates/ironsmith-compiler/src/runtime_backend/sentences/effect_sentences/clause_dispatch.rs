@@ -1,7 +1,5 @@
 pub(crate) use self::become_clause::parse_become_clause;
-use self::helpers::{
-    has_counter_state_pronoun, parse_controller_or_owner_of_target_subject, render_lower_words,
-};
+use self::helpers::{parse_controller_or_owner_of_target_subject, render_lower_words};
 use self::next_turn_cant::parse_next_turn_cant_clause;
 use super::super::activation_and_restrictions::{
     build_may_cast_tagged_effect, find_negation_span, parse_cant_restriction_clause,
@@ -11,7 +9,10 @@ use super::super::activation_and_restrictions::{
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause_with_count_value,
     parse_you_choose_player_clause, starts_with_target_indicator,
 };
+use super::super::grammar::choices::parse_choice_land_type_phrase_words;
+use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::effects::clause_dispatch_shapes as clause_grammar;
+use super::super::grammar::effects::followup_shapes as followup_grammar;
 use super::super::grammar::effects::parse_mana_replacement_clause_spec_lexed;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
@@ -20,10 +21,10 @@ use super::super::keyword_static::{
     parse_pt_modifier_values,
 };
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, contains_token_word, token_slice_first_is,
-    token_slice_first_is_any, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_find_word, word_slice_first_is_any, words_end_with, words_have_all, words_have_any,
-    words_have_phrase, words_start_with,
+    LexedClause, OwnedLexToken, complete_word_sequence_choice, complete_word_sequence_surface,
+    contains_token_word, every_word_present, locate_word, locate_word_sequence,
+    token_slice_first_is, token_slice_first_is_any, word_choice_present, word_prefix_present,
+    word_sequence_present, word_slice_first_is_any, word_suffix_present,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
@@ -33,8 +34,7 @@ use super::super::token_primitives::{
 use super::super::util::{
     contains_until_end_of_turn, parse_card_type, parse_color, parse_number, parse_subject,
     parse_subtype_flexible, parse_target_phrase, parse_value, parser_trace, parser_trace_stack,
-    span_from_tokens, starts_with_until_end_of_turn, token_boundary_for_word, trim_commas,
-    word_refs_except,
+    span_from_tokens, token_boundary_for_word, trim_commas, word_refs_except,
 };
 use super::chain_carry::{parse_leading_player_may, remove_first_word, remove_through_first_word};
 use super::clause_pattern_helpers::extract_subject_player;
@@ -44,11 +44,10 @@ use super::dispatch_inner::{
     trim_edge_punctuation,
 };
 use super::for_each_helpers::{
-    has_demonstrative_object_reference, is_mana_replacement_clause_words,
-    is_mana_trigger_additional_clause_words, is_target_player_dealt_damage_by_this_turn_subject,
-    parse_for_each_object_subject, parse_get_for_each_count_value,
-    parse_get_modifier_values_with_tail, parse_has_base_power_clause,
-    parse_has_base_power_toughness_clause,
+    is_mana_replacement_clause_words, is_mana_trigger_additional_clause_words,
+    is_target_player_dealt_damage_by_this_turn_subject, parse_for_each_object_subject,
+    parse_get_for_each_count_value, parse_get_modifier_values_with_tail,
+    parse_has_base_power_clause, parse_has_base_power_toughness_clause,
 };
 use super::search_library::parse_restriction_duration;
 use super::subject_verb_primitives::{
@@ -768,6 +767,19 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     let stripped_instead = super::strip_leading_instead_prefix(tokens);
     let tokens = stripped_instead.as_deref().unwrap_or(tokens);
 
+    if let Some(shape) = followup_grammar::parse_counter_linked_land_subtype_followup(tokens) {
+        let _counter_type = shape.counter_type;
+        return Ok(EffectAst::subject_verb_add_subtypes(
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+            vec![shape.subtype],
+            Until::Forever,
+        ));
+    }
+
+    if let Some(effect) = effect_grammar::parse_prevent_damage_sentence_lexed(tokens)? {
+        return Ok(effect);
+    }
+
     if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens)
         && let Ok(base_effect) = parse_effect_clause(trailing_if.leading_tokens)
     {
@@ -998,6 +1010,15 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::subject_verb_choose_creature_type(
             crate::cards::builders::PlayerAst::Implicit,
             excluded_subtypes,
+        ));
+    }
+
+    if let Some(parsed) = parse_choice_land_type_phrase_words(&choice_words)
+        && parsed.consumed == choice_words.len()
+    {
+        return Ok(EffectAst::subject_verb_choose_land_type(
+            crate::cards::builders::PlayerAst::Implicit,
+            parsed.exclude_basic,
         ));
     }
 
@@ -1604,6 +1625,37 @@ mod tests {
             debug.contains("controlplayer") && debug.contains("nextturn"),
             "expected control-player-next-turn effect, got {debug}"
         );
+    }
+
+    #[test]
+    fn counter_linked_land_subtype_followup_lowers_to_prior_tagged_land() {
+        let tokens = lex_line(
+            "That land is an Island in addition to its other types for as long as it has a flood counter on it.",
+            0,
+        )
+        .unwrap();
+        let effect = parse_effect_clause(&tokens).expect("typed land subtype followup");
+        let debug = format!("{effect:#?}");
+        assert!(debug.contains("AddSubtypes"), "{debug}");
+        assert!(debug.contains("Island"), "{debug}");
+        assert!(debug.contains(IT_TAG), "{debug}");
+    }
+
+    #[test]
+    fn filtered_combat_damage_prevention_keeps_non_subtype_source_filter() {
+        let tokens = lex_line(
+            "Prevent all combat damage non-Soldier creatures would deal this turn.",
+            0,
+        )
+        .unwrap();
+        effect_grammar::parse_prevent_damage_sentence_lexed(&tokens)
+            .expect("typed prevention grammar should not error")
+            .expect("typed prevention grammar should recognize filtered source");
+        let effect = parse_effect_clause(&tokens).expect("typed filtered prevention");
+        let debug = format!("{effect:#?}");
+        assert!(debug.contains("PreventAllCombatDamage"), "{debug}");
+        assert!(debug.contains("Soldier"), "{debug}");
+        assert!(debug.contains("excluded_subtypes"), "{debug}");
     }
 
     #[test]

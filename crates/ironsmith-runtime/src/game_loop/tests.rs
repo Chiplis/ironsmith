@@ -38,6 +38,109 @@ fn setup_three_player_game() -> GameState {
     )
 }
 
+#[test]
+fn targeted_cast_refreshes_after_proposal_metadata_before_wide_target_queries() {
+    use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let creatures = (0..96)
+        .map(|index| create_creature(&mut game, &format!("Target {index}"), alice, 2, 2))
+        .collect::<Vec<_>>();
+    for modification in [
+        Modification::AddAbility(StaticAbility::flying()),
+        Modification::AddAbility(StaticAbility::vigilance()),
+        Modification::ModifyPowerToughness {
+            power: 1,
+            toughness: 1,
+        },
+        Modification::ModifyPowerToughness {
+            power: 2,
+            toughness: 2,
+        },
+    ] {
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                creatures[0],
+                alice,
+                EffectTarget::AllCreatures,
+                modification,
+            ));
+    }
+
+    let target_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+        crate::target::ObjectFilter::creature(),
+    ));
+    let spell = CardDefinitionBuilder::new(CardId::from_raw(991_001), "Wide Target Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Instant])
+        .with_spell_effect(vec![Effect::destroy(target_spec)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+    game.refresh_continuous_state();
+
+    let before = game.work_counters();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("targeted cast should reach target selection");
+    let after = game.work_counters();
+
+    let targets = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(
+            ctx,
+        )) => ctx
+            .requirements
+            .into_iter()
+            .flat_map(|requirement| requirement.legal_targets)
+            .collect::<Vec<_>>(),
+        other => panic!("expected target selection, got {other:?}"),
+    };
+    assert_eq!(targets.len(), creatures.len());
+    let pending = state
+        .pending_cast
+        .as_ref()
+        .expect("cast should remain pending");
+    assert!(
+        pending
+            .optional_costs_paid
+            .was_paid_label("CastDuringYourMainPhase"),
+        "proposal metadata should be initialized before its single continuous-state refresh"
+    );
+    assert!(game.continuous_state_is_clean());
+    assert!(
+        after.characteristics_full_recomputes <= before.characteristics_full_recomputes + 2,
+        "cast-time spell inspection and target enumeration should use batched characteristics: before={before:?}, after={after:?}"
+    );
+    assert!(
+        after.dependency_sorts <= before.dependency_sorts + 4,
+        "cast-time dependency sorting should be bounded by effect layers, not target count: before={before:?}, after={after:?}"
+    );
+    assert!(
+        after.dependency_pairs_probed <= before.dependency_pairs_probed + 64,
+        "cast-time dependency probes should scale with effects, not battlefield width: before={before:?}, after={after:?}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 fn aligned_heart_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(836_968_406), "Aligned Heart")

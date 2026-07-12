@@ -2413,6 +2413,10 @@ pub fn check_delayed_triggers(
     game: &mut GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
+    if game.effect_store.delayed_triggers.is_empty() {
+        return Vec::new();
+    }
+
     if suppresses_creature_etb_triggers(game, trigger_event) {
         return Vec::new();
     }
@@ -2979,6 +2983,55 @@ mod tests {
                 crate::continuous::Modification::AddAbilityGeneric(granted_trigger),
             )
             .with_condition(condition),
+        );
+    }
+
+    #[test]
+    fn empty_delayed_trigger_check_skips_creature_etb_suppression_scan() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let creatures = (0..96)
+            .map(|index| {
+                make_battlefield_creature(&mut game, alice, &format!("Layered Creature {index}"))
+            })
+            .collect::<Vec<_>>();
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                creatures[0],
+                alice,
+                crate::continuous::EffectTarget::AllCreatures,
+                crate::continuous::Modification::AddAbility(StaticAbility::flying()),
+            ));
+        game.refresh_continuous_state();
+        assert!(game.effect_store.delayed_triggers.is_empty());
+
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_cause(
+                creatures[1],
+                Zone::Stack,
+                Zone::Battlefield,
+                EventCause::effect(),
+                None,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let before = game.work_counters();
+
+        assert!(check_delayed_triggers(&mut game, &event).is_empty());
+
+        let after = game.work_counters();
+        assert_eq!(
+            after.derived_view_rebuilds, before.derived_view_rebuilds,
+            "an empty delayed-trigger store must return before building a suppression view"
+        );
+        assert_eq!(
+            after.characteristics_full_recomputes, before.characteristics_full_recomputes,
+            "an empty delayed-trigger store must not calculate battlefield characteristics"
+        );
+        assert_eq!(
+            after.dependency_sorts, before.dependency_sorts,
+            "an empty delayed-trigger store must not enter dependency sorting"
         );
     }
 
@@ -4225,14 +4278,18 @@ mod tests {
         }
 
         let effect_source = sources[0];
-        game.effect_store
-            .continuous_effects
-            .add_effect(ContinuousEffect::new(
+        // Keep this fixture on the dependency-sort path. An unconditional
+        // add/remove pair is timestamp-only and is intentionally optimized to
+        // skip baseline dependency analysis altogether.
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::new(
                 effect_source,
                 alice,
                 crate::continuous::EffectTarget::AllPermanents,
                 crate::continuous::Modification::AddAbility(StaticAbility::flying()),
-            ));
+            )
+            .with_condition(crate::ConditionExpr::YourTurn),
+        );
         game.effect_store
             .continuous_effects
             .add_effect(ContinuousEffect::new(

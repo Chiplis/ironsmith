@@ -27,32 +27,12 @@ pub(crate) struct RewriteSemanticDocument {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct DocumentSemanticFacts {
     pub(crate) overload_rewrite: Option<OverloadRewritePayload>,
-    pub(crate) delayed_schedule_surfaces: Vec<DelayedScheduleSurface>,
-    pub(crate) kicked_counter_spell_mana_value_replacement: bool,
-    pub(crate) postpass_repairs: PostpassRepairFacts,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct OverloadRewritePayload {
     pub(crate) keyword_line_index: usize,
     pub(crate) target_spans: Vec<crate::cards::TextSpan>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedScheduleSurface {
-    pub(crate) start_next_turn: bool,
-    pub(crate) your_next_upkeep: bool,
-    pub(crate) your_next_draw_step: bool,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct PostpassRepairFacts {
-    pub(crate) opponents_lose_life_one_or_more: bool,
-    pub(crate) clash_additional_buff_and_trample: bool,
-    pub(crate) shroud_while_source_tapped: bool,
-    pub(crate) target_creature_blocks_target_creature: bool,
-    pub(crate) defending_creature_blocks_source: bool,
-    pub(crate) chosen_nonbasic_land_type_becomes_copy: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -6,7 +6,6 @@ use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ParseAnnotati
 use crate::{parse_loss, parse_trace};
 
 use super::model::SemanticDocument;
-use super::postpasses;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct CompilePolicy {
@@ -91,13 +90,9 @@ impl CardTextCompiler {
             text,
             policy.allow_unsupported,
         )
-        .and_then(|lowered| {
-            postpasses::apply(lowered.definition, &lowered.semantic_facts).map(|definition| {
-                CompiledCardText {
-                    definition,
-                    annotations: lowered.annotations,
-                }
-            })
+        .map(|lowered| CompiledCardText {
+            definition: lowered.definition,
+            annotations: lowered.annotations,
         });
 
         if tracing {

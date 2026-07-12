@@ -88,6 +88,7 @@ fn parse_known_counter_type_word_slice(
         "ice" => CounterType::Ice,
         "finality" => CounterType::Finality,
         "fade" => CounterType::Fade,
+        "flood" => CounterType::Flood,
         "time" => CounterType::Time,
         "brain" => CounterType::Brain,
         "burden" => CounterType::Named(intern_counter_name("burden")),

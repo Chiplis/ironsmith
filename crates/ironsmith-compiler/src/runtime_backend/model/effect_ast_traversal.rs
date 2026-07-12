@@ -14,6 +14,7 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::AnyPlayerMay { effects: $effects }
             | EffectAst::ResolvedIfResult {
                 effects: $effects,
                 ..
@@ -150,6 +151,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::RepeatEffects { .. } => {}
         EffectAst::May { .. } => {}
         EffectAst::MayByPlayer { .. } => {}
+        EffectAst::AnyPlayerMay { .. } => {}
         EffectAst::ResolvedIfResult { .. } => {}
         EffectAst::ResolvedWhenResult { .. } => {}
         EffectAst::IfResult { .. } => {}

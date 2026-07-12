@@ -228,9 +228,7 @@ fn parse_draw_for_each_player_condition(
             PredicateAst::PlayerHasMoreCardsInHandThanYou { player }
                 if player == PlayerAst::That =>
             {
-                PredicateAst::PlayerHasMoreCardsInHandThanYou {
-                    player: PlayerAst::Implicit,
-                }
+                PredicateAst::PlayerHasMoreCardsInHandThanYou { player }
             }
             PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player }
                 if player == PlayerAst::That =>
@@ -389,7 +387,7 @@ fn parse_draw_for_each_object_filter_value(
     }
 
     if let Some(cast_this_turn_value) =
-        crate::runtime_backend::front_end::shared::value_helpers::parse_spells_cast_this_turn_matching_count_value_lexed(&filter_tokens)
+        crate::runtime_backend::grammar::shared_util::value_semantics::parse_spells_cast_this_turn_matching_count_value_lexed(&filter_tokens)
     {
         return Ok(Some(cast_this_turn_value));
     }

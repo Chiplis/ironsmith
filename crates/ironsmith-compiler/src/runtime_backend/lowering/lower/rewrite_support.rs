@@ -250,72 +250,10 @@ fn is_haunt_placeholder_ability(ability: &Ability) -> bool {
     })
 }
 
-pub(super) fn rewrite_normalize_take_to_the_streets_spell_effect(
-    mut builder: CardDefinitionBuilder,
-) -> CardDefinitionBuilder {
-    use crate::continuous::Modification;
-    use crate::effect::Value;
-    use crate::effects::continuous::RuntimeModification;
-    use crate::static_abilities::StaticAbilityId;
-    use crate::types::Subtype;
-
-    let Some(effects) = builder.spell_effect.as_ref() else {
-        return builder;
-    };
-    if effects.segments.len() != 1 || effects.segments[0].default_effects.len() != 2 {
-        return builder;
-    }
-
-    let Some(apply) = effects.segments[0].default_effects[1]
-        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
-    else {
-        return builder;
-    };
-    if apply.until != crate::effect::Until::EndOfTurn {
-        return builder;
-    }
-    let filter = match &apply.target {
-        crate::continuous::EffectTarget::Filter(filter) => filter,
-        _ => return builder,
-    };
-    if filter.controller != Some(PlayerFilter::You) || !filter.subtypes.contains(&Subtype::Citizen)
-    {
-        return builder;
-    }
-    let is_vigilance = apply.modification.as_ref().is_some_and(|m| match m {
-        Modification::AddAbility(ability) => ability.id() == StaticAbilityId::Vigilance,
-        _ => false,
-    });
-    if !is_vigilance {
-        return builder;
-    }
-    if apply
-        .runtime_modifications
-        .iter()
-        .any(|m| matches!(m, RuntimeModification::ModifyPowerToughness { .. }))
-    {
-        return builder;
-    }
-
-    let mut updated = apply.clone();
-    updated
-        .runtime_modifications
-        .push(RuntimeModification::ModifyPowerToughness {
-            power: Value::Fixed(1),
-            toughness: Value::Fixed(1),
-        });
-
-    let mut new_effects = effects.clone();
-    new_effects.segments[0].default_effects[1] = crate::effect::Effect::new(updated);
-    builder.spell_effect = Some(new_effects);
-    builder
-}
-
 pub(super) fn rewrite_finalize_lowered_card(
     mut builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
 ) -> CardDefinitionBuilder {
-    builder = rewrite_normalize_take_to_the_streets_spell_effect(builder);
     builder = rewrite_apply_pending_mechanic_linkages(builder, state);
     builder = rewrite_apply_pending_backup_abilities(builder, state);
     rewrite_apply_pending_cipher_effect(builder, state)

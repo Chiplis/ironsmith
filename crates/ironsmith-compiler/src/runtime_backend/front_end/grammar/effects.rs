@@ -112,6 +112,9 @@ pub(crate) use looked_card_shapes::{
 #[path = "effects/conditional_shapes.rs"]
 mod conditional_shapes;
 pub(crate) use conditional_shapes::*;
+#[path = "effects/kicked_counter_replacement.rs"]
+mod kicked_counter_replacement;
+pub(crate) use kicked_counter_replacement::*;
 #[path = "effects/creation_shapes.rs"]
 mod creation_shapes;
 pub(crate) use creation_shapes::*;
@@ -942,7 +945,7 @@ const PREVENT_DAMAGE_TO_PREFIXES: &[&[&str]] = &[&["that", "would", "be", "dealt
 pub(crate) fn parse_prevent_damage_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     if primitives::parse_prefix(tokens, primitives::phrase(PREVENT_ALL_COMBAT_DAMAGE_PREFIX))
         .is_none()
     {

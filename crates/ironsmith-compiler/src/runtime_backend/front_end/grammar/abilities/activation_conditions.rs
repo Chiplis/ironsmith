@@ -15,8 +15,8 @@ use super::surface::{
     matches_any_prefix_tokens, matches_exact_tokens, matches_prefix_tokens, parse_phrase_words,
     phrase_offset_words,
 };
+use crate::runtime_backend::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
 use crate::runtime_backend::util::{parse_less_than_or_equal_quantity_prefix, parse_number};
-use crate::runtime_backend::value_helpers::parse_filter_comparison_tokens;
 
 const ACTIVATE_ONLY_RESTRICTION_PREFIXES: &[&[&str]] =
     &[&["activate", "only"], &["activate", "no", "more", "than"]];

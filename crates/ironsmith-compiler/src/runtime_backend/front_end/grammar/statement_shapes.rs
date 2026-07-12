@@ -4,6 +4,13 @@ use winnow::prelude::*;
 use super::super::lexer::OwnedLexToken;
 use super::primitives;
 
+#[path = "statement_player_counters.rs"]
+mod player_counters;
+pub(crate) use player_counters::{
+    PlayerCounterKind, PlayerCounterSubject, PlayerGetsCountersShape,
+    parse_player_gets_counters_surface_tokens, parse_player_gets_counters_tokens,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DieRollAdjustmentShape;
 
@@ -19,6 +26,7 @@ pub(crate) enum StatementForceShape {
     ExilePlayCost,
     ConditionalInstead,
     GroupTurnDuration,
+    PlayerGetsCounters,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,6 +109,9 @@ pub(crate) fn parse_each_player_choose_bounce_draw_tokens(
 }
 
 pub(crate) fn parse_statement_force_shape(tokens: &[OwnedLexToken]) -> Option<StatementForceShape> {
+    if parse_player_gets_counters_surface_tokens(tokens).is_some() {
+        return Some(StatementForceShape::PlayerGetsCounters);
+    }
     if surface_has_sequence(tokens, &["chooses", "two", "of", "those", "cards"])
         && surface_has_sequence(tokens, &["shuffle", "the", "chosen", "cards"])
         && surface_has_sequence(
@@ -180,24 +191,5 @@ pub(crate) fn has_statement_error_prefix(tokens: &[OwnedLexToken]) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
-
-    #[test]
-    fn recognizes_statement_surfaces() {
-        let die = lex_line(
-            "After you roll a die, you may pay {1}. If you do, increase or decrease the result by 1. Do this only once each turn.",
-            0,
-        )
-        .unwrap();
-        assert!(parse_die_roll_adjustment_tokens(&die).is_some());
-
-        let day = lex_line(
-            "If it is neither day nor night as this creature enters, it becomes day.",
-            0,
-        )
-        .unwrap();
-        assert!(parse_day_night_enters_tokens(&day).is_some());
-    }
-}
+#[path = "statement_shapes_tests.rs"]
+mod tests;

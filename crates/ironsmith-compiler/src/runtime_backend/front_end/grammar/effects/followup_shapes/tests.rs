@@ -7,6 +7,10 @@ fn parses_create_more_prior_token_shape() {
     let shape = parse_create_more_prior_tokens(&tokens).expect("shape");
     assert_eq!(shape.count, 2);
     assert!(!shape.predicate_tokens.is_empty());
+    assert!(shape.instead);
+
+    let additive = lex_line("If you do, create two of those tokens.", 0).unwrap();
+    assert!(!parse_create_more_prior_tokens(&additive).unwrap().instead);
 }
 
 #[test]
@@ -19,6 +23,18 @@ fn parses_conditional_followup_continuation() {
     let shape = parse_conditional_followup(&tokens).expect("shape");
     assert_eq!(shape.kind, ConditionalFollowupKind::WhenMilledThisWay);
     assert!(!shape.continuation_tokens.is_empty());
+
+    let tokens = lex_line(
+        "If you win, that creature gets an additional +2/+2 and gains trample until end of turn.",
+        0,
+    )
+    .unwrap();
+    let shape = parse_conditional_followup(&tokens).expect("clash result shape");
+    assert_eq!(shape.kind, ConditionalFollowupKind::IfYouWin);
+    assert!(!shape.continuation_tokens.is_empty());
+
+    let game = lex_line("If you win the game, draw a card.", 0).unwrap();
+    assert!(parse_conditional_followup(&game).is_none());
 }
 
 #[test]
@@ -64,4 +80,20 @@ fn parses_exact_object_followups() {
     assert!(is_destroy_those_creatures_followup(
         &lex_line("Then destroy those creatures.", 0).unwrap()
     ));
+}
+
+#[test]
+fn parses_counter_linked_land_subtype_followup_to_typed_facts() {
+    let tokens = lex_line(
+        "That land is an Island in addition to its other types for as long as it has a flood counter on it.",
+        0,
+    )
+    .unwrap();
+    assert_eq!(
+        parse_counter_linked_land_subtype_followup(&tokens),
+        Some(CounterLinkedLandSubtypeFollowupShape {
+            subtype: crate::types::Subtype::Island,
+            counter_type: crate::object::CounterType::Flood,
+        })
+    );
 }

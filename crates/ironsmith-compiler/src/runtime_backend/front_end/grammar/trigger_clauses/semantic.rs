@@ -3902,6 +3902,10 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::OpponentsEachLoseExactLife { amount });
     }
 
+    if let Some(clause) = trigger_grammar::parse_players_lose_life_one_or_more_clause(tokens) {
+        return Ok(TriggerSpec::PlayersLoseLifeOneOrMore(clause.player));
+    }
+
     if trigger_pattern_accepts(&words, LOSE_LIFE_TRIGGER_SUFFIX) {
         let subject = &words[..words.len().saturating_sub(2)];
         if let Some(player) = parse_trigger_subject_player_filter(subject) {

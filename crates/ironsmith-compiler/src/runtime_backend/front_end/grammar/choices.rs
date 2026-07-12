@@ -14,6 +14,10 @@ use super::{leaf, primitives};
 mod object_shapes;
 pub(crate) use object_shapes::*;
 
+#[path = "choices/typed_object_filters.rs"]
+mod typed_object_filters;
+pub(crate) use typed_object_filters::*;
+
 #[path = "choices/type_phrases.rs"]
 mod type_phrases;
 pub(crate) use type_phrases::*;
@@ -75,6 +79,7 @@ pub(crate) enum ChoiceObjectClauseKind {
 pub(crate) enum ChoiceObjectClauseSyntaxError {
     MissingObject,
     MissingFilter,
+    UnsupportedFilter,
 }
 
 #[derive(Debug, Clone, PartialEq)]

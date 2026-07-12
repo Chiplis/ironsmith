@@ -1,11 +1,13 @@
-use winnow::combinator::alt;
+use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::ConditionExpr;
 use crate::effect::Until;
 use crate::runtime_backend::front_end::grammar::primitives::{self, WordSliceInput};
-use crate::runtime_backend::front_end::lexer::{OwnedLexToken, TokenWordView, trim_lexed_commas};
+use crate::runtime_backend::front_end::lexer::{
+    LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct GainAbilityDurationShape {
@@ -92,42 +94,38 @@ fn you_control(input: &mut WordSliceInput<'_>) -> WResult<()> {
         .parse_next(input)
 }
 
-fn word_occurs(words: &[&str], expected: &'static str) -> bool {
-    let mut offset = 0usize;
-    while offset < words.len() {
-        let mut input = &words[offset..];
-        if primitives::word_slice_exact(expected)
-            .parse_next(&mut input)
-            .is_ok()
-        {
-            return true;
-        }
-        offset += 1;
-    }
-    false
+fn source_tapped_duration<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["for", "as", "long", "as"]).parse_next(input)?;
+    primitives::kw("this").parse_next(input)?;
+    opt(alt((
+        primitives::kw("creature"),
+        primitives::kw("permanent"),
+        primitives::kw("source"),
+    )))
+    .parse_next(input)?;
+    alt((primitives::kw("remains"), primitives::kw("is"))).parse_next(input)?;
+    primitives::kw("tapped").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)
 }
 
-fn find_source_tapped_duration(words: &[&str]) -> Option<GainAbilityDurationShape> {
-    let mut start = 0usize;
-    while start < words.len() {
-        let mut input = &words[start..];
-        if for_as_long_as.parse_next(&mut input).is_ok() {
-            let tail = &words[start..];
-            if word_occurs(tail, "this")
-                && word_occurs(tail, "remains")
-                && word_occurs(tail, "tapped")
-            {
-                return Some(GainAbilityDurationShape {
-                    start,
-                    len: words.len().saturating_sub(start),
-                    duration: Until::SourceUntaps,
-                    condition: Some(ConditionExpr::SourceIsTapped),
-                });
-            }
-        }
-        start += 1;
+/// Parse the duration as a typed suffix over lexer tokens. The returned word
+/// span is only a boundary for the surrounding gain-ability parser; semantic
+/// recognition is wholly owned by the Winnow grammar above.
+pub(crate) fn parse_source_tapped_gain_duration_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<GainAbilityDurationShape> {
+    let (start_token, (), rest) = primitives::find_prefix(tokens, || source_tapped_duration)?;
+    if !rest.is_empty() {
+        return None;
     }
-    None
+    let start = TokenWordView::new(&tokens[..start_token]).len();
+    let len = TokenWordView::new(&tokens[start_token..]).len();
+    Some(GainAbilityDurationShape {
+        start,
+        len,
+        duration: Until::SourceUntaps,
+        condition: Some(ConditionExpr::SourceIsTapped),
+    })
 }
 
 pub(crate) fn parse_simple_ability_duration_shape(
@@ -161,7 +159,7 @@ pub(crate) fn parse_simple_ability_duration_shape(
 pub(crate) fn parse_gain_ability_duration_shape(
     words: &[&str],
 ) -> Option<GainAbilityDurationShape> {
-    find_source_tapped_duration(words).or_else(|| parse_simple_ability_duration_shape(words))
+    parse_simple_ability_duration_shape(words)
 }
 
 pub(crate) fn parse_leading_gain_duration_shape(
@@ -213,12 +211,16 @@ mod tests {
         assert_eq!(duration.len, 4);
         assert_eq!(duration.duration, Until::YourNextTurn);
 
-        let tapped = parse_gain_ability_duration_shape(&[
-            "flying", "for", "as", "long", "as", "this", "remains", "tapped",
-        ])
-        .unwrap();
+        let tapped_tokens =
+            lex_line("flying for as long as this creature remains tapped.", 0).unwrap();
+        let tapped = parse_source_tapped_gain_duration_shape(&tapped_tokens).unwrap();
+        assert_eq!(tapped.start, 1);
         assert_eq!(tapped.duration, Until::SourceUntaps);
         assert_eq!(tapped.condition, Some(ConditionExpr::SourceIsTapped));
+
+        let near_miss =
+            lex_line("flying for as long as this creature remains untapped.", 0).unwrap();
+        assert!(parse_source_tapped_gain_duration_shape(&near_miss).is_none());
 
         let tokens = lex_line(
             "Target creature gains \"Whenever it attacks, draw a card.\" until end of turn.",

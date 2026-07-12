@@ -363,6 +363,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         power: Value,
         toughness: Value,
     },
+    SetBasePower {
+        filter: ObjectFilter,
+        power: i32,
+    },
     SourceCharacteristicsOfLastExiledCreatureCard {
         filter: ObjectFilter,
         retained_subtypes: Vec<Subtype>,
@@ -1227,6 +1231,9 @@ where
                 power,
                 toughness,
             },
+            StaticAbilityPayload::SetBasePower { filter, power } => {
+                StaticAbilityPayload::SetBasePower { filter, power }
+            }
             StaticAbilityPayload::SourceCharacteristicsOfLastExiledCreatureCard {
                 filter,
                 retained_subtypes,
@@ -2167,6 +2174,14 @@ impl<
                 power,
                 toughness,
             },
+        }
+    }
+
+    pub fn set_base_power(filter: ObjectFilter, power: i32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SetBasePowerToughnessForFilter),
+            label: "set base power".to_string(),
+            payload: StaticAbilityPayload::SetBasePower { filter, power },
         }
     }
 
@@ -4464,6 +4479,18 @@ pub struct Anthem {
     /// "where X is …" clause rather than "for each …". Purely a surface hint
     /// for rendering; the count itself is identical either way.
     pub count_uses_where_x: bool,
+    /// Absolute power/toughness from an Oracle "gets P/T instead" continuation.
+    ///
+    /// The executable anthem stores only the conditional delta so layer 7c
+    /// semantics remain additive. This typed surface fact lets rendering recover
+    /// the replacement wording without rediscovering it from Oracle text.
+    pub replacement_surface: Option<AnthemReplacementSurface>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AnthemReplacementSurface {
+    pub power: i32,
+    pub toughness: i32,
 }
 
 impl Anthem {
@@ -4474,6 +4501,7 @@ impl Anthem {
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
             count_uses_where_x: false,
+            replacement_surface: None,
         }
     }
     pub fn for_source(power: i32, toughness: i32) -> Self {
@@ -4483,6 +4511,7 @@ impl Anthem {
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
             count_uses_where_x: false,
+            replacement_surface: None,
         }
     }
     pub fn with_values(mut self, power: AnthemValue, toughness: AnthemValue) -> Self {
@@ -4496,6 +4525,10 @@ impl Anthem {
     }
     pub fn with_count_uses_where_x(mut self, uses_where_x: bool) -> Self {
         self.count_uses_where_x = uses_where_x;
+        self
+    }
+    pub fn with_replacement_surface(mut self, power: i32, toughness: i32) -> Self {
+        self.replacement_surface = Some(AnthemReplacementSurface { power, toughness });
         self
     }
 }

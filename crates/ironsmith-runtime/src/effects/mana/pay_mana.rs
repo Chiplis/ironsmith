@@ -4,7 +4,7 @@ use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::decision::DecisionMaker;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::resolve_player_from_spec;
+use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -22,8 +22,15 @@ fn try_pay_interactively(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     player_id: PlayerId,
-) -> bool {
+) -> Result<bool, ExecutionError> {
     const MAX_PAYMENT_STEPS: usize = 32;
+    let x_value = effect
+        .x_value
+        .as_ref()
+        .map(|value| resolve_value(game, value, ctx))
+        .transpose()?
+        .unwrap_or(0)
+        .max(0) as u32;
 
     for _ in 0..MAX_PAYMENT_STEPS {
         let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
@@ -36,13 +43,13 @@ fn try_pay_interactively(
             player_id,
             Some(ctx.source),
             &adjusted_cost,
-            0,
+            x_value,
             crate::costs::PaymentReason::Effect,
         );
         let mana_abilities = get_available_mana_abilities(game, player_id, &mut ctx.decision_maker);
 
         if !can_pay_now && mana_abilities.is_empty() {
-            return false;
+            return Ok(false);
         }
         let mut choices = Vec::new();
         let mut options = Vec::new();
@@ -68,7 +75,7 @@ fn try_pay_interactively(
         }
 
         if choices.is_empty() {
-            return false;
+            return Ok(false);
         }
 
         let source_name = game
@@ -79,33 +86,33 @@ fn try_pay_interactively(
             SelectOptionsContext::mana_payment(player_id, ctx.source, source_name, options);
         let selected = ctx.decision_maker.decide_options(game, &decision_ctx);
         if ctx.decision_maker.awaiting_choice() {
-            return false;
+            return Ok(false);
         }
         let Some(selected_idx) = selected.first().copied() else {
             if can_pay_now {
-                return game.try_pay_mana_cost_with_reason(
+                return Ok(game.try_pay_mana_cost_with_reason(
                     player_id,
                     Some(ctx.source),
                     &adjusted_cost,
-                    0,
+                    x_value,
                     crate::costs::PaymentReason::Effect,
-                );
+                ));
             }
-            return false;
+            return Ok(false);
         };
         let Some(choice) = choices.get(selected_idx).copied() else {
-            return false;
+            return Ok(false);
         };
 
         match choice {
             PayManaChoice::PayNow => {
-                return game.try_pay_mana_cost_with_reason(
+                return Ok(game.try_pay_mana_cost_with_reason(
                     player_id,
                     Some(ctx.source),
                     &adjusted_cost,
-                    0,
+                    x_value,
                     crate::costs::PaymentReason::Effect,
-                );
+                ));
             }
             PayManaChoice::ActivateManaAbility {
                 permanent_id,
@@ -117,7 +124,7 @@ fn try_pay_interactively(
                 };
 
                 if perform(action, game, player_id, &mut ctx.decision_maker).is_err() {
-                    return false;
+                    return Ok(false);
                 }
             }
         }
@@ -129,13 +136,13 @@ fn try_pay_interactively(
         &effect.cost,
         crate::costs::PaymentReason::Effect,
     );
-    game.try_pay_mana_cost_with_reason(
+    Ok(game.try_pay_mana_cost_with_reason(
         player_id,
         Some(ctx.source),
         &adjusted_cost,
-        0,
+        x_value,
         crate::costs::PaymentReason::Effect,
-    )
+    ))
 }
 
 impl EffectExecutor for PayManaEffect {
@@ -149,7 +156,7 @@ impl EffectExecutor for PayManaEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
-        if try_pay_interactively(self, game, ctx, player_id) {
+        if try_pay_interactively(self, game, ctx, player_id)? {
             Ok(EffectOutcome::count(1))
         } else {
             Ok(EffectOutcome::impossible())
@@ -192,11 +199,22 @@ impl CostExecutableEffect for PayManaEffect {
             &self.cost,
             crate::costs::PaymentReason::Effect,
         );
+        let context = ExecutionContext::new_default(source, controller);
+        let x_value = self
+            .x_value
+            .as_ref()
+            .map(|value| resolve_value(game, value, &context))
+            .transpose()
+            .map_err(|_| {
+                CostValidationError::Other("unable to resolve mana payment X value".to_string())
+            })?
+            .unwrap_or(0)
+            .max(0) as u32;
         if game.can_pay_mana_cost_with_reason(
             player_id,
             Some(source),
             &adjusted_cost,
-            0,
+            x_value,
             crate::costs::PaymentReason::Effect,
         ) {
             Ok(())
@@ -426,6 +444,45 @@ mod tests {
             .expect("pay mana effect should execute");
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Impossible);
+    }
+
+    #[test]
+    fn pay_mana_effect_resolves_typed_x_value_from_source_counters() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::new(), "Counter Payment Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.add_counters(source, crate::object::CounterType::PlusOnePlusOne, 2);
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .mana_pool
+            .red = 2;
+
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let effect = PayManaEffect::new(
+            ManaCost::from_symbols(vec![ManaSymbol::X]),
+            ChooseSpec::Player(PlayerFilter::You),
+        )
+        .with_x_value(crate::effect::Value::CountersOnSource(
+            crate::object::CounterType::PlusOnePlusOne,
+        ));
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("counter-defined X payment should execute");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        assert_eq!(
+            game.player(alice)
+                .expect("alice should exist")
+                .mana_pool
+                .red,
+            0,
+            "the X payment should spend one generic mana per source counter"
+        );
     }
 
     #[test]

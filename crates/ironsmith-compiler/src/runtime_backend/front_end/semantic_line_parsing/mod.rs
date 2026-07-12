@@ -26,7 +26,20 @@ use crate::zone::Zone;
 use ironsmith_core::CostComponent;
 
 mod activated;
+mod chosen_options;
+mod effect_programs;
 mod lines;
+mod static_chunks;
+mod triggered_chunks;
+
+pub(crate) use chosen_options::condition_for_chosen_option;
+use chosen_options::wrap_chosen_option_static_chunk;
+use effect_programs::*;
+use static_chunks::*;
+pub(crate) use triggered_chunks::{
+    apply_chosen_option_to_triggered_chunk, apply_explicit_intervening_if_to_triggered_chunk,
+    infer_triggered_ability_functional_zones_from_facts,
+};
 
 pub(crate) use activated::{
     ParsedActivatedLine, align_rewrite_activated_parse_sentences, parse_activated_line,
@@ -84,7 +97,6 @@ use super::lexer::{
     OwnedLexToken, TokenKind, TokenWordView, lex_line, render_token_slice, split_lexed_sentences,
     token_word_refs, trim_lexed_commas,
 };
-use super::lower::*;
 use super::lowering_support::{
     rewrite_apply_delayed_trigger_followup_statement_to_last_ability,
     rewrite_apply_instead_followup_statement_to_last_ability, rewrite_lower_prepared_ability,
@@ -100,7 +112,8 @@ use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects
 use super::parser_support::{split_text_for_parse, split_tokens_for_parse};
 use super::reference_model::{LoweredEffects, ReferenceEnv, ReferenceExports};
 use super::restriction_support::{
-    apply_pending_mana_restriction, apply_pending_restrictions_to_ability, is_restrictable_ability,
+    apply_pending_mana_restriction, apply_pending_mana_restrictions,
+    apply_pending_restrictions_to_ability, is_restrictable_ability,
 };
 use super::util::{
     find_first_sacrifice_cost_choice_tag, find_last_exile_cost_choice_tag,
@@ -116,18 +129,3 @@ use super::util::{
     parse_transmute_line_lexed, parse_warp_line_lexed,
     parse_you_may_rather_than_spell_cost_line_lexed, trim_commas, words,
 };
-
-fn token_is_trigger_intro_surface(token: &OwnedLexToken) -> bool {
-    token.is_word("when") || token.is_word("whenever") || token.is_word("at")
-}
-
-fn tokens_start_with_trigger_intro_surface(tokens: &[OwnedLexToken]) -> bool {
-    tokens.first().is_some_and(token_is_trigger_intro_surface)
-}
-
-fn tokens_start_with_partner_dash_label(tokens: &[OwnedLexToken]) -> bool {
-    tokens.first().is_some_and(|token| token.is_word("partner"))
-        && tokens
-            .get(1)
-            .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
-}

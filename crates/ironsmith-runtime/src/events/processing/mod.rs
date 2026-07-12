@@ -3044,19 +3044,18 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
         }
         let controller = game.controller_of(obj);
         let view = crate::derived_view::DerivedGameView::new(game);
-        let current_static_abilities = view
-            .static_abilities_rc(object)
-            .map(|abilities| abilities.as_ref().clone())
-            .unwrap_or_else(|| {
+        let current_static_abilities = view.static_abilities_rc(object).unwrap_or_else(|| {
+            std::rc::Rc::new(
                 obj.abilities
                     .iter()
                     .filter_map(|ability| match &ability.kind {
                         AbilityKind::Static(s) => Some(s.clone()),
                         _ => None,
                     })
-                    .collect()
-            });
-        for s in &current_static_abilities {
+                    .collect(),
+            )
+        });
+        for s in current_static_abilities.iter() {
             // Check for unified replacement effects
             if let Some(effect) = s.generate_replacement_effect(object, controller) {
                 object_etb_effects.push(effect);
@@ -3074,46 +3073,71 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
         }
     }
 
-    let view = crate::derived_view::DerivedGameView::new(game);
-    let battlefield_sources = game
-        .objects_in_deterministic_order()
-        .into_iter()
-        .filter(|candidate| candidate.id != object && candidate.zone == Zone::Battlefield)
-        .map(|candidate| candidate.id)
-        .collect::<Vec<_>>();
-    for source in battlefield_sources {
-        let Some(source_obj) = game.object(source) else {
-            continue;
-        };
-        let controller = game.controller_of(source_obj);
-        let static_abilities = view
-            .static_abilities_rc(source)
-            .map(|abilities| abilities.as_ref().clone())
-            .unwrap_or_else(|| {
-                source_obj
-                    .abilities
-                    .iter()
-                    .filter_map(|ability| match &ability.kind {
-                        AbilityKind::Static(s) => Some(s.clone()),
-                        _ => None,
-                    })
-                    .collect()
-            });
-        for static_ability in &static_abilities {
+    if let Some(sparse_candidates) = game.sparse_enter_as_copy_source_abilities() {
+        for (source, static_ability) in sparse_candidates.iter() {
+            if *source == object {
+                continue;
+            }
             let Some(spec) = static_ability.enter_as_copy_as_enters() else {
                 continue;
             };
             if spec.affected_filter.is_none() {
                 continue;
             }
+            let Some(source_obj) = game.object(*source) else {
+                continue;
+            };
             push_enter_as_copy_effects_for_spec(
                 game,
                 object,
-                source,
-                controller,
+                *source,
+                game.controller_of(source_obj),
                 spec,
                 &mut copy_choice_effects,
             );
+        }
+    } else {
+        // Ability-copying, text-changing, or relevant ability add/remove
+        // effects can make the printed candidate set incomplete. Preserve the
+        // fully layered path for those uncommon states.
+        let view = crate::derived_view::DerivedGameView::new(game);
+        view.prewarm_characteristics(&game.battlefield);
+        for &source in &game.battlefield {
+            if source == object {
+                continue;
+            }
+            let Some(source_obj) = game.object(source) else {
+                continue;
+            };
+            let controller = game.controller_of(source_obj);
+            let static_abilities = view.static_abilities_rc(source).unwrap_or_else(|| {
+                std::rc::Rc::new(
+                    source_obj
+                        .abilities
+                        .iter()
+                        .filter_map(|ability| match &ability.kind {
+                            AbilityKind::Static(s) => Some(s.clone()),
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            });
+            for static_ability in static_abilities.iter() {
+                let Some(spec) = static_ability.enter_as_copy_as_enters() else {
+                    continue;
+                };
+                if spec.affected_filter.is_none() {
+                    continue;
+                }
+                push_enter_as_copy_effects_for_spec(
+                    game,
+                    object,
+                    source,
+                    controller,
+                    spec,
+                    &mut copy_choice_effects,
+                );
+            }
         }
     }
     // Keep ephemeral IDs far away from manager-issued IDs.
@@ -3915,6 +3939,178 @@ mod tests {
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
         id
+    }
+
+    fn create_creature_in_zone(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+        zone: Zone,
+        power: i32,
+        toughness: i32,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(power, toughness))
+            .build();
+        game.create_object_from_card(&card, controller, zone)
+    }
+
+    fn external_enter_as_copy_ability() -> StaticAbility {
+        StaticAbility::with_enter_as_copy_as_enters(
+            crate::static_abilities::EnterAsCopyAsEntersSpec {
+                filter: crate::target::ObjectFilter::source(),
+                affected_filter: Some(crate::target::ObjectFilter::creature()),
+                may: false,
+                enters_tapped_if_chosen: false,
+                linked_exile_pair: None,
+                copy_source_self: true,
+                copy_source_enchanted: false,
+                name_override: None,
+                added_card_types: Vec::new(),
+                removed_supertypes: Vec::new(),
+                added_subtypes: Vec::new(),
+                added_abilities: Vec::new(),
+                set_base_power_toughness: None,
+                set_base_power_toughness_from_self: false,
+            },
+            "Creatures enter as a copy of this creature.".to_string(),
+        )
+    }
+
+    #[test]
+    fn absent_external_enter_as_copy_sources_skip_layered_battlefield_scan() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let creatures = (0..96)
+            .map(|index| {
+                create_creature(
+                    &mut game,
+                    &format!("Unrelated Layered Creature {index}"),
+                    alice,
+                )
+            })
+            .collect::<Vec<_>>();
+        game.effect_store
+            .continuous_effects
+            .add_effect(crate::continuous::ContinuousEffect::new(
+                creatures[0],
+                alice,
+                crate::continuous::EffectTarget::AllCreatures,
+                crate::continuous::Modification::AddAbility(StaticAbility::flying()),
+            ));
+        game.refresh_continuous_state();
+        let entering = create_creature_in_zone(&mut game, "Entering Bear", alice, Zone::Hand, 2, 2);
+        game.refresh_continuous_state();
+        // ETB processing must inspect the entering object's own characteristics
+        // once for replacement abilities. Warm that required lookup so the
+        // counter window below isolates external battlefield-source discovery.
+        game.prewarm_calculated_characteristics(&[entering]);
+        let before = game.work_counters();
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+        let result = process_etb_with_event_and_dm_with_initial_counters(
+            &mut game,
+            entering,
+            Zone::Hand,
+            &mut dm,
+            Vec::new(),
+        );
+
+        assert_eq!(result.enters_as_copy_of, None);
+        let after = game.work_counters();
+        assert_eq!(
+            after.characteristics_full_recomputes, before.characteristics_full_recomputes,
+            "irrelevant ability grants must not force characteristics for every permanent"
+        );
+        assert_eq!(
+            after.dependency_sorts, before.dependency_sorts,
+            "irrelevant ability grants must not enter dependency sorting"
+        );
+
+        let first = game
+            .sparse_enter_as_copy_source_abilities()
+            .expect("irrelevant grants should permit the sparse path");
+        let second = game
+            .sparse_enter_as_copy_source_abilities()
+            .expect("the sparse result should stay cacheable");
+        assert!(first.is_empty());
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+    }
+
+    #[test]
+    fn continuously_granted_external_enter_as_copy_uses_layered_fallback() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature_in_zone(
+            &mut game,
+            "Granted Copy Source",
+            alice,
+            Zone::Battlefield,
+            6,
+            6,
+        );
+        game.effect_store
+            .continuous_effects
+            .add_effect(crate::continuous::ContinuousEffect::new(
+                source,
+                alice,
+                crate::continuous::EffectTarget::Specific(source),
+                crate::continuous::Modification::AddAbility(external_enter_as_copy_ability()),
+            ));
+        let entering = create_creature_in_zone(&mut game, "Entering Bear", alice, Zone::Hand, 2, 2);
+
+        let result = game
+            .move_object_with_etb_processing(entering, Zone::Battlefield)
+            .expect("the creature should enter");
+        let entered = game
+            .object(result.new_id)
+            .expect("entered object should exist");
+
+        assert_eq!(entered.name, "Granted Copy Source");
+        assert_eq!(entered.base_power, Some(crate::card::PtValue::Fixed(6)));
+        assert_eq!(entered.base_toughness, Some(crate::card::PtValue::Fixed(6)));
+    }
+
+    #[test]
+    fn continuously_removed_external_enter_as_copy_uses_layered_fallback() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature_in_zone(
+            &mut game,
+            "Removed Copy Source",
+            alice,
+            Zone::Battlefield,
+            6,
+            6,
+        );
+        let copy_ability = external_enter_as_copy_ability();
+        game.object_mut(source)
+            .expect("copy source should exist")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                copy_ability.clone(),
+            ));
+        game.effect_store
+            .continuous_effects
+            .add_effect(crate::continuous::ContinuousEffect::new(
+                source,
+                alice,
+                crate::continuous::EffectTarget::Specific(source),
+                crate::continuous::Modification::RemoveAbility(copy_ability),
+            ));
+        let entering = create_creature_in_zone(&mut game, "Entering Bear", alice, Zone::Hand, 2, 2);
+
+        let result = game
+            .move_object_with_etb_processing(entering, Zone::Battlefield)
+            .expect("the creature should enter");
+        let entered = game
+            .object(result.new_id)
+            .expect("entered object should exist");
+
+        assert_eq!(entered.name, "Entering Bear");
+        assert_eq!(entered.base_power, Some(crate::card::PtValue::Fixed(2)));
+        assert_eq!(entered.base_toughness, Some(crate::card::PtValue::Fixed(2)));
     }
 
     #[test]

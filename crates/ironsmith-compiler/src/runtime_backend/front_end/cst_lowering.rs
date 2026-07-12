@@ -5,15 +5,19 @@ use super::cst::{
     ActivatedLineCst, KeywordLineCst, LevelItemKindCst, RewriteLineCst, SagaChapterLineCst,
     StatementLineCst, StaticLineCst, TriggeredLineCst,
 };
+use super::grammar::activation_costs::{ActivationCostCst, ActivationCostSegmentCst};
 use super::ir::{
     RewriteKeywordLine, RewriteLevelHeader, RewriteLevelItem, RewriteLevelItemKind,
     RewriteModalBlock, RewriteModalMode, RewriteSagaChapterLine, RewriteSemanticItem,
     RewriteUnsupportedLine,
 };
-use super::leaf::{ActivationCostCst, ActivationCostSegmentCst, lower_activation_cost_cst};
 use super::lexer::render_token_slice;
 use super::parser_support::split_tokens_for_parse;
 use super::util::join_sentences_with_period;
+
+#[path = "cst_lowering/activation_costs.rs"]
+mod activation_costs;
+pub(crate) use activation_costs::lower_activation_cost_cst;
 
 fn parsed_line_item(
     info: super::shared_types::LineInfo,
@@ -132,7 +136,7 @@ fn lower_activated_line(
 
 fn lower_triggered_line(triggered: TriggeredLineCst) -> Result<RewriteSemanticItem, CardTextError> {
     let info = triggered.info;
-    let parsed = super::lower::apply_explicit_intervening_if_to_triggered_chunk(
+    let parsed = super::semantic_line_parsing::apply_explicit_intervening_if_to_triggered_chunk(
         super::semantic_line_parsing::parse_triggered_line(
             info.clone(),
             &triggered.full_text,

@@ -3,10 +3,10 @@ use super::super::grammar::effects::parse_serial_damage_fanout_tokens;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_pt_modifier;
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, find_any_token_word_sequence_span, find_token_word_sequence,
-    find_token_word_sequence_span, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
-    tokens_start_with_at, word_slice_eq, word_slice_find_phrase_start, words_end_with_any,
-    words_have_phrase, words_start_with,
+    LexedClause, OwnedLexToken, complete_word_sequence_surface, find_any_token_word_sequence_span,
+    find_token_word_sequence, find_token_word_sequence_span, locate_word_sequence,
+    token_prefix_present_at, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
+    word_prefix_present, word_sequence_present, word_suffix_choice_present,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_window_by, items_have, locate_index, locate_last_index};

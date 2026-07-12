@@ -3,6 +3,8 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
+use crate::types::SubtypeFamily;
+
 use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::super::{leaf, primitives};
 
@@ -21,6 +23,7 @@ pub(crate) enum ContinuingSegmentShape<'a> {
     MustAttack,
     CantBeBlockedByMoreThan(usize),
     SetColor { color_word: &'a str },
+    BeEverySubtype(SubtypeFamily),
     Lose { ability_tokens: &'a [OwnedLexToken] },
     Have { ability_tokens: &'a [OwnedLexToken] },
     Other,
@@ -127,6 +130,13 @@ pub(crate) fn parse_continuing_segment_shape(
         primitives::parse_all(tokens, parse_color_assignment, "anthem color assignment")
     {
         return ContinuingSegmentShape::SetColor { color_word };
+    }
+    if let Some((_, subtype_tokens)) = primitives::parse_prefix(
+        tokens,
+        alt(((primitives::kw("and"), parse_be_word).void(), parse_be_word)),
+    ) && let Some(family) = super::parse_every_subtype_family_tokens(subtype_tokens)
+    {
+        return ContinuingSegmentShape::BeEverySubtype(family);
     }
     if let Some((_, ability_tokens)) = primitives::parse_prefix(tokens, parse_lose_word) {
         return ContinuingSegmentShape::Lose {
@@ -298,6 +308,14 @@ mod tests {
         assert_eq!(
             parse_continuing_segment_shape(&lex("can't be blocked by more than one creature")),
             ContinuingSegmentShape::CantBeBlockedByMoreThan(1)
+        );
+        assert_eq!(
+            parse_continuing_segment_shape(&lex("is every creature type")),
+            ContinuingSegmentShape::BeEverySubtype(SubtypeFamily::Creature)
+        );
+        assert_eq!(
+            parse_continuing_segment_shape(&lex("and is every land type")),
+            ContinuingSegmentShape::BeEverySubtype(SubtypeFamily::Land)
         );
     }
 }

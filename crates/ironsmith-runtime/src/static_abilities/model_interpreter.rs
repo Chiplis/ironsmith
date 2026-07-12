@@ -871,6 +871,10 @@ impl StaticAbilityModelInterpreter {
                         .with_values(anthem.power.clone(), anthem.toughness.clone()),
                 }
                 .with_count_uses_where_x(anthem.count_uses_where_x);
+                if let Some(surface) = anthem.replacement_surface {
+                    converted = converted
+                        .with_replacement_surface(surface.power, surface.toughness);
+                }
                 if let Some(condition) = &anthem.condition {
                     converted = converted.with_condition(condition.clone());
                 }
@@ -1185,6 +1189,9 @@ impl StaticAbilityModelInterpreter {
                 power.clone(),
                 toughness.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::SetBasePower { filter, power } => {
+                StaticAbility::set_base_power(filter.clone(), *power)
+            }
             ironsmith_core::StaticAbilityPayload::SourceCharacteristicsOfLastExiledCreatureCard {
                 filter,
                 retained_subtypes,

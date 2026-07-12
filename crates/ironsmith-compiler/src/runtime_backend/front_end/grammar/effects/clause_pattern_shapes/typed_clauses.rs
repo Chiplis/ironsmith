@@ -16,6 +16,7 @@ pub(crate) struct ChooseTargetVerbShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PreventAllDamageSourceShape<'a> {
     Choice,
+    ChoiceSharingActivationManaColor,
     Filter(&'a [OwnedLexToken]),
 }
 
@@ -216,17 +217,28 @@ fn source_descriptor<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToke
     Ok(trim_lexed_commas(descriptor))
 }
 
-fn source_of_your_choice<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+fn source_of_your_choice<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
     opt(article).parse_next(input)?;
     primitives::phrase(&["source", "of", "your", "choice"]).parse_next(input)?;
-    primitives::sentence_end().parse_next(input)
+    let shares_activation_mana_color = opt(primitives::phrase(&[
+        "that", "shares", "a", "color", "with",
+    ]))
+    .parse_next(input)?
+    .is_some();
+    if shares_activation_mana_color {
+        opt(primitives::kw("the")).parse_next(input)?;
+        primitives::phrase(&["mana", "spent", "on", "this", "activation", "cost"])
+            .parse_next(input)?;
+    }
+    primitives::sentence_end().parse_next(input)?;
+    Ok(shares_activation_mana_color)
 }
 
 fn classify_prevent_source(tokens: &[OwnedLexToken]) -> PreventAllDamageSourceShape<'_> {
-    if primitives::parse_all(tokens, source_of_your_choice, "source of your choice").is_ok() {
-        PreventAllDamageSourceShape::Choice
-    } else {
-        PreventAllDamageSourceShape::Filter(trim_lexed_commas(tokens))
+    match primitives::parse_all(tokens, source_of_your_choice, "source of your choice") {
+        Ok(true) => PreventAllDamageSourceShape::ChoiceSharingActivationManaColor,
+        Ok(false) => PreventAllDamageSourceShape::Choice,
+        Err(_) => PreventAllDamageSourceShape::Filter(trim_lexed_commas(tokens)),
     }
 }
 
@@ -484,6 +496,19 @@ mod tests {
             parse_prevent_all_damage_shape_tokens(&prevent),
             Some(PreventAllDamageShape::ToTargetFromSource {
                 source: PreventAllDamageSourceShape::Choice,
+                ..
+            })
+        ));
+
+        let color_limited = lex_line(
+            "Prevent all damage that would be dealt to you this turn by a source of your choice that shares a color with the mana spent on this activation cost.",
+            0,
+        )
+        .unwrap();
+        assert!(matches!(
+            parse_prevent_all_damage_shape_tokens(&color_limited),
+            Some(PreventAllDamageShape::ToTargetFromSource {
+                source: PreventAllDamageSourceShape::ChoiceSharingActivationManaColor,
                 ..
             })
         ));

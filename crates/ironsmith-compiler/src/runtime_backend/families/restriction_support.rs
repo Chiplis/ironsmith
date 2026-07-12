@@ -131,6 +131,24 @@ pub(crate) fn apply_pending_mana_restriction(
     );
 }
 
+/// Applies the typed mana restrictions collected while parsing one activated
+/// ability. This belongs beside restriction preparation rather than in runtime
+/// lowering: no Oracle surface is inspected here.
+pub(crate) fn apply_pending_mana_restrictions(
+    parsed: &mut crate::cards::builders::ParsedAbility,
+    restrictions: &[crate::runtime_backend::semantic::ParsedManaRestriction],
+) -> Result<(), crate::cards::builders::CardTextError> {
+    let crate::ability::AbilityKind::Activated(ability) = parsed.kind_mut() else {
+        return Err(crate::cards::builders::CardTextError::InvariantViolation(
+            "activated restriction preparation expected activated ability kind".to_string(),
+        ));
+    };
+    for restriction in restrictions {
+        apply_pending_mana_restriction(ability, restriction);
+    }
+    Ok(())
+}
+
 fn apply_pending_activation_restriction_to_mana_ability(
     ability: &mut ActivatedAbility,
     restriction: &ParsedActivationRestriction,

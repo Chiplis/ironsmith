@@ -1,12 +1,12 @@
 use winnow::combinator::{alt, eof, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
-use winnow::token::any;
+use winnow::token::{any, rest};
 
 use crate::{ObjectFilter, PlayerFilter};
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
-use super::super::primitives;
+use super::super::{filters, leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum AnthemSubjectGrammarMatch {
@@ -22,12 +22,157 @@ pub(crate) fn parse_exact_anthem_subject_grammar(
         alt((
             parse_commander_subject,
             parse_attacking_token_subject,
+            parse_distributive_filter_subject,
+            parse_shared_suffix_subject,
+            parse_leading_counter_threshold_fragment,
             parse_dangling_conjunction_fragment,
             parse_leading_condition_fragment,
         )),
         "anthem subject",
     )
     .ok()
+}
+
+fn parse_distributive_filter_subject(
+    input: &mut LexStream<'_>,
+) -> WResult<AnthemSubjectGrammarMatch> {
+    primitives::kw("each").parse_next(input)?;
+    let filter_tokens = rest.parse_next(input)?;
+    let filter = parse_shared_suffix_filter(filter_tokens)
+        .or_else(|| {
+            filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false).ok()
+        })
+        .ok_or_else(|| primitives::backtrack_err("distributive anthem subject", "object filter"))?;
+    Ok(AnthemSubjectGrammarMatch::Filter(filter))
+}
+
+fn parse_shared_suffix_subject(input: &mut LexStream<'_>) -> WResult<AnthemSubjectGrammarMatch> {
+    let tokens = rest.parse_next(input)?;
+    let filter = parse_shared_suffix_filter(tokens).ok_or_else(|| {
+        primitives::backtrack_err("shared-suffix anthem subject", "object-filter disjunction")
+    })?;
+    Ok(AnthemSubjectGrammarMatch::Filter(filter))
+}
+
+fn parse_shared_suffix_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let mut best: Option<(usize, ObjectFilter)> = None;
+
+    for candidate in super::parse_shared_suffix_candidates(tokens) {
+        let left_branch = trim_lexed_commas(&tokens[..candidate.and_token]);
+        let right_branch =
+            trim_lexed_commas(&tokens[candidate.and_token + 1..candidate.split_token]);
+        let shared_suffix = trim_lexed_commas(&tokens[candidate.split_token..]);
+        if left_branch.is_empty() || right_branch.is_empty() || shared_suffix.is_empty() {
+            continue;
+        }
+
+        let Ok(left_branch_filter) =
+            filters::parse_object_filter_with_grammar_entrypoint_lexed(left_branch, false)
+        else {
+            continue;
+        };
+        let Ok(right_branch_filter) =
+            filters::parse_object_filter_with_grammar_entrypoint_lexed(right_branch, false)
+        else {
+            continue;
+        };
+        if !subject_branch_looks_type_like(&left_branch_filter)
+            || !subject_branch_looks_type_like(&right_branch_filter)
+        {
+            continue;
+        }
+
+        let mut left_full = left_branch.to_vec();
+        left_full.extend_from_slice(shared_suffix);
+        let mut right_full = right_branch.to_vec();
+        right_full.extend_from_slice(shared_suffix);
+
+        let Ok(left_filter) =
+            filters::parse_object_filter_with_grammar_entrypoint_lexed(&left_full, false)
+        else {
+            continue;
+        };
+        let Ok(right_filter) =
+            filters::parse_object_filter_with_grammar_entrypoint_lexed(&right_full, false)
+        else {
+            continue;
+        };
+        if left_filter == right_filter {
+            continue;
+        }
+
+        let score = object_filter_specificity_score(&left_filter)
+            + object_filter_specificity_score(&right_filter)
+            + shared_suffix.len();
+        if best
+            .as_ref()
+            .is_none_or(|(best_score, _)| score > *best_score)
+        {
+            let mut disjunction = ObjectFilter::default();
+            disjunction.any_of = vec![left_filter, right_filter];
+            best = Some((score, disjunction));
+        }
+    }
+
+    best.map(|(_, filter)| filter)
+}
+
+fn subject_branch_looks_type_like(filter: &ObjectFilter) -> bool {
+    !filter.card_types.is_empty()
+        || !filter.subtypes.is_empty()
+        || !filter.excluded_card_types.is_empty()
+        || !filter.excluded_subtypes.is_empty()
+}
+
+pub(crate) fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
+    let mut score = 0usize;
+    if !filter.any_of.is_empty() {
+        score += 12;
+        score += filter
+            .any_of
+            .iter()
+            .map(object_filter_specificity_score)
+            .sum::<usize>();
+    }
+    score += filter.tagged_constraints.len() * 20;
+    score += filter.card_types.len() * 10;
+    score += filter.all_card_types.len() * 10;
+    score += filter.subtypes.len() * 8;
+    score += filter.excluded_subtypes.len() * 8;
+    score += usize::from(filter.controller.is_some()) * 6;
+    score += usize::from(filter.owner.is_some()) * 6;
+    score += usize::from(filter.zone.is_some()) * 4;
+    score += usize::from(filter.other) * 3;
+    score += usize::from(filter.token || filter.nontoken) * 3;
+    score += usize::from(filter.tapped || filter.untapped) * 2;
+    score += usize::from(
+        filter.attacking
+            || filter.nonattacking
+            || filter.blocking
+            || filter.nonblocking
+            || filter.blocked
+            || filter.unblocked,
+    ) * 2;
+    score += usize::from(filter.is_commander || filter.noncommander) * 2;
+    score += usize::from(filter.colorless || filter.multicolored || filter.monocolored) * 2;
+    score += usize::from(filter.with_counter.is_some() || filter.without_counter.is_some()) * 4;
+    score += usize::from(filter.entered_battlefield_this_turn) * 2;
+    score += usize::from(filter.entered_battlefield_controller.is_some()) * 2;
+    score += usize::from(filter.was_dealt_damage_this_turn) * 2;
+    score += usize::from(filter.dealt_damage_to_player_this_turn.is_some()) * 2;
+    score += usize::from(!filter.excluded_card_types.is_empty()) * 2;
+    score += usize::from(!filter.excluded_supertypes.is_empty()) * 2;
+    score += usize::from(!filter.excluded_colors.is_empty()) * 2;
+    score += usize::from(!filter.excluded_static_abilities.is_empty()) * 2;
+    score += usize::from(!filter.excluded_ability_markers.is_empty()) * 2;
+    score += usize::from(filter.colors.is_some()) * 2;
+    score += usize::from(filter.required_colors.is_some()) * 3;
+    score += usize::from(filter.sticker.is_some()) * 3;
+    score += usize::from(filter.chosen_color) * 3;
+    score += usize::from(filter.chosen_creature_type) * 3;
+    score += usize::from(filter.excluded_chosen_creature_type) * 3;
+    score += usize::from(filter.power.is_some() || filter.toughness.is_some()) * 2;
+    score
 }
 
 fn parse_commander_subject(input: &mut LexStream<'_>) -> WResult<AnthemSubjectGrammarMatch> {
@@ -69,6 +214,34 @@ fn parse_dangling_conjunction_fragment(
         .map(|((), ())| ())
         .parse_next(input)?;
     primitives::kw("and").void().parse_next(input)?;
+    Ok(AnthemSubjectGrammarMatch::RejectFragment)
+}
+
+fn parse_leading_counter_threshold_fragment(
+    input: &mut LexStream<'_>,
+) -> WResult<AnthemSubjectGrammarMatch> {
+    leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    alt((
+        primitives::phrase(&["or", "more"]),
+        primitives::phrase(&["or", "fewer"]),
+        primitives::phrase(&["or", "less"]),
+    ))
+    .parse_next(input)?;
+    repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(alt((primitives::kw("counter"), primitives::kw("counters")))).void(),
+    )
+    .void()
+    .parse_next(input)?;
+    alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;
+    let trailing_tokens: &[OwnedLexToken] = rest.parse_next(input)?;
+    if trailing_tokens.is_empty() {
+        return Err(primitives::backtrack_err(
+            "counter-threshold fragment",
+            "trailing subject fragment",
+        ));
+    }
     Ok(AnthemSubjectGrammarMatch::RejectFragment)
 }
 

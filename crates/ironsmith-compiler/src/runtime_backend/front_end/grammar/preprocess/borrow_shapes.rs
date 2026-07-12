@@ -1,5 +1,5 @@
 use super::super::{permission_shapes, primitives};
-use crate::runtime_backend::lexer::{OwnedLexToken, TokenWordView, lex_line, render_token_slice};
+use crate::runtime_backend::lexer::{TokenWordView, lex_line, render_token_slice};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SubjectPredicateSurface {
@@ -27,11 +27,6 @@ pub(crate) enum BorrowStaticSentenceSurface {
         prefix: String,
         condition: String,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SameIsTrueSurface {
-    pub(crate) tail: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,20 +159,6 @@ pub(crate) fn parse_borrow_static_sentence_surface(
         .to_string();
     (!prefix.is_empty() && !condition.is_empty())
         .then_some(BorrowStaticSentenceSurface::Trailing { prefix, condition })
-}
-
-pub(crate) fn parse_same_is_true_surface(sentence: &str) -> Option<SameIsTrueSurface> {
-    let tokens = lex_line(sentence.trim(), 0).ok()?;
-    let words = TokenWordView::new(&tokens);
-    let prefix = ["the", "same", "is", "true", "for"];
-    if !permission_shapes::prefix_words(&words.word_refs(), &prefix) {
-        return None;
-    }
-    let tail_start = words.token_index_after_words(prefix.len())?;
-    let tail = render_token_slice(tokens.get(tail_start..)?)
-        .trim()
-        .to_string();
-    (!tail.is_empty()).then_some(SameIsTrueSurface { tail })
 }
 
 pub(crate) fn parse_borrow_static_condition_surface(
@@ -329,11 +310,5 @@ mod tests {
             parse_subject_predicate_surface("Creatures are indestructible"),
             Some(SubjectPredicateSurface { .. })
         ));
-        assert_eq!(
-            parse_same_is_true_surface("The same is true for artifacts")
-                .expect("same")
-                .tail,
-            "artifacts"
-        );
     }
 }

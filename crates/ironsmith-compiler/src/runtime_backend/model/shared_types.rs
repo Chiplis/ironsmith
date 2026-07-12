@@ -171,6 +171,10 @@ pub(crate) struct LoweringFrame {
     pub(crate) source_object_antecedent: bool,
     pub(crate) recent_player_choice_tags: Vec<String>,
     pub(crate) iterated_player: bool,
+    /// True while lowering the body of an object iteration. Kept separate from
+    /// `iterated_player` so `__it__` can lower to `ChooseSpec::Iterated`
+    /// without rebinding an outer "that player" antecedent.
+    pub(crate) iterated_object: bool,
     pub(crate) auto_tag_object_targets: bool,
     pub(crate) force_auto_tag_object_targets: bool,
     pub(crate) allow_life_event_value: bool,
@@ -292,6 +296,7 @@ impl EffectLoweringContext {
         self.last_player_filter = frame.last_player_filter;
         self.source_object_antecedent = frame.source_object_antecedent;
         self.iterated_player = frame.iterated_player;
+        self.iterated_object = frame.iterated_object;
         self.allow_life_event_value = frame.allow_life_event_value;
         self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
     }

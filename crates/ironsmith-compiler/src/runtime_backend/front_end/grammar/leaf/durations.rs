@@ -74,6 +74,10 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
         LeafDurationPhrase::UntilYourNextUpkeep,
     ),
     (
+        &["until", "your", "next", "untap", "step"],
+        LeafDurationPhrase::ControllersNextUntapStep,
+    ),
+    (
         &["until", "the", "end", "of", "combat"],
         LeafDurationPhrase::UntilEndOfCombat,
     ),

@@ -247,6 +247,7 @@ pub(crate) enum TriggerSpec {
     YouGainLife,
     YouGainLifeDuringTurn(PlayerFilter),
     PlayerLosesLife(PlayerFilter),
+    PlayersLoseLifeOneOrMore(PlayerFilter),
     OpponentsEachLoseExactLife {
         amount: u32,
     },
@@ -936,6 +937,9 @@ pub(crate) enum SubjectVerbActionAst {
     },
     ChooseCreatureType {
         excluded_subtypes: Vec<Subtype>,
+    },
+    ChooseLandType {
+        exclude_basic: bool,
     },
     ChooseCardName {
         filter: Option<ObjectFilter>,
@@ -1842,6 +1846,9 @@ pub(crate) enum SubjectVerbActionAst {
     },
     PayMana {
         cost: ManaCost,
+        /// Typed value for a printed `{X}` payment whose X is defined by the
+        /// surrounding Oracle sentence rather than chosen by the player.
+        x_value: Option<Value>,
     },
     DoubleManaPool,
     EmptyManaPool,
@@ -2061,6 +2068,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ChooseCreatureType { excluded_subtypes } => f
                 .debug_struct("ChooseCreatureType")
                 .field("excluded_subtypes", excluded_subtypes)
+                .finish(),
+            Self::ChooseLandType { exclude_basic } => f
+                .debug_struct("ChooseLandType")
+                .field("exclude_basic", exclude_basic)
                 .finish(),
             Self::ChooseCardName { filter, tag } => f
                 .debug_struct("ChooseCardName")
@@ -3471,7 +3482,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PayAnyLife")
                 .field("min_amount", min_amount)
                 .finish(),
-            Self::PayMana { cost } => f.debug_tuple("PayMana").field(cost).finish(),
+            Self::PayMana { cost, x_value } => f
+                .debug_struct("PayMana")
+                .field("cost", cost)
+                .field("x_value", x_value)
+                .finish(),
             Self::DoubleManaPool => f.write_str("DoubleManaPool"),
             Self::EmptyManaPool => f.write_str("EmptyManaPool"),
             Self::SetLifeTotal { amount } => f.debug_tuple("SetLifeTotal").field(amount).finish(),
@@ -3732,6 +3747,11 @@ pub(crate) enum EffectAst {
     },
     MayByPlayer {
         player: PlayerAst,
+        effects: Vec<EffectAst>,
+    },
+    /// Offer each player, beginning with the effect controller and proceeding
+    /// in turn order, the option to perform `effects`. Stop after one accepts.
+    AnyPlayerMay {
         effects: Vec<EffectAst>,
     },
     ResolvedIfResult {
@@ -6611,6 +6631,14 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_choose_land_type(player: PlayerAst, exclude_basic: bool) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Chooser,
+            player,
+            SubjectVerbActionAst::ChooseLandType { exclude_basic },
+        )
+    }
+
     pub(crate) fn subject_verb_choose_card_name(
         player: PlayerAst,
         filter: Option<ObjectFilter>,
@@ -7225,7 +7253,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::PayMana { cost },
+            SubjectVerbActionAst::PayMana {
+                cost,
+                x_value: None,
+            },
         )
     }
 

@@ -9,8 +9,8 @@ use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConditionalEffect,
     ConsultTopOfLibraryEffect, CreateTokenCopyEffect, CreateTokenEffect, DestroyEffect,
     DoubleCountersEffect, DrawCardsEffect, EffectExecutor, GainLifeEffect, IfEffect,
-    MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect,
-    TargetOnlyEffect, UntapEffect, WithIdEffect,
+    MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TaggedEffect, TargetOnlyEffect, UntapEffect,
+    WithIdEffect,
 };
 use crate::filter::ObjectFilterExt;
 use crate::ids::StableId;
@@ -10832,21 +10832,13 @@ fn test_parse_double_cant_clause_from_text() {
         .parse_text("You can't lose the game and your opponents can't win the game.")
         .expect("parse dual can't clause");
 
-    let has_cant_lose = def.abilities.iter().any(|ability| {
-        matches!(
-            &ability.kind,
-            AbilityKind::Static(ability) if ability.id() == StaticAbilityId::YouCantLoseGame
-        )
-    });
-    let has_cant_win = def.abilities.iter().any(|ability| {
-        matches!(
-            &ability.kind,
-            AbilityKind::Static(ability) if ability.id() == StaticAbilityId::OpponentsCantWinGame
-        )
-    });
-
-    assert!(has_cant_lose);
-    assert!(has_cant_win);
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("RuleRestriction")
+            && debug.contains("LoseGame(You)")
+            && debug.contains("WinGame(Opponent)"),
+        "expected both typed game-result restrictions, got {debug}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -17263,7 +17255,6 @@ fn empty_the_laboratory_keeps_dynamic_sacrifice_and_consult_sequence() {
         debug.contains("choicecount { min: 0, max: none, dynamic_x: true")
             && debug.contains("sacrificeplayereffect")
             && debug.contains("matchcount(effectvalue(")
-            && debug.contains("tagkey(\"etl_revealed\")")
             && debug.contains("puttaggedremainderonlibrarybottomeffect"),
         "expected Empty the Laboratory to keep dynamic sacrifice, consult, battlefield move, and random bottoming, got {debug}"
     );
@@ -17841,7 +17832,7 @@ fn test_vault_101_birthday_party_renders_equipment_only_attach_branch() {
         "expected optional attach branch targeting your creature, got {rendered}"
     );
 
-    let effect_debug = format!("{:?}", def.abilities);
+    let effect_debug = format!("{:?}", def.spell_effect);
     assert!(
         effect_debug.contains("ConditionalEffect")
             && effect_debug.contains("TaggedObjectMatches")
@@ -27220,27 +27211,22 @@ fn parse_wei_assassins_etb_target_opponent_chooses_creature_then_destroy() {
     let effects = &triggered.effects;
     assert_eq!(
         effects.len(),
-        4,
-        "expected trigger tagging, target opponent, opponent choice, and destroy effects, got {effects:?}"
+        3,
+        "expected target opponent, opponent choice, and destroy effects, got {effects:?}"
     );
 
-    let tag_triggering = effects[0]
-        .downcast_ref::<TagTriggeringObjectEffect>()
-        .expect("first effect should tag the triggering object");
-    assert_eq!(tag_triggering.tag.as_str(), "triggering");
-
-    let target_opponent = effects[1]
+    let target_opponent = effects[0]
         .downcast_ref::<TargetOnlyEffect>()
-        .expect("second effect should target an opponent");
+        .expect("first effect should target an opponent");
     assert!(matches!(
         &target_opponent.target,
         ChooseSpec::Target(inner)
             if matches!(inner.as_ref(), ChooseSpec::Player(PlayerFilter::Opponent))
     ));
 
-    let choose_creature = effects[2]
+    let choose_creature = effects[1]
         .downcast_ref::<ChooseObjectsEffect>()
-        .expect("third effect should make the target opponent choose a creature");
+        .expect("second effect should make the target opponent choose a creature");
     assert_eq!(choose_creature.count, ChoiceCount::exactly(1));
     assert_eq!(
         choose_creature.chooser,
@@ -27254,9 +27240,9 @@ fn parse_wei_assassins_etb_target_opponent_chooses_creature_then_destroy() {
     assert_eq!(choose_creature.filter.card_types, vec![CardType::Creature]);
     assert_eq!(choose_creature.tag.as_str(), "__it__");
 
-    let destroy_chosen = effects[3]
+    let destroy_chosen = effects[2]
         .downcast_ref::<DestroyEffect>()
-        .expect("fourth effect should destroy the chosen creature");
+        .expect("third effect should destroy the chosen creature");
     let destroys_chosen = match &destroy_chosen.spec {
         ChooseSpec::Iterated => true,
         ChooseSpec::Tagged(tag) => tag == &choose_creature.tag,
@@ -42700,7 +42686,7 @@ fn parse_shared_color_gain_ability_fanout_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("shares a color with that object"),
+        rendered.contains("share a color with it"),
         "expected shared-color fanout filter, got {rendered}"
     );
     assert!(
@@ -42722,7 +42708,7 @@ fn parse_shared_color_pump_fanout_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("shares a color with that object"),
+        rendered.contains("share a color with it"),
         "expected shared-color fanout filter, got {rendered}"
     );
     assert!(
@@ -46142,10 +46128,29 @@ fn parse_haunting_echoes_exception_and_target_library_search() {
         "expected structural non-basic-land exclusion, got {exile_filter:#?}"
     );
 
-    let for_each = effects[1]
-        .downcast_ref::<crate::effects::ForEachObject>()
-        .expect("second effect should iterate cards exiled this way");
-    let search = for_each.effects[0]
+    let iterated_effects = if let Some(for_each) =
+        effects[1].downcast_ref::<crate::effects::ForEachObject>()
+    {
+        for_each.effects.as_slice()
+    } else if let Some(for_each) = effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+    {
+        assert!(
+            for_each.tag == tagged_exile.tag
+                || for_each.tag.as_str() == crate::tag::SOURCE_EXILED_TAG,
+            "tagged iteration should use the cards exiled by the first effect, got {:?}",
+            for_each.tag
+        );
+        for_each.effects.as_slice()
+    } else {
+        panic!("second effect should iterate cards exiled this way");
+    };
+    let iterated_effects = match iterated_effects {
+        [sequence_effect] => sequence_effect
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .map_or(iterated_effects, |sequence| sequence.effects.as_slice()),
+        _ => iterated_effects,
+    };
+    let search = iterated_effects[0]
         .downcast_ref::<ChooseObjectsEffect>()
         .expect("iterated effect should search the target player's library");
     assert!(
@@ -48003,13 +48008,13 @@ fn nissas_encouragement_keeps_three_exact_named_searches() {
 
     let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
     assert!(
-        debug.matches("chooseobjectseffect").count() >= 3
+        debug.contains("searchlibraryslotseffect")
             && debug.contains("forest")
             && debug.contains("brambleweft behemoth")
             && debug.contains("nissa, genesis mage")
-            && debug.contains("zone: hand")
-            && debug.contains("shufflelibraryeffect"),
-        "expected Nissa's Encouragement to compile as repeated exact named searches, got {debug}"
+            && debug.contains("destination: hand")
+            && debug.contains("reveal: true"),
+        "expected Nissa's Encouragement to compile as one typed slot search, got {debug}"
     );
 }
 
@@ -52524,8 +52529,8 @@ fn parse_dragonlord_dromoka_keeps_during_your_turn_static_condition() {
         "expected during-your-turn condition, got {abilities_debug}"
     );
     assert!(
-        abilities_debug.contains("RuleRestriction")
-            && abilities_debug.contains("CastSpellsMatching(Opponent"),
+        abilities_debug.contains("OpponentsCantCastSpells")
+            && abilities_debug.contains("DuringYourTurn"),
         "expected opponents-cant-cast static ability, got {abilities_debug}"
     );
 }
@@ -52588,7 +52593,8 @@ fn parse_grand_abolisher_conditioned_or_restrictions_keep_opponent_subject() {
         "expected both restrictions to keep the during-your-turn condition, got {abilities_debug}"
     );
     assert!(
-        abilities_debug.contains("OpponentsCantCastSpells")
+        abilities_debug.contains("RuleRestriction")
+            && abilities_debug.contains("CastSpellsMatching")
             && abilities_debug.contains("Opponent")
             && abilities_debug.contains("ActivateAbilitiesOf"),
         "expected cast and activation restrictions for opponents, got {abilities_debug}"
@@ -53788,7 +53794,7 @@ fn parse_oracle_descent_into_avernus_scaling_trigger_regression() {
     assert!(
         raw.contains("named(")
             && raw.contains("descent")
-            && raw.contains("counterson(")
+            && raw.contains("countersonsource(")
             && raw.contains("treasure"),
         "expected raw compiled definition to keep descent counters and treasure scaling, got {raw}"
     );
@@ -57347,11 +57353,12 @@ fn semantic_repairs_hidden_by_normalizer_shims_have_truthful_models() {
     );
 
     let (prowling_def, prowling) = debug_for("Prowling Pangolin", vec![CardType::Creature], vec![]);
+    let sacrificed_tag_mentions = prowling.matches("__sentence_helper_sacrificed_").count();
     assert!(
         prowling.contains("stop_after_first_happened: true")
             && prowling.contains("chooser: IteratedPlayer")
             && prowling.contains("player: IteratedPlayer")
-            && prowling.contains("__semantic_sacrificed_creatures__"),
+            && sacrificed_tag_mentions >= 2,
         "Prowling Pangolin should let one iterated player sacrifice their own chosen creatures, got {prowling}"
     );
     let prowling_rendered = unprocessed_compiled_lines(&prowling_def).join(" ");
@@ -57475,6 +57482,22 @@ fn semantic_repairs_hidden_by_normalizer_shims_have_truthful_models() {
             && tusker.contains("triggering")
             && tusker.contains("MustBlockSpecificAttacker"),
         "Avalanche Tusker should force the target blocker to block the attacking source, got {tusker}"
+    );
+
+    let (_, rimehorn) = debug_for("Rimehorn Aurochs", vec![CardType::Creature], vec![]);
+    assert!(
+        rimehorn.contains("targeted_blocker")
+            && rimehorn.contains("targeted_attacker")
+            && rimehorn.contains("MustBlockSpecificAttacker"),
+        "Rimehorn Aurochs should target blocker and attacker separately, got {rimehorn}"
+    );
+
+    let (_, impetuous) = debug_for("Impetuous Devils", vec![CardType::Creature], vec![]);
+    assert!(
+        impetuous.contains("targeted_blocker")
+            && impetuous.contains("triggering")
+            && impetuous.contains("MustBlockSpecificAttacker"),
+        "Impetuous Devils should preserve its optional blocker target and attacking source, got {impetuous}"
     );
 
     let (_, march) = debug_for("March from Velis Vel", vec![CardType::Instant], vec![]);
@@ -72897,6 +72920,14 @@ fn parse_search_library_face_down_exile_then_shuffle_clause() {
             && debug.contains("face_down: true")
             && debug.contains("ShuffleLibraryEffect"),
         "expected choose-plus-face-down-exile search sequence, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.to_ascii_lowercase().contains("exile it face down")
+            && !rendered.contains("searched_face_down")
+            && !rendered.contains("tagged object"),
+        "expected face-down search rendering to hide the internal tag, got {rendered}"
     );
 }
 

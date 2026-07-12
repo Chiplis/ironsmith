@@ -7,6 +7,10 @@ use crate::runtime_backend::front_end::grammar::primitives;
 use crate::runtime_backend::front_end::lexer::{LexStream, LexedClause, OwnedLexToken};
 use crate::target::PlayerFilter;
 
+#[path = "delayed_sentence_shapes/schedule.rs"]
+mod schedule;
+pub(crate) use schedule::*;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DelayedObjectKind {
     Creature,

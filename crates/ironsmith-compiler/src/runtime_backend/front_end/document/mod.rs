@@ -24,6 +24,7 @@ use super::cst::{
     SagaChapterLineCst, StatementLineCst, StaticLineCst, TriggerIntroCst, TriggeredLineCst,
     UnsupportedLineCst,
 };
+use super::cst_lowering::lower_activation_cost_cst;
 use super::cst_lowering::lower_non_metadata_rewrite_line_cst;
 use super::grammar::abilities::{
     is_activate_only_once_each_turn_line_lexed, is_doesnt_untap_during_your_untap_step_line_lexed,
@@ -31,10 +32,11 @@ use super::grammar::abilities::{
     is_opening_hand_begin_game_static_line_lexed, is_ward_or_echo_static_prefix_line_lexed,
     split_nested_combat_whenever_clause_lexed,
 };
+use super::grammar::activation_costs::parse_activation_cost_tokens as parse_activation_cost_tokens_rewrite;
+use super::grammar::document_facts as document_fact_grammar;
 use super::grammar::document_shapes as document_grammar;
 use super::grammar::effects as effect_grammar;
 use super::grammar::line_families as line_family_grammar;
-use super::grammar::postpass_surfaces as postpass_surface_grammar;
 use super::grammar::primitives as grammar;
 use super::grammar::semantic_lowering as semantic_grammar;
 use super::grammar::structure::split_lexed_sentences;
@@ -47,23 +49,21 @@ use super::keyword_static::{
     parse_spell_and_player_activated_ability_cost_modifier_line,
     parse_spell_cost_increase_per_target_beyond_first_line, parse_spells_cost_modifier_line,
 };
-use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{
     LexStream, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView,
-    contains_token_word_sequence, find_token_kind, find_token_word, lex_line, render_token_slice,
-    token_slice_first_is, token_slice_last_kind, token_slice_words_eq, token_slice_words_eq_any,
-    token_word_refs, tokens_end_with, tokens_start_with, tokens_start_with_any, trim_lexed_commas,
-    word_slice_eq_any,
+    complete_token_word_sequence, complete_token_word_sequence_choice,
+    complete_word_sequence_choice, contains_token_word_sequence, lex_line, locate_token_kind,
+    locate_token_word, render_token_slice, token_prefix_choice_present, token_prefix_present,
+    token_slice_first_is, token_slice_last_kind, token_word_refs, token_word_suffix_present,
+    trim_lexed_commas,
 };
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
 };
 use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
 use super::token_primitives::{
-    clone_sentence_chunk_tokens, items_have, items_start_with, lexed_head_words,
-    lexed_tokens_contain_non_prefix_instead, locate_index, locate_index as locate_token_index,
-    locate_window_index, remove_copy_exception_type_removal_lexed,
-    rewrite_followup_intro_to_if_lexed, split_em_dash_label_prefix_tokens,
+    clone_sentence_chunk_tokens, items_have, items_start_with, lexed_head_words, locate_index,
+    locate_index as locate_token_index, locate_window_index,
 };
 use super::util::{
     map_span_to_original, parse_level_header, parse_level_up_line_lexed, parse_power_toughness,
@@ -200,28 +200,14 @@ fn strip_trigger_frequency_suffix_tokens(
 fn strip_trailing_trigger_cap_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> (&[OwnedLexToken], Option<u32>) {
-    let cap_suffixes = [
-        &[
-            "this", "ability", "triggers", "only", "once", "each", "turn",
-        ][..],
-        &[
-            "this", "ability", "triggers", "only", "twice", "each", "turn",
-        ][..],
-        &["do", "this", "only", "once", "each", "turn"][..],
-        &["do", "this", "only", "twice", "each", "turn"][..],
-    ];
-    let Some((phrase, head)) = grammar::strip_lexed_suffix_phrases(tokens, &cap_suffixes) else {
+    let Some(shape) = document_grammar::parse_trailing_trigger_cap_suffix_tokens(tokens) else {
         return (tokens, None);
     };
-    let count = match document_grammar::parse_trigger_cap(phrase) {
-        Some(document_grammar::TriggerCapSurface::Once) => 1,
-        Some(document_grammar::TriggerCapSurface::Twice) => 2,
-        None => return (tokens, None),
+    let count = match shape.cap {
+        document_grammar::TriggerCapSurface::Once => 1,
+        document_grammar::TriggerCapSurface::Twice => 2,
     };
-    if !token_slice_last_kind(head, TokenKind::Period) {
-        return (tokens, None);
-    }
-    (&head[..head.len() - 1], Some(count))
+    (shape.head_tokens, Some(count))
 }
 
 fn line_starts_with_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -441,39 +427,13 @@ fn sentence_is_static_after_trigger_effect(tokens: &[OwnedLexToken]) -> bool {
         || matches!(parse_static_ability_ast_line_lexed(tokens), Ok(Some(_)))
 }
 
-fn strip_non_keyword_label_prefix_lexed(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    if looks_like_numeric_result_prefix_lexed(tokens) {
-        return tokens;
-    }
-    while let Some((_, label_tokens, body_tokens)) = split_label_prefix_lexed(tokens) {
-        if document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_some() {
-            break;
-        }
-        tokens = body_tokens;
-    }
-
-    tokens
+fn strip_non_keyword_label_prefix_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    document_grammar::parse_statement_label_strip_tokens(tokens).body_tokens
 }
 
 fn tokens_after_non_keyword_label_prefix(line: &PreprocessedLine) -> Option<&[OwnedLexToken]> {
     let stripped = strip_non_keyword_label_prefix_lexed(&line.tokens);
     (stripped.len() != line.tokens.len()).then_some(stripped)
-}
-
-fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
-        tokens.first().map(|token| token.kind),
-        Some(TokenKind::Number)
-    ) && matches!(
-        tokens.get(1).map(|token| token.kind),
-        Some(TokenKind::Dash | TokenKind::EmDash)
-    ) && matches!(
-        tokens.get(2).map(|token| token.kind),
-        Some(TokenKind::Number)
-    ) && tokens
-        .iter()
-        .skip(3)
-        .any(|token| token.kind == TokenKind::Pipe)
 }
 
 fn should_skip_keyword_action_static_probe(tokens: &[OwnedLexToken]) -> bool {
@@ -744,12 +704,9 @@ fn split_label_prefix(text: &str) -> Option<(&str, &str)> {
 fn split_label_prefix_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<(String, &[OwnedLexToken], &[OwnedLexToken])> {
-    if looks_like_numeric_result_prefix_lexed(tokens) {
-        return None;
-    }
-    let (label_tokens, body_tokens) = split_em_dash_label_prefix_tokens(tokens)?;
-    let label = render_label_prefix_tokens(label_tokens);
-    (!label.is_empty()).then_some((label, label_tokens, body_tokens))
+    let split = document_grammar::parse_statement_label_split_tokens(tokens)?;
+    let label = render_label_prefix_tokens(split.label_tokens);
+    (!label.is_empty()).then_some((label, split.label_tokens, split.body_tokens))
 }
 
 fn render_label_prefix_tokens(tokens: &[OwnedLexToken]) -> String {
@@ -954,7 +911,7 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
             })
             .or_else(|| {
                 if is_echo {
-                    find_token_word(&segment[1..], "at").map(|idx| idx + 1)
+                    locate_token_word(&segment[1..], "at").map(|idx| idx + 1)
                 } else {
                     None
                 }
@@ -1560,7 +1517,7 @@ fn strip_non_keyword_label_prefix(text: &str) -> &str {
 #[cfg(test)]
 fn looks_like_numeric_result_prefix_text(text: &str) -> bool {
     lex_line(text.trim_start(), 0)
-        .is_ok_and(|tokens| looks_like_numeric_result_prefix_lexed(&tokens))
+        .is_ok_and(|tokens| document_grammar::parse_numeric_result_prefix_tokens(&tokens).is_some())
 }
 
 #[cfg(test)]
@@ -1612,6 +1569,27 @@ mod tests {
             PreprocessedItem::Line(line) => line,
             other => panic!("expected preprocessed line, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn carried_conditional_equipment_anthem_survives_document_preprocessing() {
+        let text = "Equipped creature gets +2/+0. It gets an additional +0/+2 and has first strike as long as an Equipment named Groom's Finery is attached to a creature you control.";
+        let document = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Bride's Gown")
+                .card_types(vec![CardType::Artifact]),
+            text,
+        )
+        .expect("preprocess carried conditional anthem");
+        let Some(PreprocessedItem::Line(line)) = document.items.first() else {
+            panic!("expected carried conditional anthem line");
+        };
+        let parsed = parse_static_line_cst(line)
+            .unwrap_or_else(|error| panic!("tokens={:#?}; error={error:?}", line.tokens));
+        assert!(
+            parsed.is_some(),
+            "expected static line after preprocessing; tokens={:#?}",
+            line.tokens
+        );
     }
 
     #[test]
@@ -1755,6 +1733,15 @@ mod tests {
             render_token_slice(stripped),
             "Whenever one or more lands enter under an opponent's control without being played, you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle"
         );
+
+        let tokens = lex_line(
+            "Whenever you commit a crime, create a 1/1 red Mercenary creature token with \"{T}: Target creature you control gets +1/+0 until end of turn. Activate only as a sorcery.\" This ability triggers only once each turn.",
+            0,
+        )
+        .expect("lex quoted token trigger cap");
+        let (stripped, max_triggers_per_turn) = strip_trailing_trigger_cap_suffix_tokens(&tokens);
+        assert_eq!(max_triggers_per_turn, Some(1));
+        assert!(render_token_slice(stripped).contains("as a sorcery"));
     }
 
     #[test]
@@ -2027,6 +2014,34 @@ mod tests {
     }
 
     #[test]
+    fn statement_line_cst_recognizes_each_opponent_gets_poison_counter() -> Result<(), CardTextError>
+    {
+        let line = single_preprocessed_line("Each opponent gets a poison counter.");
+
+        assert!(looks_like_statement_line_lexed(&line));
+        assert!(parse_statement_line_cst(&line)?.is_some());
+
+        Ok(())
+    }
+
+    #[test]
+    fn statement_line_cst_recognizes_player_counter_clauses_in_compound_effects()
+    -> Result<(), CardTextError> {
+        for text in [
+            "You draw two cards and you lose 2 life. Each opponent gets a poison counter.",
+            "Each opponent sacrifices a creature or planeswalker of their choice and gets a poison counter.",
+        ] {
+            let line = single_preprocessed_line(text);
+            assert!(
+                parse_statement_line_cst(&line)?.is_some(),
+                "expected compound player-counter effect to be a statement: {text}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn unsupported_line_reason_recognizes_modal_header_from_tokens() {
         let line = single_preprocessed_line("Choose one —");
 
@@ -2177,6 +2192,42 @@ mod tests {
     }
 
     #[test]
+    fn statement_parse_groups_keep_typed_energy_payment_threshold_bundle_together()
+    -> Result<(), CardTextError> {
+        let line = single_preprocessed_line(
+            "You get X {E} (energy counters), then you may pay any amount of {E}. Destroy each artifact, creature, and enchantment with mana value less than or equal to the amount of {E} paid this way.",
+        );
+
+        let groups = normalize_statement_parse_groups_lexed(&line.tokens);
+        assert_eq!(groups.len(), 1, "typed bundle was split: {groups:#?}");
+        let effects = super::parse_effect_sentences_lexed(&groups[0])
+            .expect("typed energy payment threshold bundle should lower");
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("PendingEffectMetric"), "{debug}");
+        assert!(debug.contains("PayAnyEnergy"), "{debug}");
+        assert!(
+            parse_statement_line_cst(&line)?.is_some(),
+            "typed bundle should route as a statement line"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn counter_linked_land_subtype_followup_routes_as_typed_statement() -> Result<(), CardTextError>
+    {
+        let line = single_preprocessed_line(
+            "That land is an Island in addition to its other types for as long as it has a flood counter on it.",
+        );
+        let statement = parse_statement_line_cst(&line)?
+            .expect("typed counter-linked subtype followup should route as a statement");
+        let effects = super::parse_effect_sentences_lexed(&statement.parse_groups[0])?;
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("AddSubtypes"), "{debug}");
+        assert!(debug.contains("Island"), "{debug}");
+        Ok(())
+    }
+
+    #[test]
     fn statement_parse_groups_lexed_split_instead_followup_into_separate_chunks() {
         let line = single_preprocessed_line(
             "Exile target creature. Return that card to the battlefield under its owner's control instead, then scry 1.",
@@ -2259,6 +2310,23 @@ mod tests {
         );
 
         assert!(parse_statement_line_cst(&line)?.is_some());
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_statement_line_cst_keeps_typed_create_token_rules_out_of_static_probe()
+    -> Result<(), CardTextError> {
+        for text in [
+            "Create a 1/1 green Wolf creature token. It has \"This token gets +1/+1 for each card named Sound the Call in each graveyard.\"",
+            "Create a 0/0 colorless Construct artifact creature token with 'This token gets +1/+1 for each artifact you control.'",
+        ] {
+            let line = single_preprocessed_line(text);
+            assert!(
+                parse_statement_line_cst(&line)?.is_some(),
+                "typed create-token statement was diverted to the static probe: {text}"
+            );
+        }
 
         Ok(())
     }
@@ -2365,6 +2433,45 @@ mod tests {
     }
 
     #[test]
+    fn emblem_payload_statement_routes_through_document_cst() -> Result<(), CardTextError> {
+        for text in [
+            r#"You get an emblem with "Whenever you cast a spell, draw a card.""#,
+            r#"You get an emblem with "You have no maximum hand size.""#,
+            r#"You get an emblem with "{T}: Draw a card.""#,
+            r#"You get an emblem with "You have no maximum hand size." and "{T}: Draw a card.""#,
+        ] {
+            let preprocessed = preprocess_document(
+                CardDefinitionBuilder::new(CardId::new(), "Emblem Document Test")
+                    .card_types(vec![CardType::Sorcery]),
+                text,
+            )?;
+            let PreprocessedItem::Line(line) = &preprocessed.items[0] else {
+                panic!("expected emblem payload to preprocess as one line: {text}");
+            };
+            assert_eq!(
+                classify_statement_line_family_lexed(&line.tokens),
+                Some(StatementLineFamily::Emblem),
+                "{text}"
+            );
+            assert!(looks_like_statement_line_lexed(line), "{text}");
+            let parse_groups = normalize_statement_parse_groups_lexed(&line.tokens);
+            assert_eq!(parse_groups.len(), 1, "{text}: {parse_groups:#?}");
+            let effects = super::parse_effect_sentences_lexed(&parse_groups[0])?;
+            assert!(!effects.is_empty(), "{text}: {parse_groups:#?}");
+            assert!(parse_statement_line_cst(line)?.is_some(), "{text}");
+
+            let cst = super::parse_document_cst(&preprocessed, false)?;
+            assert!(
+                matches!(cst.lines.as_slice(), [super::RewriteLineCst::Statement(_)]),
+                "expected emblem payload to route as one statement: {text}; got {:#?}",
+                cst.lines
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn looks_like_lexed_line_family_helpers_handle_nonkeyword_labels() {
         let statement = single_preprocessed_line("Battle Plan — Each player discards a card.");
         let static_line = single_preprocessed_line("Mystic Aura — Enchanted creature gets +1/+1.");
@@ -2397,7 +2504,7 @@ mod tests {
         let line = single_preprocessed_line(
             "Whenever this creature attacks, search your library for artifact card named.",
         );
-        let comma_idx = crate::runtime_backend::lexer::find_token_kind(
+        let comma_idx = crate::runtime_backend::lexer::locate_token_kind(
             &line.tokens,
             crate::runtime_backend::lexer::TokenKind::Comma,
         )
@@ -3756,7 +3863,14 @@ pub(crate) fn parse_text_to_semantic_document(
         return Err(err);
     }
     let preprocessed = preprocess_document(builder, text.as_str())?;
-    let semantic_facts = postpass_surface_grammar::parse_document_semantic_facts(text.as_str());
+    let semantic_facts = document_fact_grammar::parse_document_semantic_facts(
+        preprocessed.items.iter().filter_map(|item| match item {
+            PreprocessedItem::Metadata(_) => None,
+            PreprocessedItem::Line(line) => {
+                Some((line.info.display_line_index, line.tokens.as_slice()))
+            }
+        }),
+    );
     parse_trace::event(format!(
         "preprocessed document: {} item(s)",
         preprocessed.items.len()

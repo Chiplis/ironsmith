@@ -44,7 +44,13 @@ pub fn is_generated_internal_tag(tag: &str) -> bool {
 pub fn is_implicit_reference_tag(tag: &str) -> bool {
     matches!(
         tag,
-        "triggering" | "triggering_source" | "damaged" | "__it__" | "other_attacker" | "blocking"
+        "triggering"
+            | "triggering_source"
+            | "damaged"
+            | "__it__"
+            | "other_attacker"
+            | "blocking"
+            | "searched_face_down"
     ) || is_generated_internal_tag(tag)
 }
 

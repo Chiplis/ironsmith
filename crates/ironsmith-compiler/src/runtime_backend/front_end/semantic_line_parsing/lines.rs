@@ -13,11 +13,14 @@ use crate::runtime_backend::grammar::structure::{
 use crate::{KeywordAction, Value};
 
 fn full_parse_tokens_have_triggered_intervening_if_clause(tokens: &[OwnedLexToken]) -> bool {
-    let start_idx = if tokens_start_with_trigger_intro_surface(tokens) {
-        1
-    } else {
-        0
-    };
+    let start_idx =
+        if super::super::grammar::trigger_surface::parse_trigger_intro_prefix_tokens(tokens)
+            .is_some()
+        {
+            1
+        } else {
+            0
+        };
 
     super::super::grammar::structure::split_triggered_conditional_clause_lexed(tokens, start_idx)
         .is_some()
@@ -84,7 +87,9 @@ fn raw_label_prefix_parts(tokens: &[OwnedLexToken]) -> Option<(String, Vec<Owned
     }
 
     let body_tokens = trim_lexed_commas(body_tokens);
-    if !tokens_start_with_trigger_intro_surface(body_tokens) {
+    if super::super::grammar::trigger_surface::parse_trigger_intro_prefix_tokens(body_tokens)
+        .is_none()
+    {
         return None;
     }
 
@@ -136,6 +141,10 @@ fn parse_statement_to_chunks_impl(
     if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(parse_tokens) {
         return Ok(vec![chunk]);
     }
+    if effect_grammar::parse_kicked_counter_replacement_tokens(parse_tokens).is_some() {
+        let effects = parse_effect_sentences_lexed(parse_tokens)?;
+        return Ok(vec![LineAst::Statement { effects }]);
+    }
     if !parse_groups.is_empty() {
         if parse_groups.len() > 1
             && sentences_have_token_creation_followup_after_first(parse_groups)
@@ -176,7 +185,12 @@ fn parse_statement_to_chunks_impl(
         return Ok(chunks);
     }
     if !parse_tokens.is_empty() {
-        let sentence_tokens = rewrite_statement_parse_sentences_for_lowering_lexed(parse_tokens);
+        let statement_grouping =
+            crate::runtime_backend::grammar::statement_grouping::parse_statement_grouping_tokens(
+                parse_tokens,
+            );
+        let sentence_tokens = statement_grouping.sentences;
+        let grouped_tokens = statement_grouping.groups;
         let keep_linked_statement_grouped = linked_statement_should_stay_grouped(parse_tokens);
         if keep_linked_statement_grouped {
             let group_tokens = join_sentences_with_period(&sentence_tokens);
@@ -211,8 +225,6 @@ fn parse_statement_to_chunks_impl(
             }
             return Ok(chunks);
         }
-        let grouped_tokens =
-            group_statement_sentences_for_lowering_lexed(sentence_tokens, parse_tokens);
         if !grouped_tokens.is_empty() {
             let mut chunks = Vec::with_capacity(grouped_tokens.len());
             for group_tokens in grouped_tokens {
@@ -541,6 +553,7 @@ fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
         line_family,
         Some(
             StatementLineFamily::Divvy
+                | StatementLineFamily::Emblem
                 | StatementLineFamily::PactNextUpkeep
                 | StatementLineFamily::ExilePlayCostsMore
         )
@@ -742,15 +755,90 @@ fn parse_triggered_line_impl(
     trigger_parse_tokens: &[OwnedLexToken],
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    use crate::runtime_backend::grammar::effects::delayed_sentence_shapes::{
+        DelayedScheduleStep, parse_delayed_schedule_sentence_shape,
+    };
+
+    let delayed_schedule = parse_delayed_schedule_sentence_shape(full_parse_tokens);
+    let parsed = parse_triggered_ability_line_impl(
+        line,
+        full_parse_tokens,
+        trigger_parse_tokens,
+        effect_parse_tokens,
+    )?;
+    let Some(schedule) = delayed_schedule else {
+        return Ok(parsed);
+    };
+    let effects = match parsed {
+        LineAst::Triggered { effects, .. } => effects,
+        LineAst::Ability(parsed)
+            if matches!(parsed.kind(), crate::ability::AbilityKind::Triggered(_)) =>
+        {
+            parsed.effects_ast.ok_or_else(|| {
+                CardTextError::InvariantViolation(format!(
+                    "delayed schedule ability did not preserve semantic effects: '{}'",
+                    line.info.raw_line
+                ))
+            })?
+        }
+        _ => {
+            return Err(CardTextError::InvariantViolation(format!(
+                "delayed schedule sentence did not produce triggered effects: '{}'",
+                line.info.raw_line
+            )));
+        }
+    };
+
+    let delayed = match schedule.step {
+        DelayedScheduleStep::Upkeep => EffectAst::DelayedUntilNextUpkeep {
+            player: schedule.player,
+            effects,
+        },
+        DelayedScheduleStep::DrawStep => EffectAst::DelayedUntilNextDrawStep {
+            player: schedule.player,
+            effects,
+        },
+        DelayedScheduleStep::EndStep if schedule.start_next_turn => {
+            EffectAst::DelayedUntilEndStepOfExtraTurn {
+                player: schedule.player,
+                effects,
+            }
+        }
+        DelayedScheduleStep::EndStep => EffectAst::DelayedUntilNextEndStep {
+            player: match schedule.player {
+                PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+                PlayerAst::That => PlayerFilter::IteratedPlayer,
+                PlayerAst::Target => PlayerFilter::target_player(),
+                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                _ => PlayerFilter::Any,
+            },
+            effects,
+        },
+    };
+    Ok(LineAst::Statement {
+        effects: vec![delayed],
+    })
+}
+
+fn parse_triggered_ability_line_impl(
+    line: &RewriteTriggeredLine,
+    full_parse_tokens: &[OwnedLexToken],
+    trigger_parse_tokens: &[OwnedLexToken],
+    effect_parse_tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
     let source_text = triggered_line_source_text(line);
     let source_text_tokens = if source_text.trim() == line.info.raw_line.trim() {
         line.info.source_tokens.as_slice()
     } else {
         full_parse_tokens
     };
-    let trigger_surface_text = if tokens_start_with_trigger_intro_surface(&source_text_tokens)
-        || !tokens_start_with_trigger_intro_surface(full_parse_tokens)
-    {
+    let source_intro = super::super::grammar::trigger_surface::parse_trigger_intro_prefix_tokens(
+        &source_text_tokens,
+    );
+    let full_intro = super::super::grammar::trigger_surface::parse_trigger_intro_prefix_tokens(
+        full_parse_tokens,
+    );
+    let trigger_surface_text = if source_intro.is_some() || full_intro.is_none() {
         source_text.as_str()
     } else {
         line.full_text.trim()
@@ -826,6 +914,11 @@ fn parse_triggered_line_impl(
         sentences_have_token_creation_followup_after_first(&selected_effect_sentences);
     let selected_effect_has_temporary_static_followup_after_first =
         sentences_have_temporary_static_followup_after_first(&selected_effect_sentences);
+    let selected_effect_has_counter_linked_land_subtype_followup_after_first =
+        selected_effect_sentences.iter().skip(1).any(|sentence| {
+            super::super::grammar::effects::followup_shapes::parse_counter_linked_land_subtype_followup(sentence)
+                .is_some()
+        });
     if let Some((first_followup_idx, mut followup_effects)) =
         returned_object_static_followup_effects(&selected_effect_sentences)?
         && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
@@ -878,6 +971,7 @@ fn parse_triggered_line_impl(
     if full_sentences.len() > 1
         && !has_token_creation_followup_after_first
         && !has_temporary_static_followup_after_first
+        && !selected_effect_has_counter_linked_land_subtype_followup_after_first
         && !selected_split_has_trailing_static_after_first
         && let Ok(first_triggered) = parse_triggered_line_lexed(full_sentences[0])
     {
@@ -918,6 +1012,7 @@ fn parse_triggered_line_impl(
     if effect_sentences.len() > 1
         && !effect_has_token_creation_followup_after_first
         && !effect_has_temporary_static_followup_after_first
+        && !selected_effect_has_counter_linked_land_subtype_followup_after_first
         && let Some(first_static_idx) =
             effect_sentences
                 .iter()
@@ -1577,10 +1672,9 @@ fn parse_static_line_impl(
             chosen_option,
         );
     }
-    if tokens_start_with_partner_dash_label(&line.parse_tokens) {
-        let visible_label =
-            keyword_special_grammar::parse_partner_visible_label_tokens(&line.parse_tokens)
-                .unwrap_or_else(|| line.text.trim().to_string());
+    if let Some(visible_label) =
+        keyword_special_grammar::parse_partner_visible_label_tokens(&line.parse_tokens)
+    {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::partner().with_text(visible_label).into()),
             chosen_option,
@@ -1735,7 +1829,7 @@ fn parse_static_line_impl(
             chosen_option,
         );
     }
-    if let Some(chunk) = lower_compound_buff_and_unblockable_static_chunk(line, parse_tokens)? {
+    if let Some(chunk) = parse_compound_buff_and_unblockable_static_chunk(parse_tokens)? {
         return wrap_chosen_option_static_chunk(chunk, chosen_option);
     }
     if semantic_grammar::parse_combined_spell_and_activation_tax_tokens(lexed).is_some()
@@ -1786,7 +1880,7 @@ fn parse_static_line_impl(
     {
         return wrap_chosen_option_static_chunk(LineAst::Abilities(actions), chosen_option);
     }
-    if let Some(chunk) = lower_split_rewrite_static_chunk(line, parse_tokens)? {
+    if let Some(chunk) = parse_split_static_chunk(line, parse_tokens)? {
         return wrap_chosen_option_static_chunk(chunk, chosen_option);
     }
     if semantic_grammar::parse_ability_word_marker_tokens(parse_tokens).is_some() {
@@ -2234,25 +2328,10 @@ fn try_lower_hideaway_keyword(
 fn try_lower_hideaway_tokens(
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
-    let words = crate::runtime_backend::lexer::parser_token_word_refs(parse_tokens);
-    if words.len() != 2 || words[0] != "hideaway" {
+    let Some(shape) = semantic_grammar::parse_hideaway_keyword_tokens(parse_tokens)? else {
         return Ok(None);
-    }
-    let display = render_token_slice(parse_tokens);
-    let Ok(count) = words[1].parse::<i32>() else {
-        return Err(CardTextError::ParseError(format!(
-            "hideaway keyword expected numeric count in '{}'",
-            display
-        )));
     };
-    if count <= 0 {
-        return Err(CardTextError::ParseError(format!(
-            "hideaway keyword expected positive count in '{}'",
-            display
-        )));
-    }
-
-    Ok(Some(hideaway_line_ast(count)))
+    Ok(Some(hideaway_line_ast(shape.count)))
 }
 
 fn hideaway_line_ast(count: i32) -> LineAst {

@@ -28,14 +28,20 @@ use super::leaf::{
 use super::primitives;
 use crate::runtime_backend::object_filters::parse_object_filter_words;
 
+#[path = "conditions/counter_shapes.rs"]
+mod counter_shapes;
 #[path = "conditions/event_shapes.rs"]
 mod event_shapes;
+#[path = "conditions/life_tie_shapes.rs"]
+mod life_tie_shapes;
 #[path = "conditions/relation_shapes.rs"]
 mod relation_shapes;
 #[path = "conditions/status_shapes.rs"]
 mod status_shapes;
 #[path = "conditions/zone_change_shapes.rs"]
 mod zone_change_shapes;
+
+pub(crate) use counter_shapes::{PlayerCounterConditionShape, parse_player_counter_condition};
 
 #[derive(Debug, Clone, PartialEq)]
 enum LifeRelationShape {
@@ -161,6 +167,12 @@ pub(crate) struct SubjectDescriptorConditionAst {
     pub(crate) descriptor: ObjectDescriptorAst,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ObjectAttachedToObjectConditionAst {
+    pub(crate) attachment_filter: ObjectFilter,
+    pub(crate) attached_to_filter: ObjectFilter,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlayerStatusAst {
     Monarch,
@@ -198,6 +210,19 @@ pub(crate) struct PlayerCardsInHandConditionAst {
 pub(crate) struct PlayerLifeTotalConditionAst {
     pub(crate) player: PlayerFilter,
     pub(crate) comparison: Comparison,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PlayerLifeTieConditionAst {
+    pub(crate) minimum_players: u32,
+    pub(crate) tied_players: PlayerFilter,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PlayerLifeTieChoiceConditionAst<'a> {
+    pub(crate) minimum_players: u32,
+    pub(crate) tied_players: PlayerFilter,
+    pub(crate) consequence_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -981,6 +1006,27 @@ pub(crate) fn parse_subject_descriptor_condition(
     parse_subject_descriptor_shape(tokens)
 }
 
+pub(crate) fn parse_object_attached_to_object_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<ObjectAttachedToObjectConditionAst> {
+    let relation = parse_copula_relation_clauses(tokens)?;
+    let (_, attached_to_tokens) = primitives::parse_prefix(
+        relation.tail_clause.tokens(),
+        primitives::phrase(&["attached", "to"]),
+    )?;
+    let mut attachment_filter =
+        parse_object_filter_with_grammar_entrypoint(relation.subject_clause.tokens(), false)
+            .ok()?;
+    let mut attached_to_filter =
+        parse_object_filter_with_grammar_entrypoint(attached_to_tokens, false).ok()?;
+    attachment_filter.zone.get_or_insert(Zone::Battlefield);
+    attached_to_filter.zone.get_or_insert(Zone::Battlefield);
+    Some(ObjectAttachedToObjectConditionAst {
+        attachment_filter,
+        attached_to_filter,
+    })
+}
+
 fn parse_subject_descriptor_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectDescriptorConditionAst> {
@@ -1101,6 +1147,27 @@ pub(crate) fn parse_player_life_total_condition(
     } else {
         None
     }
+}
+
+pub(crate) fn parse_player_life_tie_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<PlayerLifeTieConditionAst> {
+    let shape = life_tie_shapes::parse_player_life_tie_condition_tokens(tokens)?;
+    Some(PlayerLifeTieConditionAst {
+        minimum_players: shape.minimum_players,
+        tied_players: shape.tied_players,
+    })
+}
+
+pub(crate) fn parse_player_life_tie_choice_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<PlayerLifeTieChoiceConditionAst<'_>> {
+    let shape = life_tie_shapes::parse_player_life_tie_choice_conditional_tokens(tokens)?;
+    Some(PlayerLifeTieChoiceConditionAst {
+        minimum_players: shape.minimum_players,
+        tied_players: shape.tied_players,
+        consequence_tokens: shape.consequence_tokens,
+    })
 }
 
 pub(crate) fn parse_player_has_quantity_object_condition(
@@ -1776,6 +1843,31 @@ mod tests {
             assert_eq!(parsed.descriptor, expected_descriptor, "{text}");
             assert!(!parsed.filter.tagged_constraints.is_empty(), "{text}");
         }
+    }
+
+    #[test]
+    fn parses_object_attachment_relationship_condition() {
+        let tokens = lex_line(
+            "an Equipment named Groom's Finery is attached to a creature you control",
+            0,
+        )
+        .expect("lex attachment condition");
+        let parsed =
+            parse_object_attached_to_object_condition(&tokens).expect("typed attachment condition");
+        assert_eq!(
+            parsed.attachment_filter.name.as_deref(),
+            Some("grooms finery")
+        );
+        assert!(
+            parsed
+                .attached_to_filter
+                .card_types
+                .contains(&CardType::Creature)
+        );
+        assert_eq!(
+            parsed.attached_to_filter.controller,
+            Some(PlayerFilter::You)
+        );
     }
 
     #[test]

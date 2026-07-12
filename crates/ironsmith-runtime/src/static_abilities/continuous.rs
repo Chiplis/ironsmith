@@ -2018,6 +2018,9 @@ pub struct Anthem {
     /// True when the original oracle text scaled with a "where X is …" clause
     /// rather than "for each …". Surface hint for rendering only.
     pub count_uses_where_x: bool,
+    /// Absolute P/T from a typed "gets P/T instead" continuation. The effect
+    /// values above remain the executable conditional delta.
+    pub replacement_surface: Option<ironsmith_core::AnthemReplacementSurface>,
 }
 
 impl Anthem {
@@ -2029,6 +2032,7 @@ impl Anthem {
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
             count_uses_where_x: false,
+            replacement_surface: None,
         }
     }
 
@@ -2040,6 +2044,7 @@ impl Anthem {
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
             count_uses_where_x: false,
+            replacement_surface: None,
         }
     }
 
@@ -2051,6 +2056,12 @@ impl Anthem {
 
     pub fn with_count_uses_where_x(mut self, uses_where_x: bool) -> Self {
         self.count_uses_where_x = uses_where_x;
+        self
+    }
+
+    pub fn with_replacement_surface(mut self, power: i32, toughness: i32) -> Self {
+        self.replacement_surface =
+            Some(ironsmith_core::AnthemReplacementSurface { power, toughness });
         self
     }
 
@@ -2123,6 +2134,35 @@ impl StaticAbilityKind for Anthem {
                 signed(toughness)
             }
         };
+
+        if let (Some(surface), Some(condition)) = (self.replacement_surface, &self.condition) {
+            let condition_text = match condition {
+                crate::ConditionExpr::AttachedToSourceMatches(filter) => {
+                    let filter_text = filter.description();
+                    let article = if matches!(
+                        filter_text.chars().next().map(|ch| ch.to_ascii_lowercase()),
+                        Some('a' | 'e' | 'i' | 'o' | 'u')
+                    ) {
+                        "an"
+                    } else {
+                        "a"
+                    };
+                    format!("{subject} is {article} {filter_text}")
+                }
+                _ => {
+                    let described = describe_static_condition(condition);
+                    described
+                        .strip_prefix("as long as ")
+                        .unwrap_or(&described)
+                        .to_string()
+                }
+            };
+            return format!(
+                "If {condition_text}, {subject} {verb} {}/{} instead",
+                signed(surface.power),
+                signed_toughness(surface.power, surface.toughness),
+            );
+        }
 
         let mut text = match (&self.power, &self.toughness) {
             (AnthemValue::Fixed(power), AnthemValue::Fixed(toughness)) => {
@@ -3143,6 +3183,75 @@ impl StaticAbilityKind for SetBasePowerToughnessForFilter {
                 Modification::SetPowerToughness {
                     power: Value::Fixed(self.power),
                     toughness: Value::Fixed(self.toughness),
+                    sublayer: PtSublayer::Setting,
+                },
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            &self.condition,
+        )]
+    }
+}
+
+/// Set only base power, leaving base toughness unchanged.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetBasePowerForFilter {
+    pub filter: ObjectFilter,
+    pub power: i32,
+    pub condition: Option<crate::ConditionExpr>,
+}
+
+impl SetBasePowerForFilter {
+    pub fn new(filter: ObjectFilter, power: i32) -> Self {
+        Self {
+            filter,
+            power,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+}
+
+impl StaticAbilityKind for SetBasePowerForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SetBasePowerToughnessForFilter
+    }
+
+    fn display(&self) -> String {
+        let subject = pluralized_subject_text(&self.filter);
+        let singular = subject.starts_with("enchanted ")
+            || subject.starts_with("equipped ")
+            || subject.starts_with("this ")
+            || subject.starts_with("that ");
+        let verb = if singular { "has" } else { "have" };
+        let mut text = format!("{subject} {verb} base power {}", self.power);
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![effect_with_optional_static_condition(
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Filter(self.filter.clone()),
+                Modification::SetPower {
+                    value: Value::Fixed(self.power),
                     sublayer: PtSublayer::Setting,
                 },
             )

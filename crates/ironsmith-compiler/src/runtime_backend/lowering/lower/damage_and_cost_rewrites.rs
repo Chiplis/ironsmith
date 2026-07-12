@@ -1,62 +1,9 @@
 use super::*;
-use crate::runtime_backend::semantic::ParsedManaRestriction;
-
-pub(crate) fn apply_pending_mana_restrictions(
-    parsed: &mut ParsedAbility,
-    restrictions: &[ParsedManaRestriction],
-) -> Result<(), CardTextError> {
-    let AbilityKind::Activated(ability) = parsed.kind_mut() else {
-        return Err(CardTextError::InvariantViolation(
-            "rewrite activated lowering expected activated ability kind".to_string(),
-        ));
-    };
-    for restriction in restrictions {
-        apply_pending_mana_restriction(ability, restriction);
-    }
-    Ok(())
-}
-
-pub(crate) fn parse_next_spell_cost_reduction_sentence_rewrite(
-    tokens: &[OwnedLexToken],
-) -> Option<EffectAst> {
-    let parsed = activated_line_grammar::parse_next_spell_cost_reduction_tokens(tokens)?;
-
-    Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
-        crate::cards::builders::PlayerAst::You,
-        parsed.spell_filter,
-        parsed.reduction,
-    ))
-}
-
-pub(crate) fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
-    _effect_text: &str,
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
-    let parsed = effect_grammar::parse_each_player_creatures_damage_tokens(tokens)?;
-
-    let mut filter = crate::filter::ObjectFilter::default();
-    filter.card_types = vec![crate::types::CardType::Creature];
-    filter.controller = Some(crate::PlayerFilter::IteratedPlayer);
-
-    Some(vec![EffectAst::ForEachPlayer {
-        effects: vec![
-            EffectAst::subject_verb_damage(
-                parsed.amount.clone(),
-                crate::cards::builders::TargetAst::Player(
-                    crate::PlayerFilter::IteratedPlayer,
-                    None,
-                ),
-            ),
-            EffectAst::subject_verb_damage_each(parsed.amount, filter),
-        ],
-    }])
-}
-
 #[allow(dead_code)]
 pub(crate) fn lower_rewrite_document(
     doc: RewriteSemanticDocument,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    let parsed = rewrite_document_to_parsed_card_ast(doc)?;
+    let parsed = super::super::semantic_document::parse_semantic_document(doc)?;
     let ast = prepare_parsed_card_ast_for_lowering(parsed)?;
     lower_normalized_card_ast(ast)
 }

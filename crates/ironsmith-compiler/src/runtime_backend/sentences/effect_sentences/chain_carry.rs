@@ -8,16 +8,16 @@ use super::super::compile_support::effects_reference_it_tag;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::grammar::effects::{
     chain_carry as chain_grammar, for_each_shapes, parse_additional_phases_shape,
-    parse_conditional_sentence_family_lexed, parse_reveal_source_exiled_permanents_tokens,
-    parse_tap_object_union_then_tokens, sacrifice_discard_shapes as sacrifice_discard_grammar,
+    parse_any_player_may_sacrifice_shape, parse_choose_then_exile_reference_shape,
+    parse_conditional_sentence_family_lexed, parse_exile_reference_action_shape,
+    parse_reveal_source_exiled_permanents_tokens, parse_tap_object_union_then_tokens,
+    sacrifice_discard_shapes as sacrifice_discard_grammar,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed, split_trailing_if_clause_lexed,
 };
-use super::super::lexer::{
-    OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas, word_slice_first_is,
-};
+use super::super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
     PermissionClauseSpec, PermissionLifetime, parse_additional_land_plays_clause_lexed,
@@ -30,10 +30,9 @@ use super::super::token_primitives::locate_last_index as find_last_token_index;
 #[cfg(test)]
 use super::super::token_primitives::str_contains as string_contains;
 use super::super::util::{
-    is_source_reference_words, parse_target_phrase, remove_first_word as remove_first_word_tokens,
-    remove_through_first_word as remove_through_first_word_tokens, strip_leading_word_refs_any,
+    parse_target_phrase, remove_first_may_word as remove_first_may_word_tokens,
+    remove_through_first_may_word as remove_through_first_may_word_tokens,
 };
-use super::super::value_helpers::{parse_number_prefix_lexed, parse_value_prefix_lexed};
 use super::dispatch_inner::parse_subject_verb_extension_sentence;
 use super::lex_chain_helpers::{
     find_verb_lexed, find_verb_words_lexed, has_effect_head_without_verb_lexed,
@@ -52,6 +51,9 @@ use super::{
     parse_simple_gain_ability_clause_lexed, parse_simple_lose_ability_clause_lexed,
     parse_token_copy_followup_sentence_lexed, try_apply_token_copy_followup,
 };
+use crate::runtime_backend::grammar::shared_util::value_semantics::{
+    parse_number_prefix_lexed, parse_value_prefix_lexed,
+};
 
 const ENCHANTED_TAG_NAME: &str = "enchanted";
 const SENTENCE_HELPER_REVEALED_TAG_PREFIX: &str = "__sentence_helper_revealed";
@@ -64,17 +66,6 @@ use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
-
-const UNTIL_YOUR_NEXT_TURN_PREFIXES: &[&[&str]] = &[
-    &["until", "your", "next", "turn"],
-    &["until", "your", "next", "upkeep"],
-];
-const UNTIL_YOUR_NEXT_UNTAP_PREFIXES: &[&[&str]] = &[
-    &["until", "your", "next", "untap", "step"],
-    &["during", "your", "next", "untap", "step"],
-];
-const THEN_WORD: &str = "then";
-const DRAW_WORD: &str = "draw";
 
 /// Whether a clause begins with "have/has <explicit player> …" — a causative
 /// where the player after "have" is the subject ("have that player lose 2 life").
@@ -122,45 +113,24 @@ fn parse_choose_land_of_each_basic_land_type_segment(
     )
 }
 
-#[derive(Clone, Copy)]
-enum RestAction {
-    Destroy,
-    Exile,
-    Sacrifice,
-}
-
-const REST_ACTION_SEGMENT_PHRASES: &[(&[&str], RestAction)] = &[
-    (&["destroy", "the", "rest"], RestAction::Destroy),
-    (&["destroy", "rest"], RestAction::Destroy),
-    (&["exile", "the", "rest"], RestAction::Exile),
-    (&["exile", "rest"], RestAction::Exile),
-    (&["sacrifice", "the", "rest"], RestAction::Sacrifice),
-    (&["sacrifice", "rest"], RestAction::Sacrifice),
-    (&["sacrifices", "the", "rest"], RestAction::Sacrifice),
-    (&["sacrifices", "rest"], RestAction::Sacrifice),
-];
-
-fn parse_rest_action_segment_lexed(tokens: &[OwnedLexToken]) -> Option<RestAction> {
-    let words = token_word_refs(tokens);
-    let words = if word_slice_first_is(&words, THEN_WORD) {
-        &words[1..]
-    } else {
-        words.as_slice()
-    };
-    REST_ACTION_SEGMENT_PHRASES
-        .iter()
-        .find_map(|(phrase, action)| (*phrase == words).then_some(*action))
-}
-
-fn rest_action_effect(action: RestAction, filter: ObjectFilter, player: PlayerAst) -> EffectAst {
+fn rest_action_effect(
+    action: chain_grammar::RestActionShape,
+    filter: ObjectFilter,
+    player: PlayerAst,
+) -> EffectAst {
     match action {
-        RestAction::Destroy => EffectAst::subject_verb_destroy_all(filter),
-        RestAction::Exile => EffectAst::subject_verb_exile_all(filter, false),
-        RestAction::Sacrifice => EffectAst::subject_verb_sacrifice_all(player, filter),
+        chain_grammar::RestActionShape::Destroy => EffectAst::subject_verb_destroy_all(filter),
+        chain_grammar::RestActionShape::Exile => EffectAst::subject_verb_exile_all(filter, false),
+        chain_grammar::RestActionShape::Sacrifice => {
+            EffectAst::subject_verb_sacrifice_all(player, filter)
+        }
     }
 }
 
-fn try_apply_rest_action_followup(effects: &mut Vec<EffectAst>, action: RestAction) -> bool {
+fn try_apply_rest_action_followup(
+    effects: &mut Vec<EffectAst>,
+    action: chain_grammar::RestActionShape,
+) -> bool {
     if let Some(EffectAst::ChooseObjects {
         filter,
         tag,
@@ -431,9 +401,20 @@ pub(crate) fn parse_effect_chain_lexed(
     let starts_with_each_player =
         leading_scope == Some(chain_grammar::ChainPlayerScope::EachPlayer);
 
+    if let Some(shape) = parse_any_player_may_sacrifice_shape(tokens) {
+        let sacrifice = super::zone_handlers::parse_sacrifice(
+            shape.action_tokens,
+            Some(crate::cards::builders::SubjectAst::Player(PlayerAst::That)),
+            None,
+        )?;
+        return Ok(vec![EffectAst::AnyPlayerMay {
+            effects: vec![sacrifice],
+        }]);
+    }
+
     if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) {
         if let Some(player) = parse_leading_player_may_lexed(trailing_if.leading_tokens) {
-            let mut stripped = remove_through_first_word(trailing_if.leading_tokens, "may");
+            let mut stripped = remove_through_first_word(trailing_if.leading_tokens);
             if leading_have_introduces_causative_player(&stripped) {
                 // keep "have": it introduces a causative on an explicit player
                 // ("have that player lose 2 life"); stripping it drops the subject.
@@ -458,7 +439,7 @@ pub(crate) fn parse_effect_chain_lexed(
             && !starts_with_each_opponent
             && !starts_with_each_player
         {
-            let stripped = remove_first_word(trailing_if.leading_tokens, "may");
+            let stripped = remove_first_word(trailing_if.leading_tokens);
             let effects = parse_effect_chain_lexed(&stripped)?;
             return Ok(vec![EffectAst::Conditional {
                 predicate: trailing_if.predicate,
@@ -469,7 +450,7 @@ pub(crate) fn parse_effect_chain_lexed(
     }
 
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
-        let mut stripped = remove_through_first_word(tokens, "may");
+        let mut stripped = remove_through_first_word(tokens);
         if leading_have_introduces_causative_player(&stripped) {
             // keep "have" — see the trailing-if branch above.
         } else if let Some(rest) = chain_grammar::strip_leading_have_tokens(&stripped) {
@@ -495,7 +476,7 @@ pub(crate) fn parse_effect_chain_lexed(
         && !starts_with_each_opponent
         && !starts_with_each_player
     {
-        let stripped = remove_first_word(tokens, "may");
+        let stripped = remove_first_word(tokens);
         let effects = parse_effect_chain_lexed(&stripped)?;
         if leading_may_is_permission_clause_lexed(&stripped)? {
             if immediate_tagged_permission_spec(&stripped)? {
@@ -686,6 +667,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         return Ok(effects);
     }
 
+    let choose_then_exile_reference = parse_choose_then_exile_reference_shape(tokens).is_some();
     let mut effects = Vec::new();
     let raw_segments = split_effect_chain_on_and_lexed(tokens);
     let mut lexed_segments = Vec::new();
@@ -747,6 +729,8 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     let mut previous_segment: Option<Vec<OwnedLexToken>> = None;
     for segment in segments {
         let mut segment = segment;
+        let bind_source_exiled =
+            choose_then_exile_reference && parse_exile_reference_action_shape(&segment).is_some();
         if is_orphan_rounded_up_where_x_tail(&segment, previous_segment.as_deref(), effects.last())
         {
             continue;
@@ -798,7 +782,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
                     carried_duration = Some(duration);
                 }
-                effects.push(effect);
+                effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
             }
             continue;
         }
@@ -818,7 +802,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
                     carried_duration = Some(duration);
                 }
-                effects.push(effect);
+                effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
             }
             continue;
         }
@@ -838,7 +822,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
                     carried_duration = Some(duration);
                 }
-                effects.push(effect);
+                effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
             }
             continue;
         }
@@ -858,7 +842,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
                     carried_duration = Some(duration);
                 }
-                effects.push(effect);
+                effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
             }
             previous_segment = Some(segment);
             continue;
@@ -896,7 +880,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
                     carried_duration = Some(duration);
                 }
-                effects.push(effect);
+                effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
             }
             previous_segment = Some(segment);
             continue;
@@ -911,7 +895,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             previous_segment = Some(segment);
             continue;
         }
-        if let Some(action) = parse_rest_action_segment_lexed(&segment)
+        if let Some(action) = chain_grammar::parse_rest_action_tokens(&segment)
             && try_apply_rest_action_followup(&mut effects, action)
         {
             previous_segment = Some(segment);
@@ -925,7 +909,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 if let Some(duration) = &carried_duration {
                     apply_carried_effect_duration(&mut effect, duration);
                 }
-                effects.push(effect);
+                effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
                 previous_segment = Some(segment);
                 continue;
             }
@@ -945,7 +929,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
             carried_duration = Some(duration);
         }
-        effects.push(effect);
+        effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
         previous_segment = Some(segment);
     }
     collapse_for_each_player_it_tag_followups(&mut effects);
@@ -954,6 +938,17 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     collapse_token_copy_next_end_step_sacrifice_followup_lexed(&mut effects, tokens);
     collapse_token_copy_end_of_combat_exile_followup_lexed(&mut effects, tokens);
     Ok(effects)
+}
+
+fn bind_source_exiled_effect(effect: EffectAst, bind: bool) -> EffectAst {
+    if bind {
+        EffectAst::TagAffected {
+            effect: Box::new(effect),
+            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        }
+    } else {
+        effect
+    }
 }
 
 fn parse_tap_those_then_unattach_equipment_lexed(
@@ -1043,6 +1038,7 @@ fn effect_uses_half_life_total_value(effect: &EffectAst) -> bool {
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::AnyPlayerMay { effects }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::WhenResult { effects, .. }
         | EffectAst::ManaRestricted { effects, .. } => {
@@ -1057,17 +1053,7 @@ fn value_is_half_life_total(value: &Value) -> bool {
 }
 
 fn leading_duration_for_followup_carry(tokens: &[OwnedLexToken]) -> Option<Until> {
-    let words = token_word_refs(tokens);
-    if crate::runtime_backend::util::starts_with_until_end_of_turn(&words) {
-        return Some(Until::EndOfTurn);
-    }
-    if grammar::match_any_word_prefix(tokens, UNTIL_YOUR_NEXT_TURN_PREFIXES).is_some() {
-        return Some(Until::YourNextTurn);
-    }
-    if grammar::match_any_word_prefix(tokens, UNTIL_YOUR_NEXT_UNTAP_PREFIXES).is_some() {
-        return Some(Until::ControllersNextUntapStep);
-    }
-    None
+    chain_grammar::parse_carry_duration_prefix_tokens(tokens).map(|shape| shape.duration)
 }
 
 fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Option<Until> {
@@ -1835,20 +1821,8 @@ pub(crate) fn expand_missing_verb_segment_lexed(
 }
 
 fn strip_leading_gain_duration_prefix(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let words = token_word_refs(tokens);
-    if crate::runtime_backend::util::starts_with_until_end_of_turn(&words) {
-        return trim_lexed_commas(&tokens[4..]);
-    }
-    if let Some((prefix, _)) = grammar::match_any_word_prefix(tokens, UNTIL_YOUR_NEXT_TURN_PREFIXES)
-    {
-        return trim_lexed_commas(&tokens[prefix.len()..]);
-    }
-    if let Some((prefix, _)) =
-        grammar::match_any_word_prefix(tokens, UNTIL_YOUR_NEXT_UNTAP_PREFIXES)
-    {
-        return trim_lexed_commas(&tokens[prefix.len()..]);
-    }
-    trim_lexed_commas(tokens)
+    chain_grammar::parse_carry_duration_prefix_tokens(tokens)
+        .map_or_else(|| trim_lexed_commas(tokens), |shape| shape.rest)
 }
 
 fn previous_segment_has_carryable_subject(previous: &[OwnedLexToken]) -> bool {
@@ -1865,10 +1839,7 @@ fn previous_segment_has_carryable_subject(previous: &[OwnedLexToken]) -> bool {
         return false;
     }
 
-    let subject_words = token_word_refs(subject_tokens);
-    is_source_reference_words(&subject_words)
-        || starts_with_target_indicator(&subject_tokens)
-        || parse_object_filter(subject_tokens, false).is_ok()
+    chain_grammar::parse_carryable_subject_tokens(subject_tokens).is_some()
 }
 
 fn expand_gain_lose_followup_segment_lexed(
@@ -2132,6 +2103,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::ChooseCardType { .. }
                 | SubjectVerbActionAst::ChooseNamedOption { .. }
                 | SubjectVerbActionAst::ChooseCreatureType { .. }
+                | SubjectVerbActionAst::ChooseLandType { .. }
                 | SubjectVerbActionAst::ChooseCardName { .. }
                 | SubjectVerbActionAst::ChoosePlayer { .. }
                 | SubjectVerbActionAst::NoteLifeTotal
@@ -2209,6 +2181,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::ChooseCardType { .. }
                 | SubjectVerbActionAst::ChooseNamedOption { .. }
                 | SubjectVerbActionAst::ChooseCreatureType { .. }
+                | SubjectVerbActionAst::ChooseLandType { .. }
                 | SubjectVerbActionAst::ChooseCardName { .. }
                 | SubjectVerbActionAst::ChoosePlayer { .. }
                 | SubjectVerbActionAst::NoteLifeTotal
@@ -2299,18 +2272,13 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
     }
 }
 
-pub(crate) fn clause_words_for_carry_lexed(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    let clause_words = token_word_refs(tokens);
-    strip_leading_word_refs_any(&clause_words, &["then", "and"]).to_vec()
-}
-
 pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
     effect: &mut EffectAst,
     carried_context: CarryContext,
     clause_tokens: &[OwnedLexToken],
 ) {
-    let clause_words = clause_words_for_carry_lexed(clause_tokens);
-    if clause_words.first().is_some_and(|word| *word == "create")
+    let clause_head = chain_grammar::parse_carry_clause_head_tokens(clause_tokens);
+    if clause_head == chain_grammar::CarryClauseHead::Create
         && normalize_imperative_create_player(effect)
     {
         return;
@@ -2326,7 +2294,7 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                     },
                     action: SubjectVerbActionAst::Draw { .. },
                 })
-            ) && word_slice_first_is(&clause_words, DRAW_WORD))
+            ) && clause_head == chain_grammar::CarryClauseHead::Draw)
                 || (matches!(
                     effect,
                     EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -2337,7 +2305,10 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                         action: SubjectVerbActionAst::Scry { .. }
                             | SubjectVerbActionAst::Surveil { .. },
                     })
-                ) && matches!(clause_words.first().copied(), Some("scry" | "surveil")))
+                ) && matches!(
+                    clause_head,
+                    chain_grammar::CarryClauseHead::Scry | chain_grammar::CarryClauseHead::Surveil
+                ))
         }
         CarryContext::ForEachPlayer
         | CarryContext::ForEachTargetPlayers(_)
@@ -2356,8 +2327,10 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
             );
             is_implicit_vision_effect
                 && matches!(
-                    clause_words.first().copied(),
-                    Some("draw" | "scry" | "surveil")
+                    clause_head,
+                    chain_grammar::CarryClauseHead::Draw
+                        | chain_grammar::CarryClauseHead::Scry
+                        | chain_grammar::CarryClauseHead::Surveil
                 )
         }
     };
@@ -2683,15 +2656,12 @@ pub(crate) fn parse_leading_player_may(tokens: &[OwnedLexToken]) -> Option<Playe
     parse_leading_player_may_lexed(tokens)
 }
 
-pub(crate) fn remove_first_word(tokens: &[OwnedLexToken], word: &str) -> Vec<OwnedLexToken> {
-    remove_first_word_tokens(tokens, word)
+pub(crate) fn remove_first_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    remove_first_may_word_tokens(tokens)
 }
 
-pub(crate) fn remove_through_first_word(
-    tokens: &[OwnedLexToken],
-    word: &str,
-) -> Vec<OwnedLexToken> {
-    remove_through_first_word_tokens(tokens, word)
+pub(crate) fn remove_through_first_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    remove_through_first_may_word_tokens(tokens)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

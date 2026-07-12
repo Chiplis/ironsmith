@@ -10,9 +10,17 @@ use crate::target::ObjectFilter;
 use super::super::lexer::{LexStream, OwnedLexToken};
 use super::{leaf, primitives};
 
-#[path = "activation_restrictions/surface_shapes.rs"]
-mod surface_shapes;
-pub(crate) use surface_shapes::*;
+#[path = "activation_restrictions/cast_facts.rs"]
+mod cast_facts;
+pub(crate) use cast_facts::*;
+
+#[path = "activation_restrictions/clause_facts.rs"]
+mod clause_facts;
+pub(crate) use clause_facts::*;
+
+#[path = "activation_restrictions/object_facts.rs"]
+mod object_facts;
+pub(crate) use object_facts::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ActivationNegationSpan {
@@ -162,17 +170,6 @@ pub(crate) fn parse_activation_negation_span_tokens(
         .ok()
 }
 
-pub(crate) fn parse_activation_word_span_tokens(
-    tokens: &[OwnedLexToken],
-    first_word: usize,
-    end_word: usize,
-) -> Option<ActivationWordSpan> {
-    let view = primitives::TokenWordView::new(tokens);
-    let first = view.token_start_indices().get(first_word).copied()?;
-    let end = view.token_index_after_words(end_word)?;
-    Some(ActivationWordSpan { first, end })
-}
-
 pub(crate) fn parse_activation_cast_limit_qualifier_words(
     words: &[&str],
 ) -> Option<ActivationCastLimitQualifier> {
@@ -251,15 +248,6 @@ pub(crate) fn parse_cant_restriction_or_split_tokens(
     second.extend(negation_tokens);
     second.extend(tail.iter().cloned());
     Some(CantRestrictionOrSplit { first, second })
-}
-
-pub(crate) fn parse_first_negated_segment_index(segments: &[&[OwnedLexToken]]) -> Option<usize> {
-    for (index, segment) in segments.iter().enumerate() {
-        if parse_activation_negation_span_tokens(segment).is_some() {
-            return Some(index);
-        }
-    }
-    None
 }
 
 fn parse_activation_negation_span_lexed<'a>(

@@ -80,8 +80,11 @@ pub(crate) fn parse_discard_or_redirect_replacement(
 
 fn enter_battlefield_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::phrase(&["would", "enter"]).parse_next(input)?;
-    opt(primitives::kw("the")).parse_next(input)?;
-    primitives::kw("battlefield").parse_next(input)?;
+    opt(alt((
+        primitives::phrase(&["the", "battlefield"]),
+        primitives::kw("battlefield").void(),
+    )))
+    .parse_next(input)?;
     Ok(())
 }
 

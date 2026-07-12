@@ -251,101 +251,6 @@ fn parse_choose_type_then_phase_out_bundle(
     ]))
 }
 
-fn parse_proliferate_then_choose_permanents_phase_out_bundle(
-    first_sentence: &[OwnedLexToken],
-    second_sentence: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_proliferate_phase_out_pair_shape(first_sentence, second_sentence)?;
-
-    let eligible_filter = ObjectFilter::default()
-        .in_zone(Zone::Battlefield)
-        .controlled_by(PlayerFilter::You);
-    let chosen_tag = TagKey::from(IT_TAG);
-    let mut phase_out_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
-    phase_out_filter =
-        phase_out_filter.match_tagged(chosen_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
-
-    Some(vec![
-        EffectAst::subject_verb_proliferate(Value::Fixed(1)),
-        EffectAst::ChooseObjects {
-            filter: eligible_filter,
-            count: ChoiceCount::any_number(),
-            count_value: None,
-            player: PlayerAst::You,
-            tag: chosen_tag,
-        },
-        EffectAst::subject_verb_phase_out_all(phase_out_filter),
-    ])
-}
-
-fn parse_proliferate_then_choose_permanents_phase_out_single_sentence(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_proliferate_phase_out_single_shape(tokens)?;
-
-    let eligible_filter = ObjectFilter::default()
-        .in_zone(Zone::Battlefield)
-        .controlled_by(PlayerFilter::You);
-    let chosen_tag = TagKey::from(IT_TAG);
-    let mut phase_out_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
-    phase_out_filter =
-        phase_out_filter.match_tagged(chosen_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
-
-    Some(vec![
-        EffectAst::subject_verb_proliferate(Value::Fixed(1)),
-        EffectAst::ChooseObjects {
-            filter: eligible_filter,
-            count: ChoiceCount::any_number(),
-            count_value: None,
-            player: PlayerAst::You,
-            tag: chosen_tag,
-        },
-        EffectAst::subject_verb_phase_out_all(phase_out_filter),
-    ])
-}
-
-fn parse_draw_create_treasure_lose_life_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_draw_treasure_lose_life_shape(tokens)?;
-
-    let amount = Value::EventValue(EventValueSpec::Amount);
-    Some(vec![
-        EffectAst::subject_verb(
-            SubjectVerbRoleAst::AffectedPlayer,
-            PlayerAst::You,
-            SubjectVerbActionAst::Draw {
-                count: amount.clone(),
-            },
-        ),
-        EffectAst::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            PlayerAst::You,
-            SubjectVerbActionAst::CreateTokenWithMods {
-                name: "Treasure".to_string(),
-                definition: crate::runtime_backend::token_definition::TokenDefinitionSpec::Builtin(
-                    crate::runtime_backend::token_definition::BuiltinTokenShape::Treasure,
-                ),
-                count: amount.clone(),
-                dynamic_power_toughness: None,
-                player: PlayerAst::You,
-                attached_to: None,
-                tapped: true,
-                attacking: false,
-                exile_at_end_of_combat: false,
-                sacrifice_at_end_of_combat: false,
-                sacrifice_at_next_end_step: false,
-                exile_at_next_end_step: false,
-                next_end_step_player: PlayerFilter::Any,
-                granted_abilities: Vec::new(),
-            },
-        ),
-        EffectAst::subject_verb(
-            SubjectVerbRoleAst::AffectedPlayer,
-            PlayerAst::You,
-            SubjectVerbActionAst::LoseLife { amount },
-        ),
-    ])
-}
-
 fn looks_like_source_leaves_return_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     bundle_grammar::parse_source_leaves_return_shape(tokens).is_some()
 }
@@ -436,7 +341,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
 
     choose_filter.zone = None;
 
-    let chosen_tag = TagKey::from("__coax_or_karn_selected__");
+    let chosen_tag = TagKey::from("outside_game_or_exile_selected");
     let effects = vec![
         EffectAst::ChooseObjectsAcrossZones {
             filter: choose_filter,
@@ -678,6 +583,9 @@ fn parse_search_library_slots_to_hand_bundle(
     let mut slots = Vec::new();
     for item in shape.filters {
         let mut filter = parse_object_filter_lexed(&item, false)?;
+        if let Some(name) = bundle_grammar::parse_explicit_card_name_surface_tokens(&item) {
+            filter.name = Some(name);
+        }
         filter.zone = if shape.multi_zone {
             None
         } else {
@@ -708,6 +616,9 @@ fn search_library_slots_to_hand_effect_from_items(
     let mut slots = Vec::new();
     for item in filter_items {
         let mut filter = parse_object_filter_lexed(&item, false)?;
+        if let Some(name) = bundle_grammar::parse_explicit_card_name_surface_tokens(&item) {
+            filter.name = Some(name);
+        }
         filter.zone = Some(Zone::Library);
         if filter.owner.is_none() {
             filter.owner = Some(PlayerFilter::You);
@@ -745,21 +656,57 @@ fn parse_kicked_search_library_slots_replacement_bundle(
     }]))
 }
 
-fn search_library_and_graveyard_doctors_effects(destination: Zone) -> Vec<EffectAst> {
-    let searched_tag = TagKey::from("searched_multi_zone");
-    let mut filter = ObjectFilter::default();
-    filter.owner = Some(PlayerFilter::You);
-    filter.subtypes = vec![Subtype::Doctor];
+fn parse_kicked_counter_mana_value_replacement_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let fact = bundle_grammar::parse_kicked_counter_replacement_tokens(tokens)?;
+    let base_target = match fact.base.target {
+        bundle_grammar::CounterSpellTargetReference::Explicit(target) => target,
+        bundle_grammar::CounterSpellTargetReference::PriorSpell(_) => return None,
+    };
+    let kicked_target = match fact.kicked.target {
+        bundle_grammar::CounterSpellTargetReference::Explicit(target) => target,
+        bundle_grammar::CounterSpellTargetReference::PriorSpell(span) => TargetAst::Spell(span),
+    };
 
+    let counter_if_matches = |target: TargetAst, limit: Value, filter: ObjectFilter| {
+        let Value::Fixed(limit) = limit else {
+            return None;
+        };
+        if filter.mana_value.as_ref() != Some(&crate::target::Comparison::LessThanOrEqual(limit)) {
+            return None;
+        }
+        Some(EffectAst::Conditional {
+            predicate: PredicateAst::ItMatches(filter),
+            if_true: vec![EffectAst::subject_verb_counter(target)],
+            if_false: Vec::new(),
+        })
+    };
+    let base = counter_if_matches(base_target, fact.base.limit, fact.base.filter)?;
+    let kicked = counter_if_matches(kicked_target, fact.kicked.limit, fact.kicked.filter)?;
+
+    Some(vec![EffectAst::SelfReplacement {
+        predicate: PredicateAst::ThisSpellWasKicked,
+        if_true: vec![kicked],
+        if_false: vec![base],
+        attach_to_previous_ability: false,
+    }])
+}
+
+fn multi_zone_search_destination_effects(
+    shape: &bundle_grammar::KickedMultiZoneSearchDestinationShape,
+    destination: Zone,
+) -> Vec<EffectAst> {
+    let searched_tag = TagKey::from("searched_multi_zone");
     vec![
         EffectAst::ChooseObjectsAcrossZones {
-            filter,
-            count: ChoiceCount::up_to(5),
+            filter: shape.filter.clone(),
+            count: shape.count.clone(),
             count_value: None,
             player: PlayerAst::You,
             tag: searched_tag.clone(),
-            zones: vec![Zone::Library, Zone::Graveyard],
-            search_mode: Some(crate::effect::SearchSelectionMode::Optional),
+            zones: shape.zones.clone(),
+            search_mode: Some(shape.search_mode),
         },
         EffectAst::subject_verb_reveal_tagged(searched_tag.clone()),
         EffectAst::ForEachTagged {
@@ -781,114 +728,56 @@ fn search_library_and_graveyard_doctors_effects(destination: Zone) -> Vec<Effect
     ]
 }
 
-fn parse_kicked_multi_zone_search_to_battlefield_replacement_bundle(
+fn parse_kicked_multi_zone_search_destination_bundle(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_kicked_doctors_replacement_shape(tokens)?;
-
+    let shape = bundle_grammar::parse_kicked_multi_zone_search_destination_tokens(tokens)?;
     Some(vec![EffectAst::SelfReplacement {
         predicate: PredicateAst::ThisSpellWasKicked,
-        if_true: search_library_and_graveyard_doctors_effects(Zone::Battlefield),
-        if_false: search_library_and_graveyard_doctors_effects(Zone::Hand),
+        if_true: multi_zone_search_destination_effects(&shape, shape.kicked_destination),
+        if_false: multi_zone_search_destination_effects(&shape, shape.default_destination),
         attach_to_previous_ability: false,
     }])
 }
 
-fn parse_soul_partition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_soul_partition_shape(tokens)?;
-    let sentences = split_lexed_sentences(tokens);
-    let first_sentence = sentences.first()?;
-    let mut effects = effect_sentences::parse_effect_sentences_lexed(first_sentence).ok()?;
-    effects.push(EffectAst::subject_verb_grant_by_spec(
-        crate::grant::GrantSpec::new(
-            crate::grant::Grantable::play_from(),
-            crate::filter::ObjectFilter::tagged(crate::cards::builders::TagKey::from(IT_TAG)),
-            Zone::Exile,
-        ),
-        crate::cards::builders::PlayerAst::ItsOwner,
-        crate::grant::GrantDuration::Forever,
-    ));
-    effects.push(EffectAst::subject_verb_grant_to_target(
-        crate::cards::builders::TargetAst::Tagged(
-            crate::cards::builders::TagKey::from(IT_TAG),
-            None,
-        ),
-        crate::grant::Grantable::Ability(crate::static_abilities::StaticAbility::new(
-            crate::static_abilities::CostIncreaseManaCost::new(
-                crate::filter::ObjectFilter::spell()
-                    .without_type(crate::types::CardType::Land)
-                    .cast_by(crate::PlayerFilter::Opponent),
-                crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(2)]),
-            ),
-        )),
-        crate::grant::GrantDuration::Forever,
-    ));
-    Some(effects)
-}
-
-fn parse_empty_laboratory_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_empty_laboratory_shape(tokens)?;
-
-    let sacrificed_tag = TagKey::from("sacrificed_0");
-    let revealed_tag = TagKey::from("etl_revealed");
-    let matched_tag = TagKey::from("etl_matched");
-
-    let mut zombie_you_control = ObjectFilter::creature().controlled_by(PlayerFilter::You);
-    zombie_you_control.subtypes.push(Subtype::Zombie);
-
-    let mut zombie_creature_card = ObjectFilter::creature();
-    zombie_creature_card.subtypes.push(Subtype::Zombie);
-    zombie_creature_card.zone = None;
+fn parse_persistent_exile_play_tax_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let shape = bundle_grammar::parse_persistent_exile_play_tax_tokens(tokens)?;
+    let tagged = TagKey::from(IT_TAG);
+    let target = TargetAst::Object(shape.target_filter, Some(TextSpan::synthetic()), None);
+    let mut spell_filter = ObjectFilter::spell()
+        .without_type(CardType::Land)
+        .cast_by(shape.taxed_caster);
+    spell_filter.zone = None;
 
     Some(vec![
-        EffectAst::ChooseObjects {
-            filter: zombie_you_control,
-            count: ChoiceCount::dynamic_x(),
-            count_value: None,
-            player: PlayerAst::You,
-            tag: sacrificed_tag.clone(),
-        },
-        EffectAst::subject_verb_sacrifice_all(PlayerAst::You, ObjectFilter::tagged(sacrificed_tag)),
-        EffectAst::subject_verb_consult_top_of_library(
-            PlayerAst::You,
-            crate::cards::builders::LibraryConsultModeAst::Reveal,
-            zombie_creature_card,
-            crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(
-                crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
+        EffectAst::subject_verb_exile(target, false),
+        EffectAst::subject_verb_grant_by_spec(
+            crate::grant::GrantSpec::new(
+                crate::grant::Grantable::play_from(),
+                ObjectFilter::tagged(tagged.clone()),
+                Zone::Exile,
             ),
-            revealed_tag.clone(),
-            matched_tag.clone(),
+            shape.permission_player,
+            crate::grant::GrantDuration::Forever,
         ),
-        EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(matched_tag.clone(), None),
-            Zone::Battlefield,
-            false,
-            ReturnControllerAst::Preserve,
-            false,
-            None,
-        ),
-        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            revealed_tag,
-            Some(matched_tag),
-            crate::cards::builders::LibraryBottomOrderAst::Random,
-            PlayerAst::You,
+        EffectAst::subject_verb_grant_to_target(
+            TargetAst::Tagged(tagged, None),
+            crate::grant::Grantable::Ability(crate::static_abilities::StaticAbility::new(
+                crate::static_abilities::CostIncreaseManaCost::new(
+                    spell_filter,
+                    shape.additional_cost,
+                ),
+            )),
+            crate::grant::GrantDuration::Forever,
         ),
     ])
 }
 
-fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_shape_anew_shape(tokens)?;
-
-    let revealed_tag = TagKey::from("shape_anew_revealed");
-    let matched_tag = TagKey::from("shape_anew_matched");
-    let mut artifact_card = ObjectFilter::artifact();
-    artifact_card.zone = None;
-    let target = TargetAst::Object(
-        ObjectFilter::artifact().in_zone(Zone::Battlefield),
-        Some(TextSpan::synthetic()),
-        None,
-    );
-
+fn parse_controller_sacrifice_consult_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let shape = bundle_grammar::parse_controller_sacrifice_consult_tokens(tokens)?;
+    let revealed_tag = TagKey::from("controller_consult_revealed");
+    let matched_tag = TagKey::from("controller_consult_matched");
+    let target = TargetAst::Object(shape.target_filter, Some(TextSpan::synthetic()), None);
     Some(vec![
         EffectAst::subject_verb_sacrifice(
             PlayerAst::ItsController,
@@ -898,15 +787,15 @@ fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
         ),
         EffectAst::subject_verb_consult_top_of_library(
             PlayerAst::That,
-            crate::cards::builders::LibraryConsultModeAst::Reveal,
-            artifact_card,
-            crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
+            LibraryConsultModeAst::Reveal,
+            shape.match_filter,
+            LibraryConsultStopRuleAst::FirstMatch,
             revealed_tag,
             matched_tag.clone(),
         ),
         EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(matched_tag, None),
-            Zone::Battlefield,
+            shape.destination,
             false,
             ReturnControllerAst::Preserve,
             false,
@@ -920,66 +809,35 @@ fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     ])
 }
 
-#[path = "bundle_rules/consult_bundles.rs"]
-mod consult_bundles;
-pub(super) use consult_bundles::parse_consult_disposition_bundle;
-use consult_bundles::{
-    parse_consult_then_put_matches_battlefield_rest_bottom_bundle,
-    parse_reveal_repeated_disposition_bundle, parse_reveal_until_land_put_all_graveyard_bundle,
-};
-
-fn parse_tap_lands_then_empty_mana_pool_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_tap_lands_empty_mana_shape(tokens)?;
-
-    let mut lands = ObjectFilter::default();
-    lands.zone = Some(Zone::Battlefield);
-    lands.controller = Some(PlayerFilter::target_player());
-    lands.card_types.push(CardType::Land);
-    Some(vec![
-        EffectAst::subject_verb_target_only(TargetAst::Player(
-            PlayerFilter::Any,
-            span_from_tokens(tokens),
-        )),
-        EffectAst::subject_verb_tap_all(lands),
-        EffectAst::subject_verb_empty_mana_pool(PlayerAst::That),
-    ])
-}
-
-fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_collision_of_realms_shape(tokens)?;
-
-    let mut owned_creatures = ObjectFilter::creature();
-    owned_creatures.zone = Some(Zone::Battlefield);
-    owned_creatures.owner = Some(PlayerFilter::IteratedPlayer);
-
-    let mut owned_nontoken_creatures = owned_creatures.clone();
-    owned_nontoken_creatures.nontoken = true;
-
+fn parse_each_player_shuffle_then_consult_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let shape = bundle_grammar::parse_each_player_shuffle_then_consult_tokens(tokens)?;
+    let mut shuffled_filter = shape.shuffled_filter;
+    shuffled_filter.owner = Some(PlayerFilter::IteratedPlayer);
+    let mut qualifying_filter = shape.qualifying_filter;
+    qualifying_filter.owner = Some(PlayerFilter::IteratedPlayer);
     let mut tagged_library_filter = ObjectFilter::default();
     tagged_library_filter.zone = Some(Zone::Library);
 
-    let mut creature_card = ObjectFilter::creature();
-    creature_card.zone = None;
-
-    let tagged_creatures = TagKey::from("collision_all_shuffled");
-    let tagged_nontoken = TagKey::from("collision_nontoken_shuffled");
-    let revealed_tag = TagKey::from("collision_revealed");
-    let matched_tag = TagKey::from("collision_matched");
-
+    let shuffled_tag = TagKey::from("each_player_shuffled");
+    let qualifying_tag = TagKey::from("each_player_qualifying_shuffled");
+    let revealed_tag = TagKey::from("each_player_consult_revealed");
+    let matched_tag = TagKey::from("each_player_consult_matched");
     Some(vec![EffectAst::ForEachPlayer {
         effects: vec![
             EffectAst::subject_verb_tag_matching_objects(
-                owned_creatures.clone(),
+                shuffled_filter.clone(),
                 vec![Zone::Battlefield],
-                tagged_creatures.clone(),
+                shuffled_tag.clone(),
             ),
             EffectAst::subject_verb_tag_matching_objects(
-                owned_nontoken_creatures,
+                qualifying_filter,
                 vec![Zone::Battlefield],
-                tagged_nontoken.clone(),
+                qualifying_tag.clone(),
             ),
             EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(tagged_creatures, None),
+                TargetAst::Tagged(shuffled_tag, None),
                 Zone::Library,
                 false,
                 ReturnControllerAst::Preserve,
@@ -994,21 +852,21 @@ fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Effe
             EffectAst::Conditional {
                 predicate: PredicateAst::PlayerTaggedObjectMatches {
                     player: PlayerAst::That,
-                    tag: tagged_nontoken,
+                    tag: qualifying_tag,
                     filter: tagged_library_filter,
                 },
                 if_true: vec![
                     EffectAst::subject_verb_consult_top_of_library(
                         PlayerAst::That,
                         LibraryConsultModeAst::Reveal,
-                        creature_card,
+                        shape.match_filter,
                         LibraryConsultStopRuleAst::FirstMatch,
                         revealed_tag.clone(),
                         matched_tag.clone(),
                     ),
                     EffectAst::subject_verb_move_to_zone(
                         TargetAst::Tagged(matched_tag.clone(), None),
-                        Zone::Battlefield,
+                        shape.destination,
                         false,
                         ReturnControllerAst::Preserve,
                         false,
@@ -1017,7 +875,7 @@ fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Effe
                     EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                         revealed_tag,
                         Some(matched_tag),
-                        LibraryBottomOrderAst::Random,
+                        shape.remainder_order,
                         PlayerAst::That,
                     ),
                 ],
@@ -1027,42 +885,61 @@ fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Effe
     }])
 }
 
-fn parse_nissas_encouragement_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_nissas_encouragement_shape(tokens)?;
-
-    let searched_tag = TagKey::from("searched_named");
-    let zones = vec![Zone::Library, Zone::Graveyard];
-    let names = ["Forest", "Brambleweft Behemoth", "Nissa, Genesis Mage"];
-    let mut effects = Vec::new();
-    for name in names {
-        let mut filter = ObjectFilter::default();
-        filter.name = Some(name.to_string());
-        effects.push(EffectAst::ChooseObjectsAcrossZones {
-            filter,
-            count: ChoiceCount::exactly(1),
+fn parse_proliferate_choose_phase_out_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let shape = bundle_grammar::parse_proliferate_choose_phase_out_tokens(tokens)?;
+    let chosen_tag = TagKey::from(IT_TAG);
+    let phase_out_filter = ObjectFilter::default()
+        .in_zone(Zone::Battlefield)
+        .match_tagged(chosen_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+    Some(vec![
+        EffectAst::subject_verb_proliferate(Value::Fixed(1)),
+        EffectAst::ChooseObjects {
+            filter: shape.filter,
+            count: shape.count,
             count_value: None,
             player: PlayerAst::You,
-            tag: searched_tag.clone(),
-            zones: zones.clone(),
-            search_mode: Some(crate::effect::SearchSelectionMode::Exact),
-        });
-    }
-    effects.push(EffectAst::subject_verb_reveal_tagged(searched_tag.clone()));
-    effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(searched_tag, None),
-        Zone::Hand,
-        false,
-        ReturnControllerAst::Preserve,
-        false,
-        None,
-    ));
-    effects.push(EffectAst::subject_verb(
-        SubjectVerbRoleAst::LibraryOwner,
-        PlayerAst::You,
-        SubjectVerbActionAst::ShuffleLibrary,
-    ));
-    Some(effects)
+            tag: chosen_tag,
+        },
+        EffectAst::subject_verb_phase_out_all(phase_out_filter),
+    ])
 }
+
+fn parse_tap_controlled_objects_then_empty_mana_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let shape = bundle_grammar::parse_tap_controlled_objects_then_empty_mana_tokens(tokens)?;
+    Some(vec![
+        EffectAst::subject_verb_target_only(TargetAst::Player(
+            PlayerFilter::Any,
+            span_from_tokens(tokens),
+        )),
+        EffectAst::subject_verb_tap_all(shape.filter),
+        EffectAst::subject_verb_empty_mana_pool(PlayerAst::Target),
+    ])
+}
+
+fn parse_energy_pay_any_destroy_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let shape = bundle_grammar::parse_energy_pay_any_destroy_tokens(tokens)?;
+    Some(vec![
+        EffectAst::subject_verb_energy_counters(PlayerAst::You, shape.energy),
+        EffectAst::MayByPlayer {
+            player: PlayerAst::You,
+            effects: vec![EffectAst::subject_verb_pay_any_energy(
+                PlayerAst::You,
+                shape.minimum_payment,
+            )],
+        },
+        EffectAst::subject_verb_destroy_all(shape.filter),
+    ])
+}
+
+#[path = "bundle_rules/consult_bundles.rs"]
+mod consult_bundles;
+pub(super) use consult_bundles::parse_consult_disposition_bundle;
+use consult_bundles::{
+    parse_consult_then_put_matches_battlefield_rest_bottom_bundle,
+    parse_reveal_repeated_disposition_bundle, parse_reveal_until_land_put_all_graveyard_bundle,
+};
 
 fn parse_bid_life_for_control_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let shape = bundle_grammar::parse_life_bid_shape(tokens)?;
@@ -1100,46 +977,10 @@ fn parse_regenerate_then_gain_control_if_regenerates_bundle(
     ])
 }
 
-fn parse_each_player_choose_unselected_bounce_then_draw_bundle(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
-    bundle_grammar::parse_each_player_bounce_draw_shape(tokens)?;
-
-    let chosen_tag = TagKey::from("chosen_this_way");
-    let mut effects = vec![
-        EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::ChooseObjects {
-                filter: ObjectFilter::nonland_permanent()
-                    .controlled_by(PlayerFilter::IteratedPlayer),
-                count: ChoiceCount::exactly(1),
-                count_value: None,
-                player: PlayerAst::Implicit,
-                tag: chosen_tag.clone(),
-            }],
-        },
-        EffectAst::subject_verb_return_all_to_hand(
-            ObjectFilter::nonland_permanent().not_tagged(chosen_tag),
-        ),
-    ];
-    effects.push(EffectAst::ForEachPlayersFiltered {
-        filter: PlayerFilter::CardsInHandAtLeastMoreThanYou {
-            base: Box::new(PlayerFilter::Opponent),
-            count: 1,
-        },
-        effects: vec![EffectAst::subject_verb(
-            SubjectVerbRoleAst::AffectedPlayer,
-            PlayerAst::You,
-            SubjectVerbActionAst::Draw {
-                count: Value::Fixed(1),
-            },
-        )],
-    });
-    Some(effects)
-}
-
-pub(crate) fn parse_exact_card_effect_bundle_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
+pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    if let Some(effects) = parse_energy_pay_any_destroy_bundle(tokens) {
+        return Some(effects);
+    }
     if let Some(effects) = parse_consult_disposition_bundle(tokens) {
         return Some(effects);
     }
@@ -1149,39 +990,25 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if let Ok(Some(effects)) = parse_reveal_from_outside_game_to_hand(tokens) {
         return Some(effects);
     }
-    if let Some(effects) = parse_tap_lands_then_empty_mana_pool_bundle(tokens) {
+    if let Some(effects) = parse_persistent_exile_play_tax_bundle(tokens) {
         return Some(effects);
     }
-    if let Some(effects) = parse_soul_partition_bundle(tokens) {
+    if let Some(effects) = parse_controller_sacrifice_consult_bundle(tokens) {
         return Some(effects);
     }
-    if let Some(effects) = parse_empty_laboratory_bundle(tokens) {
+    if let Some(effects) = parse_each_player_shuffle_then_consult_bundle(tokens) {
         return Some(effects);
     }
-    if let Some(effects) = parse_shape_anew_bundle(tokens) {
+    if let Some(effects) = parse_proliferate_choose_phase_out_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_tap_controlled_objects_then_empty_mana_bundle(tokens) {
         return Some(effects);
     }
     if let Some(effects) = parse_reveal_until_land_put_all_graveyard_bundle(tokens) {
         return Some(effects);
     }
-    if let Some(effects) = parse_collision_of_realms_bundle(tokens) {
-        return Some(effects);
-    }
-    if let Some(effects) = parse_nissas_encouragement_bundle(tokens) {
-        return Some(effects);
-    }
     if let Some(effects) = parse_bid_life_for_control_bundle(tokens) {
-        return Some(effects);
-    }
-    if let Some(effects) = parse_draw_create_treasure_lose_life_bundle(tokens) {
-        return Some(effects);
-    }
-    if let Some(effects) =
-        parse_proliferate_then_choose_permanents_phase_out_single_sentence(tokens)
-    {
-        return Some(effects);
-    }
-    if let Some(effects) = parse_each_player_choose_unselected_bounce_then_draw_bundle(tokens) {
         return Some(effects);
     }
     let sentences = split_lexed_sentences(tokens);
@@ -1220,12 +1047,6 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_choose_type_then_phase_out_bundle(sentences[0], sentences[1])
-    {
-        return Some(effects);
-    }
-    if sentences.len() == 2
-        && let Some(effects) =
-            parse_proliferate_then_choose_permanents_phase_out_bundle(sentences[0], sentences[1])
     {
         return Some(effects);
     }
@@ -1317,61 +1138,80 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if let Ok(Some(effects)) = parse_kicked_search_library_slots_replacement_bundle(tokens) {
         return Some(effects);
     }
-    if let Some(effects) = parse_kicked_multi_zone_search_to_battlefield_replacement_bundle(tokens)
-    {
+    if let Some(effects) = parse_kicked_counter_mana_value_replacement_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_kicked_multi_zone_search_destination_bundle(tokens) {
         return Some(effects);
     }
     if let Ok(Some(effects)) = parse_search_library_slots_to_hand_bundle(tokens) {
         return Some(effects);
     }
-    match bundle_grammar::parse_special_exact_bundle_shape(tokens) {
-        Some(bundle_grammar::SpecialExactBundleShape::ThassasOracle) => {
-            let looked_tag = TagKey::from("thassas_oracle_looked");
-            return Some(vec![
-                EffectAst::subject_verb_look_at_top_cards(
-                    PlayerAst::You,
-                    Value::Devotion {
-                        player: PlayerFilter::You,
-                        color: crate::color::Color::Blue,
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn conditional_mana_value_limit(effect: &EffectAst) -> Option<i32> {
+        let EffectAst::Conditional {
+            predicate: PredicateAst::ItMatches(filter),
+            if_true,
+            if_false,
+        } = effect
+        else {
+            return None;
+        };
+        if !if_false.is_empty()
+            || !matches!(
+                if_true.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Counter {
+                        target: TargetAst::Spell(_),
                     },
-                    looked_tag.clone(),
-                ),
-                EffectAst::subject_verb_rearrange_looked_cards_in_library(
-                    PlayerAst::You,
-                    looked_tag,
-                    ChoiceCount::up_to(1),
-                ),
-                EffectAst::Conditional {
-                    predicate: crate::cards::builders::PredicateAst::ValueComparison {
-                        left: Value::Devotion {
-                            player: PlayerFilter::You,
-                            color: crate::color::Color::Blue,
-                        },
-                        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-                        right: Value::CardsInLibrary(PlayerFilter::You),
-                    },
-                    if_true: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
-                    if_false: Vec::new(),
-                },
-            ]);
+                    ..
+                })]
+            )
+        {
+            return None;
         }
-        Some(bundle_grammar::SpecialExactBundleShape::GeistblastFromGraveyard) => {
-            return Some(vec![EffectAst::Conditional {
-                predicate: crate::cards::builders::PredicateAst::ThisSpellWasCastFromZone(
-                    Zone::Graveyard,
-                ),
-                if_true: vec![EffectAst::subject_verb_copy_spell(
-                    TargetAst::Source(None),
-                    Value::Fixed(1),
-                    PlayerAst::Implicit,
-                    true,
-                    Vec::new(),
-                )],
-                if_false: Vec::new(),
-            }]);
+        match filter.mana_value.as_ref() {
+            Some(crate::target::Comparison::LessThanOrEqual(limit)) => Some(*limit),
+            _ => None,
         }
-        None => {}
     }
 
-    None
+    #[test]
+    fn kicked_counter_bundle_builds_self_replacement_ast_before_lowering() {
+        let tokens = lex_line(
+            "Counter target spell if its mana value is 3 or less. If this spell was kicked, counter that spell if its mana value is 7 or less instead.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens).unwrap();
+        let [
+            EffectAst::SelfReplacement {
+                predicate,
+                if_true,
+                if_false,
+                attach_to_previous_ability,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected a typed self-replacement AST, got {effects:#?}");
+        };
+
+        assert_eq!(predicate, &PredicateAst::ThisSpellWasKicked);
+        assert!(!*attach_to_previous_ability);
+        assert_eq!(
+            if_false.first().and_then(conditional_mana_value_limit),
+            Some(3)
+        );
+        assert_eq!(
+            if_true.first().and_then(conditional_mana_value_limit),
+            Some(7)
+        );
+    }
 }

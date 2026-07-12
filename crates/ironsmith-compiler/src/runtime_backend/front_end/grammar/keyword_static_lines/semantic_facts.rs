@@ -38,6 +38,7 @@ pub(crate) enum EarlyStaticMarkerKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StaticTextMarkerKind {
     Banding,
+    AuraRetentionClarification,
     YouHaveHexproof,
     YouHaveProtectionFromOpponents,
     OpponentsCastOnlyAsSorcery,
@@ -163,6 +164,12 @@ pub(crate) fn parse_static_text_marker_kind_tokens(
         (
             alt((
                 semantic_kw("banding").value(StaticTextMarkerKind::Banding),
+                (
+                    semantic_phrase(&["this", "effect"]),
+                    alt((semantic_kw("doesnt"), semantic_kw("doesn't"))),
+                    semantic_phrase(&["remove", "this", "aura"]),
+                )
+                    .value(StaticTextMarkerKind::AuraRetentionClarification),
                 semantic_phrase(&["you", "have", "hexproof"])
                     .value(StaticTextMarkerKind::YouHaveHexproof),
                 semantic_phrase(&[
@@ -417,6 +424,11 @@ mod tests {
         assert_eq!(
             parse_static_text_marker_kind_tokens(&tokens),
             Some(StaticTextMarkerKind::YouHaveHexproof)
+        );
+        let tokens = lex_line("This effect doesn't remove this Aura.", 0).unwrap();
+        assert_eq!(
+            parse_static_text_marker_kind_tokens(&tokens),
+            Some(StaticTextMarkerKind::AuraRetentionClarification)
         );
 
         let tokens = lex_line(

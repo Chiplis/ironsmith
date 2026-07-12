@@ -197,6 +197,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::you_gain_life_during_turn(during_turn)
         }
         TriggerSpec::PlayerLosesLife(player) => Trigger::player_loses_life(player),
+        TriggerSpec::PlayersLoseLifeOneOrMore(player) => {
+            Trigger::players_lose_life_one_or_more(player)
+        }
         TriggerSpec::OpponentsEachLoseExactLife { amount } => {
             Trigger::opponents_each_lose_exact_life(amount)
         }
@@ -562,6 +565,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::SpellCountered { .. }
         | TriggerSpec::PlayerLosesLife(_)
+        | TriggerSpec::PlayersLoseLifeOneOrMore(_)
         | TriggerSpec::OpponentsEachLoseExactLife { .. }
         | TriggerSpec::PlayerLosesGame(_)
         | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
@@ -653,7 +657,9 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
                 Some(copier.clone())
             }
         }
-        TriggerSpec::PlayerLosesLife(_) => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerLosesLife(_) | TriggerSpec::PlayersLoseLifeOneOrMore(_) => {
+            Some(PlayerFilter::IteratedPlayer)
+        }
         TriggerSpec::PlayerLosesGame(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLifeDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCard(_) => Some(PlayerFilter::IteratedPlayer),
@@ -759,6 +765,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             TriggerSpec::YouGainLife
             | TriggerSpec::YouGainLifeDuringTurn(_)
             | TriggerSpec::PlayerLosesLife(_)
+            | TriggerSpec::PlayersLoseLifeOneOrMore(_)
             | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
             | TriggerSpec::ThisIsDealtDamage
             | TriggerSpec::ThisIsDealtCombatDamage

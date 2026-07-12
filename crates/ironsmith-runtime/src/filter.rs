@@ -2234,8 +2234,11 @@ impl ObjectFilterExt for ObjectFilter {
                     })
                     .or_else(|| game.calculated_characteristics_arc(object.id))
                 } else {
-                    game.current_characteristics(object.id)
-                        .map(std::sync::Arc::new)
+                    view.and_then(|view| view.current_characteristics_arc(object.id))
+                        .or_else(|| {
+                            game.current_characteristics(object.id)
+                                .map(std::sync::Arc::new)
+                        })
                 }
             } else {
                 None

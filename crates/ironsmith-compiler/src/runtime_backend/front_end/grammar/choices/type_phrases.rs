@@ -39,6 +39,12 @@ pub(crate) struct ChoiceSimpleTypePhrase {
     pub(crate) consumed: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChoiceLandTypePhrase {
+    pub(crate) consumed: usize,
+    pub(crate) exclude_basic: bool,
+}
+
 pub(crate) fn parse_choice_creature_type_phrase_words(
     words: &[&str],
 ) -> Result<Option<ChoiceCreatureTypePhrase>, ChoiceTypePhraseSyntaxError> {
@@ -181,10 +187,18 @@ pub(crate) fn parse_choice_basic_land_type_phrase_words(
     parse_simple_choice_phrase(words, &["basic", "land", "type"])
 }
 
-pub(crate) fn parse_choice_land_type_phrase_words(
-    words: &[&str],
-) -> Option<ChoiceSimpleTypePhrase> {
-    parse_simple_choice_phrase(words, &["land", "type"])
+pub(crate) fn parse_choice_land_type_phrase_words(words: &[&str]) -> Option<ChoiceLandTypePhrase> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_choose_prefix(&mut input).ok()?;
+    let exclude_basic = opt(primitives::word_slice_exact("nonbasic"))
+        .parse_next(&mut input)
+        .ok()?
+        .is_some();
+    parse_word_phrase(&mut input, &["land", "type"]).ok()?;
+    Some(ChoiceLandTypePhrase {
+        consumed: words.len().saturating_sub(input.len()),
+        exclude_basic,
+    })
 }
 
 fn parse_simple_choice_phrase(
@@ -280,5 +294,17 @@ mod tests {
                 .consumed,
             3
         );
+
+        let nonbasic = parse_choice_land_type_phrase_words(&[
+            "choose", "a", "nonbasic", "land", "type", "now",
+        ])
+        .unwrap();
+        assert_eq!(nonbasic.consumed, 5);
+        assert!(nonbasic.exclude_basic);
+
+        let unrestricted =
+            parse_choice_land_type_phrase_words(&["choose", "a", "land", "type", "now"]).unwrap();
+        assert_eq!(unrestricted.consumed, 4);
+        assert!(!unrestricted.exclude_basic);
     }
 }

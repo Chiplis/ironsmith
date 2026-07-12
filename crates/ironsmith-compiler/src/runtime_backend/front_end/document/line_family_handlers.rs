@@ -1,117 +1,8 @@
 use super::super::grammar::keyword_special_lines;
 use super::super::grammar::line_families as line_grammar;
 use super::super::grammar::line_family_rewrites as line_rewrite_grammar;
-use super::super::token_primitives::{
-    items_have, items_start_with, locate_index, locate_window_index,
-};
 use super::line_dispatch::{LineDispatchContext, LineDispatchResult};
 use super::*;
-
-const DRAFT_RULE_LINE: &[&str] = &["draft", "this", "card", "face", "up"];
-const DRAFT_RULE_PREFIXES: &[&[&str]] = &[
-    &["reveal", "this", "card", "as", "you", "draft", "it"],
-    &["as", "you", "draft"],
-    &["during", "the", "draft"],
-    &["immediately", "after", "the", "draft"],
-];
-const DRAFT_BOOSTER_PASS_PREFIX: &[&str] = &["each", "player", "passes"];
-const BOOSTER_PACK_PHRASE: &[&str] = &["booster", "pack"];
-const FIRST_EQUIP_COST_ALTERNATIVE_PREFIX: &[&str] = &["you", "may", "pay"];
-const FIRST_EQUIP_COST_ALTERNATIVE_PHRASE: &[&str] = &[
-    "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip", "ability",
-    "you", "activate",
-];
-const FIRST_EQUIP_COST_ALTERNATIVE_SUFFIXES: &[&[&str]] = &[
-    &["each", "turn"],
-    &["during", "each", "of", "your", "turns"],
-];
-const LINKED_EXILED_CARD_COST_MORE_PHRASES: &[&[&str]] = &[
-    &[
-        "for", "as", "long", "as", "that", "card", "remains", "exiled",
-    ],
-    &["more", "to", "cast"],
-];
-const LINKED_CHOOSE_TWO_SHUFFLE_REST_BATTLEFIELD_PHRASES: &[&[&str]] = &[
-    &["chooses", "two", "of", "those", "cards"],
-    &["shuffle", "the", "chosen", "cards"],
-    &["put", "the", "rest", "onto", "the", "battlefield"],
-];
-const START_YOUR_ENGINES_LINE: &[&str] = &["start", "your", "engines"];
-const LEARN_LINE: &[&str] = &["learn"];
-const STATION_LINE_PREFIX: &[&str] = &["station"];
-const CHAMPIONED_WITH_THIS_PHRASE: &[&str] = &["is", "championed", "with", "this"];
-const MAX_SPEED_PREFIX: &[&str] = &["max", "speed"];
-const CHAMPION_PREFIX: &[&str] = &["champion"];
-const ESCAPES_WITH_PHRASE: &[&str] = &["escapes", "with"];
-const SPLIT_TOP_AND_FACE_DOWN_LOOK_LINE: &[&str] = &[
-    "you",
-    "may",
-    "look",
-    "at",
-    "the",
-    "top",
-    "card",
-    "of",
-    "your",
-    "library",
-    "and",
-    "at",
-    "face-down",
-    "creatures",
-    "you",
-    "don't",
-    "control",
-    "any",
-    "time",
-];
-
-fn line_surface_has_prefix(words: &[&str], phrase: &[&str]) -> bool {
-    line_grammar::parse_prefix(words, &[phrase]).is_some()
-}
-
-fn line_surface_has_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    line_grammar::find_phrase(words, &[phrase]).is_some()
-}
-
-fn line_surface_has_all(words: &[&str], phrases: &[&[&str]]) -> bool {
-    line_grammar::find_all_phrases(words, phrases).is_some()
-}
-
-fn line_surface_has_suffix(words: &[&str], phrases: &[&[&str]]) -> bool {
-    line_grammar::parse_suffix(words, phrases).is_some()
-}
-
-fn line_has_prefix(line: &PreprocessedLine, words: &[&str]) -> bool {
-    line_grammar::parse_prefix(&TokenWordView::new(&line.tokens).word_refs(), &[words]).is_some()
-}
-
-fn line_has_phrase(line: &PreprocessedLine, words: &[&str]) -> bool {
-    line_grammar::find_phrase(&TokenWordView::new(&line.tokens).word_refs(), &[words]).is_some()
-}
-
-fn keyword_body_tokens_before_reminder<'a>(
-    line: &'a PreprocessedLine,
-    prefix: &[&str],
-) -> Option<&'a [OwnedLexToken]> {
-    line_grammar::parse_keyword_body(&line.tokens, prefix).map(|shape| shape.body_tokens)
-}
-
-fn strip_indefinite_article_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if words
-        .first()
-        .is_some_and(|word| matches!(*word, "a" | "an"))
-    {
-        &tokens[1..]
-    } else {
-        tokens
-    }
-}
-
-fn line_starts_with_trigger_intro(line: &PreprocessedLine) -> bool {
-    super::super::grammar::trigger_surface::parse_trigger_intro_surface_tokens(&line.tokens)
-        .is_some()
-}
 
 fn push_synthetic_words(tokens: &mut Vec<OwnedLexToken>, words: &[&str]) {
     let mut cursor = tokens
@@ -209,17 +100,13 @@ pub(super) fn run_triggered_line_family(
 pub(super) fn run_championed_with_this_trigger_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_has_prefix(ctx.line, &["when"])
-        || !line_has_phrase(ctx.line, CHAMPIONED_WITH_THIS_PHRASE)
-    {
-        return Ok(None);
-    }
-    let Some((_, effect_tokens)) = split_once_on_comma_tokens(&ctx.line.tokens) else {
+    let Some(shape) = line_grammar::parse_championed_with_this_trigger(&ctx.line.tokens) else {
         return Ok(None);
     };
     let mut triggered_tokens = synthetic_word_tokens(&["When", "this", "creature", "enters"]);
     triggered_tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
-    triggered_tokens.extend_from_slice(tokens_without_terminal_period(effect_tokens));
+    triggered_tokens
+        .extend_from_slice(line_grammar::parse_visible_line_tokens(shape.effect_tokens));
     let triggered_line = rewrite_line_tokens(ctx.line, &triggered_tokens);
     let triggered = parse_triggered_line_cst(&triggered_line)?;
     Ok(Some(LineDispatchResult::single(
@@ -228,23 +115,15 @@ pub(super) fn run_championed_with_this_trigger_line_family(
     )))
 }
 
-fn split_once_on_comma_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    line_grammar::parse_comma_split(tokens).map(|shape| (shape.before, shape.after))
-}
-
 pub(super) fn run_max_speed_labeled_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_has_prefix(ctx.line, MAX_SPEED_PREFIX) {
+    let Some(shape) = line_grammar::parse_max_speed_line(&ctx.line.tokens) else {
         return Ok(None);
     };
 
-    let body_tokens = line_grammar::parse_max_speed_body(&ctx.line.tokens)
-        .map(|shape| shape.body_tokens)
-        .unwrap_or(ctx.line.tokens.as_slice());
-    if TokenWordView::new(body_tokens).is_empty() {
+    let body_tokens = shape.body_tokens;
+    if body_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "max-speed label missing ability body: '{}'",
             ctx.line.info.raw_line
@@ -252,7 +131,7 @@ pub(super) fn run_max_speed_labeled_line_family(
     }
 
     let body_line = rewrite_line_tokens(ctx.line, body_tokens);
-    if line_starts_with_trigger_intro(&body_line) {
+    if shape.trigger_intro.is_some() {
         let triggered_tokens = max_speed_intervening_if_tokens(&body_line.tokens);
         let triggered_line = rewrite_line_tokens(ctx.line, &triggered_tokens);
         let triggered = parse_triggered_line_cst(&triggered_line)?;
@@ -347,12 +226,13 @@ fn max_speed_intervening_if_tokens(body_tokens: &[OwnedLexToken]) -> Vec<OwnedLe
 pub(super) fn run_start_your_engines_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let words = crate::runtime_backend::lexer::parser_token_word_refs(&ctx.line.tokens);
-    if words.as_slice() != START_YOUR_ENGINES_LINE {
+    if line_grammar::parse_simple_document_line(&ctx.line.tokens)
+        != Some(line_grammar::SimpleDocumentLineShape::StartYourEngines)
+    {
         return Ok(None);
     }
 
-    let start_tokens = synthetic_word_tokens(START_YOUR_ENGINES_LINE);
+    let start_tokens = synthetic_word_tokens(&["start", "your", "engines"]);
     let Some(start_static) = parse_static_line_from_tokens(ctx.line, start_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower start-your-engines keyword line: '{}'",
@@ -369,7 +249,7 @@ pub(super) fn run_start_your_engines_line_family(
 pub(super) fn run_draft_rule_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !is_draft_rule_line(&ctx.line.tokens) {
+    if line_grammar::parse_draft_rule_line(&ctx.line.tokens).is_none() {
         return Ok(None);
     }
 
@@ -385,23 +265,16 @@ pub(super) fn run_draft_rule_line_family(
     )))
 }
 
-fn is_draft_rule_line(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
-    words.as_slice() == DRAFT_RULE_LINE
-        || line_grammar::parse_prefix(&words, DRAFT_RULE_PREFIXES).is_some()
-        || (line_surface_has_prefix(&words, DRAFT_BOOSTER_PASS_PREFIX)
-            && line_surface_has_phrase(&words, BOOSTER_PACK_PHRASE))
-}
-
 pub(super) fn run_learn_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let words = crate::runtime_backend::lexer::parser_token_word_refs(&ctx.line.tokens);
-    if words.as_slice() != LEARN_LINE {
+    if line_grammar::parse_simple_document_line(&ctx.line.tokens)
+        != Some(line_grammar::SimpleDocumentLineShape::Learn)
+    {
         return Ok(None);
     }
 
-    let learn_tokens = tokens_without_terminal_period(&ctx.line.tokens).to_vec();
+    let learn_tokens = line_grammar::parse_visible_line_tokens(&ctx.line.tokens).to_vec();
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Statement(StatementLineCst {
             info: ctx.line.info.clone(),
@@ -416,8 +289,8 @@ pub(super) fn run_learn_line_family(
 pub(super) fn run_split_top_and_face_down_look_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if crate::runtime_backend::token_word_refs(&ctx.line.tokens)
-        != SPLIT_TOP_AND_FACE_DOWN_LOOK_LINE
+    if line_grammar::parse_simple_document_line(&ctx.line.tokens)
+        != Some(line_grammar::SimpleDocumentLineShape::SplitTopAndFaceDownLook)
     {
         return Ok(None);
     }
@@ -621,11 +494,11 @@ pub(super) fn run_graveyard_or_exile_cast_line_family(
 pub(super) fn run_champion_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some(filter_tokens) = keyword_body_tokens_before_reminder(ctx.line, CHAMPION_PREFIX) else {
+    let Some(shape) = line_grammar::parse_champion_line(&ctx.line.tokens) else {
         return Ok(None);
     };
-    let filter_tokens = strip_indefinite_article_tokens(filter_tokens);
-    if TokenWordView::new(filter_tokens).is_empty() {
+    let filter_tokens = shape.filter_tokens;
+    if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "champion keyword missing object filter: '{}'",
             ctx.line.info.raw_line
@@ -664,10 +537,11 @@ pub(super) fn run_champion_line_family(
 pub(super) fn run_station_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let words = crate::runtime_backend::lexer::parser_token_word_refs(&ctx.line.tokens);
-    if line_grammar::parse_prefix(&words, &[STATION_LINE_PREFIX]).is_none() {
+    let Some(station_shape) =
+        line_grammar::parse_station_keyword_line(&ctx.line.tokens, &ctx.line.info.source_tokens)
+    else {
         return Ok(None);
-    }
+    };
 
     let mut activation_tokens =
         synthetic_word_tokens(&["tap", "another", "untapped", "creature", "you", "control"]);
@@ -724,9 +598,9 @@ pub(super) fn run_station_line_family(
             PreprocessedItem::Line(line) => Some(line),
             PreprocessedItem::Metadata(_) => None,
         })
-        .any(|line| parse_station_threshold_line(line).is_some());
+        .any(|line| line_grammar::parse_station_threshold_line(&line.tokens).is_some());
     if !has_explicit_station_threshold_rows
-        && let Some(threshold) = parse_station_keyword_creature_threshold_for_line(ctx.line)
+        && let Some(threshold) = station_shape.creature_threshold
         && let Some(pt) = ctx.preprocessed.builder.card_builder.power_toughness_ref()
     {
         let chosen_option = ChosenOptionContext::StationThreshold(threshold);
@@ -755,16 +629,12 @@ pub(super) fn run_station_line_family(
 pub(super) fn run_station_threshold_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some((threshold, body_tokens)) = parse_station_threshold_line(ctx.line) else {
+    let Some(shape) = line_grammar::parse_station_threshold_line(&ctx.line.tokens) else {
         return Ok(None);
     };
-    let mut body_tokens = body_tokens;
-    if !body_tokens.last().is_some_and(|token| {
-        matches!(
-            token.kind,
-            TokenKind::Period | TokenKind::Bang | TokenKind::Question
-        )
-    }) {
+    let threshold = shape.threshold;
+    let mut body_tokens = shape.body_tokens.to_vec();
+    if shape.needs_terminal_punctuation {
         body_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
     }
 
@@ -790,7 +660,7 @@ pub(super) fn run_station_threshold_line_family(
     }
 
     let body_line = rewrite_line_tokens(ctx.line, &body_tokens);
-    if line_starts_with_trigger_intro(&body_line) {
+    if shape.trigger_intro.is_some() {
         let mut triggered = parse_triggered_line_cst(&body_line)?;
         triggered.chosen_option = Some(chosen_option);
         lines.push(RewriteLineCst::Triggered(triggered));
@@ -841,12 +711,6 @@ pub(super) fn run_station_threshold_line_family(
     }))
 }
 
-fn parse_station_threshold_line(line: &PreprocessedLine) -> Option<(i32, Vec<OwnedLexToken>)> {
-    let shape = line_grammar::parse_station_threshold(&line.tokens)?;
-    (!TokenWordView::new(shape.body_tokens).is_empty())
-        .then(|| (shape.threshold, shape.body_tokens.to_vec()))
-}
-
 fn station_creature_support_parse_tokens(power: i32, toughness: i32) -> [Vec<OwnedLexToken>; 2] {
     let type_line = synthetic_sentence_tokens(&[
         "this", "artifact", "is", "a", "creature", "in", "addition", "to", "its", "other", "types",
@@ -868,15 +732,6 @@ fn station_creature_support_parse_tokens(power: i32, toughness: i32) -> [Vec<Own
     [type_line, pt_line]
 }
 
-fn parse_station_keyword_creature_threshold(tokens: &[OwnedLexToken]) -> Option<i32> {
-    line_grammar::parse_station_creature_threshold(tokens)
-}
-
-fn parse_station_keyword_creature_threshold_for_line(line: &PreprocessedLine) -> Option<i32> {
-    parse_station_keyword_creature_threshold(&line.tokens)
-        .or_else(|| parse_station_keyword_creature_threshold(&line.info.source_tokens))
-}
-
 fn station_threshold_is_creature_pt_threshold(
     ctx: &LineDispatchContext<'_>,
     threshold: i32,
@@ -894,7 +749,9 @@ fn station_threshold_is_creature_pt_threshold(
         let PreprocessedItem::Line(line) = item else {
             return false;
         };
-        parse_station_keyword_creature_threshold_for_line(line) == Some(threshold)
+        line_grammar::parse_station_keyword_line(&line.tokens, &line.info.source_tokens)
+            .and_then(|shape| shape.creature_threshold)
+            == Some(threshold)
     })
 }
 
@@ -924,12 +781,12 @@ pub(super) fn run_partner_variant_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
-    if !tokens_start_with_partner_variant_separator(&ctx.line.tokens) {
+    if line_grammar::parse_partner_variant(&ctx.line.tokens).is_none() {
         return Ok(None);
     }
 
-    let visible_label =
-        source_before_reminder_or_period(raw, &ctx.line.tokens).unwrap_or_else(|| raw.to_string());
+    let visible_label = keyword_special_lines::parse_partner_visible_label_tokens(&ctx.line.tokens)
+        .unwrap_or_else(|| raw.to_string());
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Static(StaticLineCst {
             info: ctx.line.info.clone(),
@@ -942,14 +799,10 @@ pub(super) fn run_partner_variant_keyword_line_family(
     )))
 }
 
-fn tokens_start_with_partner_variant_separator(tokens: &[OwnedLexToken]) -> bool {
-    line_grammar::parse_partner_variant(tokens).is_some()
-}
-
 pub(super) fn run_escape_enters_with_counter_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_has_phrase(ctx.line, ESCAPES_WITH_PHRASE) {
+    if line_grammar::parse_escape_enters_with_line(&ctx.line.tokens).is_none() {
         return Ok(None);
     }
     Ok(parse_static_line_cst(ctx.line)?.map(|static_cst| {
@@ -960,9 +813,10 @@ pub(super) fn run_escape_enters_with_counter_line_family(
 pub(super) fn run_surge_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some(cost_tokens) = keyword_body_tokens_before_reminder(ctx.line, &["surge"]) else {
+    let Some(shape) = line_grammar::parse_surge_line(&ctx.line.tokens) else {
         return Ok(None);
     };
+    let cost_tokens = shape.cost_tokens;
     if cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "surge keyword missing cost: '{}'",
@@ -992,9 +846,10 @@ pub(super) fn run_surge_line_family(
 pub(super) fn run_freerunning_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some(cost_tokens) = keyword_body_tokens_before_reminder(ctx.line, &["freerunning"]) else {
+    let Some(shape) = line_grammar::parse_freerunning_line(&ctx.line.tokens) else {
         return Ok(None);
     };
+    let cost_tokens = shape.cost_tokens;
     if cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "freerunning keyword missing cost: '{}'",
@@ -1300,13 +1155,13 @@ mod tests {
         ] {
             let tokens = lex_line(line, 0).expect("partner variant line should lex");
             assert!(
-                tokens_start_with_partner_variant_separator(&tokens),
+                line_grammar::parse_partner_variant(&tokens).is_some(),
                 "{line} should be recognized as a partner variant"
             );
         }
 
         let tokens = lex_line("Partner with Proud Mentor", 0).unwrap();
-        assert!(!tokens_start_with_partner_variant_separator(&tokens));
+        assert!(line_grammar::parse_partner_variant(&tokens).is_none());
     }
 
     #[test]
@@ -1336,9 +1191,37 @@ mod tests {
         let partner_variant_line = "Partner - Friends forever (You can have two commanders.)";
         let partner_variant_tokens = lex_line(partner_variant_line, 0).expect("line should lex");
         assert_eq!(
-            source_before_reminder_or_period(partner_variant_line, &partner_variant_tokens)
+            keyword_special_lines::parse_partner_visible_label_tokens(&partner_variant_tokens)
                 .as_deref(),
             Some("Partner - Friends forever")
+        );
+    }
+
+    #[test]
+    fn typed_line_family_migration_routes_simple_and_unless_shapes_into_cst() {
+        let learn = preprocess_document(
+            CardDefinitionBuilder::new(crate::CardId::new(), "Learn Test"),
+            "Learn.",
+        )
+        .expect("learn should preprocess");
+        let learn_cst = parse_document_cst(&learn, false).expect("learn cst");
+        assert!(matches!(
+            learn_cst.lines.as_slice(),
+            [RewriteLineCst::Statement(_)]
+        ));
+
+        let unless = preprocess_document(
+            CardDefinitionBuilder::new(crate::CardId::new(), "Unless Test"),
+            "Unless you pay {2}, sacrifice this permanent.",
+        )
+        .expect("unless should preprocess");
+        let unless_cst = parse_document_cst(&unless, false).expect("unless cst");
+        let [RewriteLineCst::Statement(line)] = unless_cst.lines.as_slice() else {
+            panic!("expected a statement CST for a leading-unless line");
+        };
+        assert_eq!(
+            render_token_slice(&line.parse_tokens),
+            "unless you pay {2}, sacrifice this permanent."
         );
     }
 
@@ -1361,16 +1244,19 @@ mod tests {
         }
 
         let station_line = line("6+ | This artifact is a creature in addition to its other types.");
-        let (threshold, body_tokens) =
-            parse_station_threshold_line(&station_line).expect("station threshold shape");
-        assert_eq!(threshold, 6);
+        let shape = line_grammar::parse_station_threshold_line(&station_line.tokens)
+            .expect("station threshold shape");
+        assert_eq!(shape.threshold, 6);
         assert_eq!(
-            render_token_slice(&body_tokens),
+            render_token_slice(shape.body_tokens),
             "this artifact is a creature in addition to its other types."
         );
 
         let missing_plus = line("6 | This artifact is a creature.");
-        assert_eq!(parse_station_threshold_line(&missing_plus), None);
+        assert_eq!(
+            line_grammar::parse_station_threshold_line(&missing_plus.tokens),
+            None
+        );
     }
 
     #[test]
@@ -1519,10 +1405,6 @@ fn partner_with_name_from_line(line: &PreprocessedLine) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-fn source_before_reminder_or_period(_raw_line: &str, tokens: &[OwnedLexToken]) -> Option<String> {
-    keyword_special_lines::parse_partner_visible_label_tokens(tokens)
-}
-
 pub(super) fn run_combined_static_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
@@ -1569,12 +1451,6 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
     }))
 }
 
-fn statement_probe_shape_prefers_statement(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    line_surface_has_all(&words, LINKED_CHOOSE_TWO_SHUFFLE_REST_BATTLEFIELD_PHRASES)
-        || line_surface_has_all(&words, LINKED_EXILED_CARD_COST_MORE_PHRASES)
-}
-
 fn is_keyword_action_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
     parse_static_ability_ast_line_lexed(tokens)
         .ok()
@@ -1607,6 +1483,9 @@ pub(super) fn run_statement_probe_line_family(
         return Ok(Some(split_result));
     }
 
+    let linked_preference = line_grammar::parse_linked_statement_preference(&ctx.line.tokens);
+    let static_preference = line_grammar::parse_statement_static_preference(&ctx.line.tokens);
+
     if (matches!(
         crate::runtime_backend::grammar::structure::classify_statement_line_family_lexed(
             &ctx.line.tokens
@@ -1616,18 +1495,23 @@ pub(super) fn run_statement_probe_line_family(
                 | crate::runtime_backend::grammar::structure::StatementLineFamily::PactNextUpkeep
                 | crate::runtime_backend::grammar::structure::StatementLineFamily::ExilePlayCostsMore
         )
-    ) || statement_probe_shape_prefers_statement(&ctx.line.tokens)
+    ) || linked_preference.is_some()
         || looks_like_statement_line_lexed(ctx.line)
         || should_prefer_statement_before_static_for_nonpermanent_spell(
             ctx.preprocessed,
             &ctx.line.tokens,
         ))
-        && !is_can_block_additional_creatures_static_line(&ctx.line.tokens)
-        && !is_draw_replacement_static_line(&ctx.line.tokens)
-        && !is_token_creation_replacement_static_line(&ctx.line.tokens)
-        && !is_discard_or_redirect_replacement_static_line(&ctx.line.tokens)
-        && !is_first_equip_cost_alternative_static_line(&ctx.line.tokens)
-        && !is_conditional_keyword_type_addition_static_line(&ctx.line.tokens)
+        && !matches!(
+            static_preference,
+            Some(
+                line_grammar::StatementStaticPreference::BlocksAdditionalCreatures
+                    | line_grammar::StatementStaticPreference::DrawReplacement
+                    | line_grammar::StatementStaticPreference::TokenCreationReplacement
+                    | line_grammar::StatementStaticPreference::DiscardOrRedirectReplacement
+                    | line_grammar::StatementStaticPreference::FirstEquipCostAlternative
+                    | line_grammar::StatementStaticPreference::ConditionalKeywordTypeAddition
+            )
+        )
         && !is_keyword_action_replacement_static_line(&ctx.line.tokens)
         && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
     {
@@ -1642,48 +1526,6 @@ pub(super) fn run_statement_probe_line_family(
         )));
     }
     Ok(None)
-}
-
-fn is_draw_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
-        line_grammar::parse_statement_static_preference(tokens),
-        Some(line_grammar::StatementStaticPreference::DrawReplacement)
-    )
-}
-
-fn is_token_creation_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
-        line_grammar::parse_statement_static_preference(tokens),
-        Some(line_grammar::StatementStaticPreference::TokenCreationReplacement)
-    )
-}
-
-fn is_discard_or_redirect_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
-        line_grammar::parse_statement_static_preference(tokens),
-        Some(line_grammar::StatementStaticPreference::DiscardOrRedirectReplacement)
-    )
-}
-
-fn is_first_equip_cost_alternative_static_line(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    line_surface_has_prefix(&words, FIRST_EQUIP_COST_ALTERNATIVE_PREFIX)
-        && line_surface_has_phrase(&words, FIRST_EQUIP_COST_ALTERNATIVE_PHRASE)
-        && line_surface_has_suffix(&words, FIRST_EQUIP_COST_ALTERNATIVE_SUFFIXES)
-}
-
-fn is_conditional_keyword_type_addition_static_line(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
-        line_grammar::parse_statement_static_preference(tokens),
-        Some(line_grammar::StatementStaticPreference::ConditionalKeywordTypeAddition)
-    )
-}
-
-fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
-        line_grammar::parse_statement_static_preference(tokens),
-        Some(line_grammar::StatementStaticPreference::BlocksAdditionalCreatures)
-    )
 }
 
 pub(super) fn run_static_line_family(
@@ -1725,15 +1567,10 @@ pub(super) fn run_statement_line_family(
 pub(super) fn run_leading_unless_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_has_prefix(ctx.line, &["unless"]) {
-        return Ok(None);
-    }
-    let Some((unless_tokens, effect_tokens)) = split_once_on_comma_tokens(&ctx.line.tokens) else {
+    let Some(shape) = line_grammar::parse_leading_unless_line(&ctx.line.tokens) else {
         return Ok(None);
     };
-    if unless_tokens.len() < 2 || effect_tokens.is_empty() {
-        return Ok(None);
-    }
+    debug_assert!(shape.condition_tokens.len() >= 2 && !shape.effect_tokens.is_empty());
 
     let parse_tokens = ctx.line.tokens.clone();
     let parse_groups = vec![parse_tokens.clone()];

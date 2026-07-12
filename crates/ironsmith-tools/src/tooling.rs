@@ -714,7 +714,7 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
         ),
         (
             ["you gain x life", "you gain 3 life"].as_slice(),
-            ["you gain"].as_slice(),
+            ["you gain", "gain x life", "gain 3 life"].as_slice(),
             "you-gain-life",
         ),
         (
@@ -3375,6 +3375,17 @@ CardDefinition {
             "This creature's power is equal to the number of distinct card types in all graveyards"
                 .to_string(),
         );
+
+        assert_eq!(authoritative_semantic_marker_parse_error(&snapshot), None);
+    }
+
+    #[test]
+    fn authoritative_marker_guard_accepts_implied_subject_for_life_gain() {
+        let mut snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+        snapshot.normalized_oracle_text =
+            "Sacrifice another creature. You gain X life, where X is its power.".to_string();
+        snapshot.compiled_text =
+            Some("Sacrifice another creature, then gain X life, where X is its power.".to_string());
 
         assert_eq!(authoritative_semantic_marker_parse_error(&snapshot), None);
     }

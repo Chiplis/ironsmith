@@ -2353,6 +2353,10 @@ impl StaticAbility {
         ))
     }
 
+    pub fn set_base_power(filter: crate::target::ObjectFilter, power: i32) -> Self {
+        Self::new(SetBasePowerForFilter::new(filter, power))
+    }
+
     pub fn set_colors(filter: crate::target::ObjectFilter, colors: crate::color::ColorSet) -> Self {
         Self::new(SetColorsForFilter::new(filter, colors))
     }

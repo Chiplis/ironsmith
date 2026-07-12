@@ -47,6 +47,22 @@ fn captures_a_preceding_effect_before_then() {
 }
 
 #[test]
+fn captures_match_count_equal_to_objects_sacrificed_this_way() {
+    let parsed = parse_consult_traversal_shape(&lex(
+        "Sacrifice X Goblins, then reveal cards from the top of your library until you reveal a number of Goblin creature cards equal to the number of Goblins sacrificed this way",
+    ))
+    .unwrap();
+    assert_eq!(
+        parsed.stop.stop_rule,
+        LibraryConsultStopRuleAst::MatchCount(Value::EventValue(EventValueSpec::Amount))
+    );
+    assert!(permission_shapes::exact_tokens(
+        &parsed.stop.filter,
+        &["goblin", "creature", "cards"]
+    ));
+}
+
+#[test]
 fn captures_where_x_value_and_inline_followup() {
     let parsed = parse_consult_traversal_shape(&lex(
         "Reveal cards from the top of your library until you reveal X permanent cards, where X is the number of colors among permanents you control, put any number of those permanent cards onto the battlefield",

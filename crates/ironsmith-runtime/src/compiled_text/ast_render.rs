@@ -548,7 +548,12 @@ pub(super) fn describe_resolution_program(
             rendered_segments.push(describe_effect_list(&branch.replacement_effects));
         }
     }
-    rendered_segments.join(". ")
+    rendered_segments
+        .into_iter()
+        .map(|segment| segment.trim().trim_start_matches(". ").to_string())
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join(". ")
 }
 
 fn describe_group_pump_then_conditional_untap_program(

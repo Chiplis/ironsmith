@@ -4,10 +4,13 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::object::CounterType;
+use crate::runtime_backend::token_definition::{
+    CreatureTokenRulesShape, CreatureTokenShape, TokenDefinitionSpec,
+};
 use ironsmith_core::DamagedBySource;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
-use super::super::{filters, leaf, primitives};
+use super::super::{filters, leaf, primitives, token_definitions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ReplacementPlayerKind {
@@ -53,7 +56,7 @@ pub(crate) enum ExileWouldDieSpec {
     NontokenCreature {
         controller: ReplacementPlayerKind,
         exile_counter: Option<CounterType>,
-        create_zombie: bool,
+        follow_up_token: Option<CreatureTokenShape>,
     },
     DamagedBy {
         victim: ExileWouldDieVictimKind,
@@ -201,21 +204,21 @@ fn parse_nontoken_exile_would_die_lexed<'a>(
     .parse_next(input)?;
     primitives::phrase(&["would", "die"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
-    let (exile_counter, create_zombie) = alt((
-        parse_zombie_exile_tail_lexed.value((None, true)),
-        parse_countered_exile_tail_lexed.map(|counter| (Some(counter), false)),
-        parse_plain_exile_tail_lexed.value((None, false)),
+    let (exile_counter, follow_up_token) = alt((
+        parse_created_token_exile_tail_lexed.map(|token| (None, Some(token))),
+        parse_countered_exile_tail_lexed.map(|counter| (Some(counter), None)),
+        parse_plain_exile_tail_lexed.value((None, None)),
     ))
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(ExileWouldDieSpec::NontokenCreature {
         controller,
         exile_counter,
-        create_zombie,
+        follow_up_token,
     })
 }
 
-fn parse_zombie_exile_tail_lexed(input: &mut LexStream<'_>) -> WResult<()> {
+fn parse_created_token_exile_tail_lexed(input: &mut LexStream<'_>) -> WResult<CreatureTokenShape> {
     alt((
         (
             primitives::kw("exile"),
@@ -227,7 +230,22 @@ fn parse_zombie_exile_tail_lexed(input: &mut LexStream<'_>) -> WResult<()> {
         ),
     ))
     .parse_next(input)?;
-    primitives::phrase(&["a", "2/2", "black", "zombie", "creature", "token"]).parse_next(input)
+    let definition_tokens =
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
+            .map(|((), ())| ())
+            .take()
+            .parse_next(input)?;
+    match token_definitions::parse_token_definition_shape_tokens(definition_tokens) {
+        Some(TokenDefinitionSpec::Creature(shape))
+            if shape.rules == CreatureTokenRulesShape::default() =>
+        {
+            Ok(shape)
+        }
+        _ => Err(primitives::backtrack_err(
+            "would-die replacement follow-up",
+            "creature token definition",
+        )),
+    }
 }
 
 fn parse_countered_exile_tail_lexed(input: &mut LexStream<'_>) -> WResult<CounterType> {
@@ -453,6 +471,22 @@ mod tests {
                 ..
             })
         ));
+
+        let tokens = lex_line(
+            "If a nontoken creature an opponent controls would die, instead exile that card and create a 2/2 black Zombie creature token.",
+            0,
+        )
+        .unwrap();
+        let Some(ExileWouldDieSpec::NontokenCreature {
+            follow_up_token: Some(token),
+            ..
+        }) = parse_exile_would_die_tokens(&tokens)
+        else {
+            panic!("expected a typed creature-token follow-up")
+        };
+        assert_eq!(token.power_toughness, (2, 2));
+        assert_eq!(token.colors, crate::color::ColorSet::BLACK);
+        assert_eq!(token.subtypes, vec![crate::types::Subtype::Zombie]);
 
         let tokens = lex_line("If this creature would die, exile it instead.", 0).unwrap();
         assert_eq!(

@@ -42,7 +42,7 @@ fn look_at_top_cards_parts(effect: &EffectAst) -> Option<(PlayerAst, Value)> {
     Some((*player, count.clone()))
 }
 
-fn abundant_harvest_branch_effects(
+fn chosen_kind_consult_branch_effects(
     tokens: &[OwnedLexToken],
     filter: ObjectFilter,
     order: crate::cards::builders::LibraryBottomOrderAst,
@@ -158,10 +158,9 @@ pub(crate) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
     let second = trim_commas(sentences[sentence_idx + 1].lowered());
     let third = trim_commas(sentences[sentence_idx + 2].lowered());
 
-    if !triple_grammar::is_abundant_harvest_sequence_shape(&first, &second, &third) {
-        return Ok(None);
-    }
-    let Some(order) = triple_grammar::parse_consult_remainder_order_tokens(&third) else {
+    let Some(shape) =
+        triple_grammar::parse_land_or_nonland_consult_sequence_tokens(&first, &second, &third)
+    else {
         return Ok(None);
     };
 
@@ -181,15 +180,15 @@ pub(crate) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
         ),
         EffectAst::Conditional {
             predicate: PredicateAst::SourceChosenOption("land".to_string()),
-            if_true: abundant_harvest_branch_effects(
+            if_true: chosen_kind_consult_branch_effects(
                 sentences[sentence_idx + 1].lowered(),
                 land_filter,
-                order,
+                shape.remainder_order,
             ),
-            if_false: abundant_harvest_branch_effects(
+            if_false: chosen_kind_consult_branch_effects(
                 sentences[sentence_idx + 1].lowered(),
                 nonland_filter,
-                order,
+                shape.remainder_order,
             ),
         },
     ]))

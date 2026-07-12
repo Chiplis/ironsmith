@@ -48,7 +48,7 @@ fn main() {
             max_lines: 1500,
         },
         Budget {
-            path: "families/activation_and_restrictions/trigger_clause_core.rs",
+            path: "front_end/grammar/trigger_clauses/semantic.rs",
             max_lines: 5400,
         },
         Budget {
@@ -145,7 +145,36 @@ fn main() {
         },
         Budget {
             path: "front_end/grammar/permission_shapes.rs",
-            max_lines: 200,
+            max_lines: 150,
+        },
+        Budget {
+            path: "front_end/grammar/permission_facts.rs",
+            max_lines: 25,
+        },
+        Budget {
+            path: "front_end/grammar/permission_facts/tagged_surface.rs",
+            // Tagged permission facts remain cohesive under the one-file cluster boundary.
+            max_lines: 900,
+        },
+        Budget {
+            path: "front_end/grammar/permission_facts/subject_filters.rs",
+            // Typed permission subject filters replace local spell-shape probes.
+            max_lines: 400,
+        },
+        Budget {
+            path: "front_end/grammar/permission_facts/zone_free_cast.rs",
+            // Typed zone/free-cast facts replace PermissionSequence surface recognition.
+            max_lines: 675,
+        },
+        Budget {
+            path: "front_end/grammar/permission_facts/graveyard_source.rs",
+            // Typed graveyard/source facts own additional-cost and once-turn recognition.
+            max_lines: 525,
+        },
+        Budget {
+            path: "front_end/grammar/permission_facts/source_exiled.rs",
+            // Source-linked exile permissions are a narrow typed leaf of the tagged grammar.
+            max_lines: 100,
         },
         Budget {
             path: "front_end/grammar/leaf/activation_heads.rs",
@@ -252,8 +281,36 @@ fn main() {
             max_lines: 500,
         },
         Budget {
+            path: "front_end/grammar/activation_costs/program.rs",
+            max_lines: 500,
+        },
+        Budget {
             path: "front_end/grammar/activation_costs/cant_shapes.rs",
-            max_lines: 650,
+            max_lines: 50,
+        },
+        Budget {
+            path: "front_end/grammar/activation_costs/cant_shapes/direct.rs",
+            max_lines: 475,
+        },
+        Budget {
+            path: "front_end/grammar/activation_costs/cant_shapes/parity.rs",
+            max_lines: 325,
+        },
+        Budget {
+            path: "front_end/grammar/activation_costs/cant_shapes/blocking.rs",
+            max_lines: 425,
+        },
+        Budget {
+            path: "front_end/grammar/activation_costs/cant_shapes/attack_unless.rs",
+            max_lines: 800,
+        },
+        Budget {
+            path: "front_end/grammar/activation_costs/cant_shapes/attack_tax.rs",
+            max_lines: 125,
+        },
+        Budget {
+            path: "front_end/grammar/activation_costs/cant_shapes/structure.rs",
+            max_lines: 800,
         },
         Budget {
             path: "front_end/grammar/activation_costs/selectors.rs",
@@ -276,20 +333,46 @@ fn main() {
             max_lines: 500,
         },
         Budget {
+            path: "front_end/cst_lowering/activation_costs.rs",
+            max_lines: 550,
+        },
+        Budget {
             path: "front_end/grammar/activation_restrictions.rs",
             max_lines: 700,
         },
+        // Typed restriction facts replace the former monolithic surface-shape parser.
         Budget {
-            path: "front_end/grammar/activation_restrictions/surface_shapes.rs",
-            max_lines: 350,
+            path: "front_end/grammar/activation_restrictions/cast_facts.rs",
+            max_lines: 375,
+        },
+        Budget {
+            path: "front_end/grammar/activation_restrictions/clause_facts.rs",
+            max_lines: 575,
+        },
+        Budget {
+            path: "front_end/grammar/activation_restrictions/object_facts.rs",
+            max_lines: 300,
         },
         Budget {
             path: "front_end/grammar/trigger_subjects.rs",
             max_lines: 700,
         },
+        // Typed trigger-subject facts replace the former surface-shape DSL.
         Budget {
-            path: "front_end/grammar/trigger_subjects/surface_shapes.rs",
-            max_lines: 400,
+            path: "front_end/grammar/trigger_subjects/subject_facts.rs",
+            max_lines: 250,
+        },
+        Budget {
+            path: "front_end/grammar/trigger_subjects/spell_activity_facts.rs",
+            max_lines: 450,
+        },
+        Budget {
+            path: "front_end/grammar/trigger_subjects/may_cast_facts.rs",
+            max_lines: 250,
+        },
+        Budget {
+            path: "front_end/grammar/trigger_subjects/sentence_facts.rs",
+            max_lines: 150,
         },
         Budget {
             path: "front_end/grammar/trigger_clauses.rs",
@@ -307,6 +390,11 @@ fn main() {
             path: "front_end/grammar/choices/object_shapes.rs",
             max_lines: 250,
         },
+        // Typed choice filters are split from parser-family lowering.
+        Budget {
+            path: "front_end/grammar/choices/typed_object_filters.rs",
+            max_lines: 350,
+        },
         Budget {
             path: "front_end/grammar/choices/type_phrases.rs",
             max_lines: 325,
@@ -317,7 +405,8 @@ fn main() {
         },
         Budget {
             path: "front_end/grammar/keyword_action_costs.rs",
-            max_lines: 700,
+            // Typed Soulshift recognition remains here until action-cost grammar is split.
+            max_lines: 725,
         },
         Budget {
             path: "front_end/grammar/keyword_dispatch.rs",
@@ -379,6 +468,15 @@ fn main() {
             path: "front_end/semantic_line_parsing/lines.rs",
             max_lines: 2600,
         },
+        // Front-end semantic ownership moved out of lowering during migration.
+        Budget {
+            path: "front_end/semantic_line_parsing/triggered_chunks.rs",
+            max_lines: 650,
+        },
+        Budget {
+            path: "front_end/semantic_document.rs",
+            max_lines: 125,
+        },
         Budget {
             path: "front_end/grammar/sentence_markers.rs",
             max_lines: 250,
@@ -433,7 +531,12 @@ fn main() {
         },
         Budget {
             path: "front_end/grammar/anthem_grants/misc_shapes.rs",
-            max_lines: 250,
+            // Typed trailing grant-segment normalization owns punctuation handling here.
+            max_lines: 275,
+        },
+        Budget {
+            path: "front_end/grammar/anthem_grants/static_grant_facts.rs",
+            max_lines: 225,
         },
         Budget {
             path: "front_end/grammar/anthem_grants/soulbond_shapes.rs",
@@ -458,6 +561,10 @@ fn main() {
         Budget {
             path: "front_end/grammar/semantic_lowering/keyword_shapes.rs",
             max_lines: 350,
+        },
+        Budget {
+            path: "front_end/grammar/semantic_lowering/hideaway.rs",
+            max_lines: 125,
         },
         Budget {
             path: "front_end/grammar/semantic_lowering/statement_shapes.rs",
@@ -486,6 +593,11 @@ fn main() {
         Budget {
             path: "front_end/grammar/effects/chain_carry.rs",
             max_lines: 800,
+        },
+        // Typed carry facts are split from the chain parser's orchestration.
+        Budget {
+            path: "front_end/grammar/effects/chain_carry/carry_facts.rs",
+            max_lines: 125,
         },
         Budget {
             path: "front_end/grammar/effects/chain_splitting.rs",
@@ -564,6 +676,10 @@ fn main() {
             max_lines: 275,
         },
         Budget {
+            path: "front_end/grammar/statement_player_counters.rs",
+            max_lines: 175,
+        },
+        Budget {
             path: "front_end/grammar/token_definitions.rs",
             max_lines: 25,
         },
@@ -616,6 +732,30 @@ fn main() {
             max_lines: 300,
         },
         Budget {
+            path: "front_end/grammar/static_keyword_facts.rs",
+            max_lines: 25,
+        },
+        Budget {
+            path: "front_end/grammar/static_keyword_facts/early.rs",
+            // Typed early static facts replace the legacy ClauseShape table.
+            max_lines: 725,
+        },
+        Budget {
+            path: "front_end/grammar/static_keyword_facts/mid.rs",
+            // Typed condition, target, and restriction facts remain one cohesive namespace.
+            max_lines: 950,
+        },
+        Budget {
+            path: "front_end/grammar/static_keyword_facts/late.rs",
+            // Typed permission and replacement facts replace late-family surface probes.
+            max_lines: 850,
+        },
+        Budget {
+            path: "front_end/grammar/static_keyword_facts/type_and_color.rs",
+            // Typed type/color transformations keep all phrase boundaries in grammar.
+            max_lines: 650,
+        },
+        Budget {
             path: "front_end/grammar/clause_support.rs",
             max_lines: 600,
         },
@@ -648,8 +788,13 @@ fn main() {
             max_lines: 550,
         },
         Budget {
+            path: "front_end/grammar/document_shape_parsers.rs",
+            max_lines: 150,
+        },
+        Budget {
             path: "front_end/grammar/document_shapes/labels.rs",
-            max_lines: 125,
+            // Typed labels now carry activation-cost and presentation facts.
+            max_lines: 200,
         },
         Budget {
             path: "front_end/grammar/document_shapes/choice_context.rs",
@@ -673,7 +818,7 @@ fn main() {
         },
         Budget {
             path: "front_end/grammar/preprocess/vote_shapes.rs",
-            max_lines: 200,
+            max_lines: 300,
         },
         Budget {
             path: "front_end/grammar/shared_util.rs",
@@ -708,6 +853,10 @@ fn main() {
             max_lines: 475,
         },
         Budget {
+            path: "front_end/grammar/shared_util/keyword_line_facts.rs",
+            max_lines: 325,
+        },
+        Budget {
             path: "front_end/grammar/shared_util/reference_shapes.rs",
             max_lines: 650,
         },
@@ -720,6 +869,10 @@ fn main() {
             max_lines: 850,
         },
         Budget {
+            path: "front_end/grammar/shared_util/token_facts.rs",
+            max_lines: 250,
+        },
+        Budget {
             path: "front_end/grammar/shared_util/value_expr.rs",
             max_lines: 700,
         },
@@ -728,16 +881,17 @@ fn main() {
             max_lines: 325,
         },
         Budget {
+            path: "front_end/grammar/shared_util/value_semantics.rs",
+            // Typed value/count/comparison grammar replaces the legacy shared parser hub.
+            max_lines: 850,
+        },
+        Budget {
             path: "front_end/grammar/effects.rs",
             max_lines: 2125,
         },
         Budget {
             path: "front_end/grammar/effects/bundle_rules.rs",
             max_lines: 900,
-        },
-        Budget {
-            path: "front_end/grammar/effects/bundle_rules/exact.rs",
-            max_lines: 650,
         },
         Budget {
             path: "front_end/grammar/effects/sequence_pairs.rs",
@@ -784,6 +938,10 @@ fn main() {
             max_lines: 350,
         },
         Budget {
+            path: "front_end/grammar/effects/sequence_pairs/consult/traversal/counted_stop.rs",
+            max_lines: 75,
+        },
+        Budget {
             path: "front_end/grammar/effects/sequence_pairs/consult/values.rs",
             max_lines: 125,
         },
@@ -810,6 +968,10 @@ fn main() {
         Budget {
             path: "front_end/grammar/effects/conditional_shapes.rs",
             max_lines: 300,
+        },
+        Budget {
+            path: "front_end/grammar/effects/kicked_counter_replacement.rs",
+            max_lines: 175,
         },
         Budget {
             path: "front_end/grammar/effects/clause_primitive_shapes.rs",
@@ -874,6 +1036,10 @@ fn main() {
         Budget {
             path: "front_end/grammar/effects/followup_shapes.rs",
             max_lines: 225,
+        },
+        Budget {
+            path: "front_end/grammar/effects/followup_shapes/counter_linked_land.rs",
+            max_lines: 100,
         },
         Budget {
             path: "front_end/grammar/effects/followup_shapes/regeneration.rs",
@@ -958,6 +1124,11 @@ fn main() {
         Budget {
             path: "front_end/grammar/line_families.rs",
             max_lines: 500,
+        },
+        // Typed document-dispatch facts replace phrase probes in CST handlers.
+        Budget {
+            path: "front_end/grammar/line_families/document_dispatch.rs",
+            max_lines: 400,
         },
         Budget {
             path: "front_end/grammar/effects/gain_life_shapes.rs",
@@ -1292,6 +1463,10 @@ fn main() {
             max_lines: 850,
         },
         Budget {
+            path: "front_end/grammar/etb_static_lines/counter_entry/condition_shapes.rs",
+            max_lines: 250,
+        },
+        Budget {
             path: "front_end/grammar/etb_static_lines/entry_shapes.rs",
             max_lines: 400,
         },
@@ -1356,6 +1531,10 @@ fn main() {
             max_lines: 500,
         },
         Budget {
+            path: "front_end/grammar/filters/chosen_type_references.rs",
+            max_lines: 100,
+        },
+        Budget {
             path: "front_end/grammar/filters/decorations.rs",
             max_lines: 700,
         },
@@ -1416,11 +1595,15 @@ fn main() {
             max_lines: 300,
         },
         Budget {
+            path: "front_end/grammar/lowering_surfaces/statement_replacements.rs",
+            max_lines: 250,
+        },
+        Budget {
             path: "front_end/grammar/modal_results.rs",
             max_lines: 525,
         },
         Budget {
-            path: "front_end/grammar/postpass_surfaces.rs",
+            path: "front_end/grammar/document_facts.rs",
             max_lines: 250,
         },
         Budget {

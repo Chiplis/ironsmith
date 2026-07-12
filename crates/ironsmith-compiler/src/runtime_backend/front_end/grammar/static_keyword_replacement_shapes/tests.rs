@@ -57,6 +57,7 @@ fn parses_draw_reveal_matching_rest_bottom_shape() {
 #[test]
 fn parses_discard_or_redirect_replacement_as_one_typed_shape() {
     for text in [
+        "If this artifact would enter, you may discard a land card instead. If you do, put this artifact onto the battlefield. If you don't, put it into its owner's graveyard.",
         "If Mox Diamond would enter the battlefield, you may discard a land card instead. If you don't, put it into its owner's graveyard.",
         "If this artifact would enter the battlefield, you may discard a land card instead. If you do, put this artifact onto the battlefield. If you don't, put it into its owner's graveyard.",
     ] {

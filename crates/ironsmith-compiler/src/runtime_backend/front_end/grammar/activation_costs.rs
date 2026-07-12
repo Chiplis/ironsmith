@@ -5,7 +5,7 @@ use winnow::token::any;
 
 use crate::cards::builders::ChoiceCount;
 use crate::color::ColorSet;
-use crate::effect::{Comparison, Value};
+use crate::effect::Value;
 use crate::mana::ManaCost;
 use crate::object::CounterType;
 use crate::target::ObjectFilter;
@@ -13,7 +13,6 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 use super::super::lexer::{LexStream, OwnedLexToken};
-use super::primitives::TokenWordView;
 
 #[path = "activation_costs/simple_segments.rs"]
 mod simple_segments;
@@ -41,6 +40,10 @@ pub(crate) use object_segments::*;
 #[path = "activation_costs/exile_segments.rs"]
 mod exile_segments;
 pub(crate) use exile_segments::*;
+
+#[path = "activation_costs/program.rs"]
+mod program;
+pub(crate) use program::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ActivationCostCst {
@@ -174,53 +177,6 @@ pub(crate) enum ActivationCostSegmentKind {
     BareSymbol,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ActivationMinimumCount {
-    pub(crate) count: u32,
-    pub(crate) consumed_words: usize,
-}
-
-pub(crate) fn parse_activation_minimum_count_words(
-    words: &[&str],
-) -> Option<ActivationMinimumCount> {
-    let parsed = super::shared_util::value_shapes::parse_quantity_comparison_prefix_words(
-        words, false, true,
-    )?;
-    let count = match parsed.comparison {
-        Comparison::GreaterThanOrEqual(value) if value >= 0 => value as u32,
-        Comparison::GreaterThan(value) if value >= -1 => (value + 1) as u32,
-        _ => return None,
-    };
-    Some(ActivationMinimumCount {
-        count,
-        consumed_words: parsed.consumed_words,
-    })
-}
-
-/// A token span selected from the word projection of an activation-cost segment.
-///
-/// Keeping this mapping in the grammar layer lets typed activation parsers retain
-/// original token boundaries even when a lexer token contributes multiple words.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct ActivationCostTokenSpan<'a> {
-    pub(crate) tokens: &'a [OwnedLexToken],
-}
-
-pub(crate) fn parse_activation_cost_word_suffix(
-    tokens: &[OwnedLexToken],
-    first_word: usize,
-) -> Option<ActivationCostTokenSpan<'_>> {
-    let view = TokenWordView::new(tokens);
-    let first_token = if first_word == 0 {
-        0
-    } else {
-        view.token_start_indices().get(first_word).copied()?
-    };
-    Some(ActivationCostTokenSpan {
-        tokens: &tokens[first_token..],
-    })
-}
-
 pub(crate) fn parse_activation_cost_segment_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> ActivationCostSegmentKind {
@@ -274,20 +230,6 @@ fn token_words_include(tokens: &[&OwnedLexToken], expected: &str) -> bool {
 mod tests {
     use super::super::super::lexer::lex_line;
     use super::*;
-
-    #[test]
-    fn minimum_count_parser_preserves_threshold_surface() {
-        for (words, expected) in [
-            (&["at", "least", "three"][..], (3, 3)),
-            (&["greater", "than", "two"][..], (3, 3)),
-            (&["a"][..], (1, 1)),
-            (&["four", "or", "more"][..], (4, 3)),
-        ] {
-            let parsed = parse_activation_minimum_count_words(words).unwrap();
-            assert_eq!((parsed.count, parsed.consumed_words), expected);
-        }
-        assert!(parse_activation_minimum_count_words(&["exactly", "two"]).is_none());
-    }
 
     #[test]
     fn segment_kind_parser_preserves_simple_and_tap_chosen_dispatch() {

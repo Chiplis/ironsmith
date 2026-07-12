@@ -2844,7 +2844,7 @@ fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     choice_filter.zone = Some(Zone::Library);
 
     Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
+        EffectAst::subject_verb_look_at_top_cards(player.clone(), count, looked_tag.clone()),
         EffectAst::ChooseObjects {
             filter: choice_filter,
             count: exile_count,
@@ -2857,7 +2857,7 @@ fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
             looked_tag,
             Some(exiled_tag),
             bottom_order,
-            PlayerAst::You,
+            player,
         ),
     ])
 }
@@ -2884,6 +2884,26 @@ mod generic_subject_verb_program_tests {
         assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
         assert!(debug.contains("player: That"), "{debug}");
         assert!(!debug.contains("Unsupported"), "{debug}");
+    }
+
+    #[test]
+    fn counted_face_down_exile_keeps_target_opponents_library_owner() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order.",
+            0,
+        )
+        .expect("counted face-down exile bundle should lex");
+        let effects =
+            parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(&tokens)
+                .expect("counted face-down exile bundle should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("LookAtTopCards"), "{debug}");
+        assert!(
+            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+            "{debug}"
+        );
+        assert!(debug.matches("player: TargetOpponent").count() >= 2, "{debug}");
     }
 
     #[test]

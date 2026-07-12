@@ -46,6 +46,13 @@ fn dynamic_soulshift_and_special_phrases_are_typed() {
     );
 }
 
+#[test]
+fn typed_static_grant_migration_parses_dynamic_soulshift_tokens() {
+    let tokens = lex("Soulshift X, where X is the number of Spirits you control.");
+    let parsed = parse_dynamic_soulshift_tokens(&tokens).expect("typed soulshift");
+    assert!(parsed.count_filter.subtypes.contains(&Subtype::Spirit));
+}
+
 fn lex(raw: &str) -> Vec<OwnedLexToken> {
     super::super::super::lexer::lex_line(raw, 0).expect("test text should lex")
 }

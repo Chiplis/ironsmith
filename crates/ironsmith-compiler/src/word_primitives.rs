@@ -143,18 +143,6 @@ pub(crate) fn matching_phrase<'p>(
         .find(|phrase| equals(words, phrase))
 }
 
-/// Returns the first phrase in `expected` that `words` starts with, so callers
-/// can consume the matched prefix length. Prefix counterpart of `matching_phrase`.
-pub(crate) fn matching_prefix<'p>(
-    words: &[&str],
-    expected: &'p [&'p [&'p str]],
-) -> Option<&'p [&'p str]> {
-    expected
-        .iter()
-        .copied()
-        .find(|phrase| starts_with(words, phrase))
-}
-
 pub(crate) fn matching_value<T: Clone>(words: &[&str], expected: &[(&[&str], T)]) -> Option<T> {
     crate::slice_primitives::matching_value(words, expected)
 }
@@ -259,28 +247,11 @@ pub(crate) fn find_any_word(words: &[&str], expected: &[&str]) -> Option<usize> 
     })
 }
 
-pub(crate) fn find_any_word_from(words: &[&str], expected: &[&str], start: usize) -> Option<usize> {
-    find_word_where_from(words, start, |word| {
-        expected.iter().any(|expected_word| word == *expected_word)
-    })
-}
-
 pub(crate) fn find_word_where(
     words: &[&str],
     mut predicate: impl FnMut(&str) -> bool,
 ) -> Option<usize> {
     words.iter().position(|word| predicate(word))
-}
-
-pub(crate) fn find_word_where_from(
-    words: &[&str],
-    start: usize,
-    mut predicate: impl FnMut(&str) -> bool,
-) -> Option<usize> {
-    words
-        .get(start..)
-        .and_then(|tail| tail.iter().position(|word| predicate(word)))
-        .map(|offset| start + offset)
 }
 
 pub(crate) fn rfind_word_where(
@@ -300,10 +271,4 @@ pub(crate) fn contains_no_words(words: &[&str], expected: &[&str]) -> bool {
 
 pub(crate) fn contains_all_words(words: &[&str], expected: &[&str]) -> bool {
     expected.iter().all(|word| contains_word(words, word))
-}
-
-pub(crate) fn all_words_are_any(words: &[&str], expected: &[&str]) -> bool {
-    crate::slice_primitives::all_match(words, |word| {
-        expected.iter().any(|candidate| word == candidate)
-    })
 }

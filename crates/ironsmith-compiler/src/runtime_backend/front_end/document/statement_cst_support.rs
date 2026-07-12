@@ -1,6 +1,6 @@
 use super::super::grammar::effects::{
     clause_dispatch_shapes::{self, DirectClauseShape},
-    followup_shapes,
+    followup_shapes, parse_create_head_tokens,
 };
 use super::super::grammar::statement_shapes::{self, StatementForceShape};
 use super::super::grammar::structure;
@@ -83,15 +83,31 @@ pub(super) fn parse_statement_line_cst(
     let static_probe = parse_static_ability_ast_line_lexed(&line.tokens)
         .ok()
         .flatten();
-    let persistent_static_modifier =
-        !matches!(line_family, Some(structure::StatementLineFamily::Vote))
-            && super::super::grammar::anthem_grants::parse_anthem_modifier_head(&line.tokens)
-                .is_some_and(|head| !head.has_target && !head.temporary);
+    let typed_create_statement = parse_create_head_tokens(&line.tokens).is_some();
+    let typed_energy_payment_threshold =
+        super::super::grammar::effects::parse_energy_pay_any_destroy_tokens(&line.tokens).is_some();
+    let typed_counter_linked_land_subtype = super::super::grammar::effects::followup_shapes::parse_counter_linked_land_subtype_followup(&line.tokens)
+        .is_some();
+    let force_surface = statement_shapes::parse_statement_force_shape(&line.tokens);
+    let persistent_static_modifier = !typed_create_statement
+        && !typed_energy_payment_threshold
+        && !typed_counter_linked_land_subtype
+        && force_surface != Some(StatementForceShape::PlayerGetsCounters)
+        && !matches!(
+            line_family,
+            Some(structure::StatementLineFamily::Emblem | structure::StatementLineFamily::Vote)
+        )
+        && super::super::grammar::anthem_grants::parse_anthem_modifier_head(&line.tokens)
+            .is_some_and(|head| !head.has_target && !head.temporary);
     if persistent_static_modifier {
         return Ok(None);
     }
-    let force_surface = statement_shapes::parse_statement_force_shape(&line.tokens);
-    let force_statement = matches!(line_family, Some(structure::StatementLineFamily::Divvy))
+    let force_statement = typed_energy_payment_threshold
+        || typed_counter_linked_land_subtype
+        || matches!(
+            line_family,
+            Some(structure::StatementLineFamily::Divvy | structure::StatementLineFamily::Emblem)
+        )
         || matches!(
             line_family,
             Some(
@@ -106,6 +122,7 @@ pub(super) fn parse_statement_line_cst(
                 StatementForceShape::DivvySelection
                     | StatementForceShape::ExilePlayCost
                     | StatementForceShape::GroupTurnDuration
+                    | StatementForceShape::PlayerGetsCounters
             )
         )
         || (force_surface == Some(StatementForceShape::ConditionalInstead)
@@ -338,6 +355,7 @@ fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
             structure::StatementLineFamily::PactNextUpkeep
                 | structure::StatementLineFamily::NextTurnCantCast
                 | structure::StatementLineFamily::Divvy
+                | structure::StatementLineFamily::Emblem
                 | structure::StatementLineFamily::ArtRating
                 | structure::StatementLineFamily::ExilePlayCostsMore
                 | structure::StatementLineFamily::BidLife
@@ -365,27 +383,8 @@ pub(super) fn looks_like_statement_line(normalized: &str) -> bool {
         .is_some_and(|tokens| looks_like_statement_line_tokens(&tokens))
 }
 
-fn rewrite_statement_followup_intro_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    rewrite_followup_intro_to_if_lexed(tokens)
-}
-
-fn rewrite_copy_exception_type_removal_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    remove_copy_exception_type_removal_lexed(tokens)
-}
-
 fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
-    split_lexed_sentences(tokens)
-        .into_iter()
-        .filter(|sentence_tokens| !sentence_tokens.is_empty())
-        .map(strip_non_keyword_label_prefix_lexed)
-        .map(rewrite_statement_followup_intro_lexed)
-        .map(|tokens| rewrite_copy_exception_type_removal_lexed(&tokens))
-        .filter(|tokens| !tokens.is_empty())
-        .collect()
-}
-
-fn sentence_rewrite_contains_instead_split(tokens: &[OwnedLexToken]) -> bool {
-    lexed_tokens_contain_non_prefix_instead(tokens)
+    super::super::grammar::statement_grouping::parse_statement_sentences_tokens(tokens).sentences
 }
 
 fn first_trailing_static_sentence_idx(sentence_tokens: &[Vec<OwnedLexToken>]) -> Option<usize> {
@@ -426,12 +425,12 @@ fn normalize_statement_parse_groups_from_sentences_lexed(
             .into_iter()
             .next()
             .or_else(|| {
-                let fallback = strip_non_keyword_label_prefix_lexed(fallback_tokens);
-                (!fallback.is_empty()).then(|| {
-                    rewrite_copy_exception_type_removal_lexed(
-                        &rewrite_statement_followup_intro_lexed(fallback),
-                    )
-                })
+                super::super::grammar::statement_grouping::parse_statement_grouping_tokens(
+                    fallback_tokens,
+                )
+                .groups
+                .into_iter()
+                .next()
             })
             .unwrap_or_default();
         return (!only_sentence.is_empty())
@@ -440,13 +439,9 @@ fn normalize_statement_parse_groups_from_sentences_lexed(
             .collect();
     }
 
-    let split_idx = sentence_tokens
-        .iter()
-        .enumerate()
-        .skip(1)
-        .find_map(|(idx, sentence)| {
-            sentence_rewrite_contains_instead_split(sentence).then_some(idx)
-        });
+    let split_idx =
+        super::super::grammar::statement_grouping::parse_statement_group_boundary(&sentence_tokens)
+            .map(|boundary| boundary.sentence_index);
 
     let split_idx = split_idx.or_else(|| first_trailing_static_sentence_idx(&sentence_tokens));
 
@@ -471,6 +466,13 @@ fn normalize_statement_parse_groups_from_sentences_lexed(
 pub(super) fn normalize_statement_parse_groups_lexed(
     tokens: &[OwnedLexToken],
 ) -> Vec<Vec<OwnedLexToken>> {
+    // This typed bundle has a cross-sentence effect metric: the destroy
+    // threshold refers to the amount of energy paid by the preceding effect.
+    // Keep it as one semantic parse group so generic statement grouping cannot
+    // sever that typed relationship.
+    if super::super::grammar::effects::parse_energy_pay_any_destroy_tokens(tokens).is_some() {
+        return vec![tokens.to_vec()];
+    }
     let sentence_tokens = normalize_statement_parse_sentences_lexed(tokens);
     normalize_statement_parse_groups_from_sentences_lexed(sentence_tokens, tokens)
 }

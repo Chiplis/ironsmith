@@ -23,10 +23,13 @@ pub(crate) use voting::*;
 
 #[path = "generic_program_shapes/choice_complements.rs"]
 mod choice_complements;
+#[path = "generic_program_shapes/semantic_sequences.rs"]
+mod semantic_sequences;
 #[path = "generic_program_shapes/triggering_spell_damage.rs"]
 mod triggering_spell_damage;
 
 pub(crate) use choice_complements::*;
+pub(crate) use semantic_sequences::*;
 pub(crate) use triggering_spell_damage::*;
 
 #[derive(Debug, Clone)]

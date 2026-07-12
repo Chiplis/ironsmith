@@ -98,8 +98,8 @@ pub(crate) use references::{
     LeafPlayerReference, parse_player_reference, parse_player_reference_complete,
 };
 pub(crate) use source_references::{
-    LeafSourceReferenceAlias, parse_leaf_source_reference_alias_words,
-    parse_leaf_source_reference_aliases_for_name,
+    LeafSourceAnaphor, LeafSourceReferenceAlias, parse_leaf_source_anaphor_words,
+    parse_leaf_source_reference_alias_words, parse_leaf_source_reference_aliases_for_name,
     parse_leaf_source_reference_possessive_alias_words, parse_leaf_this_source_reference_surface,
     parse_leaf_this_source_reference_words, push_leaf_source_reference_alias,
     push_leaf_source_reference_alias_words, sort_leaf_source_reference_aliases,

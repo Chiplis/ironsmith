@@ -193,6 +193,16 @@ pub(crate) fn parse_resource_all_abilities_shape(tokens: &[OwnedLexToken]) -> bo
     exact_unit(tokens, all_abilities)
 }
 
+fn all_unspent_mana<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["all", "unspent", "mana"])
+        .void()
+        .parse_next(input)
+}
+
+pub(crate) fn parse_resource_all_unspent_mana_shape(tokens: &[OwnedLexToken]) -> bool {
+    exact_unit(tokens, all_unspent_mana)
+}
+
 fn note_life_total<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::phrase(&["your", "life", "total"])
         .void()

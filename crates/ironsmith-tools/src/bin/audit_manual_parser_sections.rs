@@ -45,6 +45,19 @@ const PHRASE_HELPER_PATTERNS: &[&str] = &[
     "activated_words_contain_phrase(",
     "activated_words_contain_word(",
     "activated_phrase_start(",
+    // Activation/cant-family aliases are the same word-slice recognizers
+    // under a namespace-specific spelling. Keep them audited until callers
+    // consume typed cant facts instead.
+    "activation_word_is_any(",
+    "activation_token_word_is(",
+    "activation_token_word_is_any(",
+    "activation_word_at_is(",
+    "activation_word_at_is_any(",
+    "activation_words_eq(",
+    "activation_words_eq_any(",
+    "activation_words_contains(",
+    "cant_attack_unless_tail(",
+    "cant_attack_or_block_unless_tail(",
     "keyword_words_match_phrase(",
     "strip_prefix_words_ci(",
     "strip_suffix_words_ci(",
@@ -280,6 +293,7 @@ const LEXED_CONTEXT_MARKERS: &[&str] = &[
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum AuditKind {
+    ParserOwnership,
     PhraseHelpers,
     ScanHelpers,
     WordSliceShapes,
@@ -290,6 +304,7 @@ enum AuditKind {
 impl AuditKind {
     fn as_str(self) -> &'static str {
         match self {
+            Self::ParserOwnership => "parser_ownership",
             Self::PhraseHelpers => "phrase_helpers",
             Self::ScanHelpers => "scan_helpers",
             Self::WordSliceShapes => "word_slice_shapes",
@@ -361,8 +376,17 @@ fn main() {
             .to_string_lossy()
             .replace('\\', "/");
 
+        if let Some(line) = parser_ownership_module_line(&rel, &source) {
+            findings.push(Finding {
+                file: rel.clone(),
+                name: "<module-parser-ownership>".to_string(),
+                line,
+                kinds: BTreeSet::from([AuditKind::ParserOwnership]),
+            });
+        }
+
         for function in extract_functions(&rel, &source) {
-            let kinds = classify_function(&function.body);
+            let kinds = classify_function(&function.file, &function.body);
             if kinds.is_empty() {
                 continue;
             }
@@ -467,6 +491,7 @@ fn print_report(findings: &[Finding]) {
 
     println!("counts_by_kind:");
     for kind in [
+        AuditKind::ParserOwnership,
         AuditKind::PhraseHelpers,
         AuditKind::ScanHelpers,
         AuditKind::WordSliceShapes,
@@ -864,8 +889,21 @@ fn count_char(line: &str, expected: char) -> usize {
     line.chars().filter(|ch| *ch == expected).count()
 }
 
-fn classify_function(body: &str) -> BTreeSet<AuditKind> {
+fn contains_rust_identifier(source: &str, expected: &str) -> bool {
+    source.match_indices(expected).any(|(start, matched)| {
+        let before = source[..start].chars().next_back();
+        let after = source[start + matched.len()..].chars().next();
+        let is_ident = |ch: char| ch.is_ascii_alphanumeric() || ch == '_';
+        before.is_none_or(|ch| !is_ident(ch)) && after.is_none_or(|ch| !is_ident(ch))
+    })
+}
+
+fn classify_function(file: &str, body: &str) -> BTreeSet<AuditKind> {
     let mut kinds = BTreeSet::new();
+
+    if parser_ownership_function_violation(file, body) {
+        kinds.insert(AuditKind::ParserOwnership);
+    }
 
     if contains_any(body, PHRASE_HELPER_PATTERNS)
         || contains_any(body, UNIQUE_PHRASE_PROBE_PATTERNS)
@@ -895,6 +933,68 @@ fn classify_function(body: &str) -> BTreeSet<AuditKind> {
     }
 
     kinds
+}
+
+fn parser_ownership_module_line(file: &str, source: &str) -> Option<usize> {
+    let sanitized = sanitize_source(source);
+    let outside_grammar_surface = (!file.contains("/front_end/grammar/"))
+        .then(|| {
+            [
+                "RestrictionSurface",
+                "TriggerSurface",
+                "ClauseShape",
+                "PermissionSequence",
+                // Parser-facing compatibility types are ownership leaks even
+                // when their methods delegate to grammar helpers. Keep the
+                // exact identifiers audited so migrations cannot stop at a
+                // renamed word-slice DSL or a front-end repair side channel.
+                "CantPattern",
+                "ValueHelperCompatWords",
+                "UtilWordView",
+                "PostpassRepairFacts",
+            ]
+            .into_iter()
+            .find(|marker| contains_rust_identifier(&sanitized, marker))
+        })
+        .flatten();
+    let violation = if file.ends_with("/front_end/leaf.rs") {
+        Some("mod")
+    } else if let Some(surface) = outside_grammar_surface {
+        Some(surface)
+    } else if file.contains("/front_end/semantic_line_parsing/")
+        && sanitized.contains("use super::lower::*;")
+    {
+        Some("use super::lower::*;")
+    } else {
+        None
+    }?;
+
+    sanitized
+        .lines()
+        .position(|line| contains_rust_identifier(line, violation))
+        .map_or(Some(1), |line| Some(line + 1))
+}
+
+fn parser_ownership_function_violation(file: &str, body: &str) -> bool {
+    let lowering_or_postpass = file.contains("/lowering/") || file.contains("/postpasses/");
+    lowering_or_postpass
+        && [
+            "parser_token_word_refs(",
+            "token_word_refs(",
+            "TokenWordView::",
+            "LexStream::",
+            "lex_line(",
+            "split_lexed_sentences(",
+            "render_token_slice(",
+            "parse_activated_line(",
+            "parse_effect_sentences_lexed(",
+            "parse_trigger_clause_lexed(",
+            "parse_triggered_line_lexed(",
+            "word_slice_",
+            "token_slice_",
+        ]
+        .iter()
+        .any(|pattern| body.contains(pattern))
 }
 
 fn contains_any(text: &str, patterns: &[&str]) -> bool {
@@ -1038,7 +1138,8 @@ fn first_is_word() -> bool {
             .find(|function| function.name == "first_is_word")
             .expect("function after lexer-style literals must be extracted");
         assert!(
-            classify_function(&first_is_word.body).contains(&AuditKind::PhraseHelpers),
+            classify_function(&first_is_word.file, &first_is_word.body)
+                .contains(&AuditKind::PhraseHelpers),
             "LexPattern use after lexer-style literals must remain auditable"
         );
     }
@@ -1070,7 +1171,7 @@ fn probe(clause: LexedClause<'_>, clause_words: Vec<&str>) {
 
         let functions = extract_functions("probe.rs", source);
         let probe = functions.first().expect("probe function");
-        let kinds = classify_function(&probe.body);
+        let kinds = classify_function(&probe.file, &probe.body);
         assert!(kinds.contains(&AuditKind::PhraseHelpers));
         assert!(kinds.contains(&AuditKind::ScanHelpers));
         assert!(kinds.contains(&AuditKind::WordSliceShapes));
@@ -1125,6 +1226,82 @@ fn probe(clause: LexedClause<'_>, clause_words: Vec<&str>) {
         ));
         assert!(!contains_compat_phrase_probe(
             "CreationWords::new(words).has_phrase(CreatePhrase::HasteGrant)"
+        ));
+        for probe in [
+            "activation_words_eq(words, PHRASE)",
+            "activation_word_at_is_any(words, 2, NOUNS)",
+            "cant_attack_unless_tail(words)",
+        ] {
+            assert!(
+                contains_any(probe, PHRASE_HELPER_PATTERNS),
+                "activation compatibility probe must remain audited: {probe}"
+            );
+        }
+    }
+
+    #[test]
+    fn parser_ownership_checks_cover_staged_pipeline_boundaries() {
+        assert_eq!(
+            parser_ownership_module_line(
+                "crates/ironsmith-compiler/src/runtime_backend/families/example.rs",
+                "type TriggerSurface<'a> = &'a [&'a str];",
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            parser_ownership_module_line(
+                "crates/ironsmith-compiler/src/runtime_backend/sentences/example.rs",
+                "const PREFIX: ClauseShape<'static> = clause_shape!(prefix & [\"if\"]);",
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            parser_ownership_module_line(
+                "crates/ironsmith-compiler/src/runtime_backend/families/example.rs",
+                "const PATTERN: PermissionSequence<'static> = PermissionSequence::new(&[]);",
+            ),
+            Some(1)
+        );
+        for compatibility_type in [
+            "CantPattern",
+            "ValueHelperCompatWords",
+            "UtilWordView",
+            "PostpassRepairFacts",
+        ] {
+            assert_eq!(
+                parser_ownership_module_line(
+                    "crates/ironsmith-compiler/src/runtime_backend/families/example.rs",
+                    &format!("type Alias = {compatibility_type};"),
+                ),
+                Some(1),
+                "compatibility parser type `{compatibility_type}` must remain auditable"
+            );
+        }
+        for typed_shape in ["CopyClauseShape", "StatementClauseShape"] {
+            assert_eq!(
+                parser_ownership_module_line(
+                    "crates/ironsmith-compiler/src/runtime_backend/sentences/example.rs",
+                    &format!("pub struct {typed_shape};"),
+                ),
+                None,
+                "typed shape `{typed_shape}` must not match standalone ClauseShape"
+            );
+        }
+        assert_eq!(
+            parser_ownership_module_line(
+                "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/example.rs",
+                "pub struct TriggerSurface;",
+            ),
+            None,
+            "typed grammar owns its own surface vocabulary"
+        );
+        assert!(parser_ownership_function_violation(
+            "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/example.rs",
+            "fn lower(tokens: &[OwnedLexToken]) { parse_activated_line(tokens); }",
+        ));
+        assert!(!parser_ownership_function_violation(
+            "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/example.rs",
+            "fn parse(tokens: &[OwnedLexToken]) { token_word_refs(tokens); }",
         ));
     }
 

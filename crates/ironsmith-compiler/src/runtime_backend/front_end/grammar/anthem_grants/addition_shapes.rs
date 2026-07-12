@@ -58,7 +58,10 @@ pub(crate) fn parse_type_color_addition_shape(
     let (_, after_be) = primitives::parse_prefix(tokens, parse_be_word)?;
     let (descriptor_tokens, scope_tokens) =
         primitives::split_lexed_once_on_separator(after_be, || {
-            primitives::phrase(&["in", "addition", "to", "its", "other"])
+            alt((
+                primitives::phrase(&["in", "addition", "to", "its", "other"]),
+                primitives::phrase(&["in", "addition", "to", "their", "other"]),
+            ))
         })?;
     let descriptor_tokens = trim_lexed_commas(descriptor_tokens);
     if scope_tokens.is_empty() {
@@ -130,9 +133,14 @@ fn find_word<'a>(
 }
 
 fn parse_be_word(input: &mut LexStream<'_>) -> WResult<()> {
-    alt((primitives::kw("is"), primitives::kw("are")))
-        .void()
-        .parse_next(input)
+    alt((
+        primitives::kw("is"),
+        primitives::kw("are"),
+        primitives::kw("it's"),
+        primitives::kw("its"),
+    ))
+    .void()
+    .parse_next(input)
 }
 
 fn parse_get_word(input: &mut LexStream<'_>) -> WResult<()> {
@@ -179,5 +187,9 @@ mod tests {
         let tokens = lex("is black Zombie in addition to its other colors and creature types");
         let shape = parse_type_color_addition_shape(&tokens).expect("addition");
         assert_eq!(shape.scopes.len(), 2);
+
+        let tokens = lex("are Equipment in addition to their other types");
+        let shape = parse_type_color_addition_shape(&tokens).expect("plural addition");
+        assert_eq!(shape.scopes.len(), 1);
     }
 }

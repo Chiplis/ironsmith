@@ -374,6 +374,12 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     if direct_effect_targets_reference_tag(effect, tag) {
         return true;
     }
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && subject_verb_action_value(&subject_verb.action)
+            .is_some_and(|value| value_references_tag(value, tag))
+    {
+        return true;
+    }
     if let Some(filter) = effect_tagged_filter(effect) {
         return filter_references_tag(filter, tag);
     }
@@ -731,6 +737,10 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
             position: amount, ..
         }
         | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => Some(amount),
+        SubjectVerbActionAst::PayMana {
+            x_value: Some(value),
+            ..
+        } => Some(value),
         SubjectVerbActionAst::DealDamageEqualToPower { .. }
         | SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
         | SubjectVerbActionAst::RevealHand
@@ -767,6 +777,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ChooseCardType { .. }
         | SubjectVerbActionAst::ChooseNamedOption { .. }
         | SubjectVerbActionAst::ChooseCreatureType { .. }
+        | SubjectVerbActionAst::ChooseLandType { .. }
         | SubjectVerbActionAst::ChooseCardName { .. }
         | SubjectVerbActionAst::ChoosePlayer { .. }
         | SubjectVerbActionAst::NoteLifeTotal
@@ -809,7 +820,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::WinGame
         | SubjectVerbActionAst::PayAnyEnergy { .. }
         | SubjectVerbActionAst::PayAnyLife { .. }
-        | SubjectVerbActionAst::PayMana { .. }
+        | SubjectVerbActionAst::PayMana { x_value: None, .. }
         | SubjectVerbActionAst::DiscardHand
         | SubjectVerbActionAst::Detain { .. }
         | SubjectVerbActionAst::Goad { .. }

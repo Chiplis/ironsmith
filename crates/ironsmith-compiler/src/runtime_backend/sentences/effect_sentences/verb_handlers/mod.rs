@@ -30,11 +30,11 @@ use super::super::keyword_static::{
     parse_value_binding_clause,
 };
 use super::super::lexer::{
-    LexedClause, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
-    token_slice_first_is_any, tokens_start_with, word_slice_eq, word_slice_eq_any,
-    word_slice_find_any_phrase_start, word_slice_find_phrase_start, words_end_with_any, words_have,
-    words_have_any, words_have_any_phrase, words_have_phrase, words_start_with,
-    words_start_with_any,
+    LexedClause, complete_word_sequence_choice, complete_word_sequence_surface,
+    locate_word_sequence, token_prefix_present, token_slice_at_is, token_slice_at_is_any,
+    token_slice_first_is, token_slice_first_is_any, word_choice_present,
+    word_prefix_choice_present, word_prefix_present, word_present, word_sequence_choice_present,
+    word_sequence_present, word_slice_find_any_phrase_start, word_suffix_choice_present,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_window_by, items_have, locate_index, locate_last_index};
@@ -48,11 +48,6 @@ use super::super::util::{
     strip_leading_article_word_refs, this_source_surface_for_words, token_boundary_for_word,
     trim_commas, value_contains_unbound_x, words, wrap_target_count,
 };
-use super::super::value_helpers::{
-    parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_counters_on_reference_value,
-    parse_equal_to_number_of_filter_plus_or_minus_fixed_value,
-    parse_equal_to_number_of_filter_value, parse_equal_to_number_of_opponents_you_have_value,
-};
 use super::clause_pattern_helpers::extract_subject_player;
 use super::creation_handlers::{parse_create, parse_incubate, parse_investigate};
 use super::for_each_helpers::parse_who_did_this_way_predicate;
@@ -64,6 +59,11 @@ use super::zone_handlers::{
     parse_graveyard_owner_prefix_lexed, parse_mill, parse_pay, parse_regenerate, parse_remove,
     parse_return, parse_roll, parse_sacrifice, parse_scry, parse_skip, parse_surveil, parse_switch,
     parse_tap, parse_untap, wrap_return_with_delayed_timing,
+};
+use crate::runtime_backend::grammar::shared_util::value_semantics::{
+    parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_counters_on_reference_value,
+    parse_equal_to_number_of_filter_plus_or_minus_fixed_value,
+    parse_equal_to_number_of_filter_value, parse_equal_to_number_of_opponents_you_have_value,
 };
 include!("resource_verbs.rs");
 include!("combat_verbs.rs");

@@ -7,64 +7,7 @@ pub(crate) use super::filters::{
     PermissionAtom, PermissionCaptureKind, PermissionCaptureRole, PermissionSequence,
 };
 use super::primitives::{self, WordSliceInput};
-use crate::runtime_backend::lexer::{LexedClause, OwnedLexToken, TokenWordView};
-use crate::zone::Zone;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PermissionLifetimePrefixKind {
-    ForAsLongAsExiled,
-    ForAsLongAsYouControlSource,
-}
-
-pub(crate) fn parse_permission_zone_words(words: &[&str]) -> Option<Zone> {
-    if exact_words(words, &["the", "top", "of", "your", "library"]) {
-        Some(Zone::Library)
-    } else if exact_words(words, &["your", "graveyard"]) {
-        Some(Zone::Graveyard)
-    } else if exact_words(words, &["your", "hand"]) {
-        Some(Zone::Hand)
-    } else if exact_words(words, &["exile"]) {
-        Some(Zone::Exile)
-    } else {
-        None
-    }
-}
-
-pub(crate) fn parse_permission_lifetime_prefix_words(
-    words: &[&str],
-) -> Option<PermissionLifetimePrefixKind> {
-    if exact_words(
-        words,
-        &["for", "as", "long", "as", "it", "remains", "exiled"],
-    ) || exact_words(
-        words,
-        &[
-            "for", "as", "long", "as", "that", "card", "remains", "exiled",
-        ],
-    ) || exact_words(
-        words,
-        &[
-            "for", "as", "long", "as", "those", "cards", "remain", "exiled",
-        ],
-    ) {
-        Some(PermissionLifetimePrefixKind::ForAsLongAsExiled)
-    } else if exact_words(
-        words,
-        &[
-            "for", "as", "long", "as", "you", "control", "this", "creature",
-        ],
-    ) {
-        Some(PermissionLifetimePrefixKind::ForAsLongAsYouControlSource)
-    } else {
-        None
-    }
-}
-
-pub(crate) fn exact_any(clause: LexedClause<'_>, alternatives: &[&[&str]]) -> bool {
-    alternatives
-        .iter()
-        .any(|expected| exact_tokens(clause.tokens(), expected))
-}
+use crate::runtime_backend::lexer::{OwnedLexToken, TokenWordView};
 
 pub(crate) fn exact_tokens(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
@@ -142,13 +85,6 @@ pub(crate) fn find_words(words: &[&str], expected: &[&str]) -> Option<usize> {
             .parse_next(&mut input)
             .ok()?;
     Some(prefix.len())
-}
-
-pub(crate) fn token_index_after_words(
-    tokens: &[OwnedLexToken],
-    word_count: usize,
-) -> Option<usize> {
-    TokenWordView::new(tokens).token_index_after_words(word_count)
 }
 
 fn dynamic_sequence<'a, 'p>(

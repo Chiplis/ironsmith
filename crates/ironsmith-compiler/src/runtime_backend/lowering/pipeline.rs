@@ -27,7 +27,7 @@ pub(crate) fn lower_semantic_document(
 pub(crate) fn parse_semantic_document(
     doc: RewriteSemanticDocument,
 ) -> Result<ParsedCardAst, CardTextError> {
-    lower::rewrite_document_to_parsed_card_ast(doc)
+    super::semantic_document::parse_semantic_document(doc)
 }
 
 pub(crate) fn prepare_parsed_document(
@@ -156,6 +156,107 @@ mod tests {
         let (semantic, _) = parse_text_to_semantic_document(builder, text.to_string(), false)?;
         let parsed = parse_semantic_document(semantic)?;
         prepare_parsed_document(parsed)?;
+        Ok(())
+    }
+
+    #[test]
+    fn land_type_copy_and_haste_duration_survives_pipeline() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Land Type Copy Variant")
+            .card_types(vec![CardType::Sorcery]);
+        let text = "Choose a nonbasic land type. Each land you control of that type becomes a copy of target creature you control until end of turn and gains haste until end of turn.";
+        let (semantic, _) = parse_text_to_semantic_document(builder, text.to_string(), false)?;
+        let parsed = parse_semantic_document(semantic)?;
+        let prepared = prepare_parsed_document(parsed)?;
+        let lowered = lower_prepared_document_with_facts(prepared)?;
+        let spell_effect = lowered
+            .definition
+            .spell_effect
+            .expect("copy-and-haste spell effect");
+        let effects = spell_effect.to_vec();
+        let haste = effects
+            .iter()
+            .find_map(|effect| {
+                let apply = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+                let is_haste = apply.modification.as_ref().is_some_and(|modification| {
+                    matches!(
+                        modification,
+                        crate::continuous::Modification::AddAbility(ability)
+                            if ability.id() == crate::static_abilities::StaticAbilityId::Haste
+                    )
+                });
+                is_haste.then_some(apply)
+            })
+            .expect("typed haste grant");
+        assert_eq!(haste.until, crate::effect::Until::EndOfTurn);
+        Ok(())
+    }
+
+    #[test]
+    fn delayed_schedule_is_typed_before_lowering_finishes() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Typed Delayed Schedule")
+            .card_types(vec![CardType::Sorcery]);
+        let (definition, _) = parse_text_with_annotations_lowered(
+            builder,
+            "At the beginning of your next upkeep, draw a card.".to_string(),
+            false,
+        )?;
+
+        assert!(definition.abilities.is_empty());
+        let debug = format!("{definition:#?}");
+        assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
+        assert!(debug.contains("start_next_turn: true"), "{debug}");
+        Ok(())
+    }
+
+    #[test]
+    fn kicked_counter_replacement_is_typed_before_lowering_finishes() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Typed Kicked Counter")
+            .card_types(vec![CardType::Instant]);
+        let (definition, _) = parse_text_with_annotations_lowered(
+            builder,
+            "Kicker {2}\nCounter target spell if its mana value is 3 or less. If this spell was kicked, counter that spell if its mana value is 7 or less instead.".to_string(),
+            false,
+        )?;
+
+        let spell_effect = definition.spell_effect.expect("expected spell effects");
+        let [segment] = spell_effect.segments.as_slice() else {
+            panic!("expected one resolution segment, got {spell_effect:#?}");
+        };
+        let base_conditional = segment
+            .default_effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
+            .expect("expected the base mana-value gate");
+        let crate::effect::Condition::TaggedObjectMatches(base_tag, base_filter) =
+            &base_conditional.condition
+        else {
+            panic!("expected a tagged base spell filter, got {base_conditional:#?}");
+        };
+        assert!(matches!(
+            base_filter.mana_value.as_ref(),
+            Some(crate::target::Comparison::LessThanOrEqual(3))
+        ));
+
+        let kicked_branch = segment
+            .self_replacements
+            .iter()
+            .find(|branch| branch.condition == crate::effect::Condition::ThisSpellWasKicked)
+            .expect("expected kicked replacement branch");
+        let conditional = kicked_branch
+            .replacement_effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
+            .expect("expected a conditional kicked counter effect");
+        let crate::effect::Condition::TaggedObjectMatches(kicked_tag, kicked_filter) =
+            &conditional.condition
+        else {
+            panic!("expected a tagged spell filter, got {conditional:#?}");
+        };
+        assert!(matches!(
+            kicked_filter.mana_value.as_ref(),
+            Some(crate::target::Comparison::LessThanOrEqual(7))
+        ));
+        assert_eq!(base_tag, kicked_tag, "both gates must share one target tag");
         Ok(())
     }
 

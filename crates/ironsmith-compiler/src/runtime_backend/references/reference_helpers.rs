@@ -609,7 +609,7 @@ pub(crate) fn resolve_choose_spec_it_tag(
                 .known_last_object_tag()
                 .is_some_and(|tag| tag.as_str() == IT_TAG)
             {
-                return Ok(if refs.iterated_player {
+                return Ok(if refs.iterated_player || refs.iterated_object {
                     ChooseSpec::Iterated
                 } else {
                     ChooseSpec::Tagged(TagKey::from(IT_TAG))

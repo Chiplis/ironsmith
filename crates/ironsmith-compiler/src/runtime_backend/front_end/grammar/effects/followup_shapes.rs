@@ -12,17 +12,22 @@ pub(crate) use regeneration::*;
 #[path = "followup_shapes/player_and_library.rs"]
 mod player_and_library;
 pub(crate) use player_and_library::*;
+#[path = "followup_shapes/counter_linked_land.rs"]
+mod counter_linked_land;
+pub(crate) use counter_linked_land::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CreateMorePriorTokensShape<'a> {
     pub(crate) predicate_tokens: &'a [OwnedLexToken],
     pub(crate) count: u32,
+    pub(crate) instead: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConditionalFollowupKind {
     WhenMilledThisWay,
     IfNoOneDoes,
+    IfYouWin,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,16 +73,16 @@ fn create_or_put<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-fn create_more_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+fn create_more_tail<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
     alt((
-        primitives::sentence_end(),
-        (primitives::kw("instead"), primitives::sentence_end()).void(),
+        (primitives::kw("instead"), primitives::sentence_end()).value(true),
         (
             primitives::phrase(&["onto", "the", "battlefield"]),
             opt(primitives::kw("instead")),
             primitives::sentence_end(),
         )
-            .void(),
+            .map(|(_, instead, _)| instead.is_some()),
+        primitives::sentence_end().value(false),
     ))
     .parse_next(input)
 }
@@ -92,10 +97,11 @@ fn parse_create_more_prior_tokens_lexed<'a>(
     create_or_put.parse_next(input)?;
     let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
     primitives::phrase(&["of", "those", "tokens"]).parse_next(input)?;
-    create_more_tail.parse_next(input)?;
+    let instead = create_more_tail.parse_next(input)?;
     Ok(CreateMorePriorTokensShape {
         predicate_tokens,
         count,
+        instead,
     })
 }
 
@@ -118,6 +124,16 @@ fn conditional_followup_prefix<'a>(input: &mut LexStream<'a>) -> WResult<Conditi
         .value(ConditionalFollowupKind::WhenMilledThisWay),
         primitives::phrase(&["if", "no", "one", "does"])
             .value(ConditionalFollowupKind::IfNoOneDoes),
+        (
+            primitives::phrase(&["if", "you", "win"]),
+            opt(alt((
+                primitives::phrase(&["the", "clash"]),
+                primitives::phrase(&["that", "clash"]),
+                primitives::phrase(&["the", "flip"]),
+            ))),
+            peek(primitives::comma()),
+        )
+            .value(ConditionalFollowupKind::IfYouWin),
     ))
     .parse_next(input)
 }

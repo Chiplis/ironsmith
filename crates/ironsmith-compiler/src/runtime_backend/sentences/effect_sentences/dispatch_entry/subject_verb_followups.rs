@@ -774,8 +774,33 @@ fn pre_rule_token_followups(
         .map(SentenceInput::lowered)
         .unwrap_or(sentence_tokens);
     let reminder_facts = followup_shapes::token_reminder_followup_facts(reminder_tokens);
-    if let Some(effect) = parse_create_more_of_prior_tokens(sentence_tokens, state.effects) {
-        state.effects.push(effect);
+    if let Some(followup) = parse_create_more_of_prior_tokens(sentence_tokens, state.effects) {
+        if followup.instead {
+            let Some(previous) = state.effects.pop() else {
+                return Err(CardTextError::InvariantViolation(
+                    "typed prior-token replacement lost its default effect".to_string(),
+                ));
+            };
+            if !effect_creates_any_token(&previous) {
+                state.effects.push(previous);
+                return Err(CardTextError::ParseError(
+                    "prior-token replacement does not immediately follow token creation"
+                        .to_string(),
+                ));
+            }
+            state.effects.push(EffectAst::SelfReplacement {
+                predicate: followup.predicate,
+                if_true: vec![followup.create],
+                if_false: vec![previous],
+                attach_to_previous_ability: false,
+            });
+        } else {
+            state.effects.push(EffectAst::Conditional {
+                predicate: followup.predicate,
+                if_true: vec![followup.create],
+                if_false: Vec::new(),
+            });
+        }
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
             route: Some("subject-verb verb=Create subject=implicit recognizer=prior-token-instead"),
@@ -903,39 +928,31 @@ fn pre_rule_draw_count_demonstrative_gain_followup(
     }))
 }
 
+struct PriorTokenCreateFollowup {
+    predicate: PredicateAst,
+    create: EffectAst,
+    instead: bool,
+}
+
 fn parse_create_more_of_prior_tokens(
     sentence_tokens: &[OwnedLexToken],
     prior_effects: &[EffectAst],
-) -> Option<EffectAst> {
+) -> Option<PriorTokenCreateFollowup> {
     let shape = followup_shapes::parse_create_more_prior_tokens(sentence_tokens)?;
     let predicate = parse_trailing_if_predicate_lexed(shape.predicate_tokens)?;
-    let (name, definition, player) = last_created_token_info(prior_effects)?;
+    let mut create = prior_effects.last()?.clone();
+    let EffectAst::SubjectVerb(subject_verb) = &mut create else {
+        return None;
+    };
+    let SubjectVerbActionAst::CreateTokenWithMods { count, .. } = &mut subject_verb.action else {
+        return None;
+    };
+    *count = Value::Fixed(shape.count as i32);
 
-    let create = EffectAst::subject_verb(
-        SubjectVerbRoleAst::Actor,
-        player,
-        SubjectVerbActionAst::CreateTokenWithMods {
-            name,
-            definition,
-            count: Value::Fixed(shape.count as i32),
-            dynamic_power_toughness: None,
-            player,
-            attached_to: None,
-            tapped: false,
-            attacking: false,
-            exile_at_end_of_combat: false,
-            sacrifice_at_end_of_combat: false,
-            sacrifice_at_next_end_step: false,
-            exile_at_next_end_step: false,
-            next_end_step_player: PlayerFilter::Any,
-            granted_abilities: Vec::new(),
-        },
-    );
-
-    Some(EffectAst::Conditional {
+    Some(PriorTokenCreateFollowup {
         predicate,
-        if_true: vec![create],
-        if_false: Vec::new(),
+        create,
+        instead: shape.instead,
     })
 }
 
@@ -1037,6 +1054,23 @@ fn pre_rule_if_no_one_does_followup(
     }
     let mut plan = SentenceParsePlan::new(trim_commas(shape.continuation_tokens).to_vec());
     plan.wrap_if_result = Some(IfResultPredicate::DidNot);
+    Ok(Some(PreParseFollowupResult::Plan(plan)))
+}
+
+fn pre_rule_if_you_win_followup(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let Some(shape) = followup_shapes::parse_conditional_followup(sentence_tokens) else {
+        return Ok(None);
+    };
+    if shape.kind != followup_shapes::ConditionalFollowupKind::IfYouWin {
+        return Ok(None);
+    }
+    let mut plan = SentenceParsePlan::new(trim_commas(shape.continuation_tokens).to_vec());
+    plan.wrap_if_result = Some(IfResultPredicate::Did);
     Ok(Some(PreParseFollowupResult::Plan(plan)))
 }
 
@@ -1453,6 +1487,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         priority: 55,
         heads: &["if"],
         run: pre_rule_if_no_one_does_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "if-you-win",
+        priority: 55,
+        heads: &["if"],
+        run: pre_rule_if_you_win_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "future-zone-replacement",

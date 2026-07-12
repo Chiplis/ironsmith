@@ -584,15 +584,31 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
     let Some(spell) = game.object(spell_id) else {
         return Vec::new();
     };
+    let view = DerivedGameView::new(game);
+    let modifier_sources = view.battlefield_spell_cost_modifier_sources();
+    if modifier_sources.is_empty() {
+        return Vec::new();
+    }
+
+    // A printed modifier source can be discovered without layered reads, but
+    // inspecting its active abilities and the live stack spell can still need
+    // them. Batch both classes before either lookup so a dirty cast state never
+    // falls back to one full-board baseline per source.
+    let mut prewarm_ids = modifier_sources.clone();
+    if !prewarm_ids.contains(&spell_id) {
+        prewarm_ids.push(spell_id);
+    }
+    view.prewarm_characteristics_forced(&prewarm_ids);
+
     let mut spell_for_filter =
         spell_view_for_cost_filter_match(game, caster, spell, casting_method).unwrap_or_else(
             || {
                 let mut spell_for_filter = spell.clone();
-                if let Some(chars) = game.current_characteristics(spell_id) {
-                    spell_for_filter.name = chars.name.into();
-                    spell_for_filter.card_types = chars.card_types.into();
-                    spell_for_filter.subtypes = chars.subtypes.into();
-                    spell_for_filter.supertypes = chars.supertypes.into();
+                if let Some(chars) = view.current_characteristics_arc(spell_id) {
+                    spell_for_filter.name = chars.name.clone().into();
+                    spell_for_filter.card_types = chars.card_types.to_vec().into();
+                    spell_for_filter.subtypes = chars.subtypes.to_vec().into();
+                    spell_for_filter.supertypes = chars.supertypes.to_vec().into();
                     spell_for_filter.color_override = Some(chars.colors);
                 }
                 spell_for_filter
@@ -601,19 +617,20 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
     spell_for_filter.zone = Zone::Stack;
 
     let mut costs = Vec::new();
-    for &perm_id in &game.battlefield {
+    for perm_id in modifier_sources {
         let Some(perm) = game.object(perm_id) else {
             continue;
         };
-        let controller = game.controller_of(perm);
+        let controller = view
+            .current_controller(perm_id)
+            .unwrap_or_else(|| game.controller_of(perm));
         let filter_ctx = game
             .filter_context_for(controller, Some(perm_id))
             .with_caster(Some(caster));
-        let abilities = game
-            .current_characteristics(perm_id)
-            .map(|chars| chars.static_abilities)
-            .unwrap_or_default();
-        for static_ability in abilities {
+        let Some(abilities) = view.static_abilities_rc(perm_id) else {
+            continue;
+        };
+        for static_ability in abilities.iter() {
             if !static_ability.is_active(game, perm_id) {
                 continue;
             }
@@ -1720,8 +1737,8 @@ pub(crate) fn can_cast_spell_with_context(
                 view,
             )
         } else {
-            apply_minimum_spell_total_mana(
-                game,
+            apply_minimum_spell_total_mana_with_view(
+                view,
                 &apply_payment_reason_mana_adjustments(
                     game,
                     player,
@@ -1990,8 +2007,8 @@ pub(crate) fn can_cast_with_cost_with_context(
                 view,
             )
         } else {
-            apply_minimum_spell_total_mana(
-                game,
+            apply_minimum_spell_total_mana_with_view(
+                view,
                 &apply_payment_reason_mana_adjustments(
                     game,
                     player,
@@ -2631,11 +2648,11 @@ pub(crate) fn apply_payment_reason_mana_adjustments(
     game.adjust_mana_cost_for_payment_reason(payer, source, cost, reason)
 }
 
-pub(crate) fn apply_minimum_spell_total_mana(
-    game: &GameState,
+fn apply_minimum_spell_total_mana_with_view(
+    view: &DerivedGameView<'_>,
     cost: &crate::mana::ManaCost,
 ) -> crate::mana::ManaCost {
-    if let Some(minimum) = game.minimum_total_spell_mana_payment()
+    if let Some(minimum) = view.minimum_total_spell_mana_payment()
         && cost.mana_value() < minimum
     {
         return cost.add_generic(minimum - cost.mana_value());
@@ -2933,7 +2950,7 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
         crate::costs::PaymentReason::CastSpell,
     );
 
-    apply_minimum_spell_total_mana(game, &current_cost)
+    apply_minimum_spell_total_mana_with_view(view, &current_cost)
 }
 
 pub(crate) fn apply_spell_cost_modifiers(
@@ -5128,6 +5145,146 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
+
+    #[test]
+    fn black_life_permission_scan_is_needed_only_for_costs_with_a_black_symbol() {
+        let plain_black = ManaCost::from_pips(vec![vec![ManaSymbol::Black]]);
+        let hybrid_black =
+            ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2), ManaSymbol::Black]]);
+        let phyrexian_black =
+            ManaCost::from_pips(vec![vec![ManaSymbol::Black, ManaSymbol::Life(2)]]);
+        let nonblack_x = ManaCost::from_pips(vec![vec![ManaSymbol::X], vec![ManaSymbol::Green]]);
+
+        assert!(mana_cost_has_black_symbol(&plain_black));
+        assert!(mana_cost_has_black_symbol(&hybrid_black));
+        assert!(mana_cost_has_black_symbol(&phyrexian_black));
+        assert!(!mana_cost_has_black_symbol(&nonblack_x));
+    }
+
+    #[test]
+    fn absent_optional_life_reduction_skips_dirty_layered_battlefield_scan() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let creature = CardBuilder::new(CardId::new(), "Layered Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creatures = (0..96)
+            .map(|_| game.create_object_from_card(&creature, alice, Zone::Battlefield))
+            .collect::<Vec<_>>();
+        for card_type in [CardType::Artifact, CardType::Enchantment] {
+            game.effect_store.continuous_effects.add_effect(
+                crate::continuous::ContinuousEffect::new(
+                    creatures[0],
+                    alice,
+                    crate::continuous::EffectTarget::AllCreatures,
+                    crate::continuous::Modification::AddCardTypes(vec![card_type]),
+                ),
+            );
+        }
+
+        let spell = CardBuilder::new(CardId::new(), "Stack Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+        game.refresh_continuous_state();
+        game.object_mut(spell_id)
+            .expect("spell should exist")
+            .optional_costs_paid = Default::default();
+
+        let before = game.work_counters();
+        let costs = optional_life_cost_reduction_costs_for_cast(
+            &game,
+            alice,
+            spell_id,
+            &CastingMethod::Normal,
+        );
+        let after = game.work_counters();
+
+        assert!(costs.is_empty());
+        assert_eq!(
+            after.characteristics_full_recomputes, before.characteristics_full_recomputes,
+            "absence should be established from the sparse modifier-source scan"
+        );
+        assert_eq!(
+            after.dependency_sorts, before.dependency_sorts,
+            "an absent optional-life reducer must not sort layers once per permanent"
+        );
+    }
+
+    #[test]
+    fn cost_presence_payment_calculation_reuses_view_for_minimum_spell_mana_scan() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let creature = CardBuilder::new(CardId::new(), "Cost Scan Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let mut sources = Vec::new();
+        for _ in 0..32 {
+            sources.push(game.create_object_from_card(&creature, alice, Zone::Battlefield));
+        }
+        for &source in sources.iter().take(6) {
+            game.effect_store.continuous_effects.add_effect(
+                crate::continuous::ContinuousEffect::new(
+                    source,
+                    alice,
+                    crate::continuous::EffectTarget::AllPermanents,
+                    crate::continuous::Modification::AddCardTypes(vec![CardType::Artifact]),
+                ),
+            );
+        }
+
+        let base_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Green]]);
+        let spell = CardBuilder::new(CardId::new(), "Cost Scan Spell")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(base_cost.clone())
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+        game.refresh_continuous_state();
+
+        let before_public_query = game.work_counters();
+        assert_eq!(game.minimum_total_spell_mana_payment(), None);
+        let after_public_query = game.work_counters();
+        assert_eq!(
+            after_public_query.dependency_sorts, before_public_query.dependency_sorts,
+            "the public minimum-spell-mana query should use the derived-view presence scan"
+        );
+
+        let before_payment = game.work_counters();
+        let payment_adjusted = calculate_effective_mana_cost_for_payment_with_chosen_targets(
+            &game,
+            alice,
+            game.object(spell_id).expect("spell should exist"),
+            &base_cost,
+            &[],
+        );
+        let after_payment = game.work_counters();
+
+        assert_eq!(payment_adjusted, base_cost);
+        assert_eq!(
+            after_payment.dependency_sorts, before_payment.dependency_sorts,
+            "payment-stage minimum-spell-mana discovery should reuse the cost view"
+        );
+
+        let before_final_validation = game.work_counters();
+        let final_adjusted = calculate_effective_mana_cost_with_chosen_targets(
+            &game,
+            alice,
+            game.object(spell_id).expect("spell should exist"),
+            &base_cost,
+            &[],
+        );
+        let after_final_validation = game.work_counters();
+
+        assert_eq!(final_adjusted, base_cost);
+        assert_eq!(
+            after_final_validation.dependency_sorts, before_final_validation.dependency_sorts,
+            "final cast validation should reuse the cost view instead of sorting once per permanent"
+        );
+    }
 
     #[test]
     fn mana_search_uses_snapshotted_life_capacity_in_both_source_count_paths() {

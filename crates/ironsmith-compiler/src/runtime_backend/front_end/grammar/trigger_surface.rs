@@ -11,7 +11,9 @@ pub(crate) use frequency::{
     parse_trigger_frequency_condition_tokens, parse_trigger_frequency_tokens,
 };
 
-fn parse_intro_prefix(tokens: &[OwnedLexToken]) -> Option<TriggerIntroSurfaceAst> {
+pub(crate) fn parse_trigger_intro_prefix_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<TriggerIntroSurfaceAst> {
     primitives::parse_prefix(
         tokens,
         alt((
@@ -25,7 +27,7 @@ fn parse_intro_prefix(tokens: &[OwnedLexToken]) -> Option<TriggerIntroSurfaceAst
 pub(crate) fn parse_trigger_intro_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggerIntroSurfaceAst> {
-    if let Some(intro) = parse_intro_prefix(tokens) {
+    if let Some(intro) = parse_trigger_intro_prefix_tokens(tokens) {
         return Some(intro);
     }
     let (_, (_, intro), _) = primitives::find_prefix(tokens, || {

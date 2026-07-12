@@ -1,0 +1,79 @@
+use super::super::super::util::tokenize_line;
+use super::*;
+
+#[test]
+fn source_tapped_keyword_grants_keep_typed_duration_and_condition() {
+    let tokens = tokenize_line(
+        "Target creature you control other than this creature has shroud for as long as this creature remains tapped.",
+        0,
+    );
+    let effects = parse_gain_ability_sentence(&tokens)
+        .expect("source-tapped grant should parse")
+        .expect("source-tapped grant should produce effects");
+
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                    target: TargetAst::Object(filter, ..),
+                    duration,
+                    condition,
+                    ..
+                },
+            ..
+        }),
+    ] = effects.as_slice()
+    else {
+        panic!("expected one targeted grant, got {effects:#?}");
+    };
+    assert_eq!(*duration, Until::SourceUntaps);
+    assert_eq!(*condition, Some(crate::ConditionExpr::SourceIsTapped));
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+    assert!(filter.other);
+
+    let dispatched = parse_effect_sentence_lexed(&tokens)
+        .expect("top-level sentence dispatch should preserve the typed grant");
+    assert!(matches!(
+        dispatched.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GrantAbilitiesToTarget {
+                duration: Until::SourceUntaps,
+                ..
+            },
+            ..
+        })]
+    ));
+    let lowered = compile_statement_effects(&dispatched)
+        .expect("source-tapped grant should lower through the normal effect path");
+    let lowered_debug = format!("{lowered:#?}");
+    assert!(
+        string_contains(&lowered_debug, "Shroud")
+            && string_contains(&lowered_debug, "SourceUntaps"),
+        "lowered grant must retain the keyword and source-tapped duration: {lowered_debug}"
+    );
+}
+
+#[test]
+fn source_tapped_compound_pump_and_hexproof_share_the_typed_duration() {
+    let tokens = tokenize_line(
+        "Target Wizard creature gets +2/+2 and has hexproof for as long as this creature remains tapped.",
+        0,
+    );
+    let effects = parse_gain_ability_sentence(&tokens)
+        .expect("compound source-tapped grant should parse")
+        .expect("compound source-tapped grant should produce effects");
+
+    assert_eq!(effects.len(), 2, "expected pump plus grant: {effects:#?}");
+    for effect in &effects {
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+            panic!("expected subject-verb effect, got {effect:#?}");
+        };
+        match action {
+            SubjectVerbActionAst::Pump { duration, .. }
+            | SubjectVerbActionAst::GrantAbilitiesToTarget { duration, .. } => {
+                assert_eq!(*duration, Until::SourceUntaps)
+            }
+            _ => panic!("unexpected compound effect: {effect:#?}"),
+        }
+    }
+}

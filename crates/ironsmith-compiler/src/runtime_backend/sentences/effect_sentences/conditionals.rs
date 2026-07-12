@@ -19,7 +19,6 @@ use super::super::util::{
     parse_supertype_word as parse_shared_supertype_word, parse_target_phrase, parse_zone_word,
     span_from_tokens, trim_commas, words,
 };
-use super::super::value_helpers::parse_filter_comparison_tokens;
 use super::{parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed};
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -28,6 +27,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{ChoiceCount, Value};
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::runtime_backend::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
@@ -159,10 +159,6 @@ pub(crate) fn parse_for_each_doesnt_control_lose_game(
             effects: vec![effect],
         }
     }))
-}
-
-pub(crate) fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)> {
-    effect_grammar::negated_action_word_index(words)
 }
 
 fn parse_negated_who_this_way_predicate(

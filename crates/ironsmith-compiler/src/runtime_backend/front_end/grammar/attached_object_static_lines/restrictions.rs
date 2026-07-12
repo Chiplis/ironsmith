@@ -1,6 +1,7 @@
 use winnow::combinator::alt;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
+use winnow::token::rest;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::primitives;
@@ -20,6 +21,14 @@ pub(crate) enum AttachedCombatRestrictionKind {
 pub(crate) struct AttachedCombatRestrictionSpec {
     pub(crate) subject: AttachedSubject,
     pub(crate) kind: AttachedCombatRestrictionKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AttachedCombatRestrictionGrantSpec<'a> {
+    pub(crate) subject: AttachedSubject,
+    pub(crate) subject_tokens: &'a [OwnedLexToken],
+    pub(crate) kind: AttachedCombatRestrictionKind,
+    pub(crate) ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +55,17 @@ pub(crate) fn parse_attached_combat_restriction_tokens(
         tokens,
         parse_attached_combat_restriction_lexed,
         "attached combat restriction",
+    )
+    .ok()
+}
+
+pub(crate) fn parse_attached_combat_restriction_grant_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<AttachedCombatRestrictionGrantSpec<'_>> {
+    primitives::parse_all(
+        tokens,
+        parse_attached_combat_restriction_grant_lexed,
+        "attached combat restriction and grant",
     )
     .ok()
 }
@@ -120,6 +140,47 @@ fn parse_attached_combat_restriction_lexed<'a>(
     Ok(AttachedCombatRestrictionSpec { subject, kind })
 }
 
+fn parse_attached_combat_restriction_grant_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<AttachedCombatRestrictionGrantSpec<'a>> {
+    let (subject, subject_tokens) = parse_attached_subject_lexed
+        .with_taken()
+        .parse_next(input)?;
+    if !matches!(
+        subject,
+        AttachedSubject::EnchantedCreature
+            | AttachedSubject::EnchantedPermanent
+            | AttachedSubject::EquippedCreature
+    ) {
+        return Err(primitives::backtrack_err(
+            "attached restriction subject",
+            "creature or permanent attachment subject",
+        ));
+    }
+    let kind = parse_attached_restriction_tail_lexed(input)?;
+    if kind == AttachedCombatRestrictionKind::CantBeBlocked {
+        return Err(primitives::backtrack_err(
+            "attached restriction",
+            "attack or block restriction",
+        ));
+    }
+    semantic_kw("and").parse_next(input)?;
+    alt((semantic_kw("has"), semantic_kw("have"))).parse_next(input)?;
+    let ability_tokens: &'a [OwnedLexToken] = rest.parse_next(input)?;
+    if ability_tokens.is_empty() {
+        return Err(primitives::backtrack_err(
+            "attached restriction grant",
+            "nonempty granted ability",
+        ));
+    }
+    Ok(AttachedCombatRestrictionGrantSpec {
+        subject,
+        subject_tokens,
+        kind,
+        ability_tokens,
+    })
+}
+
 fn parse_attached_restriction_tail_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<AttachedCombatRestrictionKind> {
@@ -181,21 +242,5 @@ fn parse_you_control_attached_lexed<'a>(input: &mut LexStream<'a>) -> WResult<At
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::super::super::lexer::lex_line;
-    use super::*;
-
-    #[test]
-    fn parses_attached_restriction_shapes() {
-        let tokens = lex_line("Enchanted creature can't attack or block.", 0).unwrap();
-        assert_eq!(
-            parse_attached_combat_restriction_tokens(&tokens).map(|spec| spec.kind),
-            Some(AttachedCombatRestrictionKind::CantAttackOrBlock)
-        );
-        let tokens = lex_line("All creatures able to block equipped creature do so.", 0).unwrap();
-        assert_eq!(
-            parse_all_creatures_block_attached_tokens(&tokens),
-            Some(AttachedSubject::EquippedCreature)
-        );
-    }
-}
+#[path = "restrictions_tests.rs"]
+mod tests;

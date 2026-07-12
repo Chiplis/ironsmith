@@ -21,15 +21,11 @@ use super::super::util::{
     parse_counter_type_from_tokens, parse_target_phrase, parse_value,
     record_source_reference_surface, span_from_tokens, trim_commas,
 };
-use super::super::value_helpers::{
+use crate::runtime_backend::front_end::grammar::effects::zone_counter_shapes as shapes;
+use crate::runtime_backend::grammar::shared_util::value_semantics::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
 };
-use crate::runtime_backend::front_end::grammar::effects::zone_counter_shapes as shapes;
 type ZoneCounterCompatWords<'a> = TokenWordView<'a>;
-
-fn zone_counter_token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
-    token.as_word().is_some() && token.parser_text() == expected
-}
 
 fn this_way_object_count_value() -> Value {
     Value::PendingEffectMetric {

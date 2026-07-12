@@ -123,6 +123,18 @@ pub(crate) fn parse_dynamic_soulshift_words(words: &[&str]) -> Option<DynamicSou
     })
 }
 
+pub(crate) fn parse_dynamic_soulshift_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<DynamicSoulshiftShape> {
+    primitives::parse_prefix(tokens, parse_dynamic_soulshift_lexed)?;
+    Some(DynamicSoulshiftShape {
+        count_filter: ObjectFilter::default()
+            .with_subtype(Subtype::Spirit)
+            .you_control()
+            .in_zone(Zone::Battlefield),
+    })
+}
+
 pub(crate) fn parse_special_ability_phrase_words(
     words: &[&str],
 ) -> Option<SpecialAbilityPhraseKind> {
@@ -153,6 +165,16 @@ fn parse_dynamic_soulshift_word_slice(input: &mut primitives::WordSliceInput<'_>
         primitives::word_slice_exact("you"),
         primitives::word_slice_exact("control"),
     )
+        .void()
+        .parse_next(input)
+}
+
+fn parse_dynamic_soulshift_lexed(input: &mut LexStream<'_>) -> WResult<()> {
+    primitives::phrase(&["soulshift", "x"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["where", "x", "is", "the", "number", "of"]).parse_next(input)?;
+    alt((primitives::kw("spirit"), primitives::kw("spirits"))).parse_next(input)?;
+    primitives::phrase(&["you", "control"])
         .void()
         .parse_next(input)
 }

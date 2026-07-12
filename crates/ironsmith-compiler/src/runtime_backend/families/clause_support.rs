@@ -32,7 +32,7 @@ use super::util::{
     parse_card_type, parse_color, parse_filter_counter_constraint_words,
     parse_flashback_keyword_line, parse_subtype_flexible, strip_leading_word_refs_any, trim_commas,
 };
-use super::value_helpers::parse_filter_comparison_tokens;
+use crate::runtime_backend::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
 
 const TWO_WORD_KEYWORD_ACTIONS: &[(&[&str], KeywordAction)] = &[
     (&["first", "strike"], KeywordAction::FirstStrike),

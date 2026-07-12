@@ -254,13 +254,15 @@ fn modification_can_change_spell_cost_modifier_presence(modification: &Modificat
     match modification {
         Modification::CopyOf { .. }
         | Modification::ChangeText { .. }
-        | Modification::SetTextBox(_) => true,
-        Modification::AddAbility(static_ability) => {
+        | Modification::SetTextBox(_)
+        | Modification::SetAbilities(_)
+        | Modification::RemoveAllAbilities
+        | Modification::RemoveAllAbilitiesExceptMana => true,
+        Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
             static_ability_has_spell_cost_modifier(static_ability)
         }
-        Modification::AddAbilityGeneric(ability) => ability_has_spell_cost_modifier(ability),
-        Modification::SetAbilities(abilities) => {
-            abilities.iter().any(ability_has_spell_cost_modifier)
+        Modification::AddAbilityGeneric(ability) | Modification::RemoveAbilityGeneric(ability) => {
+            ability_has_spell_cost_modifier(ability)
         }
         _ => false,
     }
@@ -272,16 +274,16 @@ fn modification_can_change_activated_ability_cost_modifier_presence(
     match modification {
         Modification::CopyOf { .. }
         | Modification::ChangeText { .. }
-        | Modification::SetTextBox(_) => true,
-        Modification::AddAbility(static_ability) => {
+        | Modification::SetTextBox(_)
+        | Modification::SetAbilities(_)
+        | Modification::RemoveAllAbilities
+        | Modification::RemoveAllAbilitiesExceptMana => true,
+        Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
             static_ability_has_activated_ability_cost_modifier(static_ability)
         }
-        Modification::AddAbilityGeneric(ability) => {
+        Modification::AddAbilityGeneric(ability) | Modification::RemoveAbilityGeneric(ability) => {
             ability_has_activated_ability_cost_modifier(ability)
         }
-        Modification::SetAbilities(abilities) => abilities
-            .iter()
-            .any(ability_has_activated_ability_cost_modifier),
         _ => false,
     }
 }
@@ -290,13 +292,15 @@ fn modification_can_change_minimum_total_spell_mana_presence(modification: &Modi
     match modification {
         Modification::CopyOf { .. }
         | Modification::ChangeText { .. }
-        | Modification::SetTextBox(_) => true,
-        Modification::AddAbility(static_ability) => {
+        | Modification::SetTextBox(_)
+        | Modification::SetAbilities(_)
+        | Modification::RemoveAllAbilities
+        | Modification::RemoveAllAbilitiesExceptMana => true,
+        Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
             static_ability_has_minimum_total_spell_mana(static_ability)
         }
-        Modification::AddAbilityGeneric(ability) => ability_has_minimum_total_spell_mana(ability),
-        Modification::SetAbilities(abilities) => {
-            abilities.iter().any(ability_has_minimum_total_spell_mana)
+        Modification::AddAbilityGeneric(ability) | Modification::RemoveAbilityGeneric(ability) => {
+            ability_has_minimum_total_spell_mana(ability)
         }
         _ => false,
     }
@@ -469,13 +473,66 @@ impl<'a> DerivedGameView<'a> {
             .map(|chars| chars.as_ref().clone())
     }
 
+    /// Return current characteristics for objects in any zone while retaining
+    /// this view's pass-local cache. Nonbattlefield changeling expansion
+    /// mirrors `GameState::current_characteristics`.
+    pub(crate) fn current_characteristics_arc(
+        &self,
+        object_id: ObjectId,
+    ) -> Option<Arc<CalculatedCharacteristics>> {
+        let object = self.game.object(object_id)?;
+        let chars = self.calculated_characteristics_arc(object_id)?;
+        if object.zone == Zone::Battlefield {
+            return Some(chars);
+        }
+
+        let has_changeling = chars
+            .static_abilities
+            .iter()
+            .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Changeling);
+        let can_have_creature_subtypes = chars
+            .card_types
+            .iter()
+            .any(|card_type| matches!(card_type, CardType::Creature | CardType::Kindred));
+        if !has_changeling || !can_have_creature_subtypes {
+            return Some(chars);
+        }
+
+        let mut expanded = chars.as_ref().clone();
+        let mut changed = false;
+        for subtype in Subtype::all_creature_types() {
+            if !expanded.subtypes.contains(subtype) {
+                expanded.subtypes.push(*subtype);
+                changed = true;
+            }
+        }
+        if changed {
+            Some(Arc::new(expanded))
+        } else {
+            Some(chars)
+        }
+    }
+
     pub(crate) fn prewarm_characteristics(&self, ids: &[ObjectId]) {
+        let required: Vec<_> = ids
+            .iter()
+            .copied()
+            .filter(|id| self.requires_battlefield_characteristic_calculation(*id))
+            .collect();
+        self.prewarm_characteristics_forced(&required);
+    }
+
+    /// Batch explicitly requested objects even when their printed
+    /// characteristics would normally be enough for other DerivedGameView
+    /// helpers. This is used when a caller truly needs current characteristics
+    /// for a nonbattlefield object and wants to avoid a singleton full-board
+    /// baseline calculation.
+    pub(crate) fn prewarm_characteristics_forced(&self, ids: &[ObjectId]) {
         let missing: Vec<_> = {
             let cache = self.characteristics.borrow();
             ids.iter()
                 .copied()
                 .filter(|id| !cache.contains_key(id))
-                .filter(|id| self.requires_battlefield_characteristic_calculation(*id))
                 .collect()
         };
         if missing.is_empty() {
@@ -1086,12 +1143,12 @@ impl<'a> DerivedGameView<'a> {
             return cached.clone();
         }
 
-        let sources: Vec<_> = if self.can_scan_printed_spell_cost_modifiers() {
+        let sources: Vec<_> = if self.can_scan_non_layered_spell_cost_modifiers() {
             self.game
                 .battlefield
                 .iter()
                 .copied()
-                .filter(|&perm_id| self.permanent_printed_has_spell_cost_modifiers(perm_id))
+                .filter(|&perm_id| self.permanent_non_layered_has_spell_cost_modifiers(perm_id))
                 .collect()
         } else {
             self.prewarm_characteristics(&self.game.battlefield);
@@ -1112,12 +1169,12 @@ impl<'a> DerivedGameView<'a> {
             return cached;
         }
 
-        let has_modifiers = if self.can_scan_printed_spell_cost_modifiers() {
+        let has_modifiers = if self.can_scan_non_layered_spell_cost_modifiers() {
             self.game
                 .battlefield
                 .iter()
                 .copied()
-                .any(|perm_id| self.permanent_printed_has_spell_cost_modifiers(perm_id))
+                .any(|perm_id| self.permanent_non_layered_has_spell_cost_modifiers(perm_id))
         } else {
             self.prewarm_characteristics(&self.game.battlefield);
             self.game
@@ -1139,13 +1196,13 @@ impl<'a> DerivedGameView<'a> {
             return cached.clone();
         }
 
-        let sources: Vec<_> = if self.can_scan_printed_activated_ability_cost_modifiers() {
+        let sources: Vec<_> = if self.can_scan_non_layered_activated_ability_cost_modifiers() {
             self.game
                 .battlefield
                 .iter()
                 .copied()
                 .filter(|&perm_id| {
-                    self.permanent_printed_has_activated_ability_cost_modifiers(perm_id)
+                    self.permanent_non_layered_has_activated_ability_cost_modifiers(perm_id)
                 })
                 .collect()
         } else {
@@ -1167,44 +1224,32 @@ impl<'a> DerivedGameView<'a> {
             return cached;
         }
 
-        let has_modifiers =
-            if self.can_scan_printed_activated_ability_cost_modifiers() {
-                self.game.battlefield.iter().copied().any(|perm_id| {
-                    self.permanent_printed_has_activated_ability_cost_modifiers(perm_id)
-                })
-            } else {
-                self.prewarm_characteristics(&self.game.battlefield);
-                self.game
-                    .battlefield
-                    .iter()
-                    .copied()
-                    .any(|perm_id| self.permanent_has_activated_ability_cost_modifiers(perm_id))
-            };
+        let has_modifiers = if self.can_scan_non_layered_activated_ability_cost_modifiers() {
+            self.game.battlefield.iter().copied().any(|perm_id| {
+                self.permanent_non_layered_has_activated_ability_cost_modifiers(perm_id)
+            })
+        } else {
+            self.prewarm_characteristics(&self.game.battlefield);
+            self.game
+                .battlefield
+                .iter()
+                .copied()
+                .any(|perm_id| self.permanent_has_activated_ability_cost_modifiers(perm_id))
+        };
         *self.has_activated_ability_cost_modifiers.borrow_mut() = Some(has_modifiers);
         has_modifiers
     }
 
     pub(crate) fn minimum_total_spell_mana_payment(&self) -> Option<u32> {
         let mut minimum = None;
-        if self.can_scan_printed_minimum_total_spell_mana() {
+        if self.can_scan_non_layered_minimum_total_spell_mana() {
             for &perm_id in &self.game.battlefield {
-                let Some(permanent) = self.game.object(perm_id) else {
-                    continue;
-                };
-                for ability in permanent.abilities.iter() {
-                    let AbilityKind::Static(static_ability) = &ability.kind else {
-                        continue;
-                    };
-                    if !ability.functions_in(&permanent.zone)
-                        || !static_ability.is_active(self.game, perm_id)
-                    {
-                        continue;
-                    }
+                self.for_each_active_non_layered_static_ability(perm_id, |static_ability| {
                     if let Some(candidate) = static_ability.minimum_total_spell_mana() {
                         minimum =
                             Some(minimum.map_or(candidate, |current: u32| current.max(candidate)));
                     }
-                }
+                });
             }
             return minimum;
         }
@@ -1298,36 +1343,33 @@ impl<'a> DerivedGameView<'a> {
         grants
     }
 
-    fn can_scan_printed_spell_cost_modifiers(&self) -> bool {
+    fn can_scan_non_layered_spell_cost_modifiers(&self) -> bool {
         !self
             .all_effects
             .iter()
             .any(continuous_effect_can_change_spell_cost_modifier_presence)
     }
 
-    fn can_scan_printed_activated_ability_cost_modifiers(&self) -> bool {
+    fn can_scan_non_layered_activated_ability_cost_modifiers(&self) -> bool {
         !self
             .all_effects
             .iter()
             .any(continuous_effect_can_change_activated_ability_cost_modifier_presence)
     }
 
-    fn can_scan_printed_minimum_total_spell_mana(&self) -> bool {
+    fn can_scan_non_layered_minimum_total_spell_mana(&self) -> bool {
         !self
             .all_effects
             .iter()
             .any(continuous_effect_can_change_minimum_total_spell_mana_presence)
     }
 
-    fn permanent_printed_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
-        let Some(permanent) = self.game.object(permanent_id) else {
-            return false;
-        };
-        permanent.abilities.iter().any(|ability| {
-            matches!(&ability.kind, AbilityKind::Static(static_ability)
-                if ability.functions_in(&permanent.zone)
-                    && static_ability_has_spell_cost_modifier(static_ability))
-        })
+    fn permanent_non_layered_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
+        let mut has_modifier = false;
+        self.for_each_active_non_layered_static_ability(permanent_id, |static_ability| {
+            has_modifier |= static_ability_has_spell_cost_modifier(static_ability);
+        });
+        has_modifier
     }
 
     fn permanent_has_spell_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
@@ -1337,18 +1379,15 @@ impl<'a> DerivedGameView<'a> {
             .any(static_ability_has_spell_cost_modifier)
     }
 
-    fn permanent_printed_has_activated_ability_cost_modifiers(
+    fn permanent_non_layered_has_activated_ability_cost_modifiers(
         &self,
         permanent_id: ObjectId,
     ) -> bool {
-        let Some(permanent) = self.game.object(permanent_id) else {
-            return false;
-        };
-        permanent.abilities.iter().any(|ability| {
-            matches!(&ability.kind, AbilityKind::Static(static_ability)
-                if ability.functions_in(&permanent.zone)
-                    && static_ability_has_activated_ability_cost_modifier(static_ability))
-        })
+        let mut has_modifier = false;
+        self.for_each_active_non_layered_static_ability(permanent_id, |static_ability| {
+            has_modifier |= static_ability_has_activated_ability_cost_modifier(static_ability);
+        });
+        has_modifier
     }
 
     fn permanent_has_activated_ability_cost_modifiers(&self, permanent_id: ObjectId) -> bool {
@@ -1356,6 +1395,80 @@ impl<'a> DerivedGameView<'a> {
             .unwrap_or_default()
             .iter()
             .any(static_ability_has_activated_ability_cost_modifier)
+    }
+
+    fn for_each_active_non_layered_static_ability(
+        &self,
+        permanent_id: ObjectId,
+        mut visit: impl FnMut(&crate::static_abilities::StaticAbility),
+    ) {
+        let Some(permanent) = self.game.object(permanent_id) else {
+            return;
+        };
+
+        let has_level_abilities = permanent.abilities.iter().any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability)
+                if static_ability.level_abilities().is_some())
+        });
+        let tracks_grant_duplicates =
+            has_level_abilities || !permanent.temporary_static_ability_grants.is_empty();
+        let mut seen_abilities = tracks_grant_duplicates.then(Vec::new);
+
+        for ability in permanent.abilities.iter() {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if let Some(seen) = seen_abilities.as_mut() {
+                seen.push(static_ability.clone());
+            }
+            if ability.functions_in(&permanent.zone)
+                && static_ability.is_active(self.game, permanent_id)
+            {
+                visit(static_ability);
+            }
+        }
+
+        // Initial layered characteristics apply temporary grants before level
+        // grants. A temporary payload is suppressed when a printed/earlier
+        // temporary ability has the same ID, even when its payload differs.
+        for grant in &permanent.temporary_static_ability_grants {
+            if grant.is_expired(self.game.turn.turn_number) {
+                continue;
+            }
+            let Some(static_ability) = grant.materialize() else {
+                continue;
+            };
+            let seen = seen_abilities
+                .as_mut()
+                .expect("temporary grants should enable duplicate tracking");
+            if seen
+                .iter()
+                .any(|existing| existing.id() == static_ability.id())
+            {
+                continue;
+            }
+            seen.push(static_ability.clone());
+            if static_ability.is_active(self.game, permanent_id) {
+                visit(&static_ability);
+            }
+        }
+
+        // Level-granted abilities are appended later and use full ability
+        // equality for deduplication, matching `push_static_ability_once`.
+        if has_level_abilities {
+            for static_ability in permanent.level_granted_abilities() {
+                let seen = seen_abilities
+                    .as_mut()
+                    .expect("level grants should enable duplicate tracking");
+                if seen.contains(&static_ability) {
+                    continue;
+                }
+                seen.push(static_ability.clone());
+                if static_ability.is_active(self.game, permanent_id) {
+                    visit(&static_ability);
+                }
+            }
+        }
     }
 
     fn narrow_battlefield_candidates(
@@ -1531,7 +1644,7 @@ impl<'a> DerivedGameView<'a> {
             .collect()
     }
 
-    fn current_controller(&self, object_id: ObjectId) -> Option<PlayerId> {
+    pub(crate) fn current_controller(&self, object_id: ObjectId) -> Option<PlayerId> {
         let object = self.game.object(object_id)?;
         if !self.requires_battlefield_characteristic_calculation(object_id) {
             return Some(object.owner);
@@ -1726,6 +1839,194 @@ mod tests {
 
         assert!(!view.player_cant_pay_life_to_cast_or_activate(alice));
         assert!(game.player_cant_pay_life_to_cast_or_activate(alice));
+    }
+
+    #[test]
+    fn cost_presence_set_abilities_removal_hides_printed_modifiers_and_minimum_mana() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::from_raw(20_003), "Cost Modifier Source")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+
+        let spell_modifier_source =
+            game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.object_mut(spell_modifier_source)
+            .expect("spell modifier source should exist")
+            .abilities_mut()
+            .push(Ability::static_ability(
+                crate::static_abilities::StaticAbility::new(
+                    crate::static_abilities::CostReduction::new(
+                        ObjectFilter::default(),
+                        crate::effect::Value::Fixed(1),
+                    ),
+                ),
+            ));
+
+        let activation_modifier_source =
+            game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.object_mut(activation_modifier_source)
+            .expect("activation modifier source should exist")
+            .abilities_mut()
+            .push(Ability::static_ability(
+                crate::static_abilities::StaticAbility::reduce_activated_ability_costs(
+                    ObjectFilter::default(),
+                    1,
+                    None,
+                ),
+            ));
+
+        let minimum_source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.object_mut(minimum_source)
+            .expect("minimum mana source should exist")
+            .abilities_mut()
+            .push(Ability::static_ability(
+                crate::static_abilities::StaticAbility::minimum_spell_total_mana(3),
+            ));
+
+        let effects = [
+            spell_modifier_source,
+            activation_modifier_source,
+            minimum_source,
+        ]
+        .into_iter()
+        .map(|source| {
+            ContinuousEffect::new(
+                source,
+                alice,
+                EffectTarget::Specific(source),
+                Modification::SetAbilities(Vec::new()),
+            )
+        })
+        .collect();
+        let view = DerivedGameView::from_effects(&game, effects);
+
+        assert!(!view.has_battlefield_spell_cost_modifiers());
+        assert!(!view.has_activated_ability_cost_modifiers());
+        assert_eq!(view.minimum_total_spell_mana_payment(), None);
+    }
+
+    #[test]
+    fn cost_presence_ability_removal_modifications_force_layered_scans() {
+        use crate::static_abilities::StaticAbility;
+
+        let spell_modifier = StaticAbility::new(crate::static_abilities::CostReduction::new(
+            ObjectFilter::default(),
+            crate::effect::Value::Fixed(1),
+        ));
+        let activation_modifier =
+            StaticAbility::reduce_activated_ability_costs(ObjectFilter::default(), 1, None);
+        let minimum_mana = StaticAbility::minimum_spell_total_mana(3);
+
+        for modification in [
+            Modification::SetAbilities(Vec::new()),
+            Modification::RemoveAllAbilities,
+            Modification::RemoveAllAbilitiesExceptMana,
+        ] {
+            assert!(modification_can_change_spell_cost_modifier_presence(
+                &modification
+            ));
+            assert!(
+                modification_can_change_activated_ability_cost_modifier_presence(&modification)
+            );
+            assert!(modification_can_change_minimum_total_spell_mana_presence(
+                &modification
+            ));
+        }
+
+        assert!(modification_can_change_spell_cost_modifier_presence(
+            &Modification::RemoveAbility(spell_modifier.clone())
+        ));
+        assert!(
+            modification_can_change_activated_ability_cost_modifier_presence(
+                &Modification::RemoveAbilityGeneric(Ability::static_ability(activation_modifier))
+            )
+        );
+        assert!(modification_can_change_minimum_total_spell_mana_presence(
+            &Modification::RemoveAbility(minimum_mana)
+        ));
+    }
+
+    #[test]
+    fn cost_presence_non_layered_scan_includes_level_and_temporary_grants() {
+        use crate::ability::LevelAbility;
+        use crate::object::CounterType;
+        use crate::static_abilities::{StaticAbility, StaticAbilityId};
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::from_raw(20_004), "Granted Cost Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+
+        let level_source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let spell_modifier = StaticAbility::new(crate::static_abilities::CostReduction::new(
+            ObjectFilter::default(),
+            crate::effect::Value::Fixed(1),
+        ));
+        let activation_modifier =
+            StaticAbility::reduce_activated_ability_costs(ObjectFilter::default(), 1, None);
+        let level_tier = LevelAbility::new(1, None)
+            .with_ability(spell_modifier)
+            .with_ability(activation_modifier)
+            .with_ability(StaticAbility::minimum_spell_total_mana(3));
+        game.object_mut(level_source)
+            .expect("level source should exist")
+            .abilities_mut()
+            .push(Ability::static_ability(
+                StaticAbility::with_level_abilities(vec![level_tier]),
+            ));
+        let _ = game.add_counters(level_source, CounterType::Level, 1);
+
+        let duplicate_temporary_source =
+            game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.object_mut(duplicate_temporary_source)
+            .expect("temporary source should exist")
+            .abilities_mut()
+            .push(Ability::static_ability(
+                StaticAbility::minimum_spell_total_mana(3),
+            ));
+        game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+            duplicate_temporary_source,
+            StaticAbilityId::MinimumSpellTotalMana,
+            Some(StaticAbility::minimum_spell_total_mana(5)),
+        );
+
+        let layered_duplicate_minimum = game
+            .calculated_characteristics(duplicate_temporary_source)
+            .expect("temporary source should have layered characteristics")
+            .static_abilities
+            .iter()
+            .filter_map(StaticAbility::minimum_total_spell_mana)
+            .max();
+        assert_eq!(layered_duplicate_minimum, Some(3));
+
+        let view = DerivedGameView::new(&game);
+        assert!(view.has_battlefield_spell_cost_modifiers());
+        assert!(view.has_activated_ability_cost_modifiers());
+        assert_eq!(
+            view.minimum_total_spell_mana_payment(),
+            Some(3),
+            "a temporary payload with the same ID as a printed ability must be suppressed"
+        );
+
+        let unique_temporary_source =
+            game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+            unique_temporary_source,
+            StaticAbilityId::MinimumSpellTotalMana,
+            Some(StaticAbility::minimum_spell_total_mana(5)),
+        );
+        let temporary_view = DerivedGameView::new(&game);
+        assert_eq!(temporary_view.minimum_total_spell_mana_payment(), Some(5));
+
+        game.turn.turn_number += 1;
+        let expired_view = DerivedGameView::new(&game);
+        assert_eq!(
+            expired_view.minimum_total_spell_mana_payment(),
+            Some(3),
+            "expired temporary grants must not remain in the sparse cost scan"
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

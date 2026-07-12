@@ -33,7 +33,7 @@ pub(crate) use super::super::rule_engine::{
 pub(crate) use super::super::util::{
     classify_instead_followup_tokens, helper_tag_for_tokens, parse_mana_symbol_word_flexible,
     parse_number, parser_trace, parser_trace_enabled, replace_unbound_x_with_value,
-    starts_with_until_end_of_turn, value_contains_unbound_x,
+    value_contains_unbound_x,
 };
 pub(crate) use super::chain_carry::{
     collapse_token_copy_end_of_combat_exile_followup,
@@ -60,9 +60,9 @@ pub(crate) use super::dispatch_inner::{
     parse_token_copy_modifier_sentence_lexed,
 };
 pub(crate) use super::for_each_helpers::{
-    has_demonstrative_object_reference, is_mana_replacement_clause_words,
-    is_mana_trigger_additional_clause_words, is_target_player_dealt_damage_by_this_turn_subject,
-    parse_for_each_object_subject, parse_for_each_opponent_clause, parse_for_each_player_clause,
+    is_mana_replacement_clause_words, is_mana_trigger_additional_clause_words,
+    is_target_player_dealt_damage_by_this_turn_subject, parse_for_each_object_subject,
+    parse_for_each_opponent_clause, parse_for_each_player_clause,
     parse_for_each_target_players_clause, parse_for_each_targeted_object_subject,
     parse_get_for_each_count_value, parse_get_modifier_values_with_tail,
     parse_has_base_power_clause, parse_has_base_power_toughness_clause,

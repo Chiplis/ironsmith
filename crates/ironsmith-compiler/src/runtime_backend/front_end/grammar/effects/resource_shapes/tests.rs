@@ -84,3 +84,13 @@ fn parses_resource_chosen_name_target_shape() {
         vec!["target", "creature"]
     );
 }
+
+#[test]
+fn parses_all_unspent_mana_resource_shape() {
+    assert!(parse_resource_all_unspent_mana_shape(&lex(
+        "all unspent mana"
+    )));
+    assert!(!parse_resource_all_unspent_mana_shape(&lex(
+        "all unspent energy"
+    )));
+}

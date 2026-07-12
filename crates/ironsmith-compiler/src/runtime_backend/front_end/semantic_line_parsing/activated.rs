@@ -319,7 +319,7 @@ fn split_rewrite_activated_effect_text(
 }
 
 fn parse_activated_effects_lexed(
-    effect_text: &str,
+    _effect_text: &str,
     tokens: &[OwnedLexToken],
     _line_index: usize,
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -328,9 +328,7 @@ fn parse_activated_effects_lexed(
             crate::runtime_backend::activation_helpers::parse_add_mana(tokens, None)?,
         ]);
     }
-    if let Some(effects) =
-        parse_each_player_and_their_creatures_damage_sentence_rewrite(effect_text, tokens)
-    {
+    if let Some(effects) = parse_each_player_and_their_creatures_damage_sentence(tokens) {
         return Ok(effects);
     }
     if let Ok(effects) = parse_effect_sentences_lexed(tokens) {
@@ -349,7 +347,7 @@ fn parse_activated_effects_lexed(
 
     let mut effects = Vec::new();
     for sentence_lexed in sentence_chunks {
-        if let Some(effect) = parse_next_spell_cost_reduction_sentence_rewrite(sentence_lexed) {
+        if let Some(effect) = parse_next_spell_cost_reduction_sentence(sentence_lexed) {
             effects.push(effect);
             continue;
         }

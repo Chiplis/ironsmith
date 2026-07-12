@@ -1908,6 +1908,10 @@ pub(super) fn apply_optional_costs_response(
     if let Some(spell) = game.object_mut(pending.spell_id) {
         spell.optional_costs_paid = pending.optional_costs_paid.clone();
     }
+    // Optional-cost announcements mutate the stack object. Target legality
+    // and requirement extraction below must observe one refreshed derived
+    // state rather than rebuilding a dirty full-board baseline per candidate.
+    game.refresh_continuous_state();
 
     if pending.optional_costs_paid.was_entwined()
         && let Some(modal_spec) =
@@ -3488,7 +3492,7 @@ pub(super) fn apply_casting_method_choice_response(
         // Initialize optional costs tracker from the spell's optional costs
         let optional_costs_paid = game
             .object(stack_id)
-            .map(|obj| OptionalCostsPaid::from_costs(&obj.optional_costs))
+            .map(|obj| obj.optional_costs_paid.clone())
             .unwrap_or_default();
 
         state.pending_cast = Some(PendingCast::new(
@@ -3525,7 +3529,7 @@ pub(super) fn apply_casting_method_choice_response(
         // Initialize optional costs tracker from the spell's optional costs
         let optional_costs_paid = game
             .object(stack_id)
-            .map(|obj| OptionalCostsPaid::from_costs(&obj.optional_costs))
+            .map(|obj| obj.optional_costs_paid.clone())
             .unwrap_or_default();
 
         let new_pending = PendingCast::new(
@@ -3559,6 +3563,11 @@ pub(crate) fn propose_spell_cast(
     caster: PlayerId,
     casting_method: &CastingMethod,
 ) -> Result<ObjectId, GameLoopError> {
+    let cast_during_main_phase = caster == game.turn.active_player
+        && matches!(
+            game.turn.phase,
+            crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
+        );
     let selected_method = game.object(spell_id).and_then(|obj| match casting_method {
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
@@ -3716,6 +3725,17 @@ pub(crate) fn propose_spell_cast(
         }
 
         obj.ensure_aura_cast_spell_effect();
+
+        // Initialize announcement metadata while the proposal object is
+        // already mutably borrowed. Keeping this before the proposal's single
+        // continuous-state refresh avoids immediately dirtying the freshly
+        // rebuilt state in each caller, and keeps method-selection casts in
+        // sync with direct casts.
+        let mut optional_costs_paid = OptionalCostsPaid::from_costs(&obj.optional_costs);
+        if cast_during_main_phase {
+            optional_costs_paid.mark_label_paid("CastDuringYourMainPhase");
+        }
+        obj.optional_costs_paid = optional_costs_paid;
     }
 
     if mark_face_down {

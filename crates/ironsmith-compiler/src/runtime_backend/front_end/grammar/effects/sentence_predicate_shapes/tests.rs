@@ -114,3 +114,15 @@ fn parses_typed_aura_shape() {
     assert!(shape.loses_all_abilities);
     assert_eq!(shape.granted_ability_tokens.len(), 1);
 }
+
+#[test]
+fn parses_where_x_symbolic_counter_reference() {
+    let tokens = lex_line("where X is the number of +1/+1 counters on it", 0).unwrap();
+    assert_eq!(
+        parse_where_x_value_shape_tokens(&tokens, false),
+        Some(WhereXValueShape::CountersOn {
+            reference: WhereXReferenceShape::Source,
+            counter_type: Some(crate::object::CounterType::PlusOnePlusOne),
+        })
+    );
+}

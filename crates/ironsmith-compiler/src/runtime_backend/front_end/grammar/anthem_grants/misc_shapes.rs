@@ -17,6 +17,11 @@ pub(crate) struct EquipmentEquipShape<'a> {
     pub(crate) condition_tokens: &'a [OwnedLexToken],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TrailingGrantSegmentShape<'a> {
+    pub(crate) body_tokens: &'a [OwnedLexToken],
+}
+
 pub(crate) fn parse_keyword_if_color_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordIfColorShape<'_>> {
@@ -66,18 +71,35 @@ pub(crate) fn split_trailing_grant_segments(tokens: &[OwnedLexToken]) -> Vec<Vec
     let mut current = Vec::new();
     let mut preserve_commas = false;
     let mut inside_quotes = false;
+    let mut current_has_closed_quote = false;
     let mut idx = 0usize;
 
     while idx < tokens.len() {
         let token = &tokens[idx];
+        if !inside_quotes
+            && current_has_closed_quote
+            && starts_unseparated_grant_after_quote(&tokens[idx..])
+        {
+            segments.push(std::mem::take(&mut current));
+            preserve_commas = false;
+            current_has_closed_quote = false;
+            continue;
+        }
         if token.kind == TokenKind::Quote {
+            let was_inside_quotes = inside_quotes;
             inside_quotes = !inside_quotes;
+            current_has_closed_quote |= was_inside_quotes;
         }
 
         let next_non_comma_is_quote = next_non_comma_is_quote(&tokens[idx + 1..]);
-        if !inside_quotes && token_is_and(token) && !current.is_empty() && next_non_comma_is_quote {
+        if !inside_quotes
+            && token_is_and(token)
+            && !current.is_empty()
+            && (next_non_comma_is_quote || current_has_closed_quote)
+        {
             segments.push(std::mem::take(&mut current));
             preserve_commas = false;
+            current_has_closed_quote = false;
             idx += 1;
             continue;
         }
@@ -86,6 +108,7 @@ pub(crate) fn split_trailing_grant_segments(tokens: &[OwnedLexToken]) -> Vec<Vec
             if !current.is_empty() {
                 segments.push(std::mem::take(&mut current));
             }
+            current_has_closed_quote = false;
             idx += 1;
             continue;
         }
@@ -102,6 +125,16 @@ pub(crate) fn split_trailing_grant_segments(tokens: &[OwnedLexToken]) -> Vec<Vec
         segments.push(current);
     }
     segments
+}
+
+pub(crate) fn parse_trailing_grant_segment(
+    tokens: &[OwnedLexToken],
+) -> Option<TrailingGrantSegmentShape<'_>> {
+    let mut body_tokens = trim_grant_segment_edges(tokens);
+    while let Some((_, rest)) = primitives::parse_prefix(body_tokens, primitives::kw("and")) {
+        body_tokens = trim_grant_segment_edges(rest);
+    }
+    (!body_tokens.is_empty()).then_some(TrailingGrantSegmentShape { body_tokens })
 }
 
 fn strip_metalcraft_label(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -132,6 +165,28 @@ fn strip_leading_and(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
         tokens = trim_lexed_commas(rest);
     }
     tokens
+}
+
+fn trim_grant_segment_edges(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let mut start = 0usize;
+    let mut end = tokens.len();
+    while start < end
+        && matches!(
+            tokens[start].kind,
+            TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon | TokenKind::Quote
+        )
+    {
+        start += 1;
+    }
+    while end > start
+        && matches!(
+            tokens[end - 1].kind,
+            TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon | TokenKind::Quote
+        )
+    {
+        end -= 1;
+    }
+    &tokens[start..end]
 }
 
 fn starts_with_trigger_intro(tokens: &[OwnedLexToken]) -> bool {
@@ -173,28 +228,10 @@ fn next_non_comma_is_quote(tokens: &[OwnedLexToken]) -> bool {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::runtime_backend::front_end::lexer::lex_line;
-
-    fn lex(text: &str) -> Vec<OwnedLexToken> {
-        lex_line(text, 0).expect("lex fixture")
-    }
-
-    #[test]
-    fn splits_keyword_color_segment() {
-        let tokens = lex("flying if it is white");
-        let shape = parse_keyword_if_color_shape(&tokens).expect("color segment");
-        assert!(!shape.keyword_tokens.is_empty());
-        assert!(!shape.color_tail_tokens.is_empty());
-    }
-
-    #[test]
-    fn parses_metalcraft_equipment_equip_shape() {
-        let tokens = lex(
-            "Metalcraft — Equipment you control have equip {0} as long as you control three artifacts.",
-        );
-        assert!(parse_equipment_equip_shape(&tokens).is_some());
-    }
+fn starts_unseparated_grant_after_quote(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_prefix(tokens, primitives::kw("equip")).is_some()
 }
+
+#[cfg(test)]
+#[path = "misc_shapes_tests.rs"]
+mod tests;

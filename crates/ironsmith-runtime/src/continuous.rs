@@ -1512,6 +1512,14 @@ fn calculate_characteristics_layer_batch_with_effects(
         };
         let needs_source_tracking =
             layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer);
+        let mut source_state = if needs_source_tracking {
+            tracked_source_ids_for_layer(layer_effects)
+                .into_iter()
+                .filter_map(|id| chars_by_id.get(&id).cloned().map(|chars| (id, chars)))
+                .collect()
+        } else {
+            HashMap::new()
+        };
 
         let sorted_effects = if needs_baseline_dependency_sort(layer_effects) {
             let baseline = chars_by_id.clone();
@@ -1532,7 +1540,19 @@ fn calculate_characteristics_layer_batch_with_effects(
                 continue;
             }
             let source_active =
-                !needs_source_tracking || effect_source_is_active(effect, &chars_by_id);
+                !needs_source_tracking || effect_source_is_active(effect, &source_state);
+            if needs_source_tracking {
+                advance_layer_batch_source_state(
+                    &mut source_state,
+                    effect,
+                    objects,
+                    battlefield,
+                    commanders,
+                    game,
+                    &started_groups_by_object,
+                    source_active,
+                );
+            }
             let affected = affected_objects_for_effect(
                 effect,
                 layer,
@@ -1609,6 +1629,14 @@ fn calculate_characteristics_layer_batch_with_effects(
     if let Some(pt_effects) = effects_by_layer.get(&Layer::PowerToughness) {
         let needs_source_tracking =
             layer_needs_source_activity_tracking(pt_effects, effects.iter(), Layer::PowerToughness);
+        let mut source_state = if needs_source_tracking {
+            tracked_source_ids_for_layer(pt_effects)
+                .into_iter()
+                .filter_map(|id| chars_by_id.get(&id).cloned().map(|chars| (id, chars)))
+                .collect()
+        } else {
+            HashMap::new()
+        };
         let sorted_pt = if needs_baseline_dependency_sort(pt_effects) {
             let baseline = chars_by_id.clone();
             sort_layer_effects_with_baseline_and_started_groups(
@@ -1628,7 +1656,19 @@ fn calculate_characteristics_layer_batch_with_effects(
                 continue;
             }
             let source_active =
-                !needs_source_tracking || effect_source_is_active(effect, &chars_by_id);
+                !needs_source_tracking || effect_source_is_active(effect, &source_state);
+            if needs_source_tracking {
+                advance_layer_batch_source_state(
+                    &mut source_state,
+                    effect,
+                    objects,
+                    battlefield,
+                    commanders,
+                    game,
+                    &started_groups_by_object,
+                    source_active,
+                );
+            }
             let affected = affected_objects_for_effect(
                 effect,
                 Layer::PowerToughness,
@@ -5463,6 +5503,54 @@ fn advance_layer_source_state(
             commanders,
             game,
         ) {
+            continue;
+        }
+
+        let mut updated = chars;
+        crate::dependency::apply_modification_to_chars_for_dependency(
+            &effect.modification,
+            &mut updated,
+            object,
+            game,
+        );
+        source_state.insert(id, updated);
+    }
+}
+
+fn advance_layer_batch_source_state(
+    source_state: &mut HashMap<ObjectId, CalculatedCharacteristics>,
+    effect: &ContinuousEffect,
+    objects: &ObjectMap,
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+    started_groups_by_object: &HashSet<(ContinuousEffectGroupId, ObjectId)>,
+    source_active: bool,
+) {
+    let tracked_ids: Vec<ObjectId> = source_state.keys().copied().collect();
+    for id in tracked_ids {
+        let group_started =
+            continuous_effect_group_started_for_object(effect, id, started_groups_by_object);
+        if !source_active && !group_started {
+            continue;
+        }
+        let Some(object) = objects.get(&id) else {
+            continue;
+        };
+        let Some(chars) = source_state.get(&id).cloned() else {
+            continue;
+        };
+        if !group_started
+            && !effect_applies_to_direct(
+                effect,
+                object,
+                &chars,
+                objects,
+                battlefield,
+                commanders,
+                game,
+            )
+        {
             continue;
         }
 

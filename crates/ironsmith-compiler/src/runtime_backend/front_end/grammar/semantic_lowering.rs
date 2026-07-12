@@ -1,3 +1,5 @@
+#[path = "semantic_lowering/hideaway.rs"]
+mod hideaway;
 #[path = "semantic_lowering/keyword_shapes.rs"]
 mod keyword_shapes;
 #[path = "semantic_lowering/special_triggered_programs.rs"]
@@ -11,6 +13,7 @@ mod triggered_shapes;
 #[path = "semantic_lowering/villainous_choice_shapes.rs"]
 mod villainous_choice_shapes;
 
+pub(crate) use hideaway::*;
 pub(crate) use keyword_shapes::*;
 pub(crate) use special_triggered_programs::*;
 pub(crate) use statement_shapes::*;

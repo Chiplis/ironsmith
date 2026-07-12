@@ -141,7 +141,13 @@ pub(crate) use control_flow_handlers::{
     with_preserved_lowering_context,
 };
 pub(crate) use effect_dispatch::compile_effect;
-pub(crate) use iterated_player_validation::validate_iterated_player_bindings_in_lowered_effects;
+pub(crate) use iterated_player_validation::{
+    choose_spec_mentions_iterated_player, condition_mentions_iterated_player,
+    effect_contains_pending_effect_metric, effect_mentions_iterated_player,
+    effects_contain_pending_effect_metric, effects_mention_iterated_player,
+    object_filter_mentions_iterated_player, validate_iterated_player_bindings_in_lowered_effects,
+    value_contains_pending_effect_metric, value_mentions_iterated_player,
+};
 pub(crate) use player_effect_helpers::{
     LoweredSubject, SubjectBindingMode, SubjectRole, compile_player_dual_effect,
     compile_player_effect_from_resolved_filter, compile_player_filter_effect,

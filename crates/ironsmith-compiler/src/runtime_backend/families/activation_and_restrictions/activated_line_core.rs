@@ -615,7 +615,7 @@ pub(crate) fn parse_named_number(word: &str) -> Option<u32> {
 }
 
 pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCost, CardTextError> {
-    let cst = parse_activation_cost_tokens_rewrite(tokens)?;
+    let cst = parse_activation_cost_tokens(tokens)?;
     lower_activation_cost_cst(&cst)
 }
 

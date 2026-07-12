@@ -5,24 +5,14 @@ use winnow::token::any;
 
 use super::attached_object_static_lines;
 use super::leaf;
-use super::permission_shapes;
 use super::primitives;
 use super::structure;
 use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView};
 
 mod statement_shapes;
 pub(crate) use statement_shapes::*;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LineWordSpan {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordBodyShape<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-}
+mod document_dispatch;
+pub(crate) use document_dispatch::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TokenSplitShape<'a> {
@@ -48,14 +38,6 @@ pub(crate) struct KickerBranchShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpecialLineShape {
-    SplitTopLookAndLandPlay,
-    AssignDamageAsUnblockedEnchanted,
-    GraveyardOrExileCast,
-    AdditionalCombatAfterMainPhase,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct StickerTicketMarkerShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,70 +45,6 @@ pub(crate) struct RemoveCounterPreventionThenTriggerShape<'a> {
     pub(crate) prevention_tokens: &'a [OwnedLexToken],
     pub(crate) prevention: attached_object_static_lines::RemoveCounterPreventionSpec<'a>,
     pub(crate) trigger_tokens: &'a [OwnedLexToken],
-}
-
-pub(crate) fn parse_prefix(words: &[&str], alternatives: &[&[&str]]) -> Option<LineWordSpan> {
-    alternatives.iter().find_map(|expected| {
-        permission_shapes::prefix_words(words, expected).then_some(LineWordSpan {
-            start: 0,
-            end: expected.len(),
-        })
-    })
-}
-
-pub(crate) fn parse_exact(words: &[&str], alternatives: &[&[&str]]) -> Option<LineWordSpan> {
-    alternatives.iter().find_map(|expected| {
-        permission_shapes::exact_words(words, expected).then_some(LineWordSpan {
-            start: 0,
-            end: words.len(),
-        })
-    })
-}
-
-pub(crate) fn parse_suffix(words: &[&str], alternatives: &[&[&str]]) -> Option<LineWordSpan> {
-    alternatives.iter().find_map(|expected| {
-        permission_shapes::suffix_words(words, expected).then_some(LineWordSpan {
-            start: words.len().saturating_sub(expected.len()),
-            end: words.len(),
-        })
-    })
-}
-
-pub(crate) fn find_phrase(words: &[&str], alternatives: &[&[&str]]) -> Option<LineWordSpan> {
-    alternatives.iter().find_map(|expected| {
-        permission_shapes::find_words(words, expected).map(|start| LineWordSpan {
-            start,
-            end: start + expected.len(),
-        })
-    })
-}
-
-pub(crate) fn find_all_phrases(words: &[&str], required: &[&[&str]]) -> Option<Vec<LineWordSpan>> {
-    required
-        .iter()
-        .map(|expected| {
-            permission_shapes::find_words(words, expected).map(|start| LineWordSpan {
-                start,
-                end: start + expected.len(),
-            })
-        })
-        .collect()
-}
-
-pub(crate) fn parse_keyword_body<'a>(
-    tokens: &'a [OwnedLexToken],
-    prefix: &[&str],
-) -> Option<KeywordBodyShape<'a>> {
-    let view = TokenWordView::new(tokens);
-    let words = view.word_refs();
-    parse_prefix(&words, &[prefix])?;
-    let body_start = view.token_index_after_words(prefix.len())?;
-    let body = tokens.get(body_start..)?;
-    let mut input = LexStream::new(body);
-    let body_tokens = visible_keyword_tokens(&mut input).ok()?;
-    Some(KeywordBodyShape {
-        body_tokens: trim_commas(body_tokens),
-    })
 }
 
 pub(crate) fn parse_comma_split(tokens: &[OwnedLexToken]) -> Option<TokenSplitShape<'_>> {
@@ -232,17 +150,13 @@ pub(crate) fn parse_partner_variant(
 }
 
 pub(crate) fn parse_kicker_branches(tokens: &[OwnedLexToken]) -> Option<KickerBranchShape<'_>> {
-    let view = TokenWordView::new(tokens);
-    let words = view.word_refs();
-    parse_prefix(&words, &[&["kicker"]])?;
-    let mut start = view.token_index_after_words(1)?;
-    if tokens
-        .get(start)
+    let (_, mut tail) = primitives::parse_prefix(tokens, primitives::kw("kicker"))?;
+    if tail
+        .first()
         .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
     {
-        start += 1;
+        tail = tail.get(1..)?;
     }
-    let tail = tokens.get(start..)?;
     let mut input = LexStream::new(tail);
     let cost_tokens = kicker_cost_tokens(&mut input).ok()?;
     let (separator, _, _) =
@@ -256,73 +170,6 @@ pub(crate) fn parse_kicker_branches(tokens: &[OwnedLexToken]) -> Option<KickerBr
         first_cost,
         second_cost,
     })
-}
-
-pub(crate) fn parse_special_line(tokens: &[OwnedLexToken]) -> Option<SpecialLineShape> {
-    let words = TokenWordView::new(tokens).word_refs();
-    const SPLIT_TOP: &[&str] = &[
-        "you", "may", "look", "at", "the", "top", "card", "of", "your", "library", "any", "time",
-        "and", "you", "may", "play", "lands", "from", "the", "top", "of", "your", "library",
-    ];
-    const ASSIGN_UNBLOCKED: &[&str] = &[
-        "enchanted",
-        "creatures",
-        "controller",
-        "may",
-        "have",
-        "it",
-        "assign",
-        "its",
-        "combat",
-        "damage",
-        "as",
-        "though",
-        "it",
-        "werent",
-        "blocked",
-    ];
-    const GRAVEYARD_OR_EXILE: &[&str] = &[
-        "you",
-        "may",
-        "cast",
-        "this",
-        "card",
-        "from",
-        "your",
-        "graveyard",
-        "or",
-        "from",
-        "exile",
-    ];
-    const ADDITIONAL_COMBAT: &[&str] = &[
-        "after",
-        "this",
-        "main",
-        "phase",
-        "there",
-        "is",
-        "an",
-        "additional",
-        "combat",
-        "phase",
-        "followed",
-        "by",
-        "an",
-        "additional",
-        "main",
-        "phase",
-    ];
-    if parse_exact(&words, &[SPLIT_TOP]).is_some() {
-        Some(SpecialLineShape::SplitTopLookAndLandPlay)
-    } else if parse_exact(&words, &[ASSIGN_UNBLOCKED]).is_some() {
-        Some(SpecialLineShape::AssignDamageAsUnblockedEnchanted)
-    } else if parse_exact(&words, &[GRAVEYARD_OR_EXILE]).is_some() {
-        Some(SpecialLineShape::GraveyardOrExileCast)
-    } else if parse_exact(&words, &[ADDITIONAL_COMBAT]).is_some() {
-        Some(SpecialLineShape::AdditionalCombatAfterMainPhase)
-    } else {
-        None
-    }
 }
 
 pub(crate) fn parse_remove_counter_prevention_then_trigger(

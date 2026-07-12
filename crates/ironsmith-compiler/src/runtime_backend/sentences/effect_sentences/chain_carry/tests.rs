@@ -115,6 +115,28 @@ fn chain_entrypoint_accepts_nonverb_additional_phase_clause() {
 }
 
 #[test]
+fn copy_then_gain_clause_keeps_the_explicit_gain_duration() {
+    let tokens = lex_line(
+        "Each land you control of that type becomes a copy of target creature you control until end of turn and gains haste until end of turn.",
+        0,
+    )
+    .expect("copy-and-gain clause should lex");
+
+    let effects = parse_effect_chain_lexed(&tokens).expect("copy-and-gain clause should parse");
+    let gain = effects
+        .iter()
+        .find_map(|effect| match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GrantAbilitiesAll { duration, .. },
+                ..
+            }) => Some(duration),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("expected an all-lands haste grant, got {effects:#?}"));
+    assert_eq!(*gain, crate::effect::Until::EndOfTurn, "{effects:#?}");
+}
+
+#[test]
 fn trailing_if_keeps_relative_target_spell_controller_predicate() {
     let tokens = lex_line(
         "Counter target spell if you control more creatures than that spell's controller.",

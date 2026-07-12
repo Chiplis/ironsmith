@@ -8,11 +8,11 @@ use super::super::grammar::primitives::{
 };
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, tokens_start_with, word_slice_at_is, word_slice_at_is_any,
-    word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start, word_slice_find_word,
-    word_slice_first_is, word_slice_first_is_any, word_slice_last_is, word_slice_matching_value,
-    words_end_with, words_end_with_any, words_have, words_have_phrase, words_start_with,
-    words_start_with_any, words_start_with_at,
+    LexedClause, OwnedLexToken, complete_word_sequence_choice, complete_word_sequence_surface,
+    locate_word, locate_word_sequence, token_prefix_present, word_prefix_choice_present,
+    word_prefix_present, word_prefix_present_at, word_present, word_sequence_present,
+    word_slice_at_is, word_slice_at_is_any, word_slice_first_is, word_slice_first_is_any,
+    word_slice_last_is, word_slice_matching_value, word_suffix_choice_present, word_suffix_present,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::rule_engine::{

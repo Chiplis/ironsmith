@@ -27,16 +27,10 @@ fn parse_statement_semantic_facts(tokens: &[OwnedLexToken]) -> StatementLineSema
             leaf::ConditionIntro::AsLongAs => StatementConditionIntro::AsLongAs,
             leaf::ConditionIntro::ForAsLongAs => StatementConditionIntro::ForAsLongAs,
         });
-    let replacement_surfaces = [
-        lowering_surfaces::parse_bargained_return_replacement_tokens(tokens),
-        lowering_surfaces::parse_kicked_count_override_replacement_tokens(tokens),
-        lowering_surfaces::parse_kicked_multi_zone_to_battlefield_tokens(tokens),
-        lowering_surfaces::parse_clash_win_top_replacement_tokens(tokens),
-        lowering_surfaces::parse_morbid_search_to_battlefield_tokens(tokens),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    let replacement_surfaces =
+        lowering_surfaces::parse_statement_replacement_surface_tokens(tokens)
+            .into_iter()
+            .collect();
 
     StatementLineSemanticFacts {
         instead_followup: InsteadFollowupFacts {

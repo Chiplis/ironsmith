@@ -19,6 +19,13 @@ pub(crate) struct LeafSourceReferenceAlias {
     pub(crate) surface: SourceReferenceSurface,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LeafSourceAnaphor {
+    It,
+    Its,
+    This(SourceReferenceSurface),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LeafThisSourceNoun {
     Generic,
@@ -209,6 +216,18 @@ pub(crate) fn parse_leaf_this_source_reference_words(
     let normalized = words.join(" ");
     let mut input = normalized.as_str();
     parse_this_source_reference(&mut input, words).ok()
+}
+
+pub(crate) fn parse_leaf_source_anaphor_words(words: &[&str]) -> Option<LeafSourceAnaphor> {
+    let normalized = words.join(" ");
+    let mut input = normalized.as_str();
+    alt((
+        (literal("its"), eof).value(LeafSourceAnaphor::Its),
+        (literal("it"), eof).value(LeafSourceAnaphor::It),
+        |input: &mut &str| parse_this_source_reference(input, words).map(LeafSourceAnaphor::This),
+    ))
+    .parse_next(&mut input)
+    .ok()
 }
 
 fn parse_this_source_reference(

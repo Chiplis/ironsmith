@@ -33,6 +33,11 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Reveal => parse_reveal(tokens, subject),
         Verb::Look => parse_look(tokens, subject),
         Verb::Lose => {
+            if resource_grammar::parse_resource_all_unspent_mana_shape(tokens) {
+                return Ok(EffectAst::subject_verb_empty_mana_pool(
+                    extract_subject_player(subject).unwrap_or(PlayerAst::You),
+                ));
+            }
             if resource_grammar::parse_resource_all_abilities_shape(tokens)
                 && matches!(subject, Some(SubjectAst::This) | None)
             {

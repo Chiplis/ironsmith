@@ -1,9 +1,115 @@
-use crate::cards::builders::{EffectAst, IT_TAG, SubjectVerbActionAst, TargetAst};
+use crate::cards::builders::{EffectAst, IT_TAG, PredicateAst, SubjectVerbActionAst, TargetAst};
+use crate::effect::Value;
+use ironsmith_core::ValueSurfaceHint;
 
 pub(crate) fn normalize_effects_ast(effects: &[EffectAst]) -> Vec<EffectAst> {
     let mut normalized = effects.to_vec();
+    bind_typed_where_x_references(&mut normalized, None);
     normalize_effects_vec(&mut normalized);
     normalized
+}
+
+fn typed_where_x_binding(effect: &EffectAst) -> Option<Value> {
+    let EffectAst::SubjectVerb(subject_verb) = effect else {
+        return None;
+    };
+    let SubjectVerbActionAst::LookAtTopCards { count, .. } = &subject_verb.action else {
+        return None;
+    };
+    let Value::SurfaceHinted { value, hints } = count else {
+        return None;
+    };
+    hints
+        .contains(&ValueSurfaceHint::WhereXIs)
+        .then(|| value.as_ref().clone())
+}
+
+fn replace_bound_x_in_value(value: &mut Value, replacement: &Value) {
+    match value {
+        Value::X => *value = replacement.clone(),
+        Value::XTimes(multiplier) => {
+            let multiplier = *multiplier;
+            *value = if multiplier == 1 {
+                replacement.clone()
+            } else if let Value::Fixed(fixed) = replacement {
+                Value::Fixed(fixed * multiplier)
+            } else {
+                Value::Scaled(Box::new(replacement.clone()), multiplier)
+            };
+        }
+        Value::SurfaceHinted { value, .. }
+        | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => replace_bound_x_in_value(value, replacement),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            replace_bound_x_in_value(left, replacement);
+            replace_bound_x_in_value(right, replacement);
+        }
+        _ => {}
+    }
+}
+
+fn replace_bound_x_in_predicate(predicate: &mut PredicateAst, replacement: &Value) {
+    match predicate {
+        PredicateAst::ValueComparison { left, right, .. } => {
+            replace_bound_x_in_value(left, replacement);
+            replace_bound_x_in_value(right, replacement);
+        }
+        PredicateAst::Not(inner) => replace_bound_x_in_predicate(inner, replacement),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            replace_bound_x_in_predicate(left, replacement);
+            replace_bound_x_in_predicate(right, replacement);
+        }
+        _ => {}
+    }
+}
+
+fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Value>) {
+    let mut binding = inherited;
+    for effect in effects {
+        match effect {
+            EffectAst::Conditional {
+                predicate,
+                if_true,
+                if_false,
+            }
+            | EffectAst::SelfReplacement {
+                predicate,
+                if_true,
+                if_false,
+                ..
+            } => {
+                if let Some(replacement) = binding.as_ref() {
+                    replace_bound_x_in_predicate(predicate, replacement);
+                }
+                bind_typed_where_x_references(if_true, binding.clone());
+                bind_typed_where_x_references(if_false, binding.clone());
+            }
+            EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
+                for mode in modes {
+                    bind_typed_where_x_references(&mut mode.effects, binding.clone());
+                }
+            }
+            EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+                bind_typed_where_x_references(
+                    std::slice::from_mut(effect.as_mut()),
+                    binding.clone(),
+                );
+                bind_typed_where_x_references(otherwise, binding.clone());
+            }
+            EffectAst::TagAffected { effect, .. } => bind_typed_where_x_references(
+                std::slice::from_mut(effect.as_mut()),
+                binding.clone(),
+            ),
+            _ => super::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |nested| {
+                bind_typed_where_x_references(nested, binding.clone())
+            }),
+        }
+
+        if let Some(next_binding) = typed_where_x_binding(effect) {
+            binding = Some(next_binding);
+        }
+    }
 }
 
 fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
@@ -39,6 +145,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         EffectAst::UnlessPays { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::AnyPlayerMay { effects }
         | EffectAst::ResolvedIfResult { effects, .. }
         | EffectAst::ResolvedWhenResult { effects, .. }
         | EffectAst::IfResult { effects, .. }
@@ -258,9 +365,10 @@ fn is_noop_effect(effect: &EffectAst) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::cards::builders::IfResultPredicate;
-    use crate::cards::builders::{EffectAst, PlayerAst};
+    use crate::cards::builders::{EffectAst, PlayerAst, PredicateAst, TagKey};
     use crate::effect::{Until, Value};
-    use crate::filter::ObjectFilter;
+    use crate::filter::{ObjectFilter, PlayerFilter};
+    use ironsmith_core::ValueSurfaceHint;
 
     use super::normalize_effects_ast;
 
@@ -307,6 +415,38 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn normalize_binds_later_predicate_x_to_typed_where_x_value() {
+        let where_x =
+            Value::CardsInHand(PlayerFilter::You).with_surface_hint(ValueSurfaceHint::WhereXIs);
+        let effects = vec![
+            EffectAst::subject_verb_look_at_top_cards(
+                PlayerAst::You,
+                where_x,
+                TagKey::from("looked"),
+            ),
+            EffectAst::Conditional {
+                predicate: PredicateAst::ValueComparison {
+                    left: Value::X,
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(1),
+                },
+                if_true: Vec::new(),
+                if_false: Vec::new(),
+            },
+        ];
+
+        let normalized = normalize_effects_ast(&effects);
+        let EffectAst::Conditional {
+            predicate: PredicateAst::ValueComparison { left, .. },
+            ..
+        } = &normalized[1]
+        else {
+            panic!("expected typed value comparison");
+        };
+        assert_eq!(*left, Value::CardsInHand(PlayerFilter::You));
     }
 
     #[test]

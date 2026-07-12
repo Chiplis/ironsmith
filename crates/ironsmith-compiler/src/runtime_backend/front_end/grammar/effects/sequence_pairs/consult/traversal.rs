@@ -18,6 +18,9 @@ use super::super::{
 #[path = "traversal/shapes.rs"]
 mod shapes;
 pub(crate) use shapes::*;
+#[path = "traversal/counted_stop.rs"]
+mod counted_stop;
+use counted_stop::parse_equal_to_counted_active_stop;
 
 const REVEAL_VERBS: &[&[&str]] = &[&["reveal"], &["reveals"]];
 const EXILE_VERBS: &[&[&str]] = &[&["exile"], &["exiles"]];
@@ -257,6 +260,9 @@ fn parse_active_stop(tokens: &[OwnedLexToken]) -> Option<ConsultTraversalStopSha
     let filter = trim_commas(&tokens[verb.end..]);
     if filter.is_empty() {
         return None;
+    }
+    if let Some(stop) = parse_equal_to_counted_active_stop(filter) {
+        return Some(stop);
     }
     let (stop_rule, filter) = counted_stop_prefix(filter)
         .filter(|(_, filter)| !filter.is_empty())

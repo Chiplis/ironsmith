@@ -11,6 +11,7 @@ use crate::types::{CardType, Subtype, Supertype};
 use ironsmith_core::ValueSurfaceHint;
 
 use super::super::grammar::effects as creation_grammar;
+use super::super::grammar::lowering_surfaces::parse_prior_created_token_reference_words;
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::parse_who_player_predicate_lexed;
 use super::super::grammar::token_definitions as token_definition_grammar;
@@ -531,9 +532,9 @@ pub(crate) fn parse_create(
     let definition =
         token_definition_grammar::parse_token_definition_shape_tokens(&definition_tokens)
             .or_else(|| {
-                matches!(name.as_str(), "of those" | "those").then_some(
-                    crate::runtime_backend::token_definition::TokenDefinitionSpec::PriorCreated,
-                )
+                parse_prior_created_token_reference_words(&name_words).map(|_| {
+                    crate::runtime_backend::token_definition::TokenDefinitionSpec::PriorCreated
+                })
             })
             .ok_or_else(|| {
                 CardTextError::ParseError(format!("unsupported token definition '{name}'"))

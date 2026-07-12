@@ -103,16 +103,30 @@ fn granted_conspire_count(game: &GameState, spell_id: ObjectId, caster: PlayerId
         .count()
 }
 
-fn ensure_granted_conspire_optional_costs(game: &mut GameState, pending: &mut PendingCast) {
+fn ensure_granted_conspire_optional_costs(game: &mut GameState, pending: &mut PendingCast) -> bool {
     let conspire_count = granted_conspire_count(game, pending.spell_id, pending.caster);
     if conspire_count == 0 {
-        return;
+        return false;
     }
 
+    let existing_count = game
+        .object(pending.spell_id)
+        .map(|spell| {
+            spell
+                .optional_costs
+                .iter()
+                .filter(|cost| cost.source_label == "Granted Conspire")
+                .count()
+        })
+        .unwrap_or(0);
+    let missing_count = conspire_count.saturating_sub(existing_count);
+    if missing_count == 0 {
+        return false;
+    }
     let Some(spell) = game.object_mut(pending.spell_id) else {
-        return;
+        return false;
     };
-    for _ in 0..conspire_count {
+    for _ in 0..missing_count {
         spell.optional_costs.push(crate::cost::OptionalCost::custom(
             "Granted Conspire",
             crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
@@ -121,36 +135,47 @@ fn ensure_granted_conspire_optional_costs(game: &mut GameState, pending: &mut Pe
         ));
     }
     pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+    true
 }
 
-fn ensure_optional_life_cost_reduction_costs(game: &mut GameState, pending: &mut PendingCast) {
-    let costs = crate::decision::optional_life_cost_reduction_costs_for_cast(
+fn ensure_optional_life_cost_reduction_costs(
+    game: &mut GameState,
+    pending: &mut PendingCast,
+) -> bool {
+    let mut costs = crate::decision::optional_life_cost_reduction_costs_for_cast(
         game,
         pending.caster,
         pending.spell_id,
         &pending.casting_method,
     );
     if costs.is_empty() {
-        return;
+        return false;
     }
-    let Some(spell) = game.object_mut(pending.spell_id) else {
-        return;
+    let Some(existing_spell) = game.object(pending.spell_id) else {
+        return false;
     };
-    for (source, optional) in costs {
-        let label = crate::decision::optional_life_cost_reduction_label(&optional, source);
-        if spell
+    costs.retain(|(source, optional)| {
+        let label = crate::decision::optional_life_cost_reduction_label(optional, *source);
+        !existing_spell
             .optional_costs
             .iter()
             .any(|existing| existing.source_label == label)
-        {
-            continue;
-        }
+    });
+    if costs.is_empty() {
+        return false;
+    }
+    let Some(spell) = game.object_mut(pending.spell_id) else {
+        return false;
+    };
+    for (source, optional) in costs {
+        let label = crate::decision::optional_life_cost_reduction_label(&optional, source);
         spell.optional_costs.push(crate::cost::OptionalCost::custom(
             label,
             crate::cost::TotalCost::from_cost(crate::costs::Cost::life(optional.life_cost)),
         ));
     }
     pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+    true
 }
 
 /// Collect all available casting methods for a spell.
@@ -1029,8 +1054,20 @@ pub(super) fn check_optional_costs_or_continue(
     mut pending: PendingCast,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    ensure_granted_conspire_optional_costs(game, &mut pending);
-    ensure_optional_life_cost_reduction_costs(game, &mut pending);
+    // X and other announcement metadata can mutate the stack object before
+    // re-entering this stage. Start cast-time cost discovery from one clean
+    // state so its first characteristics query uses the batched game cache.
+    game.refresh_continuous_state();
+    if ensure_granted_conspire_optional_costs(game, &mut pending) {
+        // Conspire discovery mutates the stack object; optional-life discovery
+        // immediately performs another derived-characteristics query.
+        game.refresh_continuous_state();
+    }
+    if ensure_optional_life_cost_reduction_costs(game, &mut pending) {
+        // Keep later affordability and target queries on the clean path, while
+        // avoiding a refresh when no new optional costs were appended.
+        game.refresh_continuous_state();
+    }
 
     // Check if the spell has optional costs
     let optional_costs = if let Some(obj) = game.object(pending.spell_id) {

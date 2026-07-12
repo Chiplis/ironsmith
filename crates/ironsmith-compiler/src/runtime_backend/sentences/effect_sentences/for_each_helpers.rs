@@ -71,10 +71,6 @@ pub(crate) fn parse_for_each_targeted_object_subject(
     Ok(Some((filter, count)))
 }
 
-pub(crate) fn has_demonstrative_object_reference(words: &[&str]) -> bool {
-    for_each_shapes::has_demonstrative_object_reference_words(words)
-}
-
 pub(crate) fn is_target_player_dealt_damage_by_this_turn_subject(words: &[&str]) -> bool {
     for_each_shapes::is_target_player_damage_subject_words(words)
 }
@@ -255,7 +251,7 @@ fn parse_maybe_effects(
             parse_effect_chain(tokens)
         };
     }
-    let stripped = remove_first_word(tokens, "may");
+    let stripped = remove_first_word(tokens);
     let scoped;
     let may_tokens = if scope_may_to_that_player {
         scoped = prepend_that_player_subject(&stripped);
@@ -512,14 +508,6 @@ pub(crate) fn parse_who_did_this_way_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     Ok(tagged_predicate(
         for_each_shapes::parse_who_tagged_filter_shape(inner_tokens),
-    ))
-}
-
-fn parse_negated_who_this_way_predicate(
-    inner_tokens: &[OwnedLexToken],
-) -> Result<Option<PredicateAst>, CardTextError> {
-    Ok(tagged_predicate(
-        for_each_shapes::parse_negated_who_tagged_filter_shape(inner_tokens),
     ))
 }
 

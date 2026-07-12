@@ -9,7 +9,6 @@ pub(crate) mod families;
 pub(crate) mod front_end;
 pub(crate) mod lowering;
 pub(crate) mod model;
-pub(crate) mod postpasses;
 pub(crate) mod references;
 pub(crate) mod sentences;
 
@@ -53,8 +52,6 @@ pub(crate) mod keyword_registry;
 pub(crate) mod keyword_static;
 #[path = "families/keyword_static_helpers.rs"]
 pub(crate) mod keyword_static_helpers;
-#[path = "front_end/leaf.rs"]
-pub(crate) mod leaf;
 #[path = "front_end/lexer.rs"]
 pub(crate) mod lexer;
 #[path = "lowering/lower/mod.rs"]
@@ -89,6 +86,8 @@ pub(crate) mod rule_engine;
 pub(crate) mod search_library_support;
 #[path = "model/semantic.rs"]
 pub(crate) mod semantic;
+#[path = "front_end/semantic_document.rs"]
+pub(crate) mod semantic_document;
 #[path = "front_end/semantic_line_parsing/mod.rs"]
 pub(crate) mod semantic_line_parsing;
 #[path = "model/shared_types.rs"]
@@ -101,8 +100,6 @@ pub(crate) mod token_definition;
 pub(crate) mod token_primitives;
 #[path = "front_end/shared/util.rs"]
 pub(crate) mod util;
-#[path = "front_end/shared/value_helpers.rs"]
-pub(crate) mod value_helpers;
 
 pub(crate) use activation_and_restrictions::{
     is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed,
@@ -117,6 +114,8 @@ pub(crate) use activation_and_restrictions::{
 #[cfg(test)]
 pub(crate) use clause_support::parse_static_ability_ast_line_lexed;
 #[cfg(test)]
+pub(crate) use cst_lowering::lower_activation_cost_cst;
+#[cfg(test)]
 pub(crate) use effect_sentences::clause_pattern_helpers;
 pub(crate) use effect_sentences::{CarryContext, TokenCopyFollowup, Verb, parse_type_line};
 #[cfg(test)]
@@ -128,6 +127,10 @@ pub(crate) use effect_sentences::{
     parse_sentence_choose_then_do_same_for_filter, parse_sentence_delayed_next_step_unless_pays,
     parse_sentence_put_multiple_counters_on_target, parse_shared_color_target_fanout_sentence,
     split_choose_list,
+};
+#[cfg(test)]
+pub(crate) use grammar::activation_costs::{
+    ActivationCostSegmentCst, parse_activation_cost_rewrite, parse_activation_cost_tokens_rewrite,
 };
 pub(crate) use grammar::filters::parse_object_filter_with_grammar_entrypoint as parse_object_filter;
 pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint as parse_spell_filter;
@@ -145,11 +148,6 @@ pub(crate) use ir::{RewriteKeywordLineKind, RewriteSemanticItem};
 pub(crate) use keyword_static::{
     parse_add_mana_equal_amount_value, parse_combined_pregame_choose_color_line,
     parse_enters_with_counters_line,
-};
-#[cfg(test)]
-pub(crate) use leaf::{
-    ActivationCostSegmentCst, lower_activation_cost_cst, parse_activation_cost_rewrite,
-    parse_activation_cost_tokens_rewrite,
 };
 pub(crate) use lexer::{OwnedLexToken, token_word_refs};
 #[cfg(test)]

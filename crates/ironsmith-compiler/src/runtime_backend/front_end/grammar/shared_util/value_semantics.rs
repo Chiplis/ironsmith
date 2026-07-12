@@ -1,29 +1,26 @@
-#![allow(dead_code)]
-
 use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::{ObjectFilter, Zone};
 use ironsmith_core::EffectMetric;
 use ironsmith_core::ValueSurfaceHint;
+use winnow::error::{ContextError, ErrMode};
+use winnow::prelude::*;
+use winnow::token::any;
 
-use super::effect_sentences::trim_edge_punctuation;
-use super::grammar::permission_shapes;
-use super::grammar::primitives::TokenWordView;
-use super::grammar::shared_util::value_helper_shapes;
-use super::grammar::shared_util::value_shapes::{self, AggregateValueMetric};
-pub(crate) use super::grammar::values::{
-    parse_number_prefix_lexed, parse_value_comparison_tokens, parse_value_comparison_words,
-    parse_value_prefix_lexed,
-};
-use super::lexer::{LexedClause, OwnedLexToken, TokenKind, trim_lexed_commas};
-use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
-use super::util::{
-    non_article_word_refs, parse_number, parse_number_word_i32, parse_value,
-    parse_value_expr_words, trim_commas, trim_edge_punctuation_tokens,
+use crate::runtime_backend::object_filters::{parse_object_filter, parse_object_filter_lexed};
+use crate::runtime_backend::util::{
+    trim_commas, trim_edge_punctuation, trim_edge_punctuation_tokens,
 };
 
-type ValueHelperCompatWords<'a> = TokenWordView<'a>;
+use super::super::super::lexer::{OwnedLexToken, trim_lexed_commas};
+use super::super::leaf;
+use super::super::primitives::{self, TokenWordView, WordSliceInput};
+use super::super::values::parse_value_comparison_words;
+pub(crate) use super::super::values::{parse_number_prefix_lexed, parse_value_prefix_lexed};
+use super::value_expr;
+use super::value_helper_shapes;
+use super::value_shapes::{self, AggregateValueMetric};
 
 const SOURCE_LINKED_EXILED_CARD_PHRASES: &[&[&str]] = &[
     &["the", "exiled", "card"],
@@ -36,6 +33,48 @@ const CREATURES_DIED_THIS_TURN_PHRASES: &[&[&str]] = &[
     &["creatures", "that", "died", "this", "turn"],
 ];
 const EQUAL_TO_PHRASE: &[&str] = &["equal", "to"];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct EqualToStart {
+    start: usize,
+    after: usize,
+}
+
+fn parse_equal_to_start(words: &[&str]) -> Option<EqualToStart> {
+    let mut input: WordSliceInput<'_> = words;
+    parse_equal_to_start_words.parse_next(&mut input).ok()
+}
+
+fn parse_equal_to_start_words(
+    input: &mut WordSliceInput<'_>,
+) -> Result<EqualToStart, ErrMode<ContextError>> {
+    let initial_len = input.len();
+    loop {
+        let checkpoint = *input;
+        if (
+            primitives::word_slice_exact("equal"),
+            primitives::word_slice_exact("to"),
+        )
+            .void()
+            .parse_next(input)
+            .is_ok()
+        {
+            let after = initial_len.saturating_sub(input.len());
+            return Ok(EqualToStart {
+                start: after.saturating_sub(EQUAL_TO_PHRASE.len()),
+                after,
+            });
+        }
+        *input = checkpoint;
+        any.void().parse_next(input)?;
+    }
+}
+
+fn words_match_any_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
+    phrases
+        .iter()
+        .any(|phrase| primitives::parse_word_sequence_complete(words, phrase).is_some())
+}
 
 fn counter_reference_shape_value(shape: value_helper_shapes::CounterReferenceValueShape) -> Value {
     match shape.reference {
@@ -87,7 +126,7 @@ const COMMANDER_ITERATED_PLAYER_OWNS_BATTLEFIELD_OR_COMMAND_ZONE_PHRASES: &[&[&s
 ];
 pub(crate) fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation_tokens(tokens);
-    let word_view = ValueHelperCompatWords::new(tokens);
+    let word_view = TokenWordView::new(tokens);
     let words = word_view.to_word_refs();
     let surface = value_shapes::parse_aggregate_value_surface(&words)?;
     let scope_start = words.len().checked_sub(surface.scope_words.len())?;
@@ -105,14 +144,6 @@ pub(crate) fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Opt
             None,
         )),
     }
-}
-
-fn value_helper_words_equal_any(words: &[&str], phrases: &[&[&str]]) -> bool {
-    phrases.iter().any(|phrase| words == *phrase)
-}
-
-fn is_mana_value_kind_word(word: &str) -> bool {
-    word == "mana_value"
 }
 
 fn is_power_toughness_axis_word(word: &str) -> bool {
@@ -135,38 +166,56 @@ fn is_less_or_fewer_word(word: &str) -> bool {
     matches!(word, "less" | "fewer")
 }
 
-fn aggregate_effect_metric(aggregate: &str, value_kind: &str) -> Option<EffectMetric> {
+fn aggregate_effect_metric(
+    aggregate: value_helper_shapes::AggregateKind,
+    value_kind: value_helper_shapes::AggregateValueKind,
+) -> EffectMetric {
+    use value_helper_shapes::{AggregateKind, AggregateValueKind};
+
     match (aggregate, value_kind) {
-        ("total", "power") => Some(EffectMetric::TotalPower),
-        ("total", "toughness") => Some(EffectMetric::TotalToughness),
-        ("total", "mana_value") => Some(EffectMetric::TotalManaValue),
-        ("greatest", "power") => Some(EffectMetric::GreatestPower),
-        ("greatest", "toughness") => Some(EffectMetric::GreatestToughness),
-        ("greatest", "mana_value") => Some(EffectMetric::GreatestManaValue),
-        _ => None,
+        (AggregateKind::Total, AggregateValueKind::Power) => EffectMetric::TotalPower,
+        (AggregateKind::Total, AggregateValueKind::Toughness) => EffectMetric::TotalToughness,
+        (AggregateKind::Total, AggregateValueKind::ManaValue) => EffectMetric::TotalManaValue,
+        (AggregateKind::Greatest, AggregateValueKind::Power) => EffectMetric::GreatestPower,
+        (AggregateKind::Greatest, AggregateValueKind::Toughness) => EffectMetric::GreatestToughness,
+        (AggregateKind::Greatest, AggregateValueKind::ManaValue) => EffectMetric::GreatestManaValue,
     }
 }
 
 fn pending_aggregate_metric_value(
-    aggregate: &str,
-    value_kind: &str,
+    aggregate: value_helper_shapes::AggregateKind,
+    value_kind: value_helper_shapes::AggregateValueKind,
     object_words: &[&str],
 ) -> Option<Value> {
     Some(Value::PendingEffectMetric {
         source: value_helper_shapes::parse_prior_effect_metric_source(object_words)?,
-        metric: aggregate_effect_metric(aggregate, value_kind)?,
+        metric: aggregate_effect_metric(aggregate, value_kind),
     })
 }
 
-fn pending_count_metric_value(object_words: &[&str]) -> Option<Value> {
-    Some(Value::PendingEffectMetric {
-        source: value_helper_shapes::parse_prior_effect_metric_source(object_words)?,
-        metric: EffectMetric::Count,
-    })
+fn aggregate_filter_value(
+    aggregate: value_helper_shapes::AggregateKind,
+    value_kind: value_helper_shapes::AggregateValueKind,
+    filter: ObjectFilter,
+) -> Value {
+    use value_helper_shapes::{AggregateKind, AggregateValueKind};
+
+    match (aggregate, value_kind) {
+        (AggregateKind::Total, AggregateValueKind::Power) => Value::TotalPower(filter),
+        (AggregateKind::Total, AggregateValueKind::Toughness) => Value::TotalToughness(filter),
+        (AggregateKind::Total, AggregateValueKind::ManaValue) => Value::TotalManaValue(filter),
+        (AggregateKind::Greatest, AggregateValueKind::Power) => Value::GreatestPower(filter),
+        (AggregateKind::Greatest, AggregateValueKind::Toughness) => {
+            Value::GreatestToughness(filter)
+        }
+        (AggregateKind::Greatest, AggregateValueKind::ManaValue) => {
+            Value::GreatestManaValue(filter)
+        }
+    }
 }
 
 fn source_linked_exiled_mana_value(object_words: &[&str]) -> Option<Value> {
-    if value_helper_words_equal_any(object_words, SOURCE_LINKED_EXILED_CARD_PHRASES) {
+    if words_match_any_phrase(object_words, SOURCE_LINKED_EXILED_CARD_PHRASES) {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
             TagKey::from(crate::tag::SOURCE_EXILED_TAG),
         ))));
@@ -175,7 +224,7 @@ fn source_linked_exiled_mana_value(object_words: &[&str]) -> Option<Value> {
 }
 
 fn parse_spells_cast_this_turn_matching_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view = ValueHelperCompatWords::new(tokens);
+    let word_view = TokenWordView::new(tokens);
     let filter_words = word_view.to_word_refs();
     let surface = value_helper_shapes::parse_spell_cast_this_turn_surface(&filter_words)?;
     let filter_token_range = word_view.token_span_for_words(0, surface.filter_end)?;
@@ -189,8 +238,8 @@ fn parse_spells_cast_this_turn_matching_count_value(tokens: &[OwnedLexToken]) ->
 }
 
 fn parse_creatures_died_this_turn_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view = ValueHelperCompatWords::new(tokens);
-    if value_helper_words_equal_any(&word_view.to_word_refs(), CREATURES_DIED_THIS_TURN_PHRASES) {
+    let word_view = TokenWordView::new(tokens);
+    if words_match_any_phrase(&word_view.to_word_refs(), CREATURES_DIED_THIS_TURN_PHRASES) {
         Some(Value::CreaturesDiedThisTurn)
     } else {
         None
@@ -198,29 +247,28 @@ fn parse_creatures_died_this_turn_count_value(tokens: &[OwnedLexToken]) -> Optio
 }
 
 fn parse_cards_discarded_this_turn_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = ValueHelperCompatWords::new(tokens).to_word_refs();
+    let words = TokenWordView::new(tokens).to_word_refs();
     value_helper_shapes::parse_cards_discarded_this_turn_player(&words)
         .map(Value::CardsDiscardedThisTurn)
 }
 
 pub(crate) fn parse_commander_cast_count_player(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
-    let words = ValueHelperCompatWords::new(tokens).to_word_refs();
+    let words = TokenWordView::new(tokens).to_word_refs();
     value_helper_shapes::parse_commander_cast_count_player(&words)
 }
 
 pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let word_view = ValueHelperCompatWords::new(tokens);
+    let word_view = TokenWordView::new(tokens);
     let words_all = word_view.to_word_refs();
-    let equal_idx = permission_shapes::find_words(&words_all, EQUAL_TO_PHRASE)?;
-    let prefix_start = equal_idx + EQUAL_TO_PHRASE.len();
+    let prefix_start = parse_equal_to_start(&words_all)?.after;
     let suffix_refs = words_all.get(prefix_start..)?;
     let matched = value_helper_shapes::parse_number_of_prefix(suffix_refs)?;
     let number_word_idx = prefix_start + matched.number_of_start;
 
     let value_range = word_view.token_span_for_words(number_word_idx, word_view.len())?;
     let value_tokens = trim_edge_punctuation(&tokens[value_range]);
-    if let Some((value, used)) = parse_value(&value_tokens)
-        && ValueHelperCompatWords::new(&value_tokens[used..]).is_empty()
+    if let Some((value, used)) = value_expr::parse_value_expr_tokens(&value_tokens)
+        && TokenWordView::new(&value_tokens[used..]).is_empty()
     {
         return Some(value);
     }
@@ -228,7 +276,7 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     let filter_start_word_idx = number_word_idx + 2;
     let filter_range = word_view.token_span_for_words(filter_start_word_idx, word_view.len())?;
     let filter_tokens = trim_edge_punctuation(&tokens[filter_range]);
-    let filter_word_view = ValueHelperCompatWords::new(&filter_tokens);
+    let filter_word_view = TokenWordView::new(&filter_tokens);
     let filter_words = filter_word_view.to_word_refs();
     if let Some(value) = parse_creatures_died_this_turn_count_value(&filter_tokens) {
         return Some(value);
@@ -255,9 +303,9 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
 pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let word_view = ValueHelperCompatWords::new(tokens);
+    let word_view = TokenWordView::new(tokens);
     let clause_words = word_view.to_word_refs();
-    if clause_words.as_slice() != EQUAL_TO_PHRASE {
+    if primitives::parse_word_sequence_complete(&clause_words, EQUAL_TO_PHRASE).is_none() {
         return None;
     }
 
@@ -281,8 +329,9 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
 
     let offset_range = word_view.token_span_for_words(operator_word_idx + 1, word_view.len())?;
     let offset_tokens = trim_commas(&tokens[offset_range]);
-    let (offset_value, used) = parse_number(&offset_tokens)?;
-    if !ValueHelperCompatWords::new(&offset_tokens[used..]).is_empty() {
+    let (offset_value, used) =
+        leaf::parse_leaf_number_prefix_tokens(&offset_tokens)?.into_fixed()?;
+    if !TokenWordView::new(&offset_tokens[used..]).is_empty() {
         return None;
     }
 
@@ -300,7 +349,7 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
 pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = ValueHelperCompatWords::new(tokens);
+    let clause_words = TokenWordView::new(tokens);
     let clause_refs = clause_words.to_word_refs();
     if value_helper_shapes::starts_equal_to_opponents_you_have(&clause_refs) {
         return Some(Value::CountPlayers(PlayerFilter::Opponent));
@@ -311,24 +360,24 @@ pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(
 pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let words = ValueHelperCompatWords::new(tokens).to_word_refs();
+    let words = TokenWordView::new(tokens).to_word_refs();
     let shape = value_helper_shapes::parse_counter_reference_value_shape(&words)?;
     Some(counter_reference_shape_value(shape))
 }
 
 pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_words = ValueHelperCompatWords::new(tokens);
+    let clause_words = TokenWordView::new(tokens);
     let clause_refs = clause_words.to_word_refs();
-    let equal_idx = permission_shapes::find_words(&clause_refs, EQUAL_TO_PHRASE)?;
-
-    let prefix_start = equal_idx + EQUAL_TO_PHRASE.len();
+    let prefix_start = parse_equal_to_start(&clause_refs)?.after;
     let suffix_refs = clause_refs.get(prefix_start..)?;
     let matched = value_helper_shapes::parse_aggregate_prefix(suffix_refs)?;
-    let aggregate = matched.aggregate.parser_text();
-    let value_kind = matched.value_kind.parser_text();
+    let aggregate = matched.aggregate;
+    let value_kind = matched.value_kind;
     let idx = prefix_start + matched.consumed;
 
-    if aggregate == "greatest" && is_mana_value_kind_word(value_kind) {
+    if aggregate == value_helper_shapes::AggregateKind::Greatest
+        && value_kind == value_helper_shapes::AggregateValueKind::ManaValue
+    {
         if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {
             return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
         }
@@ -337,7 +386,7 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
     let filter_range = clause_words.token_span_for_words(idx, clause_words.len())?;
     let filter_tokens = &tokens[filter_range];
     let object_words = &clause_refs[idx..];
-    if is_mana_value_kind_word(value_kind)
+    if value_kind == value_helper_shapes::AggregateValueKind::ManaValue
         && let Some(value) = source_linked_exiled_mana_value(object_words)
     {
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
@@ -355,25 +404,21 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
         filter.card_types = ObjectFilter::permanent_card().card_types;
     }
 
-    match (aggregate, value_kind) {
-        ("total", "power") => Some(Value::TotalPower(filter)),
-        ("total", "toughness") => Some(Value::TotalToughness(filter)),
-        ("total", "mana_value") => Some(Value::TotalManaValue(filter)),
-        ("greatest", "power") => Some(Value::GreatestPower(filter)),
-        ("greatest", "toughness") => Some(Value::GreatestToughness(filter)),
-        ("greatest", "mana_value") => Some(Value::GreatestManaValue(filter)),
-        _ => None,
-    }
+    Some(aggregate_filter_value(aggregate, value_kind, filter))
 }
 
 pub(crate) fn parse_where_x_greatest_commander_mana_value(
     tokens: &[OwnedLexToken],
     commander_start_word_idx: usize,
 ) -> Option<Value> {
-    let words = ValueHelperCompatWords::new(tokens);
+    let words = TokenWordView::new(tokens);
     let commander_range = words.token_span_for_words(commander_start_word_idx, words.len())?;
     let commander_words = crate::runtime_backend::token_word_refs(&tokens[commander_range]);
-    let normalized = non_article_word_refs(&commander_words);
+    let normalized = commander_words
+        .iter()
+        .copied()
+        .filter(|word| leaf::parse_leaf_article_complete(word).is_err())
+        .collect::<Vec<_>>();
     let owner = commander_owner_from_battlefield_or_command_zone_words(&normalized)?;
 
     let mut battlefield_commander = ObjectFilter::default();
@@ -394,7 +439,7 @@ fn commander_owner_from_battlefield_or_command_zone_words(words: &[&str]) -> Opt
     if words == COMMANDER_YOU_OWN_BATTLEFIELD_OR_COMMAND_ZONE_PHRASE {
         return Some(PlayerFilter::You);
     }
-    if value_helper_words_equal_any(
+    if words_match_any_phrase(
         words,
         COMMANDER_ITERATED_PLAYER_OWNS_BATTLEFIELD_OR_COMMAND_ZONE_PHRASES,
     ) {
@@ -406,10 +451,9 @@ fn commander_owner_from_battlefield_or_command_zone_words(words: &[&str]) -> Opt
 pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let words_all = ValueHelperCompatWords::new(tokens);
+    let words_all = TokenWordView::new(tokens);
     let words_refs = words_all.to_word_refs();
-    let equal_idx = permission_shapes::find_words(&words_refs, EQUAL_TO_PHRASE)?;
-    let prefix_start = equal_idx + EQUAL_TO_PHRASE.len();
+    let prefix_start = parse_equal_to_start(&words_refs)?.after;
     let suffix_refs = words_refs.get(prefix_start..)?;
     let matched = value_helper_shapes::parse_number_of_prefix(suffix_refs)?;
     let number_word_idx = prefix_start + matched.number_of_start;
@@ -417,7 +461,7 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
     let value_range = words_all.token_span_for_words(number_word_idx, words_all.len())?;
     let value_tokens = trim_edge_punctuation_tokens(&tokens[value_range]);
     if let Some((value, used)) = parse_value_prefix_lexed(value_tokens) {
-        if ValueHelperCompatWords::new(&value_tokens[used..]).is_empty() {
+        if TokenWordView::new(&value_tokens[used..]).is_empty() {
             return Some(value);
         }
     }
@@ -425,7 +469,7 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
     let filter_start_word_idx = number_word_idx + 2;
     let filter_range = words_all.token_span_for_words(filter_start_word_idx, words_all.len())?;
     let filter_tokens = trim_edge_punctuation_tokens(&tokens[filter_range]);
-    let filter_words = ValueHelperCompatWords::new(filter_tokens).to_word_refs();
+    let filter_words = TokenWordView::new(filter_tokens).to_word_refs();
     if let Some(value) = parse_spells_cast_this_turn_matching_count_value_lexed(filter_tokens) {
         return Some(value);
     }
@@ -453,9 +497,9 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
 pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = ValueHelperCompatWords::new(tokens);
+    let clause_words = TokenWordView::new(tokens);
     let clause_refs = clause_words.to_word_refs();
-    if !permission_shapes::find_words(&clause_refs, EQUAL_TO_PHRASE).is_some_and(|idx| idx == 0) {
+    if !parse_equal_to_start(&clause_refs).is_some_and(|parsed| parsed.start == 0) {
         return None;
     }
 
@@ -481,7 +525,7 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
         clause_words.token_span_for_words(operator_word_idx + 1, clause_words.len())?;
     let offset_tokens = trim_lexed_commas(&tokens[offset_range]);
     let (offset_value, used) = parse_number_prefix_lexed(offset_tokens)?;
-    if !ValueHelperCompatWords::new(&offset_tokens[used..]).is_empty() {
+    if !TokenWordView::new(&offset_tokens[used..]).is_empty() {
         return None;
     }
 
@@ -499,7 +543,7 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
 pub(crate) fn parse_equal_to_number_of_opponents_you_have_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = ValueHelperCompatWords::new(tokens);
+    let clause_words = TokenWordView::new(tokens);
     if value_helper_shapes::starts_equal_to_opponents_you_have(&clause_words.to_word_refs()) {
         return Some(
             Value::CountPlayers(PlayerFilter::Opponent)
@@ -512,7 +556,7 @@ pub(crate) fn parse_equal_to_number_of_opponents_you_have_value_lexed(
 pub(crate) fn parse_equal_to_number_of_counters_on_reference_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let words = ValueHelperCompatWords::new(tokens).to_word_refs();
+    let words = TokenWordView::new(tokens).to_word_refs();
     let shape = value_helper_shapes::parse_counter_reference_value_shape(&words)?;
     Some(counter_reference_shape_value(shape).with_surface_hint(ValueSurfaceHint::EqualTo))
 }
@@ -520,18 +564,18 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value_lexed(
 pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = ValueHelperCompatWords::new(tokens);
+    let clause_words = TokenWordView::new(tokens);
     let clause_refs = clause_words.to_word_refs();
-    let equal_idx = permission_shapes::find_words(&clause_refs, EQUAL_TO_PHRASE)?;
-
-    let prefix_start = equal_idx + EQUAL_TO_PHRASE.len();
+    let prefix_start = parse_equal_to_start(&clause_refs)?.after;
     let suffix_refs = clause_refs.get(prefix_start..)?;
     let matched = value_helper_shapes::parse_aggregate_prefix(suffix_refs)?;
-    let aggregate = matched.aggregate.parser_text();
-    let value_kind = matched.value_kind.parser_text();
+    let aggregate = matched.aggregate;
+    let value_kind = matched.value_kind;
     let idx = prefix_start + matched.consumed;
 
-    if aggregate == "greatest" && is_mana_value_kind_word(value_kind) {
+    if aggregate == value_helper_shapes::AggregateKind::Greatest
+        && value_kind == value_helper_shapes::AggregateValueKind::ManaValue
+    {
         if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {
             return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
         }
@@ -540,7 +584,7 @@ pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
     let filter_range = clause_words.token_span_for_words(idx, clause_words.len())?;
     let filter_tokens = &tokens[filter_range];
     let object_words = &clause_refs[idx..];
-    if is_mana_value_kind_word(value_kind)
+    if value_kind == value_helper_shapes::AggregateValueKind::ManaValue
         && let Some(value) = source_linked_exiled_mana_value(object_words)
     {
         return Some(value);
@@ -558,21 +602,13 @@ pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
         filter.card_types = ObjectFilter::permanent_card().card_types;
     }
 
-    match (aggregate, value_kind) {
-        ("total", "power") => Some(Value::TotalPower(filter)),
-        ("total", "toughness") => Some(Value::TotalToughness(filter)),
-        ("total", "mana_value") => Some(Value::TotalManaValue(filter)),
-        ("greatest", "power") => Some(Value::GreatestPower(filter)),
-        ("greatest", "toughness") => Some(Value::GreatestToughness(filter)),
-        ("greatest", "mana_value") => Some(Value::GreatestManaValue(filter)),
-        _ => None,
-    }
+    Some(aggregate_filter_value(aggregate, value_kind, filter))
 }
 
 pub(crate) fn parse_spells_cast_this_turn_matching_count_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let filter_words = ValueHelperCompatWords::new(tokens);
+    let filter_words = TokenWordView::new(tokens);
     let word_refs = filter_words.to_word_refs();
     let surface = value_helper_shapes::parse_spell_cast_this_turn_surface(&word_refs)?;
     let filter_token_range = filter_words.token_span_for_words(0, surface.filter_end)?;
@@ -599,30 +635,47 @@ pub(crate) fn parse_filter_comparison_tokens(
         return Ok(None);
     }
 
-    let to_comparison = |kind: &str, operand: Value| -> crate::filter::Comparison {
+    let to_comparison = |operator: ValueComparisonOperator,
+                         operand: Value|
+     -> crate::filter::Comparison {
         use crate::filter::Comparison;
 
-        match (kind, operand) {
-            ("eq", Value::Fixed(value)) => Comparison::Equal(value),
-            ("neq", Value::Fixed(value)) => Comparison::NotEqual(value),
-            ("lt", Value::Fixed(value)) => Comparison::LessThan(value),
-            ("lte", Value::Fixed(value)) => Comparison::LessThanOrEqual(value),
-            ("gt", Value::Fixed(value)) => Comparison::GreaterThan(value),
-            ("gte", Value::Fixed(value)) => Comparison::GreaterThanOrEqual(value),
-            ("eq", operand) => Comparison::EqualExpr(Box::new(operand)),
-            ("neq", operand) => Comparison::NotEqualExpr(Box::new(operand)),
-            ("lt", operand) => Comparison::LessThanExpr(Box::new(operand)),
-            ("lte", operand) => Comparison::LessThanOrEqualExpr(Box::new(operand)),
-            ("gt", operand) => Comparison::GreaterThanExpr(Box::new(operand)),
-            ("gte", operand) => Comparison::GreaterThanOrEqualExpr(Box::new(operand)),
-            _ => unreachable!("unsupported comparison kind"),
+        match (operator, operand) {
+            (ValueComparisonOperator::Equal, Value::Fixed(value)) => Comparison::Equal(value),
+            (ValueComparisonOperator::NotEqual, Value::Fixed(value)) => Comparison::NotEqual(value),
+            (ValueComparisonOperator::LessThan, Value::Fixed(value)) => Comparison::LessThan(value),
+            (ValueComparisonOperator::LessThanOrEqual, Value::Fixed(value)) => {
+                Comparison::LessThanOrEqual(value)
+            }
+            (ValueComparisonOperator::GreaterThan, Value::Fixed(value)) => {
+                Comparison::GreaterThan(value)
+            }
+            (ValueComparisonOperator::GreaterThanOrEqual, Value::Fixed(value)) => {
+                Comparison::GreaterThanOrEqual(value)
+            }
+            (ValueComparisonOperator::Equal, operand) => Comparison::EqualExpr(Box::new(operand)),
+            (ValueComparisonOperator::NotEqual, operand) => {
+                Comparison::NotEqualExpr(Box::new(operand))
+            }
+            (ValueComparisonOperator::LessThan, operand) => {
+                Comparison::LessThanExpr(Box::new(operand))
+            }
+            (ValueComparisonOperator::LessThanOrEqual, operand) => {
+                Comparison::LessThanOrEqualExpr(Box::new(operand))
+            }
+            (ValueComparisonOperator::GreaterThan, operand) => {
+                Comparison::GreaterThanExpr(Box::new(operand))
+            }
+            (ValueComparisonOperator::GreaterThanOrEqual, operand) => {
+                Comparison::GreaterThanOrEqualExpr(Box::new(operand))
+            }
         }
     };
 
     let parse_operand = |operand_tokens: &[&str],
-                         comparison_kind: &str|
+                         operator: ValueComparisonOperator|
      -> Result<(crate::filter::Comparison, usize), CardTextError> {
-        let Some((operand, used)) = parse_value_expr_words(operand_tokens) else {
+        let Some((operand, used)) = value_expr::parse_value_expr_words(operand_tokens) else {
             let quoted = operand_tokens
                 .first()
                 .copied()
@@ -633,32 +686,20 @@ pub(crate) fn parse_filter_comparison_tokens(
                 clause_words.join(" ")
             )));
         };
-        Ok((to_comparison(comparison_kind, operand), used))
+        Ok((to_comparison(operator, operand), used))
     };
 
     let parse_numeric_token = |word: &str| -> Option<i32> {
         if let Ok(value) = word.parse::<i32>() {
             return Some(value);
         }
-        parse_number_word_i32(word)
+        leaf::parse_number_i32_complete(word).ok()
     };
-
-    let map_operator =
-        |operator: ValueComparisonOperator, operand: Value| -> crate::filter::Comparison {
-            match operator {
-                ValueComparisonOperator::Equal => to_comparison("eq", operand),
-                ValueComparisonOperator::NotEqual => to_comparison("neq", operand),
-                ValueComparisonOperator::LessThan => to_comparison("lt", operand),
-                ValueComparisonOperator::LessThanOrEqual => to_comparison("lte", operand),
-                ValueComparisonOperator::GreaterThan => to_comparison("gt", operand),
-                ValueComparisonOperator::GreaterThanOrEqual => to_comparison("gte", operand),
-            }
-        };
 
     let first = tokens[0];
     if let Some(value) = parse_numeric_token(first) {
         if tokens.get(1).is_some_and(|word| is_plus_minus_word(word)) {
-            let (cmp, used) = parse_operand(tokens, "eq")?;
+            let (cmp, used) = parse_operand(tokens, ValueComparisonOperator::Equal)?;
             return Ok(Some((cmp, used)));
         }
         let mut values = vec![value];
@@ -693,28 +734,29 @@ pub(crate) fn parse_filter_comparison_tokens(
                 clause_words.join(" ")
             )));
         }
-        let (operand, used) = parse_value_expr_words(operand_words).ok_or_else(|| {
-            let quoted = operand_words.first().copied().unwrap_or_default();
-            CardTextError::ParseError(format!(
-                "unsupported dynamic {axis} comparison operand '{quoted}' (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?;
+        let (operand, used) =
+            value_expr::parse_value_expr_words(operand_words).ok_or_else(|| {
+                let quoted = operand_words.first().copied().unwrap_or_default();
+                CardTextError::ParseError(format!(
+                    "unsupported dynamic {axis} comparison operand '{quoted}' (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
         let consumed = consumed_base + used;
-        return Ok(Some((map_operator(operator, operand), consumed)));
+        return Ok(Some((to_comparison(operator, operand), consumed)));
     }
 
-    if let Some((value, used)) = parse_value_expr_words(tokens) {
+    if let Some((value, used)) = value_expr::parse_value_expr_words(tokens) {
         if tokens.get(used).copied() == Some("or")
             && let Some(next) = tokens.get(used + 1)
             && is_comparison_tail_word(next)
         {
-            let kind = if is_less_or_fewer_word(next) {
-                "lte"
+            let operator = if is_less_or_fewer_word(next) {
+                ValueComparisonOperator::LessThanOrEqual
             } else {
-                "gte"
+                ValueComparisonOperator::GreaterThanOrEqual
             };
-            return Ok(Some((to_comparison(kind, value), used + 2)));
+            return Ok(Some((to_comparison(operator, value), used + 2)));
         }
         if let Value::Fixed(fixed) = value
             && used == 1
@@ -742,6 +784,15 @@ mod tests {
             token.lowercase_word();
         }
         tokens
+    }
+
+    #[test]
+    fn equal_to_parser_returns_typed_word_boundaries() {
+        assert_eq!(
+            parse_equal_to_start(&["where", "x", "is", "equal", "to", "the"]),
+            Some(EqualToStart { start: 3, after: 5 })
+        );
+        assert_eq!(parse_equal_to_start(&["not", "equal"]), None);
     }
 
     #[test]

@@ -380,7 +380,29 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    parse_object_filter_lexed(tokens, other)
+    let mut filter = parse_object_filter_lexed(tokens, other)?;
+    apply_chosen_type_domain(&mut filter, tokens);
+    Ok(filter)
+}
+
+fn apply_chosen_type_domain(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    if parse_chosen_type_reference_tokens(tokens).is_none() {
+        return;
+    }
+    let has_land_type = filter
+        .card_types
+        .iter()
+        .chain(filter.all_card_types.iter())
+        .any(|card_type| *card_type == CardType::Land);
+    let has_nonland_type = filter
+        .card_types
+        .iter()
+        .chain(filter.all_card_types.iter())
+        .any(|card_type| *card_type != CardType::Land);
+    if has_land_type && !has_nonland_type {
+        filter.chosen_land_type = true;
+        filter.chosen_creature_type = false;
+    }
 }
 
 pub(super) fn parse_object_filter(
@@ -403,6 +425,7 @@ pub(super) fn parse_object_filter_inner(
     strict: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     let (tokens, vote_winners_only) = trim_vote_winner_suffix(tokens);
+    let chosen_type_reference = parse_chosen_type_reference_tokens(&tokens);
     let mut filter = ObjectFilter::default();
     if other {
         filter.other = true;
@@ -1918,6 +1941,23 @@ pub(super) fn parse_object_filter_inner(
 
     if exclude_basic_land_cards {
         apply_basic_land_exception(&mut filter);
+    }
+
+    if chosen_type_reference.is_some() {
+        let has_land_type = filter
+            .card_types
+            .iter()
+            .chain(filter.all_card_types.iter())
+            .any(|card_type| *card_type == CardType::Land);
+        let has_nonland_type = filter
+            .card_types
+            .iter()
+            .chain(filter.all_card_types.iter())
+            .any(|card_type| *card_type != CardType::Land);
+        if has_land_type && !has_nonland_type {
+            filter.chosen_land_type = true;
+            filter.chosen_creature_type = false;
+        }
     }
 
     if parse_word_choice_anywhere(

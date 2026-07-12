@@ -1,9 +1,9 @@
 use super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
-    OwnedLexToken, TokenKind, contains_token_word, find_token_word_sequence_span, token_word_refs,
-    tokens_start_with_at, trim_lexed_commas, words_have_phrase, words_start_with,
-    words_start_with_any,
+    OwnedLexToken, TokenKind, contains_token_word, find_token_word_sequence_span,
+    token_prefix_present_at, token_word_refs, trim_lexed_commas, word_prefix_choice_present,
+    word_prefix_present, word_sequence_present,
 };
 use super::object_filters::parse_object_filter;
 use super::token_primitives::{

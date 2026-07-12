@@ -1,10 +1,16 @@
 use crate::mana::ManaSymbol;
-use winnow::combinator::alt;
+use winnow::combinator::{alt, opt, repeat, repeat_till};
+use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
+use winnow::token::any;
 
-use super::super::lexer::OwnedLexToken;
+use super::super::lexer::{LexStream, OwnedLexToken};
 use super::{leaf, primitives};
-use crate::runtime_backend::shared_types::StatementReplacementSurfaceKind;
+
+#[path = "lowering_surfaces/statement_replacements.rs"]
+mod statement_replacements;
+
+pub(crate) use statement_replacements::parse_statement_replacement_surface_tokens;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CreatureTypeChoiceBuff;
@@ -14,174 +20,101 @@ pub(crate) struct ThisSpellCostSurface {
     pub(crate) reduction_cap: Option<i32>,
 }
 
-fn has_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
-    primitives::find_prefix(tokens, || primitives::phrase(phrase)).is_some()
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PriorCreatedTokenReference;
 
-fn has_word(tokens: &[OwnedLexToken], word: &'static str) -> bool {
-    primitives::find_prefix(tokens, || primitives::kw(word)).is_some()
-}
-
-fn has_get_word(tokens: &[OwnedLexToken]) -> bool {
-    primitives::find_prefix(tokens, || {
-        alt((primitives::kw("get"), primitives::kw("gets"))).void()
-    })
-    .is_some()
-}
-
-fn has_owner_word(tokens: &[OwnedLexToken]) -> bool {
-    primitives::find_prefix(tokens, || {
+pub(crate) fn parse_prior_created_token_reference_words(
+    words: &[&str],
+) -> Option<PriorCreatedTokenReference> {
+    primitives::parse_full_word_slice(
+        words,
         alt((
-            primitives::kw("owner"),
-            primitives::kw("owners"),
-            primitives::kw("owner's"),
-        ))
-        .void()
-    })
-    .is_some()
+            primitives::word_slice_exact("those").value(PriorCreatedTokenReference),
+            (
+                primitives::word_slice_exact("of"),
+                primitives::word_slice_exact("those"),
+            )
+                .value(PriorCreatedTokenReference),
+        )),
+    )
 }
 
 pub(crate) fn parse_creature_type_choice_buff_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CreatureTypeChoiceBuff> {
-    (has_phrase(tokens, &["creature", "type", "of", "your", "choice"]) && has_get_word(tokens))
-        .then_some(CreatureTypeChoiceBuff)
+    primitives::parse_all(
+        tokens,
+        parse_creature_type_choice_buff_lexed,
+        "creature-type choice buff",
+    )
+    .ok()
 }
 
-pub(crate) fn parse_bargained_return_replacement_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<StatementReplacementSurfaceKind> {
-    (has_phrase(tokens, &["if", "this", "spell", "was", "bargained"])
-        && has_phrase(
-            tokens,
-            &[
-                "one", "of", "those", "cards", "with", "mana", "value", "4", "or", "less",
-            ],
-        )
-        && has_phrase(
-            tokens,
-            &[
-                "onto",
-                "the",
-                "battlefield",
-                "instead",
-                "of",
-                "putting",
-                "it",
-                "into",
-                "your",
-                "hand",
-            ],
-        ))
-    .then_some(StatementReplacementSurfaceKind::BargainedReturnToBattlefield)
+fn parse_creature_type_choice_buff_lexed(
+    input: &mut LexStream<'_>,
+) -> WResult<CreatureTypeChoiceBuff> {
+    repeat_till::<_, _, (), _, _, _, _>(
+        0..,
+        any.void(),
+        primitives::phrase(&["creature", "type", "of", "your", "choice"]),
+    )
+    .parse_next(input)?;
+    repeat_till::<_, _, (), _, _, _, _>(
+        0..,
+        any.void(),
+        alt((primitives::kw("get"), primitives::kw("gets"))),
+    )
+    .parse_next(input)?;
+    consume_tail(input)?;
+    Ok(CreatureTypeChoiceBuff)
 }
 
-pub(crate) fn parse_kicked_count_override_replacement_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<StatementReplacementSurfaceKind> {
-    (has_phrase(
-        tokens,
-        &[
-            "put", "two", "of", "those", "cards", "into", "your", "hand", "instead",
-        ],
-    ) && has_phrase(
-        tokens,
-        &["put", "one", "of", "those", "cards", "into", "your", "hand"],
+fn parse_generic_mana_cap(input: &mut LexStream<'_>) -> WResult<i32> {
+    let symbols = leaf::parse_leaf_mana_group_token.parse_next(input)?;
+    if symbols.len() == 1
+        && let Some(ManaSymbol::Generic(amount)) = symbols.first().copied()
+    {
+        return Ok(i32::from(amount));
+    }
+    Err(primitives::backtrack_err(
+        "this-spell cost surface",
+        "one generic mana symbol after 'by more than'",
     ))
-    .then_some(StatementReplacementSurfaceKind::KickedCountOverride)
-}
-
-pub(crate) fn parse_kicked_multi_zone_to_battlefield_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<StatementReplacementSurfaceKind> {
-    (has_phrase(tokens, &["if", "this", "spell", "was", "kicked"])
-        && has_phrase(
-            tokens,
-            &[
-                "put",
-                "those",
-                "cards",
-                "onto",
-                "the",
-                "battlefield",
-                "instead",
-                "of",
-                "putting",
-                "them",
-                "into",
-                "your",
-                "hand",
-            ],
-        ))
-    .then_some(StatementReplacementSurfaceKind::KickedMultiZoneToBattlefield)
-}
-
-pub(crate) fn parse_clash_win_top_replacement_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<StatementReplacementSurfaceKind> {
-    let common = has_phrase(tokens, &["clash", "with", "an", "opponent"])
-        && has_phrase(tokens, &["if", "you", "win"]);
-    let exact = has_phrase(
-        tokens,
-        &["on", "top", "of", "its", "owner's", "library", "instead"],
-    );
-    let normalized = has_word(tokens, "top")
-        && has_word(tokens, "library")
-        && has_word(tokens, "instead")
-        && has_owner_word(tokens);
-    (common && (exact || normalized))
-        .then_some(StatementReplacementSurfaceKind::ClashWinTopOfLibrary)
-}
-
-pub(crate) fn parse_morbid_search_to_battlefield_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<StatementReplacementSurfaceKind> {
-    (has_phrase(
-        tokens,
-        &[
-            "put",
-            "that",
-            "card",
-            "onto",
-            "the",
-            "battlefield",
-            "instead",
-            "of",
-            "putting",
-            "it",
-            "into",
-            "your",
-            "hand",
-        ],
-    ) && has_phrase(tokens, &["creature", "died", "this", "turn"]))
-    .then_some(StatementReplacementSurfaceKind::MorbidSearchToBattlefield)
-}
-
-fn parse_reduction_cap(tokens: &[OwnedLexToken]) -> Option<i32> {
-    let (_, _, after_prefix) =
-        primitives::find_prefix(tokens, || primitives::phrase(&["by", "more", "than"]))?;
-    let (_, symbols, _) =
-        primitives::find_prefix(after_prefix, || leaf::parse_leaf_mana_group_token)?;
-    let [ManaSymbol::Generic(amount)] = symbols.as_slice() else {
-        return None;
-    };
-    Some(i32::from(*amount))
 }
 
 pub(crate) fn parse_this_spell_cost_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ThisSpellCostSurface> {
-    primitives::parse_prefix(tokens, |input: &mut super::super::lexer::LexStream<'_>| {
-        alt((
-            primitives::phrase(&["this", "spell", "costs"]),
-            primitives::phrase(&["this", "spell", "cost"]),
-        ))
-        .void()
-        .parse_next(input)
-    })?;
-    Some(ThisSpellCostSurface {
-        reduction_cap: parse_reduction_cap(tokens),
-    })
+    primitives::parse_all(
+        tokens,
+        parse_this_spell_cost_surface_lexed,
+        "this-spell cost surface",
+    )
+    .ok()
+}
+
+fn parse_this_spell_cost_surface_lexed(input: &mut LexStream<'_>) -> WResult<ThisSpellCostSurface> {
+    alt((
+        primitives::phrase(&["this", "spell", "costs"]),
+        primitives::phrase(&["this", "spell", "cost"]),
+    ))
+    .parse_next(input)?;
+    let reduction_cap = opt((
+        repeat_till::<_, _, (), _, _, _, _>(
+            0..,
+            any.void(),
+            primitives::phrase(&["by", "more", "than"]),
+        ),
+        parse_generic_mana_cap,
+    )
+        .map(|(_, cap)| cap))
+    .parse_next(input)?;
+    consume_tail(input)?;
+    Ok(ThisSpellCostSurface { reduction_cap })
+}
+
+fn consume_tail(input: &mut LexStream<'_>) -> WResult<()> {
+    repeat::<_, _, (), _, _>(0.., any.void()).parse_next(input)
 }
 
 #[cfg(test)]
@@ -217,6 +150,23 @@ mod tests {
             0,
         )
         .unwrap();
-        assert!(parse_clash_win_top_replacement_tokens(&tokens).is_some());
+        assert_eq!(
+            parse_statement_replacement_surface_tokens(&tokens),
+            Some(
+                crate::runtime_backend::shared_types::StatementReplacementSurfaceKind::ClashWinTopOfLibrary
+            )
+        );
+    }
+
+    #[test]
+    fn parses_prior_created_token_reference_as_typed_fact() {
+        assert_eq!(
+            parse_prior_created_token_reference_words(&["of", "those"]),
+            Some(PriorCreatedTokenReference)
+        );
+        assert_eq!(
+            parse_prior_created_token_reference_words(&["those", "tokens"]),
+            None
+        );
     }
 }

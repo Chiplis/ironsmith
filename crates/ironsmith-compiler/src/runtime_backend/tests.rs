@@ -1380,6 +1380,28 @@ fn rewrite_structure_if_clause_splitter_routes_commaless_conditional_sentence() 
 }
 
 #[test]
+fn rewrite_structure_if_clause_splitter_routes_life_tie_choice_sequence() {
+    let tokens = lex_line(
+        "If two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature.",
+        0,
+    )
+    .expect("rewrite lexer should classify life-tie choice clause");
+    let spec = super::grammar::structure::split_if_clause_lexed(
+        &tokens,
+        super::effect_sentences::parse_effect_chain_lexed,
+    )
+    .expect("structure helper should split life-tie choice clause at its first comma");
+
+    assert!(matches!(
+        spec.predicate,
+        super::grammar::structure::IfClausePredicateSpec::Conditional(
+            crate::cards::builders::PredicateAst::ValueComparison { .. }
+        )
+    ));
+    assert!(!spec.effects.is_empty());
+}
+
+#[test]
 fn rewrite_structure_if_clause_splitter_keeps_player_may_search_subject() {
     let tokens = lex_line(
         "If a land was destroyed this way its controller may search their library for a basic land card.",
@@ -2484,13 +2506,10 @@ fn rewrite_lexed_for_each_exiled_reveal_until_then_bottom_uses_consult() {
 
     let parsed = parse_effect_sentence_lexed(&lexed)
         .expect("for-each exiled reveal-until-bottom sentence should parse");
-    let [EffectAst::ForEachObject { filter, effects }] = parsed.as_slice() else {
-        panic!("expected typed outer object iteration, got {parsed:#?}");
+    let [EffectAst::ForEachTagged { tag, effects }] = parsed.as_slice() else {
+        panic!("expected canonical tagged exile iteration, got {parsed:#?}");
     };
-    assert!(filter.tagged_constraints.iter().any(|constraint| matches!(
-        constraint.relation,
-        crate::target::TaggedOpbjectRelation::IsTaggedObject
-    )));
+    assert_eq!(tag.as_str(), crate::tag::SOURCE_EXILED_TAG);
 
     let inner = format!("{effects:#?}");
     assert!(inner.contains("ConsultTopOfLibrary"), "{inner}");
@@ -2513,10 +2532,12 @@ fn rewrite_statement_lowering_parses_nissas_encouragement_via_parser_path()
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
             let debug = format!("{effects:#?}");
-            assert!(debug.contains("ChooseObjectsAcrossZones"), "{debug}");
-            assert!(debug.contains("RevealTagged"), "{debug}");
-            assert!(debug.contains("zone: Hand"), "{debug}");
-            assert!(debug.contains("ShuffleLibrary"), "{debug}");
+            assert!(debug.contains("SearchLibrarySlots"), "{debug}");
+            assert!(debug.contains("\"Forest\""), "{debug}");
+            assert!(debug.contains("\"Brambleweft Behemoth\""), "{debug}");
+            assert!(debug.contains("\"Nissa, Genesis Mage\""), "{debug}");
+            assert!(debug.contains("destination: Hand"), "{debug}");
+            assert!(debug.contains("reveal: true"), "{debug}");
         }
         other => panic!("expected single Nissa's Encouragement statement chunk, got {other:?}"),
     }
@@ -5053,7 +5074,9 @@ fn rewrite_lexed_value_and_permission_helpers_match_existing_semantics() {
         .expect("rewrite lexer should classify permission clause");
 
     assert!(matches!(
-        super::value_helpers::parse_equal_to_number_of_filter_value_lexed(&count_tokens),
+        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value_lexed(
+            &count_tokens,
+        ),
         Some(crate::effect::Value::Count(filter)) if filter.card_types == vec![CardType::Creature]
     ));
     assert!(matches!(
@@ -5161,12 +5184,12 @@ fn assert_source_counter_surface_in_card_context(
             let tokens = lex_line(text, 0)
                 .expect("rewrite lexer should classify source counter reference value");
             let parsed =
-                super::value_helpers::parse_equal_to_number_of_counters_on_reference_value(&tokens)
+                super::grammar::shared_util::value_semantics::parse_equal_to_number_of_counters_on_reference_value(&tokens)
                     .expect("source counter reference value should parse");
             assert_source_counter_surface(&parsed, expected_surface);
 
             let parsed_lexed =
-                super::value_helpers::parse_equal_to_number_of_counters_on_reference_value_lexed(
+                super::grammar::shared_util::value_semantics::parse_equal_to_number_of_counters_on_reference_value_lexed(
                     &tokens,
                 )
                 .expect("lexed source counter reference value should parse");
@@ -5203,7 +5226,7 @@ fn source_counter_reference_values_allow_bare_it_without_surface_hint() {
         .expect("rewrite lexer should classify bare source counter reference value");
 
     let parsed =
-        super::value_helpers::parse_equal_to_number_of_counters_on_reference_value(&tokens)
+        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_counters_on_reference_value(&tokens)
             .expect("bare source counter reference value should parse");
     assert!(matches!(
         parsed.unhinted(),
@@ -5513,7 +5536,7 @@ fn rewrite_lexed_value_helpers_cover_offset_and_aggregate_counts() {
     .expect("rewrite lexer should classify spells-cast count-value clause");
 
     assert!(matches!(
-        super::value_helpers::parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
+        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
             &offset_tokens
         ),
         Some(crate::effect::Value::Add(base, offset))
@@ -5521,13 +5544,17 @@ fn rewrite_lexed_value_helpers_cover_offset_and_aggregate_counts() {
                 && matches!(*offset, crate::effect::Value::Fixed(2))
     ));
     assert!(matches!(
-        super::value_helpers::parse_equal_to_aggregate_filter_value_lexed(&aggregate_tokens),
+        super::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value_lexed(
+            &aggregate_tokens,
+        ),
         Some(crate::effect::Value::GreatestPower(filter))
             if filter.card_types == vec![CardType::Creature]
                 && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
     assert!(matches!(
-        super::value_helpers::parse_equal_to_number_of_filter_value_lexed(&spells_cast_tokens),
+        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value_lexed(
+            &spells_cast_tokens,
+        ),
         Some(crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. })
             if player == crate::target::PlayerFilter::You
                 && filter.card_types == vec![CardType::Instant]
@@ -7033,8 +7060,10 @@ fn equal_to_number_of_cards_you_ve_discarded_this_turn_parses() {
         .expect("rewrite lexer should classify value clause");
 
     let parsed =
-        super::front_end::shared::value_helpers::parse_equal_to_number_of_filter_value(&tokens)
-            .expect("discarded this turn count should parse");
+        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
+            &tokens,
+        )
+        .expect("discarded this turn count should parse");
 
     assert!(matches!(
         parsed,
@@ -7364,9 +7393,36 @@ fn rewrite_representative_suffix_recovery_cards_compile_without_parse_loss() {
             )
         });
 
-        compiled.unwrap_or_else(|err| panic!("{name}: {err:?}"));
+        let compiled = compiled.unwrap_or_else(|err| panic!("{name}: {err:?}"));
         assert!(!loss.is_lossy(), "{}: {}", name, loss.reasons_text());
+        if name == "Typed Conditional Grant" {
+            let debug = format!("{compiled:#?}");
+            assert!(!debug.contains("__it__"), "{debug}");
+            assert!(
+                debug.contains("\"enchanted\"") && debug.contains("\"equipped\""),
+                "{debug}"
+            );
+        }
     }
+}
+
+#[test]
+fn rewrite_player_counter_conditional_anthem_compiles_without_parse_loss() {
+    let text = "As long as an opponent has three or more poison counters, enchanted creature gets an additional +1/+0 and has first strike.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::compile_card_text(
+            CardDefinitionBuilder::new(
+                CardId::from_raw(1),
+                "Typed Player Counter Conditional Anthem",
+            )
+            .card_types(vec![CardType::Enchantment]),
+            text,
+            false,
+        )
+    });
+
+    compiled.expect("player-counter conditional anthem should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
 }
 
 #[test]
@@ -8728,6 +8784,32 @@ fn life_lost_this_way_lowers_to_prior_effect_metric() {
             && debug.contains("EffectMetric")
             && debug.contains("LifeLost"),
         "expected life gain to bind to prior life-loss metric, got {debug}"
+    );
+}
+
+#[test]
+fn standalone_each_opponent_poison_counter_is_a_statement_line() {
+    let tokens = lex_line("Each opponent gets a poison counter.", 0)
+        .expect("poison-counter line should lex");
+    assert!(
+        parse_effect_sentence_lexed(&tokens).is_ok_and(|effects| !effects.is_empty()),
+        "poison-counter line should produce typed effects"
+    );
+    assert!(
+        super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+            .expect("static probe should not error")
+            .is_none(),
+        "poison-counter line should not be claimed as static"
+    );
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Poison Counter Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Each opponent gets a poison counter.")
+        .expect("standalone poison-counter statement should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("PoisonCountersEffect"),
+        "expected poison effect, got {debug}"
     );
 }
 
@@ -13332,19 +13414,39 @@ fn rewrite_lexed_effect_sentence_parses_triple_target_pt_body() {
 }
 
 #[test]
-fn rewrite_effect_entrypoint_keeps_exact_bundle_graveyard_copy_shape_without_lowering() {
+fn rewrite_effect_entrypoint_parses_cast_from_zone_copy_sequence_generically() {
     let tokens = lex_line(
         "If this spell was cast from a graveyard, copy this spell and you may choose a new target for the copy.",
         0,
     )
-    .expect("rewrite lexer should classify exact bundle effect");
+    .expect("rewrite lexer should classify cast-from-zone copy effect");
 
     let parsed = super::clause_support::parse_effect_sentences_lexed(&tokens)
-        .expect("exact bundle effect should parse");
+        .expect("cast-from-zone copy effect should parse");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("ThisSpellWasCastFromZone"), "{debug}");
     assert!(debug.contains("CopySpell"), "{debug}");
+}
+
+#[test]
+fn rewrite_effect_entrypoint_parses_devotion_library_threshold_sequence_generically() {
+    let tokens = lex_line(
+        "Look at the top X cards of your library, where X is your devotion to blue. Put up to one of them on top of your library and the rest on the bottom of your library in a random order. If X is greater than or equal to the number of cards in your library, you win the game.",
+        0,
+    )
+    .expect("rewrite lexer should classify the devotion library-threshold sequence");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("devotion library-threshold sequence should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("Devotion"), "{debug}");
+    assert!(debug.contains("RearrangeLookedCardsInLibrary"), "{debug}");
+    assert!(debug.contains("ValueComparison"), "{debug}");
+    assert!(debug.contains("GreaterThanOrEqual"), "{debug}");
+    assert!(debug.contains("WinGame"), "{debug}");
 }
 
 #[test]
@@ -15514,6 +15616,29 @@ fn rewrite_lowered_triggered_effect_keeps_delayed_that_creature_dies_followup()
             && effects_debug.contains("SurveilEffect"),
         "{effects_debug}"
     );
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_trigger_keeps_counter_linked_land_subtype_as_effect_followup()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Counter-Linked Land Subtype")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(6, 6));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever this creature enters or attacks, put a flood counter on target land. That land is an Island in addition to its other types for as long as it has a flood counter on it."
+            .to_string(),
+        false,
+    )?;
+    assert_eq!(definition.abilities.len(), 1, "{:#?}", definition.abilities);
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("expected triggered ability: {:#?}", definition.abilities);
+    };
+    let debug = format!("{:#?}", triggered.effects);
+    assert!(debug.contains("PutCountersEffect"), "{debug}");
+    assert!(debug.contains("AddSubtypes("), "{debug}");
+    assert!(debug.contains("Island"), "{debug}");
     Ok(())
 }
 
@@ -20845,4 +20970,70 @@ fn exile_play_event_followups_lower_as_reflexive_or_delayed_triggers() {
             && delayed_debug.contains("PlayerPlaysLand"),
         "{delayed_debug}"
     );
+}
+
+#[test]
+fn typed_counter_where_x_carries_into_payment_and_result_followup() {
+    fn is_source_plus_one_counter_count(value: &Value) -> bool {
+        match value {
+            Value::SurfaceHinted { value, .. } => is_source_plus_one_counter_count(value),
+            Value::CountersOnSource(CounterType::PlusOnePlusOne) => true,
+            _ => false,
+        }
+    }
+
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Primordial Ooze")
+        .card_types(vec![CardType::Creature]);
+    let (document, _) = parse_text_to_semantic_document(
+        builder.clone(),
+        "At the beginning of your upkeep, put a +1/+1 counter on this creature. Then you may pay {X}, where X is the number of +1/+1 counters on it. If you don't, tap this creature and it deals X damage to you.".to_string(),
+        false,
+    )
+    .expect("semantic parse should succeed before reference preparation");
+    let effects = document
+        .items
+        .iter()
+        .find_map(|item| rewrite_direct_triggered_chunk(item).map(|(_, effects, _)| effects))
+        .expect("expected one typed triggered ability");
+    let EffectAst::MayByPlayer {
+        effects: payment_effects,
+        ..
+    } = &effects[1]
+    else {
+        panic!("expected optional X payment: {effects:#?}");
+    };
+    assert!(matches!(
+        payment_effects.as_slice(),
+        [EffectAst::SubjectVerb(subject_verb)]
+            if matches!(
+                &subject_verb.action,
+                SubjectVerbActionAst::PayMana { x_value: Some(value), .. }
+                    if is_source_plus_one_counter_count(value)
+            )
+    ));
+    let EffectAst::IfResult {
+        effects: decline_effects,
+        ..
+    } = &effects[2]
+    else {
+        panic!("expected decline follow-up: {effects:#?}");
+    };
+    assert!(
+        decline_effects.iter().any(|effect| matches!(
+            effect,
+            EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    &subject_verb.action,
+                    SubjectVerbActionAst::DealDamage { amount, .. }
+                        if is_source_plus_one_counter_count(amount)
+                )
+        )),
+        "expected the decline damage to reuse the typed X binding: {decline_effects:#?}"
+    );
+
+    builder
+        .parse_text(
+            "At the beginning of your upkeep, put a +1/+1 counter on this creature. Then you may pay {X}, where X is the number of +1/+1 counters on it. If you don't, tap this creature and it deals X damage to you.",
+        )
+        .expect("typed counter-defined X should survive preparation and lowering");
 }

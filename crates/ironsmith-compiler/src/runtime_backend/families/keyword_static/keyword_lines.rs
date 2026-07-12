@@ -2,11 +2,14 @@ pub(crate) fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<Keyword
     if let Some(actions) = parse_flashback_keyword_line(tokens) {
         return Some(actions);
     }
-    let words = crate::runtime_backend::lexer::TokenWordView::new(tokens).word_refs();
-    if let Some(action) =
-        super::activation_and_restrictions::parse_dynamic_soulshift_keyword_action(&words)
+    if let Some(parsed) =
+        crate::runtime_backend::grammar::keyword_action_costs::parse_dynamic_soulshift_tokens(
+            tokens,
+        )
     {
-        return Some(vec![action]);
+        return Some(vec![KeywordAction::SoulshiftValue(
+            crate::effect::Value::Count(parsed.count_filter),
+        )]);
     }
     if let Some(action @ KeywordAction::CumulativeUpkeep { .. }) = parse_ability_phrase(tokens) {
         return Some(vec![action]);

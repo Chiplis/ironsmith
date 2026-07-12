@@ -6,7 +6,7 @@ use super::super::compile_support::compile_statement_effects;
 use super::super::grammar::primitives::{TokenWordView, split_lexed_slices_on_and};
 use super::super::grammar::structure::parse_trailing_if_predicate_lexed;
 use super::super::lexer::{
-    OwnedLexToken, TokenKind, contains_token_kind, find_token_kind, find_token_word,
+    OwnedLexToken, TokenKind, contains_token_kind, locate_token_kind, locate_token_word,
     token_slice_first_is, trim_lexed_commas,
 };
 use super::super::lowering_support::{
@@ -256,6 +256,9 @@ fn parse_shared_subject_pump_from_get_tail(
     };
     let power = head.power;
     let toughness = head.toughness;
+    let modifier_tokens = modifier_tokens
+        .get(head.modifier_token_offset..)
+        .unwrap_or_default();
     let for_each =
         if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) = (&power, &toughness) {
             parse_get_for_each_count_value(modifier_tokens.get(1..).unwrap_or_default())?
@@ -527,9 +530,12 @@ pub(crate) fn parse_simple_ability_duration(
 }
 
 fn parse_ability_duration_with_condition(
+    tokens_after_verb: &[OwnedLexToken],
     words_after_verb: &[&str],
 ) -> (Option<(usize, usize, Until)>, Option<crate::ConditionExpr>) {
-    let Some(shape) = gain_shapes::parse_gain_ability_duration_shape(words_after_verb) else {
+    let Some(shape) = gain_shapes::parse_source_tapped_gain_duration_shape(tokens_after_verb)
+        .or_else(|| gain_shapes::parse_gain_ability_duration_shape(words_after_verb))
+    else {
         return (None, None);
     };
     (
@@ -1026,6 +1032,7 @@ fn parse_gain_ability_sentence_with_subject(
     let losing = gain_verb == gain_shapes::GainAbilityVerb::Lose;
 
     let after_gain = &word_list[gain_idx + 1..];
+    let after_gain_tokens = tokens.get(gain_token_idx + 1..).unwrap_or_default();
     if gain_verb == gain_shapes::GainAbilityVerb::Gain {
         if after_gain
             .first()
@@ -1074,7 +1081,7 @@ fn parse_gain_ability_sentence_with_subject(
         if words_start_nested_triggered_ability(after_gain) {
             (None, None)
         } else {
-            parse_ability_duration_with_condition(after_gain)
+            parse_ability_duration_with_condition(after_gain_tokens, after_gain)
         };
     let duration = duration_phrase
         .as_ref()
@@ -1273,6 +1280,9 @@ fn parse_gain_ability_sentence_with_subject(
         if let Some(head) = gain_shapes::parse_gain_pump_head_shape(&modifier_tokens) {
             let power = head.power;
             let toughness = head.toughness;
+            let modifier_tokens = modifier_tokens
+                .get(head.modifier_token_offset..)
+                .unwrap_or_default();
             let for_each = if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) =
                 (&power, &toughness)
             {
@@ -1877,10 +1887,10 @@ fn parse_granted_triggered_otherwise_ability(
     } else {
         0
     };
-    let Some(comma_idx) = find_token_kind(ability_tokens, TokenKind::Comma) else {
+    let Some(comma_idx) = locate_token_kind(ability_tokens, TokenKind::Comma) else {
         return Ok(None);
     };
-    let Some(otherwise_idx) = find_token_word(ability_tokens, "otherwise") else {
+    let Some(otherwise_idx) = locate_token_word(ability_tokens, "otherwise") else {
         return Ok(None);
     };
     if otherwise_idx <= comma_idx + 1 || comma_idx <= start_idx {
@@ -2002,6 +2012,14 @@ pub(crate) fn parse_gain_ability_to_source_sentence(
 
     Ok(None)
 }
+
+#[cfg(test)]
+#[path = "gain_ability/source_tapped_tests.rs"]
+mod source_tapped_tests;
+
+#[cfg(test)]
+#[path = "gain_ability/typed_grant_tests.rs"]
+mod typed_grant_tests;
 
 #[cfg(test)]
 mod tests {

@@ -48,6 +48,25 @@ pub(crate) fn parse_blight_segment_tokens(
     parse_simple_segment(tokens, parse_blight_segment_lexed, "blight")
 }
 
+pub(crate) fn parse_exert_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    primitives::parse_all(
+        tokens,
+        parse_exert_segment_lexed,
+        "activation-exert-segment",
+    )
+    .map(|()| ActivationCostSegmentCst::ExertSelf {
+        display_text: render_token_slice(tokens).trim().to_string(),
+    })
+    .map_err(|_| {
+        CardTextError::ParseError(format!(
+            "rewrite exert-cost parser does not yet support '{}'",
+            render_token_slice(tokens).trim()
+        ))
+    })
+}
+
 fn parse_simple_segment<'a>(
     tokens: &'a [OwnedLexToken],
     parser: impl Parser<
@@ -111,6 +130,13 @@ fn parse_pay_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ActivationC
         parse_bare_symbol_segment_lexed,
     ))
     .parse_next(input)
+}
+
+fn parse_exert_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::kw("exert").parse_next(input)?;
+    repeat::<_, _, (), _, _>(1.., any.void()).parse_next(input)?;
+    eof.parse_next(input)?;
+    Ok(())
 }
 
 fn parse_life_payment<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSegmentCst> {

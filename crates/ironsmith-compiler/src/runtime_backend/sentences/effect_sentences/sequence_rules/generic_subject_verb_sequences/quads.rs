@@ -792,7 +792,11 @@ pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
     choice_filter.zone = Some(Zone::Library);
 
     Ok(Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(library_owner, count.clone(), looked_tag.clone()),
+        EffectAst::subject_verb_look_at_top_cards(
+            library_owner.clone(),
+            count.clone(),
+            looked_tag.clone(),
+        ),
         EffectAst::ChooseObjects {
             filter: choice_filter,
             count: exile_count,
@@ -805,7 +809,7 @@ pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
             looked_tag,
             Some(exiled_tag.clone()),
             bottom_order,
-            PlayerAst::You,
+            library_owner,
         ),
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
             exiled_tag,

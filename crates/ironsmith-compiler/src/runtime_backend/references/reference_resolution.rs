@@ -68,6 +68,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
         TriggerSpec::YouGainLife
             | TriggerSpec::YouGainLifeDuringTurn(_)
             | TriggerSpec::PlayerLosesLife(_)
+            | TriggerSpec::PlayersLoseLifeOneOrMore(_)
             | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
             | TriggerSpec::ThisIsDealtDamage
             | TriggerSpec::ThisIsDealtCombatDamage
@@ -382,6 +383,7 @@ fn advance_effects_in_iterated_player_context(
     nested.last_effect_id = None;
     if let Some(tag) = tagged_object {
         nested.last_object_tag = Some(tag);
+        nested.iterated_object = true;
     } else {
         nested.iterated_player = true;
     }
@@ -1276,6 +1278,7 @@ fn advance_reference_frame_for_effect(
         EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
+        | EffectAst::AnyPlayerMay { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachTaggedPlayer { effects, .. } => {
             advance_effects_in_iterated_player_context(&effects, id_gen, frame, None)?;
@@ -1285,6 +1288,7 @@ fn advance_reference_frame_for_effect(
             let mut nested = saved.clone();
             nested.last_effect_id = None;
             nested.last_object_tag = Some(IT_TAG.to_string());
+            nested.iterated_object = true;
             advance_reference_frames(&effects, id_gen, &mut nested)?;
             if saved.last_object_tag != nested.last_object_tag {
                 frame.last_object_tag = nested.last_object_tag;
@@ -1643,6 +1647,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
+        | EffectAst::AnyPlayerMay { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachTagged { effects, .. }
@@ -2129,6 +2134,7 @@ fn advance_reference_env_for_effect(
                 last_effect_id: env.last_effect_id.clone(),
                 last_library_search_effect_id: env.last_library_search_effect_id.clone(),
                 iterated_player: env.iterated_player,
+                iterated_object: env.iterated_object,
                 allow_life_event_value: env.allow_life_event_value,
                 bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
             })
@@ -2229,6 +2235,12 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::CounterUnlessPays { cost, .. } => {
                 resolve_effect_result_values_in_total_cost(cost, state)?;
             }
+            SubjectVerbActionAst::PayMana {
+                x_value: Some(value),
+                ..
+            } => {
+                resolve_effect_result_value(value, state)?;
+            }
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {
                 amount: Some(amount),
                 ..
@@ -2268,6 +2280,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ChooseCardType { .. }
             | SubjectVerbActionAst::ChooseNamedOption { .. }
             | SubjectVerbActionAst::ChooseCreatureType { .. }
+            | SubjectVerbActionAst::ChooseLandType { .. }
             | SubjectVerbActionAst::ChooseCardName { .. }
             | SubjectVerbActionAst::ChoosePlayer { .. }
             | SubjectVerbActionAst::NoteLifeTotal
@@ -2311,7 +2324,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayAnyLife { .. }
-            | SubjectVerbActionAst::PayMana { .. }
+            | SubjectVerbActionAst::PayMana { x_value: None, .. }
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }
             | SubjectVerbActionAst::Goad { .. }
@@ -2785,6 +2798,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::ChooseCardType { .. }
             | SubjectVerbActionAst::ChooseNamedOption { .. }
             | SubjectVerbActionAst::ChooseCreatureType { .. }
+            | SubjectVerbActionAst::ChooseLandType { .. }
             | SubjectVerbActionAst::NoteLifeTotal
             | SubjectVerbActionAst::AddManaColorsAmong { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
@@ -2807,8 +2821,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayAnyLife { .. }
-            | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand => 0,
+            SubjectVerbActionAst::PayMana { x_value, .. } => x_value
+                .as_mut()
+                .map_or(0, |value| bind_unresolved_it_in_value(value, seed_tag)),
             SubjectVerbActionAst::LoseLife { amount }
             | SubjectVerbActionAst::GainLife { amount }
             | SubjectVerbActionAst::PayEnergy { amount }

@@ -11,6 +11,7 @@ use super::super::{leaf, primitives};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BasePowerToughnessShape<'a> {
     pub(crate) subject_tokens: &'a [OwnedLexToken],
+    pub(crate) condition_tokens: Option<&'a [OwnedLexToken]>,
     pub(crate) power: i32,
     pub(crate) toughness: i32,
 }
@@ -20,6 +21,13 @@ pub(crate) struct BasePowerToughnessGrantShape<'a> {
     pub(crate) has_token: usize,
     pub(crate) power: i32,
     pub(crate) toughness: i32,
+    pub(crate) ability_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BasePowerGrantShape<'a> {
+    pub(crate) has_token: usize,
+    pub(crate) power: i32,
     pub(crate) ability_tokens: &'a [OwnedLexToken],
 }
 
@@ -58,12 +66,15 @@ pub(crate) fn parse_base_power_toughness_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BasePowerToughnessShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
-        tokens,
+    let (condition_tokens, clause_tokens) = split_leading_as_long_as_condition(tokens)?;
+    let mut shape = primitives::parse_all(
+        clause_tokens,
         parse_base_power_toughness_lexed,
         "base-power-toughness",
     )
-    .ok()
+    .ok()?;
+    shape.condition_tokens = condition_tokens;
+    Some(shape)
 }
 
 pub(crate) fn parse_base_power_toughness_grant_shape(
@@ -80,6 +91,13 @@ pub(crate) fn parse_base_power_toughness_grant_shape(
         toughness: parsed.toughness,
         ability_tokens: parsed.ability_tokens,
     })
+}
+
+pub(crate) fn parse_base_power_grant_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<BasePowerGrantShape<'_>> {
+    let tokens = super::trim_anthem_clause_tokens(tokens);
+    primitives::parse_all(tokens, parse_base_power_grant_lexed, "base-power grant").ok()
 }
 
 pub(crate) fn persistent_anthem_subject_facts(
@@ -223,9 +241,28 @@ fn parse_base_power_toughness_lexed<'a>(
     }
     Ok(BasePowerToughnessShape {
         subject_tokens,
+        condition_tokens: None,
         power,
         toughness,
     })
+}
+
+fn split_leading_as_long_as_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<(Option<&[OwnedLexToken]>, &[OwnedLexToken])> {
+    let Some((_, after_prefix)) =
+        primitives::parse_prefix(tokens, primitives::phrase(&["as", "long", "as"]))
+    else {
+        return Some((None, tokens));
+    };
+    let (condition_tokens, clause_tokens) =
+        primitives::split_lexed_once_on_separator(after_prefix, || primitives::comma().void())?;
+    let condition_tokens = trim_lexed_commas(condition_tokens);
+    let clause_tokens = trim_lexed_commas(clause_tokens);
+    if condition_tokens.is_empty() || clause_tokens.is_empty() {
+        return None;
+    }
+    Some((Some(condition_tokens), clause_tokens))
 }
 
 fn parse_base_power_toughness_grant_lexed<'a>(
@@ -257,6 +294,38 @@ fn parse_base_power_toughness_grant_lexed<'a>(
         has_token,
         power,
         toughness,
+        ability_tokens,
+    })
+}
+
+fn parse_base_power_grant_lexed<'a>(input: &mut LexStream<'a>) -> WResult<BasePowerGrantShape<'a>> {
+    let initial_len = input.len();
+    let _subject_tokens = take_until_have.parse_next(input)?;
+    parse_have.parse_next(input)?;
+    let has_token = initial_len.saturating_sub(input.len() + 1);
+    primitives::phrase(&["base", "power"]).parse_next(input)?;
+    let raw = primitives::word_parser_text.parse_next(input)?;
+    let power = leaf::parse_number_i32_complete(raw)
+        .map_err(|_| primitives::backtrack_err("base power", "fixed signed power"))?;
+    primitives::kw("and").parse_next(input)?;
+    alt((
+        primitives::kw("have"),
+        primitives::kw("has"),
+        primitives::kw("gain"),
+        primitives::kw("gains"),
+    ))
+    .parse_next(input)?;
+    let ability_tokens: &'a [OwnedLexToken] = rest.parse_next(input)?;
+    let ability_tokens = trim_lexed_commas(ability_tokens);
+    if ability_tokens.is_empty() {
+        return Err(primitives::backtrack_err(
+            "base-power grant",
+            "nonempty granted ability",
+        ));
+    }
+    Ok(BasePowerGrantShape {
+        has_token,
+        power,
         ability_tokens,
     })
 }
@@ -345,44 +414,5 @@ fn has_prefix(tokens: &[OwnedLexToken], words: &'static [&'static str]) -> bool 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::super::super::lexer::lex_line;
-    use super::*;
-
-    #[test]
-    fn splits_multi_subjects_and_trims_distributive_each() {
-        let tokens = lex_line("White creatures each and blue creatures each", 0).unwrap();
-        let segments = parse_multi_subject_segments(&tokens).unwrap();
-        assert_eq!(segments.len(), 2);
-        assert_eq!(segments[0].len(), 2);
-        assert_eq!(segments[1].len(), 2);
-    }
-
-    #[test]
-    fn parses_base_power_toughness_shapes() {
-        let tokens = lex_line("This creature has base power and toughness 3/4.", 0).unwrap();
-        let shape = parse_base_power_toughness_shape(&tokens).unwrap();
-        assert_eq!((shape.power, shape.toughness), (3, 4));
-
-        let tokens = lex_line(
-            "As long as you control an artifact, this creature has base power and toughness 4/4 and has flying.",
-            0,
-        )
-        .unwrap();
-        let shape = parse_base_power_toughness_grant_shape(&tokens).unwrap();
-        assert_eq!((shape.power, shape.toughness), (4, 4));
-        assert!(!shape.ability_tokens.is_empty());
-    }
-
-    #[test]
-    fn parses_negated_creature_with_conditions() {
-        let tokens = lex_line(
-            "As long as you control an artifact, this permanent isn't a creature unless you control a creature.",
-            0,
-        )
-        .unwrap();
-        let shape = parse_isnt_creature_shape(&tokens).unwrap().unwrap();
-        assert!(shape.leading_condition_tokens.is_some());
-        assert!(shape.unless_condition_tokens.is_some());
-    }
-}
+#[path = "tail_static_shapes_tests.rs"]
+mod tests;

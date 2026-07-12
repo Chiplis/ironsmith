@@ -22,6 +22,10 @@ pub(crate) use surface_patterns::*;
 mod token_helpers;
 use token_helpers::*;
 
+#[path = "trigger_clauses/life_loss.rs"]
+mod life_loss;
+pub(crate) use life_loss::*;
+
 #[cfg(test)]
 #[path = "trigger_clauses/tests.rs"]
 mod tests;

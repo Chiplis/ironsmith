@@ -5,6 +5,12 @@ use winnow::token::any;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::super::{leaf, primitives};
+#[cfg(test)]
+use crate::effect::Until;
+
+#[path = "chain_carry/carry_facts.rs"]
+mod carry_facts;
+pub(crate) use carry_facts::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChainOwner {
@@ -699,6 +705,28 @@ mod tests {
         assert!(parse_create_fragment_tokens(&tokens));
         let tokens = lex_line("Tap those, then unattach all Equipment from them.", 0).unwrap();
         assert!(parse_tap_then_unattach_tokens(&tokens));
+
+        let tokens = lex_line("Then sacrifice the rest.", 0).unwrap();
+        assert_eq!(
+            parse_rest_action_tokens(&tokens),
+            Some(RestActionShape::Sacrifice)
+        );
+
+        let tokens = lex_line("Until your next untap step, it gains flying.", 0).unwrap();
+        let duration = parse_carry_duration_prefix_tokens(&tokens).unwrap();
+        assert_eq!(duration.duration, Until::ControllersNextUntapStep);
+        assert!(
+            duration
+                .rest
+                .first()
+                .is_some_and(|token| token.is_word("it"))
+        );
+
+        let tokens = lex_line("And draw a card.", 0).unwrap();
+        assert_eq!(
+            parse_carry_clause_head_tokens(&tokens),
+            CarryClauseHead::Draw
+        );
     }
 
     #[test]

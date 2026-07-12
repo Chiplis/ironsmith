@@ -9,7 +9,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, PlayerAst, PredicateAst, SubjectVerbActionAst,
     SubjectVerbRoleAst,
 };
-use crate::effect::{Comparison, Value};
+use crate::effect::{Comparison, Value, ValueComparisonOperator};
 use crate::target::PlayerFilter;
 use ironsmith_core::ValueSurfaceHint;
 
@@ -163,6 +163,7 @@ pub(crate) struct MetadataLineSpec<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StatementLineFamily {
+    Emblem,
     PactNextUpkeep,
     NextTurnCantCast,
     Divvy,
@@ -278,6 +279,10 @@ pub(crate) fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<Meta
 pub(crate) fn classify_statement_line_family_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<StatementLineFamily> {
+    if super::effects::emblem_shapes::parse_emblem_payload_tokens(tokens).is_some() {
+        return Some(StatementLineFamily::Emblem);
+    }
+
     if (primitives::parse_prefix(tokens, primitives::phrase(&["starting", "with"])).is_some()
         || primitives::parse_prefix(tokens, primitives::phrase(&["each", "player", "votes"]))
             .is_some()
@@ -941,6 +946,26 @@ pub(crate) fn split_if_clause_lexed(
     tokens: &[OwnedLexToken],
     mut parse_effects: impl FnMut(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<IfClauseSplitSpec, CardTextError> {
+    if let Some(tie_choice) = super::conditions::parse_player_life_tie_choice_condition(tokens) {
+        let tied_players = tie_choice.tied_players;
+        let mut effects = vec![EffectAst::subject_verb_choose_player(
+            PlayerAst::You,
+            tied_players.clone(),
+            crate::tag::TagKey::from(crate::cards::builders::IT_TAG),
+            false,
+            0,
+        )];
+        effects.extend(parse_effects(tie_choice.consequence_tokens)?);
+        return Ok(IfClauseSplitSpec {
+            predicate: IfClausePredicateSpec::Conditional(PredicateAst::ValueComparison {
+                left: Value::CountPlayers(tied_players),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(tie_choice.minimum_players as i32),
+            }),
+            effects,
+        });
+    }
+
     fn split_leaves_player_may_search_subject(tokens: &[OwnedLexToken], split_idx: usize) -> bool {
         const PLAYER_MAY_SUFFIXES: &[&[&str]] = &[
             &["its", "controller", "may"],

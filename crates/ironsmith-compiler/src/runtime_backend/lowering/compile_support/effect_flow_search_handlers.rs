@@ -320,6 +320,26 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::may_player(player_filter, inner_effects);
             (vec![effect], choices)
         }
+        EffectAst::AnyPlayerMay { effects } => {
+            if effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "empty any-player-may effect branch is unsupported".to_string(),
+                ));
+            }
+            let offers = [EffectAst::MayByPlayer {
+                player: PlayerAst::That,
+                effects: effects.clone(),
+            }];
+            let (inner_effects, inner_choices) =
+                compile_effects_in_iterated_player_context(&offers, ctx, None)?;
+            let effect = Effect::new(crate::effects::ForPlayersEffect {
+                filter: PlayerFilter::Any,
+                effects: inner_effects,
+                starting_with_controller: true,
+                stop_after_first_happened: true,
+            });
+            (vec![effect], inner_choices)
+        }
         EffectAst::RepeatThisProcessMay => (
             vec![Effect::new(crate::effects::RepeatProcessPromptEffect::new(
                 ironsmith_core::RepeatProcessPromptKind::MayRepeatAnyNumberOfTimes,

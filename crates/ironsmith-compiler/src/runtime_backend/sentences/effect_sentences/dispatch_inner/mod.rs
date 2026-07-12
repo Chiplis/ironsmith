@@ -20,13 +20,14 @@ use super::super::keyword_static::{
     parse_value_binding_clause, parse_value_binding_clause_lexed,
 };
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, TokenKind, contains_token_kind, find_token_word_sequence,
-    parser_token_word_refs, render_token_slice, token_slice_at_is, token_slice_at_is_any,
-    token_slice_first_is, token_slice_first_kind, tokens_start_with, word_slice_at_is,
-    word_slice_at_is_any, word_slice_eq, word_slice_eq_any, word_slice_eq_at, word_slice_find_word,
-    word_slice_first_is, word_slice_first_is_any, word_slice_matching_value, words_end_with,
-    words_have, words_have_any, words_have_phrase, words_start_with, words_start_with_any,
-    words_start_with_at,
+    LexedClause, OwnedLexToken, TokenKind, complete_word_sequence_at,
+    complete_word_sequence_choice, complete_word_sequence_surface, contains_token_kind,
+    find_token_word_sequence, locate_word, parser_token_word_refs, render_token_slice,
+    token_prefix_present, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
+    token_slice_first_kind, word_choice_present, word_prefix_choice_present, word_prefix_present,
+    word_prefix_present_at, word_present, word_sequence_present, word_slice_at_is,
+    word_slice_at_is_any, word_slice_first_is, word_slice_first_is_any, word_slice_matching_value,
+    word_suffix_present,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::rule_engine::{LexClauseView, LexUnsupportedDiagnoser, LexUnsupportedRuleDef};

@@ -11,7 +11,3 @@ pub(super) fn parse_controller_or_owner_of_target_subject(
     let parsed = become_shapes::parse_controller_owner_subject_tokens(subject_tokens)?;
     Some((parsed.subject, parsed.target))
 }
-
-pub(super) fn has_counter_state_pronoun(subject_tokens: &[OwnedLexToken]) -> bool {
-    become_shapes::parse_counter_state_pronoun_tokens(subject_tokens)
-}

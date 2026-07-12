@@ -8,16 +8,28 @@ use winnow::token::{any, literal};
 use super::super::lexer::{LexStream, OwnedLexToken};
 use super::primitives;
 
-#[path = "trigger_subjects/surface_shapes.rs"]
-mod surface_shapes;
-pub(crate) use surface_shapes::*;
-
 #[path = "trigger_subjects/reference_words.rs"]
 mod reference_words;
 use reference_words::{
     parse_simple_copy_reference_words, parse_token_lifecycle_sentence_words,
     parse_trigger_source_subject_word_slice,
 };
+
+#[path = "trigger_subjects/subject_facts.rs"]
+mod subject_facts;
+pub(crate) use subject_facts::*;
+
+#[path = "trigger_subjects/spell_activity_facts.rs"]
+mod spell_activity_facts;
+pub(crate) use spell_activity_facts::*;
+
+#[path = "trigger_subjects/may_cast_facts.rs"]
+mod may_cast_facts;
+pub(crate) use may_cast_facts::*;
+
+#[path = "trigger_subjects/sentence_facts.rs"]
+mod sentence_facts;
+pub(crate) use sentence_facts::*;
 
 #[cfg(test)]
 #[path = "trigger_subjects/tests.rs"]

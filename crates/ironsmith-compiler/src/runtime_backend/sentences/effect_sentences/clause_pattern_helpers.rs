@@ -13,14 +13,13 @@ use crate::{ChoiceCount, Supertype};
 use super::super::activation_and_restrictions::activation_restriction_clauses::starts_with_target_indicator;
 use super::super::activation_and_restrictions::trigger_subject_filters::title_case_token_word;
 use super::super::grammar::effects::clause_pattern_shapes as clause_shapes;
-use super::super::grammar::permission_shapes;
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    LexedClause, find_token_word_sequence, token_slice_at_is, token_slice_last_is,
-    tokens_start_with, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_find_word_where, words_end_with, words_have, words_start_with,
+    LexedClause, complete_word_sequence_choice, complete_word_sequence_surface,
+    find_token_word_sequence, locate_word_by, locate_word_sequence, token_prefix_present,
+    token_slice_at_is, token_slice_last_is, word_prefix_present, word_present, word_suffix_present,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_window_by, locate_index, locate_last_index};
@@ -37,295 +36,6 @@ use super::subject_verb_primitives::{
     SubjectVerbPrimitiveClause, parse_distribute_counters_sentence,
 };
 use super::verb_dispatch::parse_effect_with_verb;
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ClauseShape<'p> {
-    exact: Option<&'p [&'p str]>,
-    exact_any: &'p [&'p [&'p str]],
-    prefix: Option<&'p [&'p str]>,
-    prefix_any: &'p [&'p [&'p str]],
-    suffix: Option<&'p [&'p str]>,
-    suffix_any: &'p [&'p [&'p str]],
-    contains_phrases: &'p [&'p [&'p str]],
-    contains_any_phrases: &'p [&'p [&'p [&'p str]]],
-    contains_words: &'p [&'p str],
-    contains_any_words: &'p [&'p [&'p str]],
-}
-
-#[allow(dead_code)]
-impl<'p> ClauseShape<'p> {
-    pub(crate) const fn new() -> Self {
-        Self {
-            exact: None,
-            exact_any: &[],
-            prefix: None,
-            prefix_any: &[],
-            suffix: None,
-            suffix_any: &[],
-            contains_phrases: &[],
-            contains_any_phrases: &[],
-            contains_words: &[],
-            contains_any_words: &[],
-        }
-    }
-
-    pub(crate) const fn exact(mut self, phrase: &'p [&'p str]) -> Self {
-        self.exact = Some(phrase);
-        self
-    }
-
-    pub(crate) const fn exact_any(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
-        self.exact_any = phrases;
-        self
-    }
-
-    pub(crate) const fn prefix(mut self, phrase: &'p [&'p str]) -> Self {
-        self.prefix = Some(phrase);
-        self
-    }
-
-    pub(crate) const fn prefix_any(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
-        self.prefix_any = phrases;
-        self
-    }
-
-    pub(crate) const fn suffix(mut self, phrase: &'p [&'p str]) -> Self {
-        self.suffix = Some(phrase);
-        self
-    }
-
-    pub(crate) const fn suffix_any(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
-        self.suffix_any = phrases;
-        self
-    }
-
-    pub(crate) const fn contains_phrases(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
-        self.contains_phrases = phrases;
-        self
-    }
-
-    pub(crate) const fn contains_any_phrases(mut self, phrases: &'p [&'p [&'p [&'p str]]]) -> Self {
-        self.contains_any_phrases = phrases;
-        self
-    }
-
-    pub(crate) const fn contains_words(mut self, words: &'p [&'p str]) -> Self {
-        self.contains_words = words;
-        self
-    }
-
-    pub(crate) const fn contains_any_words(mut self, word_sets: &'p [&'p [&'p str]]) -> Self {
-        self.contains_any_words = word_sets;
-        self
-    }
-
-    pub(crate) fn matches(self, clause: LexedClause<'_>) -> bool {
-        self.accepts_word_refs(&clause.word_refs())
-    }
-
-    pub(crate) fn find_word(self, words: &[&str]) -> Option<usize> {
-        let mut index = 0usize;
-        while index < words.len() {
-            if self.accepts_word_refs(&words[index..=index]) {
-                return Some(index);
-            }
-            index += 1;
-        }
-        None
-    }
-
-    pub(crate) fn matches_clause_first_word(self, clause: LexedClause<'_>) -> bool {
-        clause
-            .word_refs()
-            .first()
-            .is_some_and(|word| self.accepts_word_refs(&[*word]))
-    }
-
-    pub(crate) fn matches_words(self, words: &[&str]) -> bool {
-        self.accepts_word_refs(words)
-    }
-
-    fn accepts_word_refs(self, words: &[&str]) -> bool {
-        if let Some(exact) = self.exact
-            && !permission_shapes::exact_words(words, exact)
-        {
-            return false;
-        }
-        if !self.exact_any.is_empty()
-            && !self
-                .exact_any
-                .iter()
-                .any(|expected| permission_shapes::exact_words(words, expected))
-        {
-            return false;
-        }
-        if let Some(prefix) = self.prefix
-            && !permission_shapes::prefix_words(words, prefix)
-        {
-            return false;
-        }
-        if !self.prefix_any.is_empty()
-            && !self
-                .prefix_any
-                .iter()
-                .any(|phrase| permission_shapes::prefix_words(words, phrase))
-        {
-            return false;
-        }
-        if let Some(suffix) = self.suffix
-            && !permission_shapes::suffix_words(words, suffix)
-        {
-            return false;
-        }
-        if !self.suffix_any.is_empty()
-            && !self
-                .suffix_any
-                .iter()
-                .any(|phrase| permission_shapes::suffix_words(words, phrase))
-        {
-            return false;
-        }
-        if self
-            .contains_phrases
-            .iter()
-            .any(|phrase| permission_shapes::find_words(words, phrase).is_none())
-        {
-            return false;
-        }
-        if self.contains_any_phrases.iter().any(|phrases| {
-            !phrases
-                .iter()
-                .any(|phrase| permission_shapes::find_words(words, phrase).is_some())
-        }) {
-            return false;
-        }
-        if self
-            .contains_words
-            .iter()
-            .any(|word| permission_shapes::find_words(words, &[*word]).is_none())
-        {
-            return false;
-        }
-        if self.contains_any_words.iter().any(|word_set| {
-            !word_set
-                .iter()
-                .any(|word| permission_shapes::find_words(words, &[*word]).is_some())
-        }) {
-            return false;
-        }
-        true
-    }
-
-    pub(crate) fn matched_prefix_len(self, words: &[&str]) -> Option<usize> {
-        if let Some(prefix) = self.prefix
-            && permission_shapes::prefix_words(words, prefix)
-        {
-            return Some(prefix.len());
-        }
-        self.prefix_any.iter().find_map(|prefix| {
-            permission_shapes::prefix_words(words, prefix).then_some(prefix.len())
-        })
-    }
-}
-
-macro_rules! clause_shape {
-    (exact $phrase:expr) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .exact($phrase)
-    };
-    (exact_any $phrases:expr) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .exact_any($phrases)
-    };
-    (prefix $prefix:expr $(; contains_phrases $contains_phrases:expr)? $(; contains_words $contains_words:expr)? $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .prefix($prefix)
-            $(.contains_phrases($contains_phrases))?
-            $(.contains_words($contains_words))?
-            $(.contains_any_words($contains_any_words))?
-    };
-    (prefix_any $prefixes:expr $(; contains_phrases $contains_phrases:expr)? $(; contains_words $contains_words:expr)? $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .prefix_any($prefixes)
-            $(.contains_phrases($contains_phrases))?
-            $(.contains_words($contains_words))?
-            $(.contains_any_words($contains_any_words))?
-    };
-    (prefix $prefix:expr; suffix_any $suffixes:expr $(; contains_phrases $contains_phrases:expr)? $(; contains_words $contains_words:expr)? $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .prefix($prefix)
-            .suffix_any($suffixes)
-            $(.contains_phrases($contains_phrases))?
-            $(.contains_words($contains_words))?
-            $(.contains_any_words($contains_any_words))?
-    };
-    (prefix_any $prefixes:expr; suffix $suffix:expr $(; contains_phrases $contains_phrases:expr)? $(; contains_words $contains_words:expr)? $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .prefix_any($prefixes)
-            .suffix($suffix)
-            $(.contains_phrases($contains_phrases))?
-            $(.contains_words($contains_words))?
-            $(.contains_any_words($contains_any_words))?
-    };
-    (prefix_any $prefixes:expr; suffix_any $suffixes:expr $(; contains_phrases $contains_phrases:expr)? $(; contains_words $contains_words:expr)? $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .prefix_any($prefixes)
-            .suffix_any($suffixes)
-            $(.contains_phrases($contains_phrases))?
-            $(.contains_words($contains_words))?
-            $(.contains_any_words($contains_any_words))?
-    };
-    (prefix $prefix:expr; suffix $suffix:expr $(; contains_phrases $contains_phrases:expr)? $(; contains_words $contains_words:expr)? $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .prefix($prefix)
-            .suffix($suffix)
-            $(.contains_phrases($contains_phrases))?
-            $(.contains_words($contains_words))?
-            $(.contains_any_words($contains_any_words))?
-    };
-    (suffix $suffix:expr) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .suffix($suffix)
-    };
-    (suffix $suffix:expr $(; contains_phrases $contains_phrases:expr)? $(; contains_words $contains_words:expr)? $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .suffix($suffix)
-            $(.contains_phrases($contains_phrases))?
-            $(.contains_words($contains_words))?
-            $(.contains_any_words($contains_any_words))?
-    };
-    (suffix_any $suffixes:expr $(; contains_phrases $contains_phrases:expr)? $(; contains_words $contains_words:expr)? $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .suffix_any($suffixes)
-            $(.contains_phrases($contains_phrases))?
-            $(.contains_words($contains_words))?
-            $(.contains_any_words($contains_any_words))?
-    };
-    (contains_phrases $contains_phrases:expr $(; contains_words $contains_words:expr)? $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .contains_phrases($contains_phrases)
-            $(.contains_words($contains_words))?
-            $(.contains_any_words($contains_any_words))?
-    };
-    (contains_any_phrases $contains_any_phrases:expr $(; contains_words $contains_words:expr)? $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .contains_any_phrases($contains_any_phrases)
-            $(.contains_words($contains_words))?
-            $(.contains_any_words($contains_any_words))?
-    };
-    (contains_words $contains_words:expr $(; contains_any_words $contains_any_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .contains_words($contains_words)
-            $(.contains_any_words($contains_any_words))?
-    };
-    (contains_any_words $contains_any_words:expr $(; contains_words $contains_words:expr)?) => {
-        $crate::runtime_backend::effect_sentences::clause_pattern_helpers::ClauseShape::new()
-            .contains_any_words($contains_any_words)
-            $(.contains_words($contains_words))?
-    };
-}
-
-pub(crate) use clause_shape;
 
 const ODD_RESULT_VALUES_D6: &[i32] = &[1, 3, 5];
 const EVEN_RESULT_VALUES_D6: &[i32] = &[2, 4, 6];
@@ -462,10 +172,6 @@ pub(crate) fn parse_verb_first_clause(
 
     let effect = parse_effect_with_verb(verb, None, &tokens[1..])?;
     Ok(Some(effect))
-}
-
-pub(crate) fn is_simple_chosen_object_reference(tokens: &[OwnedLexToken]) -> bool {
-    clause_shapes::is_simple_chosen_object_reference_tokens(tokens)
 }
 
 pub(crate) fn parse_choose_target_and_verb_clause(
@@ -777,7 +483,8 @@ pub(crate) fn parse_prevent_all_damage_clause(
         } => {
             let target = parse_target_phrase(target_tokens)?;
             match source {
-                clause_shapes::PreventAllDamageSourceShape::Choice => {
+                clause_shapes::PreventAllDamageSourceShape::Choice
+                | clause_shapes::PreventAllDamageSourceShape::ChoiceSharingActivationManaColor => {
                     if !matches!(target, TargetAst::Player(PlayerFilter::You, _)) {
                         return Err(CardTextError::ParseError(format!(
                             "unsupported prevent-all damage source choice target (clause: '{}')",

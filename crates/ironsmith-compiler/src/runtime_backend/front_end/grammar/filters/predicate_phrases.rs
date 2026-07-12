@@ -1,10 +1,11 @@
-use super::super::super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::super::super::lexer::{
-    LexedClause, OwnedLexToken, TokenKind, TokenWordView, render_token_slice, token_slice_first_is,
-    token_slice_words_eq,
+    LexedClause, OwnedLexToken, TokenKind, TokenWordView, complete_token_word_sequence,
+    render_token_slice, token_slice_first_is,
 };
 use super::*;
 use crate::cards::TextSpan;
+use crate::runtime_backend::cst_lowering::lower_activation_cost_cst;
+use crate::runtime_backend::grammar::activation_costs::parse_activation_cost_tokens;
 use crate::runtime_backend::grammar::conditions::{
     parse_control_or_controlled_relation_clauses, parse_control_relation_clauses,
     parse_copula_relation_clauses, parse_existential_object_clause, parse_has_relation_clauses,
@@ -3933,6 +3934,16 @@ fn parse_player_life_total_predicate(tokens: &[OwnedLexToken]) -> Option<Predica
     })
 }
 
+fn parse_player_life_tie_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_player_life_tie_condition(tokens)?;
+    Some(PredicateAst::ValueComparison {
+        left: crate::effect::Value::CountPlayers(condition.tied_players),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: crate::effect::Value::Fixed(condition.minimum_players as i32),
+    })
+}
+
 fn parse_player_life_relation_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let relation =
         crate::runtime_backend::grammar::conditions::parse_player_life_relation_condition(tokens)?;
@@ -4317,7 +4328,11 @@ fn parse_value_reference_comparison_predicate(tokens: &[OwnedLexToken]) -> Optio
 fn is_predicate_reference_value(value: &Value) -> bool {
     matches!(
         value,
-        Value::PowerOf(_) | Value::ToughnessOf(_) | Value::SourcePower | Value::SourceToughness
+        Value::X
+            | Value::PowerOf(_)
+            | Value::ToughnessOf(_)
+            | Value::SourcePower
+            | Value::SourceToughness
     )
 }
 
@@ -5231,7 +5246,7 @@ fn parse_this_spell_was_kicked_with_cost_shape(tokens: &[OwnedLexToken]) -> Opti
         return None;
     }
 
-    let parsed_cost = parse_activation_cost_tokens_rewrite(&tokens[cost_start..kicker_idx]).ok()?;
+    let parsed_cost = parse_activation_cost_tokens(&tokens[cost_start..kicker_idx]).ok()?;
     let lowered_cost = lower_activation_cost_cst(&parsed_cost).ok()?;
     let cost_text = lowered_cost
         .mana_cost()
@@ -7359,6 +7374,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_player_life_tie_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_count_parity_predicate(predicate_tokens) {
         return Ok(predicate);
     }
@@ -7705,6 +7724,22 @@ mod tests {
                 "{text}"
             );
         }
+
+        let tokens = lex_line(
+            "If X is greater than or equal to the number of cards in your library",
+            0,
+        )?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        let PredicateAst::ValueComparison {
+            left: Value::X,
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Count(filter),
+        } = parsed
+        else {
+            panic!("expected X-to-library-count comparison, got {parsed:?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Library));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
         Ok(())
     }
 
@@ -10335,6 +10370,20 @@ mod tests {
                 "{text}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_player_life_tie_count() -> Result<(), CardTextError> {
+        let tokens = lex_line("If two or more players are tied for lowest life total", 0)?;
+        assert_eq!(
+            parse_predicate(&predicate_tokens_after_if(&tokens))?,
+            PredicateAst::ValueComparison {
+                left: Value::CountPlayers(PlayerFilter::LowestLifeTied),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(2),
+            }
+        );
         Ok(())
     }
 }

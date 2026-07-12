@@ -13,12 +13,15 @@ use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 
 use super::compile_support::{
-    compile_trigger_spec, effect_references_it_tag, effects_reference_it_tag,
+    choose_spec_mentions_iterated_player, compile_trigger_spec, condition_mentions_iterated_player,
+    effect_mentions_iterated_player, effect_references_it_tag, effect_references_its_controller,
+    effect_references_tag, effects_contain_pending_effect_metric, effects_reference_it_tag,
     effects_reference_its_controller, effects_reference_tag, ensure_concrete_trigger_spec,
     inferred_trigger_player_filter, is_sentence_helper_exiled_collection_tag,
     materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
-    materialize_prepared_triggered_effects, trigger_binds_player_reference_context,
-    trigger_supports_event_value,
+    materialize_prepared_triggered_effects, object_filter_mentions_iterated_player,
+    trigger_binds_player_reference_context, trigger_supports_event_value,
+    value_mentions_iterated_player,
 };
 use super::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
@@ -676,11 +679,31 @@ fn rewrite_prepare_effects_from_normalized(
         imports.last_object_tag = Some(tag.clone());
     }
 
+    let initial_env = ReferenceEnv::from_imports(
+        &imports,
+        config.initial_iterated_player,
+        config.allow_life_event_value,
+        config.bind_unbound_x_to_last_effect,
+        config.initial_last_effect_id,
+    );
+    let annotated =
+        annotate_effect_sequence(&semantic_effects, &imports, config, Default::default())?;
+
     if include_trigger_prelude {
-        let needs_triggering_prelude = default_last_object_tag
-            .as_ref()
-            .is_some_and(|tag| matches!(tag.as_str(), "triggering" | IT_TAG))
-            || effects_reference_tag(reference_effects, "triggering");
+        let needs_triggering_prelude =
+            annotated
+                .effects
+                .iter()
+                .zip(&semantic_effects)
+                .any(|(annotated, semantic_effect)| {
+                    effect_references_tag(&annotated.effect, "triggering")
+                        || ((effect_references_it_tag(semantic_effect)
+                            || effect_references_its_controller(semantic_effect))
+                            && annotated
+                                .in_env
+                                .known_last_object_tag()
+                                .is_some_and(|tag| tag.as_str() == "triggering"))
+                });
         if needs_triggering_prelude {
             let tag = default_last_object_tag
                 .as_ref()
@@ -714,15 +737,6 @@ fn rewrite_prepare_effects_from_normalized(
         }
     }
 
-    let initial_env = ReferenceEnv::from_imports(
-        &imports,
-        config.initial_iterated_player,
-        config.allow_life_event_value,
-        config.bind_unbound_x_to_last_effect,
-        config.initial_last_effect_id,
-    );
-    let annotated =
-        annotate_effect_sequence(&semantic_effects, &imports, config, Default::default())?;
     let exports = ReferenceExports::from_env(&annotated.final_env);
 
     Ok(PreparedEffectsForLowering {
@@ -1866,25 +1880,27 @@ pub(crate) fn rewrite_lower_static_abilities_ast(
         .collect()
 }
 
-fn rewrite_validate_unbound_iterated_player(
-    debug_repr: String,
+fn rewrite_validate_unbound_iterated_player<T: std::fmt::Debug + ?Sized>(
+    mentions_iterated_player: bool,
+    value: &T,
     context: &str,
 ) -> Result<(), CardTextError> {
-    if debug_repr.contains("IteratedPlayer") {
+    if mentions_iterated_player {
         return Err(CardTextError::InvariantViolation(format!(
-            "{context} references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": {debug_repr}"
+            "{context} references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": {value:?}"
         )));
     }
     Ok(())
 }
 
-fn rewrite_validate_no_unresolved_dynamic_values(
-    debug_repr: String,
+fn rewrite_validate_no_unresolved_dynamic_values<T: std::fmt::Debug + ?Sized>(
+    contains_pending_effect_metric: bool,
+    value: &T,
     context: &str,
 ) -> Result<(), CardTextError> {
-    if debug_repr.contains("PendingEffectMetric") {
+    if contains_pending_effect_metric {
         return Err(CardTextError::ParseError(format!(
-            "{context} contains an unresolved prior-effect metric value: {debug_repr}"
+            "{context} contains an unresolved prior-effect metric value: {value:?}"
         )));
     }
     Ok(())
@@ -1899,7 +1915,11 @@ fn rewrite_validate_choose_specs_for_iterated_player(
         return Ok(());
     }
     for choice in choices {
-        rewrite_validate_unbound_iterated_player(format!("{choice:?}"), context)?;
+        rewrite_validate_unbound_iterated_player(
+            choose_spec_mentions_iterated_player(choice),
+            choice,
+            context,
+        )?;
     }
     Ok(())
 }
@@ -1912,7 +1932,11 @@ fn rewrite_validate_condition_for_iterated_player(
     if iterated_player_bound {
         return Ok(());
     }
-    rewrite_validate_unbound_iterated_player(format!("{condition:?}"), context)
+    rewrite_validate_unbound_iterated_player(
+        condition_mentions_iterated_player(condition),
+        condition,
+        context,
+    )
 }
 
 fn rewrite_validate_effects_for_iterated_player(
@@ -1946,7 +1970,11 @@ fn rewrite_validate_effect_for_iterated_player(
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>() {
         if !iterated_player_bound && let Some(decider) = &may.decider {
-            rewrite_validate_unbound_iterated_player(format!("{decider:?}"), context)?;
+            rewrite_validate_unbound_iterated_player(
+                decider.mentions_iterated_player(),
+                decider,
+                context,
+            )?;
         }
         return rewrite_validate_effects_for_iterated_player(
             &may.effects,
@@ -1958,7 +1986,11 @@ fn rewrite_validate_effect_for_iterated_player(
         effect.downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
     {
         if !iterated_player_bound {
-            rewrite_validate_unbound_iterated_player(format!("{:?}", unless_pays.player), context)?;
+            rewrite_validate_unbound_iterated_player(
+                unless_pays.player.mentions_iterated_player(),
+                &unless_pays.player,
+                context,
+            )?;
         }
         return rewrite_validate_effects_for_iterated_player(
             &unless_pays.effects,
@@ -1971,7 +2003,8 @@ fn rewrite_validate_effect_for_iterated_player(
     {
         if !iterated_player_bound {
             rewrite_validate_unbound_iterated_player(
-                format!("{:?}", unless_action.player),
+                unless_action.player.mentions_iterated_player(),
+                &unless_action.player,
                 context,
             )?;
         }
@@ -1990,14 +2023,19 @@ fn rewrite_validate_effect_for_iterated_player(
         effect.downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
     {
         if !iterated_player_bound {
-            rewrite_validate_unbound_iterated_player(format!("{:?}", for_players.filter), context)?;
+            rewrite_validate_unbound_iterated_player(
+                for_players.filter.mentions_iterated_player(),
+                &for_players.filter,
+                context,
+            )?;
         }
         return rewrite_validate_effects_for_iterated_player(&for_players.effects, true, context);
     }
     if let Some(for_each_object) = effect.downcast_ref::<crate::effects::ForEachObject>() {
         if !iterated_player_bound {
             rewrite_validate_unbound_iterated_player(
-                format!("{:?}", for_each_object.filter),
+                object_filter_mentions_iterated_player(&for_each_object.filter),
+                &for_each_object.filter,
                 context,
             )?;
         }
@@ -2108,11 +2146,16 @@ fn rewrite_validate_effect_for_iterated_player(
     {
         if !iterated_player_bound {
             rewrite_validate_unbound_iterated_player(
-                format!("{:?}", schedule_delayed.controller),
+                schedule_delayed.controller.mentions_iterated_player(),
+                &schedule_delayed.controller,
                 context,
             )?;
             if let Some(filter) = &schedule_delayed.target_filter {
-                rewrite_validate_unbound_iterated_player(format!("{filter:?}"), context)?;
+                rewrite_validate_unbound_iterated_player(
+                    object_filter_mentions_iterated_player(filter),
+                    filter,
+                    context,
+                )?;
             }
         }
         return rewrite_validate_effects_for_iterated_player(
@@ -2126,7 +2169,8 @@ fn rewrite_validate_effect_for_iterated_player(
     {
         if !iterated_player_bound {
             rewrite_validate_unbound_iterated_player(
-                format!("{:?}", schedule_when_leaves.controller),
+                schedule_when_leaves.controller.mentions_iterated_player(),
+                &schedule_when_leaves.controller,
                 context,
             )?;
         }
@@ -2148,16 +2192,22 @@ fn rewrite_validate_effect_for_iterated_player(
     if let Some(create_token) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         if !iterated_player_bound {
             rewrite_validate_unbound_iterated_player(
-                format!("{:?}", create_token.controller),
+                create_token.controller.mentions_iterated_player(),
+                &create_token.controller,
                 context,
             )?;
             if let Some(controller_target) = &create_token.controller_target {
                 rewrite_validate_unbound_iterated_player(
-                    format!("{controller_target:?}"),
+                    choose_spec_mentions_iterated_player(controller_target),
+                    controller_target,
                     context,
                 )?;
             }
-            rewrite_validate_unbound_iterated_player(format!("{:?}", create_token.count), context)?;
+            rewrite_validate_unbound_iterated_player(
+                value_mentions_iterated_player(&create_token.count),
+                &create_token.count,
+                context,
+            )?;
         }
         return rewrite_validate_card_definition_for_iterated_player(
             &create_token.token,
@@ -2166,7 +2216,11 @@ fn rewrite_validate_effect_for_iterated_player(
     }
 
     if !iterated_player_bound {
-        rewrite_validate_unbound_iterated_player(format!("{effect:?}"), context)?;
+        rewrite_validate_unbound_iterated_player(
+            effect_mentions_iterated_player(effect),
+            effect,
+            context,
+        )?;
     }
     Ok(())
 }
@@ -2204,7 +2258,10 @@ fn rewrite_validate_ability_for_iterated_player(
             Ok(())
         }
         AbilityKind::Static(static_ability) => {
-            rewrite_validate_unbound_iterated_player(format!("{static_ability:?}"), context)
+            // Static abilities are opaque runtime trait objects; their nested
+            // triggered/activated abilities are validated through card definitions.
+            let _ = (static_ability, context);
+            Ok(())
         }
     }
 }
@@ -2231,7 +2288,11 @@ pub(crate) fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
     initial_iterated_player_bound: bool,
     context: &str,
 ) -> Result<(), CardTextError> {
-    rewrite_validate_no_unresolved_dynamic_values(format!("{:?}", lowered.effects), context)?;
+    rewrite_validate_no_unresolved_dynamic_values(
+        effects_contain_pending_effect_metric(&lowered.effects),
+        &lowered.effects,
+        context,
+    )?;
     let iterated_player_bound = initial_iterated_player_bound || lowered.exports.iterated_player;
     rewrite_validate_effects_for_iterated_player(&lowered.effects, iterated_player_bound, context)?;
     rewrite_validate_choose_specs_for_iterated_player(

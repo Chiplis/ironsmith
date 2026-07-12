@@ -271,7 +271,12 @@ pub(super) fn parse_static_line_cst(
 ) -> Result<Option<StaticLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
     let parse_tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
-    if line_starts_with_effect_statement_sentence(&parse_tokens) {
+    if line_starts_with_effect_statement_sentence(&parse_tokens)
+        && !matches!(
+            parse_static_ability_ast_line_lexed(&parse_tokens),
+            Ok(Some(_))
+        )
+    {
         return Ok(None);
     }
     let make_static = |chosen_option: Option<ChosenOptionContext>| StaticLineCst {
@@ -461,6 +466,17 @@ pub(super) fn parse_level_item_cst(
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost_cst) => {
                 let cost = lower_activation_cost_cst(&cost_cst)?;
+                let parsed = super::super::semantic_line_parsing::parse_activated_line(
+                    line.info.clone(),
+                    cost,
+                    normalized_cost_tokens,
+                    effect_text,
+                    effect_parse_tokens,
+                    ActivationTiming::AnyTime,
+                    false,
+                    None,
+                    None,
+                )?;
                 return Ok(Some(LevelItemCst {
                     info: line.info.clone(),
                     text: normalized.to_string(),
@@ -468,10 +484,8 @@ pub(super) fn parse_level_item_cst(
                     parsed: ParsedLevelAbilityItemAst::ActivatedAbility(
                         ParsedLevelActivatedAbilityAst {
                             info: line.info.clone(),
-                            cost,
-                            cost_parse_tokens: normalized_cost_tokens,
-                            effect_text,
-                            effect_parse_tokens,
+                            chunk: parsed.chunk,
+                            restrictions: parsed.restrictions,
                         },
                     ),
                 }));

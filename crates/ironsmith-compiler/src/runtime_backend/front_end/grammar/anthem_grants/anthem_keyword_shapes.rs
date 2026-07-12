@@ -69,8 +69,14 @@ pub(crate) struct ColonTailSplit {
 }
 
 pub(crate) fn parse_anthem_keyword_head(tokens: &[OwnedLexToken]) -> Option<AnthemKeywordHead> {
-    let get_token = first_token(tokens, parse_get_word)?;
-    let have_token = first_token(tokens, parse_have_word)?;
+    let get_token = first_unquoted_token_between(tokens, 0, tokens.len(), parse_get_word)?;
+    let have_token = first_unquoted_token_between(
+        tokens,
+        get_token.saturating_add(1),
+        tokens.len(),
+        parse_have_word,
+    )
+    .or_else(|| first_unquoted_token_between(tokens, 0, get_token, parse_have_word))?;
     if get_token == have_token {
         return None;
     }
@@ -272,13 +278,6 @@ fn split_adjacent_pair<'a>(
     }
 }
 
-fn first_token(
-    tokens: &[OwnedLexToken],
-    parser: for<'a> fn(&mut LexStream<'a>) -> WResult<()>,
-) -> Option<usize> {
-    first_token_between(tokens, 0, tokens.len(), parser)
-}
-
 fn first_token_between(
     tokens: &[OwnedLexToken],
     start: usize,
@@ -297,6 +296,35 @@ fn first_token_between(
             return Some(start + offset);
         }
         take_token(&mut input).ok()?;
+    }
+}
+
+fn first_unquoted_token_between(
+    tokens: &[OwnedLexToken],
+    start: usize,
+    end: usize,
+    parser: for<'a> fn(&mut LexStream<'a>) -> WResult<()>,
+) -> Option<usize> {
+    if start >= end || end > tokens.len() {
+        return None;
+    }
+    let mut input = LexStream::new(&tokens[..end]);
+    let initial_len = input.len();
+    let mut inside_quotes = false;
+    loop {
+        let offset = initial_len.saturating_sub(input.len());
+        let token = take_token(&mut input).ok()?;
+        if token.kind == TokenKind::Quote {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if offset < start || inside_quotes {
+            continue;
+        }
+        let mut candidate = LexStream::new(&tokens[offset..end]);
+        if parser(&mut candidate).is_ok() {
+            return Some(offset);
+        }
     }
 }
 
@@ -448,6 +476,16 @@ mod tests {
         let tokens = lex_line("Creatures you control get +1/+1 and have flying.", 0).unwrap();
         let head = parse_anthem_keyword_head(&tokens).unwrap();
         assert_eq!(head.order, AnthemKeywordOrder::AnthemBeforeKeyword);
+    }
+
+    #[test]
+    fn ignores_anthem_verbs_inside_quoted_granted_abilities() {
+        let tokens = lex_line(
+            "As long as enchanted permanent is an Equipment, it has \"Equipped creature gets +1/+1 and has trample.\"",
+            0,
+        )
+        .unwrap();
+        assert!(parse_anthem_keyword_head(&tokens).is_none());
     }
 
     #[test]

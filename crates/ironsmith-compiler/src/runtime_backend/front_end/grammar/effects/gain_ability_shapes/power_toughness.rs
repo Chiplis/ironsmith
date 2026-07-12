@@ -1,10 +1,11 @@
-use winnow::combinator::alt;
+use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
+use winnow::token::any;
 
 use crate::effect::Value;
 use crate::runtime_backend::front_end::grammar::{leaf, primitives};
-use crate::runtime_backend::front_end::lexer::{OwnedLexToken, TokenWordView};
+use crate::runtime_backend::front_end::lexer::OwnedLexToken;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GainBasePtShapeError {
@@ -30,6 +31,32 @@ pub(crate) struct GainPumpHeadShape {
     pub(crate) power: Value,
     pub(crate) toughness: Value,
     pub(crate) has_local_duration: bool,
+    /// Number of leading surface tokens before the actual P/T modifier, such
+    /// as `an additional` in clash result clauses.
+    pub(crate) modifier_token_offset: usize,
+}
+
+fn parse_gain_pump_head_lexed<'a>(
+    input: &mut crate::runtime_backend::front_end::lexer::LexStream<'a>,
+) -> WResult<GainPumpHeadShape> {
+    let modifier_token_offset = opt(alt((
+        primitives::phrase(&["an", "additional"]).value(2usize),
+        primitives::kw("additional").value(1usize),
+    )))
+    .parse_next(input)?
+    .unwrap_or(0);
+    let modifier = any.parse_next(input)?;
+    let (power, toughness) =
+        leaf::parse_leaf_pt_modifier_values_complete(modifier.parser_text())
+            .map_err(|_| winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))?;
+    let has_local_duration = primitives::contains_word(input.as_ref(), "until")
+        || primitives::contains_word(input.as_ref(), "during");
+    Ok(GainPumpHeadShape {
+        power,
+        toughness,
+        has_local_duration,
+        modifier_token_offset,
+    })
 }
 
 fn base_pt_head(input: &mut primitives::WordSliceInput<'_>) -> WResult<()> {
@@ -145,19 +172,7 @@ pub(crate) fn subject_contains_gain_base_pt(words: &[&str]) -> bool {
 pub(crate) fn parse_gain_pump_head_shape(
     modifier_tokens: &[OwnedLexToken],
 ) -> Option<GainPumpHeadShape> {
-    let first = modifier_tokens.first()?;
-    let (power, toughness) =
-        leaf::parse_leaf_pt_modifier_values_complete(first.parser_text()).ok()?;
-    let modifier_words = TokenWordView::new(modifier_tokens).to_word_refs();
-    let has_local_duration = modifier_words
-        .iter()
-        .copied()
-        .any(|word| matches!(word, "until" | "during"));
-    Some(GainPumpHeadShape {
-        power,
-        toughness,
-        has_local_duration,
-    })
+    primitives::parse_prefix(modifier_tokens, parse_gain_pump_head_lexed).map(|(shape, _)| shape)
 }
 
 #[cfg(test)]
@@ -196,5 +211,10 @@ mod tests {
         let pump = parse_gain_pump_head_shape(&tokens).unwrap();
         assert_eq!(pump.power, Value::Fixed(2));
         assert!(pump.has_local_duration);
+
+        let additional = lex_line("an additional +2/+2", 0).unwrap();
+        let pump = parse_gain_pump_head_shape(&additional).unwrap();
+        assert_eq!(pump.power, Value::Fixed(2));
+        assert_eq!(pump.modifier_token_offset, 2);
     }
 }

@@ -10,9 +10,6 @@ use crate::cards::builders::{
 };
 use crate::types::CardType;
 
-const LOWEST_LIFE_CONTROL_UPKEEP_SENTENCE: &str = "at the beginning of your upkeep, the player with the lowest life total gains control of this creature";
-const LOWEST_LIFE_CONTROL_TIE_SENTENCE: &str = "if two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature";
-
 #[derive(Debug, Clone)]
 pub(crate) struct PreprocessedDocument {
     pub(crate) builder: CardDefinitionBuilder,
@@ -582,27 +579,6 @@ fn normalize_line_for_parse(
     })
 }
 
-fn split_period_sentences(text: &str) -> Vec<String> {
-    text.split('.')
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .map(ToString::to_string)
-        .collect()
-}
-
-fn parse_same_is_true_targets(tail: &str) -> Vec<String> {
-    let normalized = tail
-        .replace(", and ", ", ")
-        .replace(" and ", ", ")
-        .replace(';', ",");
-    normalized
-        .split(',')
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .map(ToString::to_string)
-        .collect()
-}
-
 fn split_same_is_true_subject_predicate(sentence: &str) -> Option<(String, String)> {
     preprocess_grammar::parse_subject_predicate_surface(sentence)
         .map(|surface| (surface.subject, surface.predicate))
@@ -612,38 +588,25 @@ fn find_borrow_ability_source_phrase(sentence: &str) -> Option<&'static str> {
     preprocess_grammar::parse_borrow_ability_surface(sentence).map(|surface| surface.phrase)
 }
 
-fn replace_whole_phrase_case_insensitive(text: &str, from: &str, to: &str) -> String {
+fn apply_borrow_phrase_occurrences(
+    text: &str,
+    occurrences: &preprocess_grammar::BorrowPhraseOccurrencesSurface,
+    replacement: &str,
+) -> String {
     let mut out = String::with_capacity(text.len());
-    let mut idx = 0usize;
-
-    while idx < text.len() {
-        let rest = &text[idx..];
-        if rest.len() >= from.len()
-            && rest[..from.len()].eq_ignore_ascii_case(from)
-            && (idx == 0
-                || !text[..idx]
-                    .chars()
-                    .next_back()
-                    .is_some_and(|ch| ch.is_ascii_alphanumeric()))
-            && (idx + from.len() == text.len()
-                || !text[idx + from.len()..]
-                    .chars()
-                    .next()
-                    .is_some_and(|ch| ch.is_ascii_alphanumeric()))
-        {
-            out.push_str(to);
-            idx += from.len();
-            continue;
-        }
-
-        let ch = rest
-            .chars()
-            .next()
-            .expect("remaining text should be non-empty");
-        out.push(ch);
-        idx += ch.len_utf8();
+    let mut cursor = 0usize;
+    for range in &occurrences.ranges {
+        let Some(prefix) = text.get(cursor..range.start) else {
+            return text.to_string();
+        };
+        out.push_str(prefix);
+        out.push_str(replacement);
+        cursor = range.end;
     }
-
+    let Some(tail) = text.get(cursor..) else {
+        return text.to_string();
+    };
+    out.push_str(tail);
     out
 }
 
@@ -693,30 +656,33 @@ fn rewrite_borrow_static_sentence(sentence: &str) -> String {
     }
 }
 
-fn same_is_true_tail(sentence: &str) -> Option<String> {
-    preprocess_grammar::parse_same_is_true_surface(sentence).map(|surface| surface.tail)
-}
-
 fn expand_borrow_ability_line(text: &str) -> String {
-    let sentences = split_period_sentences(text);
-    if sentences.len() < 2 {
+    let Some(document) = preprocess_grammar::parse_preprocess_sentence_list(text) else {
+        return rewrite_borrow_static_sentence(text.trim());
+    };
+    if document.sentences.len() < 2 {
         return rewrite_borrow_static_sentence(text.trim());
     }
 
     let mut expanded: Vec<String> = Vec::new();
-    for sentence in sentences {
-        if let Some(tail) = same_is_true_tail(sentence.as_str())
+    for sentence in document.sentences {
+        if let Some(same_is_true) =
+            preprocess_grammar::parse_same_is_true_surface(sentence.as_str())
             && let Some(base_sentence) = expanded.last().cloned()
         {
-            let targets = parse_same_is_true_targets(tail.as_str());
+            let targets = same_is_true.targets;
             if !targets.is_empty() {
                 if let Some(source_phrase) =
                     find_borrow_ability_source_phrase(base_sentence.as_str())
+                    && let Some(occurrences) = preprocess_grammar::parse_borrow_phrase_occurrences(
+                        base_sentence.as_str(),
+                        source_phrase,
+                    )
                 {
                     for target in &targets {
-                        let replaced = replace_whole_phrase_case_insensitive(
+                        let replaced = apply_borrow_phrase_occurrences(
                             base_sentence.as_str(),
-                            source_phrase,
+                            &occurrences,
                             target.as_str(),
                         );
                         expanded.push(rewrite_borrow_static_sentence(replaced.as_str()));
@@ -739,7 +705,7 @@ fn expand_borrow_ability_line(text: &str) -> String {
     }
 
     let mut joined = expanded.join(". ");
-    if preprocess_grammar::parse_terminal_period(text) {
+    if document.terminal_period {
         joined.push('.');
     }
     joined
@@ -749,30 +715,35 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
     fn rewrite_vote_count_sentence(sentence: &str) -> String {
         let trimmed = sentence.trim();
         match preprocess_grammar::parse_vote_count_rewrite_surface(trimmed) {
-            Some(preprocess_grammar::VoteCountRewriteSurface::TruthDraw) => {
-                "For each truth vote, draw a card".to_string()
+            Some(preprocess_grammar::VoteCountRewriteSurface::DrawForEachVote { vote }) => {
+                format!("For each {vote} vote, draw a card")
             }
-            Some(preprocess_grammar::VoteCountRewriteSurface::ConsequencesDamage) => {
-                "For each consequences vote, Truth or Consequences deals 3 damage to that player"
-                    .to_string()
-            }
-            Some(preprocess_grammar::VoteCountRewriteSurface::DeathAndTaxes { left, middle }) => {
-                format!("For each death vote, {left}. For each taxes vote, Each opponent {middle}")
-            }
-            Some(preprocess_grammar::VoteCountRewriteSurface::TrailingForEach { head, tail }) => {
-                format!("For each {tail}, {head}")
+            Some(preprocess_grammar::VoteCountRewriteSurface::SharedSubjectPair {
+                subject,
+                first_action,
+                first_vote,
+                second_action,
+                second_vote,
+            }) => format!(
+                "For each {first_vote} vote, {subject} {first_action}. For each {second_vote} vote, {subject} {second_action}"
+            ),
+            Some(preprocess_grammar::VoteCountRewriteSurface::TrailingForEach { head, vote }) => {
+                format!("For each {vote} vote, {head}")
             }
             None => trimmed.to_string(),
         }
     }
 
-    let had_period = preprocess_grammar::parse_terminal_period(text);
-    let rewritten = split_period_sentences(text)
+    let Some(document) = preprocess_grammar::parse_preprocess_sentence_list(text) else {
+        return text.to_string();
+    };
+    let rewritten = document
+        .sentences
         .into_iter()
         .map(|sentence| rewrite_vote_count_sentence(sentence.as_str()))
         .collect::<Vec<_>>()
         .join(". ");
-    if had_period && !rewritten.is_empty() {
+    if document.terminal_period && !rewritten.is_empty() {
         format!("{rewritten}.")
     } else {
         rewritten
@@ -789,14 +760,16 @@ fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
         preprocess_grammar::parse_previous_exile_surface(previous).is_some()
     }
 
-    let sentences = split_period_sentences(text);
-    if sentences.len() < 2 {
+    let Some(document) = preprocess_grammar::parse_preprocess_sentence_list(text) else {
+        return text.to_string();
+    };
+    if document.sentences.len() < 2 {
         return text.to_string();
     }
 
-    let mut rewritten: Vec<String> = Vec::with_capacity(sentences.len());
+    let mut rewritten: Vec<String> = Vec::with_capacity(document.sentences.len());
     let mut changed = false;
-    for sentence in sentences {
+    for sentence in document.sentences {
         if let Some(subject) = source_leaves_subject(sentence.as_str())
             && let Some(previous) = rewritten.last_mut()
             && previous_sentence_has_exile_without_until_this(previous)
@@ -818,29 +791,10 @@ fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
     }
 
     let mut joined = rewritten.join(". ");
-    if preprocess_grammar::parse_terminal_period(text) {
+    if document.terminal_period {
         joined.push('.');
     }
     joined
-}
-
-fn rewrite_lowest_life_tie_choice_line(text: &str) -> String {
-    let sentences = split_period_sentences(text);
-    if sentences.len() != 2 {
-        return text.to_string();
-    }
-
-    let first = sentences[0].trim();
-    let second = sentences[1].trim();
-    let first_lower = first.to_ascii_lowercase();
-    let second_lower = second.to_ascii_lowercase();
-    if first_lower == LOWEST_LIFE_CONTROL_UPKEEP_SENTENCE
-        && second_lower == LOWEST_LIFE_CONTROL_TIE_SENTENCE
-    {
-        return format!("{first}.");
-    }
-
-    text.to_string()
 }
 
 fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec<usize> {
@@ -909,8 +863,6 @@ pub(crate) fn preprocess_document(
         let rewritten_normalized = rewrite_vote_count_followups_line(expanded_normalized.as_str());
         let rewritten_normalized =
             rewrite_exile_return_when_source_leaves_line(rewritten_normalized.as_str());
-        let rewritten_normalized =
-            rewrite_lowest_life_tie_choice_line(rewritten_normalized.as_str());
         let normalized = if rewritten_normalized != normalized.normalized {
             let char_map =
                 resized_char_map_for_rewrite(&normalized.char_map, &rewritten_normalized);
@@ -1198,6 +1150,12 @@ mod tests {
             "as long as there is a creature with flying in your graveyard, creatures you control have flying"
         );
         assert_eq!(
+            expand_borrow_ability_line(
+                "As long as a creature card with flying is in a graveyard, this creature has flying. The same is true for first strike and vigilance."
+            ),
+            "as long as there is a creature card with flying in a graveyard, this creature has flying. as long as there is a creature card with first strike in a graveyard, this creature has first strike. as long as there is a creature card with vigilance in a graveyard, this creature has vigilance."
+        );
+        assert_eq!(
             rewrite_vote_count_followups_line("You draw cards equal to the number of truth votes."),
             "For each truth vote, draw a card."
         );
@@ -1207,5 +1165,59 @@ mod tests {
             ),
             "Exile target creature until this artifact leaves the battlefield."
         );
+    }
+
+    #[test]
+    fn peacekeeper_tie_clause_is_not_fingerprint_dropped() {
+        let oracle = "At the beginning of your upkeep, the player with the lowest life total gains control of this creature. If two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature.";
+        let document = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Loxodon Peacekeeper"),
+            oracle,
+        )
+        .expect("Peacekeeper text should preprocess generically");
+        let Some(PreprocessedItem::Line(line)) = document.items.first() else {
+            panic!("expected one preprocessed line: {:#?}", document.items);
+        };
+        assert!(
+            line.info
+                .normalized
+                .normalized
+                .contains("if two or more players are tied for lowest life total"),
+            "the tie clause must remain parser input: {}",
+            line.info.normalized.normalized
+        );
+    }
+
+    #[test]
+    fn typed_text_rewrites_keep_source_maps_aligned() {
+        for oracle in [
+            "As long as a creature with flying is in your graveyard, creatures you control have flying. The same is true for first strike and vigilance.",
+            "You draw cards equal to the number of truth votes.",
+            "Exile target creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield.",
+        ] {
+            let document = preprocess_document(
+                CardDefinitionBuilder::new(CardId::new(), "Preprocess Test"),
+                oracle,
+            )
+            .expect("typed rewrite should preprocess");
+            let Some(PreprocessedItem::Line(line)) = document.items.first() else {
+                panic!("expected rewritten line: {:#?}", document.items);
+            };
+            assert_eq!(
+                line.info.normalized.char_map.len(),
+                line.info.normalized.normalized.chars().count(),
+                "source map length must follow rewritten text: {}",
+                line.info.normalized.normalized
+            );
+            assert!(
+                line.info
+                    .normalized
+                    .char_map
+                    .iter()
+                    .all(|offset| *offset <= oracle.len()),
+                "source map offset escaped original line: {:?}",
+                line.info.normalized.char_map
+            );
+        }
     }
 }

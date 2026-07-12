@@ -609,6 +609,34 @@ pub(crate) fn parse_must_be_blocked_if_able_clause(
     )))
 }
 
+fn tagged_forced_block_target(target: TargetAst, tag: TagKey) -> EffectAst {
+    EffectAst::TagAffected {
+        effect: Box::new(EffectAst::subject_verb_target_only(target)),
+        tag,
+    }
+}
+
+fn forced_block_effect(
+    mut target_declarations: Vec<EffectAst>,
+    blockers: ObjectFilter,
+    attacker: ObjectFilter,
+    duration: crate::effect::Until,
+) -> EffectAst {
+    let restriction = EffectAst::subject_verb_cant(
+        crate::effect::Restriction::must_block_specific_attacker(blockers, attacker),
+        duration,
+        None,
+    );
+    if target_declarations.is_empty() {
+        restriction
+    } else {
+        target_declarations.push(restriction);
+        EffectAst::Sequence {
+            effects: target_declarations,
+        }
+    }
+}
+
 pub(crate) fn parse_must_block_if_able_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -661,20 +689,22 @@ pub(crate) fn parse_must_block_if_able_clause(
                 )));
             }
             let attacker_target = parse_target_phrase(attacker_clause.tokens())?;
-            if starts_with_target_indicator(attacker_clause.tokens()) {
-                return Ok(Some(EffectAst::Sequence {
-                    effects: vec![
-                        EffectAst::subject_verb_target_only(attacker_target),
-                        EffectAst::subject_verb_cant(
-                            crate::effect::Restriction::must_block_specific_attacker(
-                                ObjectFilter::creature(),
-                                ObjectFilter::tagged(IT_TAG),
-                            ),
-                            duration,
-                            None,
-                        ),
-                    ],
-                }));
+            if super::super::grammar::activation_restrictions::parse_target_indicator_tokens(
+                attacker_clause.tokens(),
+            )
+            .is_some()
+            {
+                let attacker_tag =
+                    helper_tag_for_tokens(attacker_clause.tokens(), "targeted_attacker");
+                return Ok(Some(forced_block_effect(
+                    vec![tagged_forced_block_target(
+                        attacker_target,
+                        attacker_tag.clone(),
+                    )],
+                    ObjectFilter::creature(),
+                    ObjectFilter::tagged(attacker_tag),
+                    duration,
+                )));
             }
             let attacker_filter =
                 target_ast_to_object_filter(attacker_target).ok_or_else(|| {
@@ -683,13 +713,11 @@ pub(crate) fn parse_must_block_if_able_clause(
                         clause_text
                     ))
                 })?;
-            Ok(Some(EffectAst::subject_verb_cant(
-                crate::effect::Restriction::must_block_specific_attacker(
-                    ObjectFilter::creature(),
-                    attacker_filter,
-                ),
+            Ok(Some(forced_block_effect(
+                Vec::new(),
+                ObjectFilter::creature(),
+                attacker_filter,
                 duration,
-                None,
             )))
         }
         clause_shapes::MustBlockShape::SubjectAgainstAttacker {
@@ -697,13 +725,29 @@ pub(crate) fn parse_must_block_if_able_clause(
             attacker_and_duration_tokens,
         } => {
             let subject_clause = LexedClause::new(subject_tokens).trimmed();
-            let blockers_filter = parse_subject_object_filter(subject_clause.tokens())?
-                .ok_or_else(|| {
+            let blocker_is_target =
+                super::super::grammar::activation_restrictions::parse_target_indicator_tokens(
+                    subject_clause.tokens(),
+                )
+                .is_some();
+            let mut target_declarations = Vec::new();
+            let blockers_filter = if blocker_is_target {
+                let blocker_target = parse_target_phrase(subject_clause.tokens())?;
+                let blocker_tag =
+                    helper_tag_for_tokens(subject_clause.tokens(), "targeted_blocker");
+                target_declarations.push(tagged_forced_block_target(
+                    blocker_target,
+                    blocker_tag.clone(),
+                ));
+                ObjectFilter::tagged(blocker_tag)
+            } else {
+                parse_subject_object_filter(subject_clause.tokens())?.ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported blocker subject in must-block clause (clause: '{}')",
                         clause_text
                     ))
-                })?;
+                })?
+            };
             let (duration, attacker_tokens) = if let Some((duration, remainder)) =
                 parse_restriction_duration(attacker_and_duration_tokens)?
             {
@@ -721,6 +765,19 @@ pub(crate) fn parse_must_block_if_able_clause(
             let attacker_filter = if clause_shapes::is_it_reference_shape(attacker_clause.tokens())
             {
                 ObjectFilter::tagged("triggering")
+            } else if super::super::grammar::activation_restrictions::parse_target_indicator_tokens(
+                attacker_clause.tokens(),
+            )
+            .is_some()
+            {
+                let attacker_target = parse_target_phrase(attacker_clause.tokens())?;
+                let attacker_tag =
+                    helper_tag_for_tokens(attacker_clause.tokens(), "targeted_attacker");
+                target_declarations.push(tagged_forced_block_target(
+                    attacker_target,
+                    attacker_tag.clone(),
+                ));
+                ObjectFilter::tagged(attacker_tag)
             } else {
                 let attacker_target = parse_target_phrase(attacker_clause.tokens())?;
                 target_ast_to_object_filter(attacker_target).ok_or_else(|| {
@@ -730,29 +787,11 @@ pub(crate) fn parse_must_block_if_able_clause(
                     ))
                 })?
             };
-            if starts_with_target_indicator(subject_clause.tokens()) {
-                let blocker_target = parse_target_phrase(subject_clause.tokens())?;
-                return Ok(Some(EffectAst::Sequence {
-                    effects: vec![
-                        EffectAst::subject_verb_target_only(blocker_target),
-                        EffectAst::subject_verb_cant(
-                            crate::effect::Restriction::must_block_specific_attacker(
-                                ObjectFilter::tagged(IT_TAG),
-                                attacker_filter,
-                            ),
-                            duration,
-                            None,
-                        ),
-                    ],
-                }));
-            }
-            Ok(Some(EffectAst::subject_verb_cant(
-                crate::effect::Restriction::must_block_specific_attacker(
-                    blockers_filter,
-                    attacker_filter,
-                ),
+            Ok(Some(forced_block_effect(
+                target_declarations,
+                blockers_filter,
+                attacker_filter,
                 duration,
-                None,
             )))
         }
     }

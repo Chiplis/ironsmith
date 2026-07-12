@@ -42,11 +42,13 @@ use super::grammar::shared_util::cast_restriction_lines;
 use super::grammar::shared_util::count_shapes;
 use super::grammar::shared_util::header_shapes;
 use super::grammar::shared_util::keyword_cost_lines;
+use super::grammar::shared_util::keyword_line_facts::{self, MadnessCostFact, NamedCostKeyword};
 use super::grammar::shared_util::reference_shapes;
 pub(crate) use super::grammar::shared_util::reference_shapes::{
     FilterKeywordConstraint, SubjectAst,
 };
 use super::grammar::shared_util::target_semantics;
+use super::grammar::shared_util::token_facts;
 use super::grammar::shared_util::value_expr;
 use super::grammar::shared_util::value_shapes;
 use super::grammar::targets::{
@@ -56,20 +58,9 @@ use super::grammar::targets::{
     parse_target_for_each_suffix, parse_target_preparation_facts, parse_target_union_shape,
 };
 use super::keyword_static::parse_this_spell_cost_condition;
-use super::lexer::{
-    LexedClause, OwnedLexToken, TokenKind, TokenWordView, contains_token_word_sequence,
-    find_token_kind, find_token_word, lex_line, parser_token_word_refs, render_token_slice,
-    token_slice_at_is, token_slice_at_is_any, token_slice_first_is, token_slice_first_kind,
-    token_word_refs, tokens_start_with, word_slice_at_is, word_slice_at_is_any, word_slice_eq,
-    word_slice_eq_any, word_slice_find_window_by, word_slice_find_word, word_slice_first_is,
-    word_slice_first_is_any, word_slice_last_is_any, words_end_with, words_end_with_any,
-    words_have, words_have_any_phrase, words_have_phrase, words_start_with, words_start_with_any,
-};
+use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_token_slice};
 use super::object_filters::{parse_object_filter, parse_object_filter_words};
-use super::token_primitives::{
-    self as shared_tokens, find_window_by, items_end_with, items_start_with, iter_eq, locate_index,
-    slice_strip_prefix, slice_strip_suffix,
-};
+use super::token_primitives as shared_tokens;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -90,8 +81,6 @@ thread_local! {
     static SOURCE_REFERENCE_CONTEXT: RefCell<SourceReferenceContext> =
         RefCell::new(SourceReferenceContext::default());
 }
-
-const LEVEL_UP_PREFIX_WORDS: &[&str] = &["level", "up"];
 
 #[allow(dead_code)]
 pub(crate) fn with_source_reference_context<T>(card_name: &str, f: impl FnOnce() -> T) -> T {
@@ -260,8 +249,6 @@ pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken>
 
 pub(crate) use super::lexer::parser_token_word_refs as words;
 
-type UtilWordView<'a> = TokenWordView<'a>;
-
 pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
     count_shapes::parse_for_each_count_value_words(words)
 }
@@ -271,16 +258,11 @@ pub(crate) fn is_article(word: &str) -> bool {
 }
 
 pub(crate) fn strip_leading_word_refs_any<'slice, 'word>(
-    mut words: &'slice [&'word str],
+    words: &'slice [&'word str],
     leading_words: &[&str],
 ) -> &'slice [&'word str] {
-    while words
-        .first()
-        .is_some_and(|word| leading_words.iter().any(|leading| word == leading))
-    {
-        words = &words[1..];
-    }
-    words
+    let fact = token_facts::strip_leading_selected_word_refs_lexical(words, leading_words);
+    &words[fact.consumed_words..]
 }
 
 pub(crate) fn strip_leading_article_word_refs<'slice, 'word>(
@@ -314,11 +296,7 @@ pub(crate) fn word_refs_at_is_article(words: &[&str], idx: usize) -> bool {
 }
 
 pub(crate) fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
-    words
-        .iter()
-        .copied()
-        .filter(|word| !is_article(word))
-        .collect()
+    token_facts::non_article_word_refs(words)
 }
 
 pub(crate) fn word_refs_except<'a>(words: &[&'a str], excluded: &[&str]) -> Vec<&'a str> {
@@ -338,11 +316,7 @@ pub(crate) fn non_article_word_refs_except<'a>(
 }
 
 pub(crate) fn non_article_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    // Use the parser-normalized word view (folds contractions like "can't" -> "cant"
-    // and splits multi-word tokens) so callers match the same normalized words that
-    // grammar patterns are authored against, consistent with `LexedClause`.
-    let words = TokenWordView::new(tokens).word_refs();
-    non_article_word_refs(&words)
+    token_facts::non_article_token_word_refs(tokens)
 }
 
 pub(crate) fn strip_possessive_suffix(word: &str) -> &str {
@@ -488,18 +462,12 @@ pub(crate) fn replace_unbound_x_with_value(
 }
 
 pub(crate) fn starts_with_activation_cost(tokens: &[OwnedLexToken]) -> bool {
-    leaf::parse_leaf_activation_cost_head_tokens(tokens).is_some()
+    token_facts::parse_activation_cost_start_tokens(tokens)
+        .is_some_and(|fact| fact.token_index == 0)
 }
 
 pub(crate) fn find_activation_cost_start(tokens: &[OwnedLexToken]) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if starts_with_activation_cost(&tokens[idx..]) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-    None
+    token_facts::parse_activation_cost_start_tokens(tokens).map(|fact| fact.token_index)
 }
 
 pub(crate) fn contains_source_from_your_graveyard_phrase(words: &[&str]) -> bool {
@@ -519,10 +487,7 @@ pub(crate) fn contains_discard_source_phrase(words: &[&str]) -> bool {
 }
 
 pub(crate) fn is_basic_color_word(word: &str) -> bool {
-    matches!(
-        word,
-        "white" | "blue" | "black" | "red" | "green" | "colorless"
-    )
+    token_facts::parse_basic_color_word(word).is_some()
 }
 
 pub(crate) fn join_sentences_with_period(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
@@ -537,24 +502,11 @@ pub(crate) fn join_sentences_with_period(sentences: &[Vec<OwnedLexToken>]) -> Ve
 }
 
 pub(crate) fn split_cost_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
-    let mut segments = Vec::new();
-    let mut current = Vec::new();
-
-    for token in tokens {
-        if token.is_comma() || token.is_word("and") {
-            if !current.is_empty() {
-                segments.push(std::mem::take(&mut current));
-            }
-            continue;
-        }
-        current.push(token.clone());
-    }
-
-    if !current.is_empty() {
-        segments.push(current);
-    }
-
-    segments
+    token_facts::parse_cost_segments_tokens(tokens)
+        .segments
+        .into_iter()
+        .map(|segment| segment.to_vec())
+        .collect()
 }
 
 pub(crate) fn parse_next_end_step_token_delay_flags(
@@ -574,31 +526,25 @@ pub(crate) fn token_boundary_for_word(
     tokens: &[OwnedLexToken],
     word_index: usize,
 ) -> Option<usize> {
-    UtilWordView::new(tokens)
-        .token_start_indices()
-        .get(word_index)
-        .copied()
+    token_facts::token_boundary_for_word(tokens, word_index)
 }
 
-pub(crate) fn remove_first_word(tokens: &[OwnedLexToken], word: &str) -> Vec<OwnedLexToken> {
-    let Some(token_idx) = find_token_word(tokens, word) else {
+pub(crate) fn remove_first_may_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let Some(fact) = token_facts::parse_first_may_word_token(tokens) else {
         return tokens.to_vec();
     };
-    tokens[..token_idx]
+    tokens[..fact.token_index]
         .iter()
-        .chain(tokens[token_idx + 1..].iter())
+        .chain(tokens[fact.token_index + 1..].iter())
         .cloned()
         .collect()
 }
 
-pub(crate) fn remove_through_first_word(
-    tokens: &[OwnedLexToken],
-    word: &str,
-) -> Vec<OwnedLexToken> {
-    let Some(token_idx) = find_token_word(tokens, word) else {
+pub(crate) fn remove_through_first_may_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let Some(fact) = token_facts::parse_first_may_word_token(tokens) else {
         return Vec::new();
     };
-    tokens[token_idx + 1..].to_vec()
+    tokens[fact.token_index + 1..].to_vec()
 }
 
 pub(crate) fn trim_commas(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -670,10 +616,6 @@ pub(crate) fn parser_trace_stack(stage: &str, tokens: &[OwnedLexToken]) {
         crate::runtime_backend::token_word_refs(tokens).join(" ")
     );
     eprintln!("{}", std::backtrace::Backtrace::force_capture());
-}
-
-pub(crate) fn starts_with_until_end_of_turn(words: &[&str]) -> bool {
-    leaf::find_leaf_canonical_until_end_of_turn_words(words).is_some_and(|span| span.start == 0)
 }
 
 pub(crate) fn contains_until_end_of_turn(words: &[&str]) -> bool {
@@ -773,14 +715,11 @@ pub(crate) fn is_demonstrative_object_head(word: &str) -> bool {
 }
 
 pub(crate) fn is_outlaw_word(word: &str) -> bool {
-    matches!(word, "outlaw" | "outlaws")
+    token_facts::parse_outlaw_word(word) == Some(token_facts::OutlawWord::Outlaw)
 }
 
 pub(crate) fn is_non_outlaw_word(word: &str) -> bool {
-    matches!(
-        word,
-        "nonoutlaw" | "non-outlaw" | "nonoutlaws" | "non-outlaws"
-    )
+    token_facts::parse_outlaw_word(word) == Some(token_facts::OutlawWord::NonOutlaw)
 }
 
 pub(crate) fn push_outlaw_subtypes(out: &mut Vec<Subtype>) {
@@ -874,8 +813,7 @@ pub(crate) fn apply_filter_keyword_constraint(
 pub(crate) fn parse_flashback_keyword_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let spec = parse_flashback_keyword_line_spec_lexed(tokens)?;
     let mut text = format!("Flashback {}", spec.cost.to_oracle());
-    let tail_view = TokenWordView::new(spec.tail_tokens);
-    let tail = tail_view.word_refs();
+    let tail = words(spec.tail_tokens);
     if !tail.is_empty() {
         let mut tail_text = tail.join(" ");
         if let Some(first) = tail_text.chars().next() {
@@ -935,10 +873,6 @@ pub(crate) fn span_from_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
 
 pub(crate) fn parse_number(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
     leaf::parse_leaf_number_prefix_tokens(tokens)?.into_fixed()
-}
-
-pub(crate) fn parse_number_word_refs(words: &[&str]) -> Option<(u32, usize)> {
-    leaf::parse_leaf_number_prefix_words(words)?.into_fixed()
 }
 
 pub(crate) fn parse_quantity_comparison_prefix(
@@ -1103,21 +1037,11 @@ pub(crate) fn parse_choice_count_token_prefix_consumed(
     Some((parsed.count, parsed.consumed))
 }
 
-pub(crate) fn parse_choice_or_range_count_token_prefix_consumed(
-    tokens: &[OwnedLexToken],
-) -> Option<(ChoiceCount, usize)> {
-    parse_target_count_range_prefix(tokens)
-        .or_else(|| parse_choice_count_token_prefix_consumed(tokens))
-}
-
 pub(crate) fn parse_choice_count_before_target_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<(ChoiceCount, usize)> {
-    let (count, used) = parse_choice_or_range_count_token_prefix_consumed(tokens)?;
-    tokens
-        .get(used)
-        .is_some_and(|token| token.is_word("target") || token.is_word("targets"))
-        .then_some((count, used))
+    let fact = token_facts::parse_choice_count_before_target_tokens(tokens)?;
+    Some((fact.count, fact.consumed_tokens))
 }
 
 #[cfg(test)]
@@ -1404,6 +1328,48 @@ mod tests {
         assert!(filter.card_types.contains(&CardType::Land));
     }
 
+    #[test]
+    fn typed_keyword_line_facts_feed_semantic_adapters() {
+        let level = lex_line("Level up {2}{U}", 0).unwrap();
+        assert!(parse_level_up_line(&level).unwrap().is_some());
+
+        let madness = lex_line("Madness—Pay three {B}.", 0).unwrap();
+        assert!(parse_madness_line(&madness).unwrap().is_some());
+
+        let bargain = lex_line("Bargain", 0).unwrap();
+        assert!(parse_bargain_line(&bargain).unwrap().is_some());
+
+        let replicate = lex_line("Replicate—{1}{U}.", 0).unwrap();
+        assert!(parse_replicate_line(&replicate).unwrap().is_some());
+
+        let escalate = lex_line("Escalate {1}{R}", 0).unwrap();
+        assert!(parse_escalate_line_lexed(&escalate).unwrap().is_some());
+
+        let evoke = lex_line("Evoke {2}{B}", 0).unwrap();
+        assert!(parse_evoke_line_lexed(&evoke).unwrap().is_some());
+
+        let prowl = lex_line("Prowl {1}{B}", 0).unwrap();
+        assert!(parse_prowl_line_lexed(&prowl).unwrap().is_some());
+
+        let eternalize = lex_line("Eternalize {4}{U}{U}", 0).unwrap();
+        assert!(parse_eternalize_line_lexed(&eternalize).unwrap().is_some());
+
+        let epic = lex_line("Epic", 0).unwrap();
+        assert!(parse_epic_line_lexed(&epic));
+
+        let retrace = lex_line("Retrace", 0).unwrap();
+        assert!(parse_retrace_line(&retrace).unwrap().is_some());
+
+        let harmonize = lex_line("Harmonize {2}{G}", 0).unwrap();
+        assert!(parse_harmonize_line(&harmonize).unwrap().is_some());
+
+        let warp = lex_line("Warp {1}{R}", 0).unwrap();
+        assert!(parse_warp_line(&warp).unwrap().is_some());
+
+        let reinforce = lex_line("Reinforce 2 {1}{G}", 0).unwrap();
+        assert!(parse_reinforce_line(&reinforce).unwrap().is_some());
+    }
+
     fn describe_choose_spec_for_test(spec: &ChooseSpec) -> String {
         match spec {
             ChooseSpec::SurfaceHinted { hints, .. } => hints
@@ -1480,12 +1446,11 @@ pub(crate) fn parse_power_toughness(raw: &str) -> Option<PowerToughness> {
 pub(crate) fn parse_level_up_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let word_view = UtilWordView::new(tokens);
-    if !word_view.slice_eq(0, LEVEL_UP_PREFIX_WORDS) {
+    let Some(fact) = keyword_line_facts::parse_level_up_line_tokens(tokens) else {
         return Ok(None);
-    }
-
-    let (mana_cost, _) = leading_mana_cost_from_tokens(tokens.get(2..).unwrap_or_default())
+    };
+    let mana_cost = fact
+        .mana_cost
         .ok_or_else(|| CardTextError::ParseError("level up missing mana cost".to_string()))?;
     let level_up_text = format!("Level up {}", mana_cost.to_oracle());
 
@@ -1557,33 +1522,25 @@ pub(crate) fn leading_mana_cost_from_tokens(tokens: &[OwnedLexToken]) -> Option<
 pub(crate) fn parse_madness_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    if !token_slice_first_is(tokens, "madness") {
+    let Some(fact) = keyword_line_facts::parse_madness_line_tokens(tokens) else {
         return Ok(None);
-    }
-
-    let cost_tokens = tokens.get(1..).unwrap_or_default();
-    if cost_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "madness keyword missing mana cost".to_string(),
-        ));
-    }
-
-    let cost_end = find_token_kind(cost_tokens, TokenKind::Comma).unwrap_or(cost_tokens.len());
-    let cost_tokens = strip_leading_keyword_cost_separator(&cost_tokens[..cost_end]);
-    if cost_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "madness keyword missing mana cost".to_string(),
-        ));
-    }
-
-    if let Some(mana_cost) = parse_pay_repeated_mana_symbol_cost(cost_tokens) {
-        return Ok(Some(AlternativeCastingMethod::Madness { cost: mana_cost }));
-    }
-
-    let total_cost = parse_activation_cost(cost_tokens)?;
-    let mana_cost = total_cost.mana_cost().cloned().ok_or_else(|| {
-        CardTextError::ParseError("madness keyword missing mana symbols".to_string())
-    })?;
+    };
+    let mana_cost = match fact.cost {
+        MadnessCostFact::RepeatedMana(mana_cost) => mana_cost,
+        MadnessCostFact::ActivationTokens(cost_tokens) => {
+            if cost_tokens.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "madness keyword missing mana cost".to_string(),
+                ));
+            }
+            parse_activation_cost(cost_tokens)?
+                .mana_cost()
+                .cloned()
+                .ok_or_else(|| {
+                    CardTextError::ParseError("madness keyword missing mana symbols".to_string())
+                })?
+        }
+    };
 
     Ok(Some(AlternativeCastingMethod::Madness { cost: mana_cost }))
 }
@@ -1592,37 +1549,6 @@ pub(crate) fn parse_madness_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_madness_line(tokens)
-}
-
-fn strip_leading_keyword_cost_separator(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let mut start = 0usize;
-    while start < tokens.len() && matches!(tokens[start].kind, TokenKind::Dash | TokenKind::EmDash)
-    {
-        start += 1;
-    }
-    &tokens[start..]
-}
-
-fn parse_pay_repeated_mana_symbol_cost(tokens: &[OwnedLexToken]) -> Option<ManaCost> {
-    let mut end = tokens.len();
-    while end > 0 && tokens[end - 1].kind == TokenKind::Period {
-        end -= 1;
-    }
-    let tokens = &tokens[..end];
-    if tokens.len() != 3 || !tokens[0].is_word("pay") {
-        return None;
-    }
-
-    let count =
-        parse_number_word_u32(tokens[1].parser_text()).and_then(|value| value.try_into().ok())?;
-    let pip = mana_pips_from_token(&tokens[2])?;
-    if pip.len() != 1 {
-        return None;
-    }
-
-    Some(ManaCost::from_pips(
-        (0..count).map(|_| pip.clone()).collect(),
-    ))
 }
 
 pub(crate) fn parse_buyback_line(
@@ -1640,9 +1566,7 @@ pub(crate) fn parse_buyback_line_lexed(
 pub(crate) fn parse_bargain_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
-    let clause_view = UtilWordView::new(tokens);
-    let clause_words = clause_view.to_word_refs();
-    if clause_words.first().is_none_or(|word| *word != "bargain") {
+    if keyword_line_facts::parse_bargain_line_tokens(tokens).is_none() {
         return Ok(None);
     }
 
@@ -1704,37 +1628,18 @@ pub(crate) fn parse_multikicker_line_lexed(
 pub(crate) fn parse_replicate_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
-    if !tokens
-        .first()
-        .is_some_and(|token| token.is_word("replicate"))
-    {
+    let Some(fact) =
+        keyword_line_facts::parse_named_cost_line_tokens(tokens, NamedCostKeyword::Replicate)
+    else {
         return Ok(None);
-    }
-
-    let mut tail = tokens.get(1..).unwrap_or_default();
-    if matches!(
-        tail.first().map(|token| token.kind),
-        Some(TokenKind::Dash | TokenKind::EmDash)
-    ) {
-        tail = tail.get(1..).unwrap_or_default();
-    }
-    if tail.is_empty() {
+    };
+    if fact.cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "replicate keyword missing cost".to_string(),
         ));
     }
 
-    let reminder_start = find_token_kind(tail, TokenKind::LParen).unwrap_or(tail.len());
-    let sentence_end = find_token_kind(tail, TokenKind::Period).unwrap_or(tail.len());
-    let end = reminder_start.min(sentence_end);
-    let cost_tokens = trim_commas(&tail[..end]);
-    if cost_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "replicate keyword missing cost".to_string(),
-        ));
-    }
-
-    let total_cost = parse_activation_cost(&cost_tokens)?;
+    let total_cost = parse_activation_cost(fact.cost_tokens)?;
     Ok(Some(OptionalCost::replicate(total_cost)))
 }
 
@@ -1780,47 +1685,34 @@ pub(crate) fn parse_entwine_line_lexed(
     parse_entwine_line(tokens)
 }
 
-fn keyword_cost_tail_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-    keyword: &str,
-) -> Option<Vec<OwnedLexToken>> {
-    if !token_slice_first_is(tokens, keyword) {
-        return None;
-    }
-
-    let mut tail = tokens.get(1..).unwrap_or_default();
-    if matches!(
-        tail.first().map(|token| token.kind),
-        Some(TokenKind::Dash | TokenKind::EmDash)
-    ) {
-        tail = tail.get(1..).unwrap_or_default();
-    }
-
-    let reminder_start = find_token_kind(tail, TokenKind::LParen).unwrap_or(tail.len());
-    let sentence_end = find_token_kind(tail, TokenKind::Period).unwrap_or(tail.len());
-    let end = reminder_start.min(sentence_end);
-    let cost_tokens = trim_commas(&tail[..end]);
-    (!cost_tokens.is_empty()).then_some(cost_tokens)
-}
-
 pub(crate) fn parse_escalate_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(TotalCost, String)>, CardTextError> {
-    let Some(cost_tokens) = keyword_cost_tail_tokens(tokens, "escalate") else {
+    let Some(fact) =
+        keyword_line_facts::parse_named_cost_line_tokens(tokens, NamedCostKeyword::Escalate)
+    else {
         return Ok(None);
     };
-    let total_cost = parse_activation_cost(&cost_tokens)?;
-    let display = render_token_slice(&cost_tokens).trim().to_string();
+    if fact.cost_tokens.is_empty() {
+        return Ok(None);
+    }
+    let total_cost = parse_activation_cost(fact.cost_tokens)?;
+    let display = render_token_slice(fact.cost_tokens).trim().to_string();
     Ok(Some((total_cost, display)))
 }
 
 pub(crate) fn parse_evoke_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    let Some(cost_tokens) = keyword_cost_tail_tokens(tokens, "evoke") else {
+    let Some(fact) =
+        keyword_line_facts::parse_named_cost_line_tokens(tokens, NamedCostKeyword::Evoke)
+    else {
         return Ok(None);
     };
-    let total_cost = parse_activation_cost(&cost_tokens)?;
+    if fact.cost_tokens.is_empty() {
+        return Ok(None);
+    }
+    let total_cost = parse_activation_cost(fact.cost_tokens)?;
     Ok(Some(AlternativeCastingMethod::Composed {
         name: "Evoke",
         total_cost,
@@ -1832,10 +1724,15 @@ pub(crate) fn parse_evoke_line_lexed(
 pub(crate) fn parse_prowl_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    let Some(cost_tokens) = keyword_cost_tail_tokens(tokens, "prowl") else {
+    let Some(fact) =
+        keyword_line_facts::parse_named_cost_line_tokens(tokens, NamedCostKeyword::Prowl)
+    else {
         return Ok(None);
     };
-    let total_cost = parse_activation_cost(&cost_tokens)?;
+    if fact.cost_tokens.is_empty() {
+        return Ok(None);
+    }
+    let total_cost = parse_activation_cost(fact.cost_tokens)?;
     Ok(Some(AlternativeCastingMethod::Composed {
         name: "Prowl",
         total_cost,
@@ -1851,12 +1748,18 @@ pub(crate) fn parse_prowl_line_lexed(
 pub(crate) fn parse_eternalize_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ManaCost>, CardTextError> {
-    let Some(cost_tokens) = keyword_cost_tail_tokens(tokens, "eternalize") else {
+    let Some(fact) =
+        keyword_line_facts::parse_named_cost_line_tokens(tokens, NamedCostKeyword::Eternalize)
+    else {
         return Ok(None);
     };
-    let (mana_cost, consumed) = leading_mana_cost_from_tokens(&cost_tokens).ok_or_else(|| {
-        CardTextError::ParseError("eternalize keyword missing mana cost".to_string())
-    })?;
+    if fact.cost_tokens.is_empty() {
+        return Ok(None);
+    }
+    let (mana_cost, consumed) =
+        leading_mana_cost_from_tokens(fact.cost_tokens).ok_or_else(|| {
+            CardTextError::ParseError("eternalize keyword missing mana cost".to_string())
+        })?;
     if consumed == 0 {
         return Err(CardTextError::ParseError(
             "eternalize keyword missing mana cost".to_string(),
@@ -1866,7 +1769,7 @@ pub(crate) fn parse_eternalize_line_lexed(
 }
 
 pub(crate) fn parse_epic_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_first_is(tokens, "epic")
+    keyword_line_facts::parse_epic_line_tokens(tokens).is_some()
 }
 
 pub(crate) fn parse_morph_keyword_line(
@@ -1939,7 +1842,7 @@ pub(crate) fn parse_flashback_line_lexed(
 pub(crate) fn parse_retrace_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    if !token_slice_first_is(tokens, "retrace") {
+    if keyword_line_facts::parse_retrace_line_tokens(tokens).is_none() {
         return Ok(None);
     }
 
@@ -1969,18 +1872,16 @@ pub(crate) fn parse_jump_start_line_lexed(
 pub(crate) fn parse_harmonize_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    if !token_slice_first_is(tokens, "harmonize") {
+    let Some(fact) = keyword_line_facts::parse_harmonize_line_tokens(tokens) else {
         return Ok(None);
-    }
-
-    let cost_tokens = tokens.get(1..).unwrap_or_default();
-    if cost_tokens.is_empty() {
+    };
+    if fact.cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "harmonize keyword missing mana cost".to_string(),
         ));
     }
 
-    let total_cost = parse_activation_cost(cost_tokens)?;
+    let total_cost = parse_activation_cost(fact.cost_tokens)?;
     if total_cost.mana_cost().is_none() {
         return Err(CardTextError::ParseError(
             "harmonize keyword missing mana symbols".to_string(),
@@ -1999,11 +1900,10 @@ pub(crate) fn parse_harmonize_line_lexed(
 pub(crate) fn parse_warp_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    if !token_slice_first_is(tokens, "warp") {
+    let Some(fact) = keyword_line_facts::parse_warp_line_tokens(tokens) else {
         return Ok(None);
-    }
-
-    let (cost, _) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
+    };
+    let (cost, _) = leading_mana_cost_from_tokens(fact.cost_tokens)
         .ok_or_else(|| CardTextError::ParseError("warp keyword missing mana cost".to_string()))?;
     Ok(Some(AlternativeCastingMethod::Warp { cost }))
 }
@@ -2053,18 +1953,11 @@ pub(crate) fn parse_transmute_line_lexed(
 pub(crate) fn parse_reinforce_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let words_view = UtilWordView::new(tokens);
-    let words_all = words_view.to_word_refs();
-    if words_all.first().is_none_or(|word| *word != "reinforce") {
+    let Some(fact) = keyword_line_facts::parse_reinforce_line_tokens(tokens) else {
         return Ok(None);
-    }
-    if words_all.iter().any(|word| matches!(*word, "has" | "have")) {
-        return Ok(None);
-    }
-
-    let Some((amount_value, used_amount)) =
-        parse_number_or_x_value(tokens.get(1..).unwrap_or_default())
-    else {
+    };
+    let words_all = words(tokens);
+    let Some(amount_value) = fact.amount.and_then(leaf::LeafNumber::into_value) else {
         return Err(CardTextError::ParseError(format!(
             "reinforce line missing counter amount (clause: '{}')",
             words_all.join(" ")
@@ -2077,8 +1970,7 @@ pub(crate) fn parse_reinforce_line(
         )));
     };
 
-    let cost_start = 1 + used_amount;
-    if cost_start >= tokens.len() {
+    if fact.cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "reinforce line missing mana cost (clause: '{}')",
             words_all.join(" ")
@@ -2086,7 +1978,7 @@ pub(crate) fn parse_reinforce_line(
     }
 
     let Some((base_mana_cost, _consumed_cost_tokens)) =
-        leading_mana_cost_from_tokens(tokens.get(cost_start..).unwrap_or_default())
+        leading_mana_cost_from_tokens(fact.cost_tokens)
     else {
         return Err(CardTextError::ParseError(format!(
             "reinforce line missing mana symbols (clause: '{}')",

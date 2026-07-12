@@ -631,6 +631,20 @@ pub(crate) fn parse_target_phrase_inner(
         ));
     }
 
+    let prior_player_or_planeswalker = matches!(
+        parse_target_union_shape(&remaining_words),
+        Some(TargetUnionShape::PriorPlayerOrPlaneswalker)
+    );
+    if prior_player_or_planeswalker {
+        return Ok(wrap_target_count(
+            TargetAst::PlayerOrPlaneswalker(
+                PlayerFilter::TargetPlayerOrControllerOfTarget,
+                target_span,
+            ),
+            target_count,
+        ));
+    }
+
     let player_or_planeswalker_its_attacking = matches!(
         parse_target_union_shape(&remaining_words),
         Some(TargetUnionShape::AttackedPlayerOrPlaneswalker)

@@ -13,6 +13,22 @@ fn assert_frequency_condition(text: &str, limit: u32, expected: crate::Condition
 }
 
 #[test]
+fn typed_line_family_migration_distinguishes_trigger_prefix_from_labeled_surface() {
+    let direct = tokens("Whenever you attack, draw a card.");
+    assert_eq!(
+        parse_trigger_intro_prefix_tokens(&direct),
+        Some(TriggerIntroSurfaceAst::Whenever)
+    );
+
+    let labeled = tokens("Pack tactics — Whenever you attack, draw a card.");
+    assert_eq!(parse_trigger_intro_prefix_tokens(&labeled), None);
+    assert_eq!(
+        parse_trigger_intro_surface_tokens(&labeled),
+        Some(TriggerIntroSurfaceAst::Whenever)
+    );
+}
+
+#[test]
 fn recognizes_tapped_during_turn_fact() {
     let tokens = tokens("Whenever this creature becomes tapped during your turn, draw a card.");
     assert!(parse_becomes_tapped_during_your_turn_tokens(&tokens).is_some());

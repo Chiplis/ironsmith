@@ -82,6 +82,12 @@ pub(crate) fn parse_enters_tapped_with_counters_line(
     if etb_starts_with_trigger_intro_after_label(tokens) {
         return Ok(None);
     }
+    if let Some(shape) = etb_grammar::parse_enters_with_dual_for_each_counter_tokens(tokens) {
+        return Ok(Some(vec![StaticAbility::enters_with_counters_value(
+            shape.counter_type,
+            shape.count,
+        )]));
+    }
 
     let Some(captured) = etb_grammar::parse_enters_tapped_with_counters_clause_tokens(tokens)
     else {

@@ -170,16 +170,17 @@ pub use spell_cost_condition_model::ThisSpellCostCondition;
 pub use spell_timing_model::ThisSpellCastTiming;
 pub use static_ability_id::StaticAbilityId;
 pub use static_ability_model::{
-    ActivatedAbilityCostCondition, AdditionalTokenKind, Anthem, AttachedAbilityGrant,
-    AttachedChosenLandwalkGrant, AttackCostCondition, AttackingGroupAttackCondition,
-    CantAttackUnlessConditionSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
-    CopyActivatedAbilities, CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost,
-    CostReduction, CostReductionManaCost, CounterRemovalFollowUp, DefendingPlayerAttackCondition,
-    EnterAsCopyAsEntersSpec, EnterAsCopyLinkedExilePairSpec, GrantAbility,
-    GrantObjectAbilityForFilter, GraveyardCountMetric, LandwalkKind, OptionalLifeAdditionalCost,
-    PowerToughnessChoiceOption, PregameActionKind, PregameBeginOnBattlefieldSpec,
-    RemoveCardTypesForFilter, SetColorsForFilter, StaticAbility, StaticAbilityPayload,
-    ThisSpellCastRestrictionKind, ThisSpellCostReduction, ThisSpellCostReductionManaCost,
+    ActivatedAbilityCostCondition, AdditionalTokenKind, Anthem, AnthemReplacementSurface,
+    AttachedAbilityGrant, AttachedChosenLandwalkGrant, AttackCostCondition,
+    AttackingGroupAttackCondition, CantAttackUnlessConditionSpec, ConditionalSpellKeywordKind,
+    ConditionalSpellKeywordSpec, CopyActivatedAbilities, CopyTriggeredAbilities, CostIncrease,
+    CostIncreaseManaCost, CostReduction, CostReductionManaCost, CounterRemovalFollowUp,
+    DefendingPlayerAttackCondition, EnterAsCopyAsEntersSpec, EnterAsCopyLinkedExilePairSpec,
+    GrantAbility, GrantObjectAbilityForFilter, GraveyardCountMetric, LandwalkKind,
+    OptionalLifeAdditionalCost, PowerToughnessChoiceOption, PregameActionKind,
+    PregameBeginOnBattlefieldSpec, RemoveCardTypesForFilter, SetColorsForFilter, StaticAbility,
+    StaticAbilityPayload, ThisSpellCastRestrictionKind, ThisSpellCostReduction,
+    ThisSpellCostReductionManaCost,
 };
 pub use tag::{EXPLOITED_TAG, EXPLOITER_TAG, SOURCE_EXILED_TAG, TagKey};
 pub use target_model::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};

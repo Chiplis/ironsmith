@@ -11,7 +11,7 @@ use crate::target::PlayerFilter;
 
 use super::super::lexer::{
     LexStream, LexToken, LexedClause, OwnedLexToken, TokenKind, contains_token_any_word,
-    contains_token_word, contains_token_word_sequence, find_token_kind, find_token_word,
+    contains_token_word, contains_token_word_sequence, locate_token_kind, locate_token_word,
     trim_lexed_commas,
 };
 use super::super::util::trim_edge_punctuation_tokens;
@@ -563,10 +563,10 @@ pub(crate) fn is_standard_gift_keyword_tokens_lexed(tokens: &[OwnedLexToken]) ->
 pub(crate) fn additional_cost_tail_tokens_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    let comma_idx = find_token_kind(tokens, TokenKind::Comma);
+    let comma_idx = locate_token_kind(tokens, TokenKind::Comma);
     let effect_start = if let Some(idx) = comma_idx {
         idx + 1
-    } else if let Some(idx) = find_token_word(tokens, "spell") {
+    } else if let Some(idx) = locate_token_word(tokens, "spell") {
         idx + 1
     } else {
         tokens.len()

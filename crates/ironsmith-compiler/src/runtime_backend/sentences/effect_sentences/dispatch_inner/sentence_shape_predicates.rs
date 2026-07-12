@@ -70,7 +70,7 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
     ]))
 }
 
-fn lower_where_x_shape(
+pub(crate) fn lower_where_x_shape(
     shape: sentence_shapes::WhereXValueShape,
 ) -> Option<(Option<EffectAst>, Value)> {
     use sentence_shapes::{WhereXMetricShape as Metric, WhereXReferenceShape as Reference};
@@ -777,6 +777,12 @@ fn parse_effect_sentence_lexed_inner(
         return Ok(effects);
     }
     if quoted_ability_shape.is_some()
+        && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+    if effect_grammar::gain_ability_shapes::parse_source_tapped_gain_duration_shape(tokens)
+        .is_some()
         && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
     {
         return Ok(effects);
