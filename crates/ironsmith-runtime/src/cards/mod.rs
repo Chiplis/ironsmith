@@ -352,6 +352,9 @@ mod tests {
             for entry in std::fs::read_dir(&path).expect("read compiler source") {
                 let path = entry.expect("read compiler entry").path();
                 if path.is_dir() {
+                    if path.file_name().is_some_and(|name| name == "tests") {
+                        continue;
+                    }
                     stack.push(path);
                     continue;
                 }

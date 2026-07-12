@@ -1,0 +1,1143 @@
+use super::*;
+use crate::ability::{
+    Ability, AbilityKind, ActivatedAbility, ManaUsageRestriction, ManaUsageSubtypeRequirement,
+    RestrictedManaUnit,
+};
+use crate::cards::CardDefinitionBuilder;
+use crate::cards::definitions::{
+    basic_mountain, basic_swamp, blood_celebrant, command_tower, ornithopter, phyrexian_tower,
+    wall_of_roots, yawgmoth_thran_physician,
+};
+use crate::cards::tokens::treasure_token_definition;
+use crate::color::Color;
+use crate::cost::TotalCost;
+use crate::decision::{DecisionMaker, SelectFirstDecisionMaker};
+use crate::game_state::Phase;
+use crate::ids::CardId;
+use crate::mana::{ManaCost, ManaSymbol};
+use crate::static_abilities::{StaticAbility, StaticAbilityId};
+use crate::types::{CardType, Subtype};
+use crate::zone::Zone;
+
+fn setup_game() -> GameState {
+    crate::tests::test_helpers::setup_two_player_game()
+}
+
+fn arena_style_land_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Arena Style Land")
+            .card_types(vec![CardType::Land])
+            .parse_text(
+                "{R}, {T}, Exert this land: Add {R}{R}. If that mana is spent on a creature spell, it gains haste until end of turn.",
+            )
+            .expect("Arena-style mana ability should parse")
+}
+
+fn jasmine_dragon_tea_shop_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Jasmine Dragon Tea Shop")
+            .card_types(vec![CardType::Land])
+            .parse_text(
+                "{T}: Add {C}.\n\
+                 {T}: Add one mana of any color. Spend this mana only to cast an Ally spell or activate an ability of an Ally source.\n\
+                 {5}, {T}: Create a 1/1 white Ally creature token.",
+            )
+            .expect("Jasmine Dragon Tea Shop should parse")
+}
+
+fn jasmine_dragon_tea_shop_restricted_mana_game() -> (GameState, PlayerId, ObjectId) {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let tea_shop = jasmine_dragon_tea_shop_definition();
+    let tea_shop_id = game.create_object_from_definition(&tea_shop, alice, Zone::Battlefield);
+    let restriction = game
+        .object(tea_shop_id)
+        .expect("Jasmine Dragon Tea Shop should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            activated.mana_usage_restrictions.first().cloned()
+        })
+        .expect("Jasmine Dragon Tea Shop should have restricted mana");
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .add_restricted_mana(RestrictedManaUnit {
+            symbol: ManaSymbol::Green,
+            source: tea_shop_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction],
+        });
+    (game, alice, tea_shop_id)
+}
+
+fn restricted_mana_ability_index(game: &GameState, source: ObjectId) -> usize {
+    game.object(source)
+        .expect("source should exist")
+        .abilities
+        .iter()
+        .enumerate()
+        .find_map(|(idx, ability)| {
+            if matches!(
+                &ability.kind,
+                AbilityKind::Activated(activated)
+                    if !activated.mana_usage_restrictions.is_empty()
+            ) {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .expect("source should have a restricted mana ability")
+}
+
+#[test]
+fn test_variable_mana_ability_can_pay_colored_pip() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let treasure = treasure_token_definition();
+    let treasure_id = game.create_object_from_definition(&treasure, alice, Zone::Battlefield);
+
+    assert!(
+        mana_ability_can_pay_pip(
+            &game,
+            treasure_id,
+            0,
+            None,
+            &[ManaSymbol::Black],
+            &crate::player::ManaSpendPolicy::default(),
+        ),
+        "Treasure should be considered able to pay a colored pip"
+    );
+}
+
+#[test]
+fn test_single_flexible_mana_source_cannot_pay_two_colored_pips() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    game.create_object_from_definition(&treasure_token_definition(), alice, Zone::Battlefield);
+    let two_color_spell = CardDefinitionBuilder::new(CardId::new(), "Two Color Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let spell_id = game.create_object_from_definition(&two_color_spell, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *id == spell_id
+        )),
+        "one any-color mana source should not make a two-colored-pip spell legal"
+    );
+}
+
+#[test]
+fn test_single_flexible_mana_source_can_pay_one_colored_pip() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    game.create_object_from_definition(&treasure_token_definition(), alice, Zone::Battlefield);
+    let one_color_spell = CardDefinitionBuilder::new(CardId::new(), "One Color Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let spell_id = game.create_object_from_definition(&one_color_spell, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *id == spell_id
+        )),
+        "one any-color mana source should still make a one-colored-pip spell legal"
+    );
+}
+
+#[test]
+fn test_tapped_lands_do_not_make_spell_castable() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let plains_one = game.create_object_from_definition(
+        &crate::cards::definitions::basic_plains(),
+        alice,
+        Zone::Battlefield,
+    );
+    let plains_two = game.create_object_from_definition(
+        &crate::cards::definitions::basic_plains(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.tap(plains_one);
+    game.tap(plains_two);
+
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Two Mana White Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .build();
+    let spell_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *id == spell_id
+        )),
+        "two tapped Plains should not make a {{1}}{{W}} creature legal to cast"
+    );
+}
+
+#[test]
+fn test_tapped_lands_plus_one_floating_mana_do_not_make_two_mana_spell_castable() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let plains_one = game.create_object_from_definition(
+        &crate::cards::definitions::basic_plains(),
+        alice,
+        Zone::Battlefield,
+    );
+    let plains_two = game.create_object_from_definition(
+        &crate::cards::definitions::basic_plains(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.tap(plains_one);
+    game.tap(plains_two);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::White, 1);
+
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Two Mana White Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .build();
+    let spell_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *id == spell_id
+        )),
+        "one floating white and tapped lands should not make a {{1}}{{W}} creature legal"
+    );
+}
+
+#[test]
+fn test_restricted_mana_for_chosen_type_creature_spell_grants_uncounterable() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let cavern = CardDefinitionBuilder::new(CardId::new(), "Cavern Test")
+        .card_types(vec![CardType::Land])
+        .build();
+    let cavern_id = game.create_object_from_definition(&cavern, alice, Zone::Battlefield);
+
+    let restriction = ManaUsageRestriction::CastSpell {
+        card_types: vec![CardType::Creature],
+        subtype_requirement: Some(ManaUsageSubtypeRequirement::ChosenTypeOfSource),
+        restrict_to_matching_spell: true,
+        grant_uncounterable: true,
+        enters_with_counters: vec![],
+        granted_abilities: vec![],
+    };
+    game.object_mut(cavern_id)
+        .expect("cavern test land should exist")
+        .abilities_mut()
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: TotalCost::free(),
+                effects: crate::resolution::ResolutionProgram::default(),
+                choices: vec![],
+                timing: crate::ability::ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: Some(vec![ManaSymbol::Green]),
+                activation_condition: None,
+                mana_usage_restrictions: vec![restriction.clone()],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
+    game.set_chosen_creature_type(cavern_id, Subtype::Giant);
+
+    let matching_spell = CardDefinitionBuilder::new(CardId::new(), "Matching Giant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant])
+        .build();
+    let matching_spell_id = game.create_object_from_definition(&matching_spell, alice, Zone::Stack);
+    assert!(
+        mana_ability_can_pay_pip(
+            &game,
+            cavern_id,
+            0,
+            Some(matching_spell_id),
+            &[ManaSymbol::Green],
+            &crate::player::ManaSpendPolicy::default(),
+        ),
+        "restricted mana ability should pay for a creature spell of the chosen type"
+    );
+
+    let nonmatching_spell = CardDefinitionBuilder::new(CardId::new(), "Wrong Type")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .build();
+    let nonmatching_spell_id =
+        game.create_object_from_definition(&nonmatching_spell, alice, Zone::Stack);
+    assert!(
+        !mana_ability_can_pay_pip(
+            &game,
+            cavern_id,
+            0,
+            Some(nonmatching_spell_id),
+            &[ManaSymbol::Green],
+            &crate::player::ManaSpendPolicy::default(),
+        ),
+        "restricted mana ability should reject creature spells of the wrong subtype"
+    );
+
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .add_restricted_mana(RestrictedManaUnit {
+            symbol: ManaSymbol::Green,
+            source: cavern_id,
+            source_chosen_creature_type: Some(Subtype::Giant),
+            restrictions: vec![restriction.clone()],
+        });
+    let spent = spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(matching_spell_id))
+        .expect("restricted mana should be spendable on matching spell");
+    apply_spent_mana_bonuses(&mut game, Some(matching_spell_id), &spent);
+
+    assert!(
+        game.object(matching_spell_id)
+            .expect("matching spell should still be on stack")
+            .abilities
+            .iter()
+            .any(|ability| matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::CantBeCountered
+            )),
+        "spending restricted Cavern-style mana should make the matching spell uncounterable"
+    );
+}
+
+#[test]
+fn james_wandering_dad_follow_him_restricted_mana_only_pays_for_activated_abilities() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let james = CardDefinitionBuilder::new(CardId::new(), "James, Wandering Dad // Follow Him")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Add {C}{C}. Spend this mana only to activate abilities.")
+        .expect("James mana ability text should parse");
+
+    let restriction = james
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if !activated.mana_usage_restrictions.is_empty() => {
+                activated.mana_usage_restrictions.first().cloned()
+            }
+            _ => None,
+        })
+        .expect("James mana ability should include a usage restriction");
+
+    let source_id = game.new_object_id();
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .add_restricted_mana(RestrictedManaUnit {
+            symbol: ManaSymbol::Colorless,
+            source: source_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction],
+        });
+
+    let mana_rock = CardDefinitionBuilder::new(CardId::new(), "Ability Target")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let mana_rock_id = game.create_object_from_definition(&mana_rock, alice, Zone::Battlefield);
+    assert!(
+        spend_pool_symbol(&mut game, alice, ManaSymbol::Colorless, Some(mana_rock_id)).is_some(),
+        "James restricted mana should be spendable to activate abilities"
+    );
+
+    let mut game = setup_game();
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .add_restricted_mana(RestrictedManaUnit {
+            symbol: ManaSymbol::Colorless,
+            source: source_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![crate::ability::ManaUsageRestriction::ActivateAbility],
+        });
+
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Spell Target")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    assert!(
+        spend_pool_symbol(&mut game, alice, ManaSymbol::Colorless, Some(spell_id)).is_none(),
+        "James restricted mana should not be spendable to cast spells"
+    );
+}
+
+#[test]
+fn jasmine_dragon_tea_shop_restricted_mana_pays_only_ally_spells_or_ally_source_abilities() {
+    let (mut game, alice, _) = jasmine_dragon_tea_shop_restricted_mana_game();
+    let ally_spell = CardDefinitionBuilder::new(CardId::new(), "Ally Spell")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Ally])
+        .build();
+    let ally_spell_id = game.create_object_from_definition(&ally_spell, alice, Zone::Stack);
+    assert!(
+        spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(ally_spell_id)).is_some(),
+        "Jasmine Dragon Tea Shop restricted mana should pay for Ally spells"
+    );
+
+    let (mut game, alice, _) = jasmine_dragon_tea_shop_restricted_mana_game();
+    let non_ally_spell = CardDefinitionBuilder::new(CardId::new(), "Non-Ally Spell")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .build();
+    let non_ally_spell_id = game.create_object_from_definition(&non_ally_spell, alice, Zone::Stack);
+    assert!(
+        spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(non_ally_spell_id)).is_none(),
+        "Jasmine Dragon Tea Shop restricted mana should reject non-Ally spells"
+    );
+
+    let (mut game, alice, _) = jasmine_dragon_tea_shop_restricted_mana_game();
+    let ally_source = CardDefinitionBuilder::new(CardId::new(), "Ally Ability Source")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Ally])
+        .parse_text("{1}: You gain 1 life.")
+        .expect("Ally ability source should parse");
+    let ally_source_id = game.create_object_from_definition(&ally_source, alice, Zone::Battlefield);
+    assert!(
+        spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(ally_source_id)).is_some(),
+        "Jasmine Dragon Tea Shop restricted mana should pay for abilities of Ally sources"
+    );
+
+    let (mut game, alice, _) = jasmine_dragon_tea_shop_restricted_mana_game();
+    let non_ally_source = CardDefinitionBuilder::new(CardId::new(), "Non-Ally Ability Source")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .parse_text("{1}: You gain 1 life.")
+        .expect("non-Ally ability source should parse");
+    let non_ally_source_id =
+        game.create_object_from_definition(&non_ally_source, alice, Zone::Battlefield);
+    assert!(
+        spend_pool_symbol(
+            &mut game,
+            alice,
+            ManaSymbol::Green,
+            Some(non_ally_source_id)
+        )
+        .is_none(),
+        "Jasmine Dragon Tea Shop restricted mana should reject abilities of non-Ally sources"
+    );
+}
+
+#[test]
+fn stacked_activated_ability_preserves_mana_usage_restrictions() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source = CardDefinitionBuilder::new(CardId::new(), "Sarkhan Test")
+        .card_types(vec![CardType::Planeswalker])
+        .build();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let restriction = ManaUsageRestriction::CastSpellMatching {
+        filter: ObjectFilter::default().with_subtype(Subtype::Dragon),
+        restrict_to_matching_spell: true,
+        grant_uncounterable: false,
+        enters_with_counters: vec![],
+        granted_abilities: vec![],
+    };
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        crate::resolution::ResolutionProgram::from_effects(vec![
+            Effect::add_mana_of_any_color_restricted(
+                crate::effect::Value::Fixed(2),
+                crate::color::Color::ALL.to_vec(),
+            ),
+        ]),
+    )
+    .with_mana_usage_restrictions(vec![restriction], None);
+    game.push_to_stack(entry);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("stacked loyalty-style mana ability should resolve");
+
+    let restricted_units = game
+        .player(alice)
+        .expect("player should exist")
+        .restricted_mana
+        .clone();
+    assert_eq!(restricted_units.len(), 2);
+    let produced_symbol = restricted_units[0].symbol;
+
+    let dragon_spell = CardDefinitionBuilder::new(CardId::new(), "Dragon Spell")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dragon])
+        .build();
+    let dragon_spell_id = game.create_object_from_definition(&dragon_spell, alice, Zone::Stack);
+    assert!(
+        spend_pool_symbol(&mut game, alice, produced_symbol, Some(dragon_spell_id)).is_some(),
+        "restricted mana produced by the stacked ability should pay for Dragon spells"
+    );
+
+    let elf_spell = CardDefinitionBuilder::new(CardId::new(), "Elf Spell")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .build();
+    let elf_spell_id = game.create_object_from_definition(&elf_spell, alice, Zone::Stack);
+    assert!(
+        spend_pool_symbol(&mut game, alice, produced_symbol, Some(elf_spell_id)).is_none(),
+        "restricted mana produced by the stacked ability should reject non-Dragon spells"
+    );
+}
+
+#[test]
+fn test_bonus_mana_can_still_pay_noncreature_spells_but_only_buffs_matching_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = game.new_object_id();
+    let restriction = ManaUsageRestriction::CastSpell {
+        card_types: vec![CardType::Creature],
+        subtype_requirement: None,
+        restrict_to_matching_spell: false,
+        grant_uncounterable: false,
+        enters_with_counters: vec![(crate::object::CounterType::PlusOnePlusOne, 1)],
+        granted_abilities: vec![],
+    };
+
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .add_restricted_mana(RestrictedManaUnit {
+            symbol: ManaSymbol::Green,
+            source: source_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction.clone()],
+        });
+
+    let creature_spell = CardDefinitionBuilder::new(CardId::new(), "Creature Spell")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let creature_spell_id = game.create_object_from_definition(&creature_spell, alice, Zone::Stack);
+    assert!(
+        pool_symbol_count(&game, alice, ManaSymbol::Green, Some(creature_spell_id)) >= 1,
+        "bonus-bearing mana should still be available for creature spells"
+    );
+
+    let spent = spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(creature_spell_id))
+        .expect("bonus-bearing mana should be spendable on creature spells");
+    apply_spent_mana_bonuses(&mut game, Some(creature_spell_id), &spent);
+    assert!(
+        game.object(creature_spell_id)
+            .expect("creature spell should remain on stack")
+            .abilities
+            .iter()
+            .any(|ability| matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::EnterWithCounters
+            )),
+        "spending bonus-bearing mana on a creature spell should grant an ETB counter bonus"
+    );
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .add_restricted_mana(RestrictedManaUnit {
+            symbol: ManaSymbol::Green,
+            source: source_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction],
+        });
+
+    let noncreature_spell = CardDefinitionBuilder::new(CardId::new(), "Noncreature Spell")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let noncreature_spell_id =
+        game.create_object_from_definition(&noncreature_spell, alice, Zone::Stack);
+    let spent = spend_pool_symbol(
+        &mut game,
+        alice,
+        ManaSymbol::Green,
+        Some(noncreature_spell_id),
+    )
+    .expect("bonus-bearing mana should still be spendable on noncreature spells");
+    apply_spent_mana_bonuses(&mut game, Some(noncreature_spell_id), &spent);
+    assert!(
+        game.object(noncreature_spell_id)
+            .expect("noncreature spell should remain on stack")
+            .abilities
+            .iter()
+            .all(|ability| !matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::EnterWithCounters
+            )),
+        "bonus-bearing mana should not add ETB counter text to noncreature spells"
+    );
+}
+
+#[test]
+fn test_bonus_mana_grants_temporary_static_ability_to_matching_spell() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = game.new_object_id();
+    let restriction = ManaUsageRestriction::CastSpell {
+        card_types: vec![CardType::Creature],
+        subtype_requirement: None,
+        restrict_to_matching_spell: false,
+        grant_uncounterable: false,
+        enters_with_counters: vec![],
+        granted_abilities: vec![StaticAbilityId::Haste],
+    };
+
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .add_restricted_mana(RestrictedManaUnit {
+            symbol: ManaSymbol::Red,
+            source: source_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction],
+        });
+
+    let creature_spell = CardDefinitionBuilder::new(CardId::new(), "Creature Spell")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let creature_spell_id = game.create_object_from_definition(&creature_spell, alice, Zone::Stack);
+    let spent = spend_pool_symbol(&mut game, alice, ManaSymbol::Red, Some(creature_spell_id))
+        .expect("bonus-bearing mana should be spendable on creature spells");
+    apply_spent_mana_bonuses(&mut game, Some(creature_spell_id), &spent);
+
+    assert!(
+        game.current_has_static_ability_id(creature_spell_id, StaticAbilityId::Haste),
+        "matching spell should gain haste from spent mana"
+    );
+
+    let permanent_id = game
+        .move_object_by_effect(creature_spell_id, Zone::Battlefield)
+        .expect("creature spell should resolve to the battlefield");
+    assert!(
+        game.current_has_static_ability_id(permanent_id, StaticAbilityId::Haste),
+        "stack-to-battlefield movement should preserve the temporary haste grant"
+    );
+
+    game.cleanup_temporary_object_static_ability_grants_end_of_turn();
+    assert!(
+        !game.current_has_static_ability_id(permanent_id, StaticAbilityId::Haste),
+        "temporary haste grant should expire at end of turn"
+    );
+}
+
+#[test]
+fn arena_style_exert_mana_grants_haste_through_cast_flow() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let arena = arena_style_land_definition();
+    let arena_id = game.create_object_from_definition(&arena, alice, Zone::Battlefield);
+    let arena_ability_index = restricted_mana_ability_index(&game, arena_id);
+
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut decision_maker = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::ActivateManaAbility {
+            source: arena_id,
+            ability_index: arena_ability_index,
+        }),
+        &mut decision_maker,
+    )
+    .expect("Arena-style mana ability should activate");
+
+    let restricted_red = game
+        .player(alice)
+        .expect("alice should exist")
+        .restricted_mana
+        .iter()
+        .filter(|unit| unit.symbol == ManaSymbol::Red)
+        .count();
+    assert_eq!(
+        restricted_red, 2,
+        "Arena-style ability should produce two restricted red mana"
+    );
+
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Arena-Funded Warrior")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .build();
+    let creature_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: creature_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+        &mut decision_maker,
+    )
+    .expect("creature spell should be cast with Arena mana");
+
+    let stack_creature_id = game
+        .stack
+        .last()
+        .expect("creature spell should be on the stack")
+        .object_id;
+    assert!(
+        game.current_has_static_ability_id(stack_creature_id, StaticAbilityId::Haste),
+        "creature spell should gain haste while on the stack from Arena mana"
+    );
+
+    resolve_stack_entry(&mut game).expect("creature spell should resolve");
+    let permanent_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|obj| obj.name == "Arena-Funded Warrior")
+        })
+        .expect("creature should resolve to the battlefield");
+    assert!(
+        game.current_has_static_ability_id(permanent_id, StaticAbilityId::Haste),
+        "creature permanent should keep haste after resolving"
+    );
+}
+
+#[test]
+fn arena_style_mana_paid_with_nested_mana_ability_keeps_restrictions() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mountain_id =
+        game.create_object_from_definition(&basic_mountain(), alice, Zone::Battlefield);
+    let arena = arena_style_land_definition();
+    let arena_id = game.create_object_from_definition(&arena, alice, Zone::Battlefield);
+    let arena_ability_index = restricted_mana_ability_index(&game, arena_id);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut decision_maker = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::ActivateManaAbility {
+            source: arena_id,
+            ability_index: arena_ability_index,
+        }),
+        &mut decision_maker,
+    )
+    .expect("Arena-style mana ability should ask how to pay its red activation cost");
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(_)
+            )
+        ),
+        "Arena-style mana ability should need a mana-payment decision when no red is floating"
+    );
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::ManaPayment(0),
+        &mut decision_maker,
+    )
+    .expect("mountain mana should pay Arena's activation cost");
+
+    assert!(
+        game.is_tapped(mountain_id),
+        "nested mana ability should tap the Mountain used to pay Arena's activation cost"
+    );
+    let restricted_red = game
+        .player(alice)
+        .expect("alice should exist")
+        .restricted_mana
+        .iter()
+        .filter(|unit| unit.symbol == ManaSymbol::Red)
+        .count();
+    assert_eq!(
+        restricted_red, 2,
+        "Arena-style ability should still produce two restricted red mana after a nested mana-payment decision"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_mana_ability_undo_safe_for_basic_tap_sources() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let mountain_id =
+        game.create_object_from_definition(&basic_mountain(), alice, Zone::Battlefield);
+    assert!(
+        mana_ability_is_undo_safe(&game, mountain_id, 0),
+        "basic tap-for-mana land should be undo-safe"
+    );
+
+    let command_tower_id =
+        game.create_object_from_definition(&command_tower(), alice, Zone::Battlefield);
+    assert!(
+        mana_ability_is_undo_safe(&game, command_tower_id, 0),
+        "tap-for-any-color mana ability should be undo-safe"
+    );
+}
+
+#[test]
+#[cfg(ironsmith_runtime_parser_tests)]
+fn test_mana_ability_undo_not_safe_for_stateful_activations() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let wall_id = game.create_object_from_definition(&wall_of_roots(), alice, Zone::Battlefield);
+    let wall_mana_index = game
+        .object(wall_id)
+        .and_then(|obj| {
+            obj.abilities
+                .iter()
+                .position(|ability| ability.is_mana_ability())
+        })
+        .expect("wall of roots should have a mana ability");
+    assert!(
+        !mana_ability_is_undo_safe(&game, wall_id, wall_mana_index),
+        "Wall of Roots-style counter costs should not be undo-safe"
+    );
+
+    let blood_celebrant_id =
+        game.create_object_from_definition(&blood_celebrant(), alice, Zone::Battlefield);
+    let blood_celebrant_mana_index = game
+        .object(blood_celebrant_id)
+        .and_then(|obj| {
+            obj.abilities
+                .iter()
+                .position(|ability| ability.is_mana_ability())
+        })
+        .expect("blood celebrant should have a mana ability");
+    assert!(
+        !mana_ability_is_undo_safe(&game, blood_celebrant_id, blood_celebrant_mana_index),
+        "mana abilities with non-mana side effects should not be undo-safe"
+    );
+
+    let treasure_id =
+        game.create_object_from_definition(&treasure_token_definition(), alice, Zone::Battlefield);
+    assert!(
+        !mana_ability_is_undo_safe(&game, treasure_id, 0),
+        "tap+sacrifice mana abilities should not be undo-safe"
+    );
+}
+
+#[test]
+fn test_pip_payment_mana_ability_restricts_any_color_choice() {
+    struct AlwaysRedDecisionMaker;
+    impl DecisionMaker for AlwaysRedDecisionMaker {
+        fn decide_colors(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::ColorsContext,
+        ) -> Vec<Color> {
+            vec![Color::Red; ctx.count as usize]
+        }
+    }
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let mut dm = AlwaysRedDecisionMaker;
+
+    let treasure = treasure_token_definition();
+    let treasure_id = game.create_object_from_definition(&treasure, alice, Zone::Battlefield);
+
+    let action = ManaPipPaymentAction::ActivateManaAbility {
+        source_id: treasure_id,
+        ability_index: 0,
+    };
+    let mut payment_trace = Vec::new();
+    let mut mana_spent = ManaPool::default();
+    let black_pip = vec![ManaSymbol::Black];
+
+    let pip_paid = execute_pip_payment_action(
+        &mut game,
+        &mut trigger_queue,
+        alice,
+        None,
+        crate::costs::PaymentReason::Other,
+        &black_pip,
+        &crate::player::ManaSpendPolicy::default(),
+        &action,
+        &mut dm,
+        &mut payment_trace,
+        Some(&mut mana_spent),
+    )
+    .expect("mana ability activation during pip payment should succeed");
+
+    assert!(
+        pip_paid,
+        "activating a mana ability for a pip should immediately spend usable mana"
+    );
+
+    let pool = &game.player(alice).expect("alice exists").mana_pool;
+    assert_eq!(
+        pool.black, 0,
+        "generated mana should be consumed for the pip"
+    );
+    assert_eq!(pool.red, 0, "disallowed color should not be produced");
+    assert_eq!(
+        mana_spent.black, 1,
+        "spent mana tracking should reflect the auto-paid pip"
+    );
+    assert!(
+        !game.battlefield.contains(&treasure_id),
+        "treasure should be sacrificed as part of activation cost"
+    );
+    let _ = payment_trace;
+}
+
+#[test]
+#[cfg(ironsmith_runtime_parser_tests)]
+fn test_black_pip_payment_options_include_phyrexian_tower_sacrifice_ability() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+    let yawgmoth_id =
+        game.create_object_from_definition(&yawgmoth_thran_physician(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&basic_swamp(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&phyrexian_tower(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
+
+    let options = build_pip_payment_options(
+        &game,
+        alice,
+        &[ManaSymbol::Black],
+        Some(&[ManaSymbol::Black]),
+        &crate::player::ManaSpendPolicy::default(),
+        false,
+        Some(yawgmoth_id),
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    );
+
+    let potential = crate::decision::compute_potential_mana(&game, alice);
+    assert!(
+        potential.black >= 2,
+        "potential mana should include Phyrexian Tower's black sacrifice output"
+    );
+
+    let descriptions: Vec<_> = options
+        .iter()
+        .map(|option| option.description.as_str())
+        .collect();
+    assert!(
+        descriptions
+            .iter()
+            .any(|description| description.contains("Tap Swamp: Add {B}")),
+        "sanity check: Swamp should be offered, got {descriptions:?}"
+    );
+    assert!(
+        descriptions
+            .iter()
+            .any(|description| description.contains("Tap Phyrexian Tower: Add {B}{B}")),
+        "Phyrexian Tower's sacrifice mana ability should be offered for a black pip, got {descriptions:?}"
+    );
+}
+
+#[test]
+#[cfg(ironsmith_runtime_parser_tests)]
+fn test_phyrexian_tower_alternative_mana_abilities_are_one_payment_source() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    game.create_object_from_definition(&phyrexian_tower(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
+
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Tower Overcount Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Colorless],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+
+    let next_object_id_before_actions = game.next_object_id_counter();
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+
+    assert_eq!(
+        game.next_object_id_counter(),
+        next_object_id_before_actions,
+        "hypothetical mana simulations must not burn committed object ids"
+    );
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *id == spell_id
+        )),
+        "Phyrexian Tower can activate either its {{C}} ability or its sacrifice-for-{{B}}{{B}} ability, not both"
+    );
+
+    let followup = CardDefinitionBuilder::new(CardId::new(), "Post-Hypothetical Probe")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    assert_eq!(
+        game.create_object_from_definition(&followup, alice, Zone::Hand),
+        ObjectId::from_raw(next_object_id_before_actions),
+        "the next real object should receive the first id after the pre-probe state"
+    );
+}
+
+#[test]
+fn test_build_pip_payment_options_adds_krrik_life_for_plain_black_pip() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+    let helper = CardDefinitionBuilder::new(CardId::new(), "Krrik Helper")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let helper_id = game.create_object_from_definition(&helper, alice, Zone::Battlefield);
+    game.object_mut(helper_id)
+        .expect("helper should exist")
+        .abilities_mut()
+        .push(Ability::static_ability(
+            StaticAbility::krrik_black_mana_may_be_paid_with_life(),
+        ));
+
+    let options = build_pip_payment_options(
+        &game,
+        alice,
+        &[ManaSymbol::Black],
+        Some(&[ManaSymbol::Black]),
+        &crate::player::ManaSpendPolicy::default(),
+        game.player_can_pay_black_with_life_for_reason(
+            alice,
+            Some(helper_id),
+            crate::costs::PaymentReason::CastSpell,
+        ),
+        None,
+        crate::costs::PaymentReason::CastSpell,
+        &mut dm,
+    );
+
+    assert!(
+        options
+            .iter()
+            .any(|option| matches!(option.action, ManaPipPaymentAction::PayLife(2))),
+        "a printed {{B}} pip should offer Krrik's pay-2-life option"
+    );
+}
+
+#[test]
+fn test_build_pip_payment_options_does_not_add_krrik_life_to_announced_phyrexian_black() {
+    let game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+    let options = build_pip_payment_options(
+        &game,
+        alice,
+        &[ManaSymbol::Black],
+        Some(&[ManaSymbol::Black, ManaSymbol::Life(2)]),
+        &crate::player::ManaSpendPolicy::default(),
+        true,
+        None,
+        crate::costs::PaymentReason::CastSpell,
+        &mut dm,
+    );
+
+    assert!(
+        options
+            .iter()
+            .all(|option| !matches!(option.action, ManaPipPaymentAction::PayLife(2))),
+        "Krrik should not create a second life-payment option for a printed Phyrexian pip"
+    );
+}

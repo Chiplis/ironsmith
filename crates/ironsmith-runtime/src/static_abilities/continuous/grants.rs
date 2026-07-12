@@ -1,0 +1,455 @@
+use super::*;
+
+/// Controller of source controls the permanent attached to source.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ControlAttachedPermanent {
+    pub display: String,
+}
+
+impl ControlAttachedPermanent {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for ControlAttachedPermanent {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ControlAttachedPermanent
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::AttachedTo(source),
+                Modification::ChangeController(controller),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// "Enchanted land is the chosen type."
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnchantedLandIsChosenType {
+    pub display: String,
+}
+
+impl EnchantedLandIsChosenType {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for EnchantedLandIsChosenType {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EnchantedLandIsChosenType
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen_type) = game.chosen_basic_land_type(source) else {
+            return Vec::new();
+        };
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::AttachedTo(source),
+                Modification::SetSubtypes(vec![chosen_type]),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// "This creature is the chosen type in addition to its other types."
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddChosenCreatureTypeForFilter {
+    pub filter: ObjectFilter,
+    pub display: String,
+}
+
+impl AddChosenCreatureTypeForFilter {
+    pub fn new(filter: ObjectFilter, display: String) -> Self {
+        Self { filter, display }
+    }
+}
+
+impl StaticAbilityKind for AddChosenCreatureTypeForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddChosenCreatureType
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen_type) = game.chosen_creature_type(source) else {
+            return Vec::new();
+        };
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::AddSubtypes(vec![chosen_type]),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// "Objects are the chosen basic land type in addition to their other types."
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddChosenBasicLandTypeForFilter {
+    pub filter: ObjectFilter,
+    pub display: String,
+}
+
+impl AddChosenBasicLandTypeForFilter {
+    pub fn new(filter: ObjectFilter, display: String) -> Self {
+        Self { filter, display }
+    }
+}
+
+impl StaticAbilityKind for AddChosenBasicLandTypeForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddChosenBasicLandType
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen_type) = game.chosen_basic_land_type(source) else {
+            return Vec::new();
+        };
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::AddSubtypes(vec![chosen_type]),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// "Objects are the chosen color in addition to their other colors."
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddChosenColorForFilter {
+    pub filter: ObjectFilter,
+    pub display: String,
+}
+
+impl AddChosenColorForFilter {
+    pub fn new(filter: ObjectFilter, display: String) -> Self {
+        Self { filter, display }
+    }
+}
+
+impl StaticAbilityKind for AddChosenColorForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddChosenColor
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen_color) = game.chosen_color(source) else {
+            return Vec::new();
+        };
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::AddColors(crate::color::ColorSet::from(chosen_color)),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// "This permanent is the chosen color."
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetChosenColorForFilter {
+    pub filter: ObjectFilter,
+    pub display: String,
+}
+
+impl SetChosenColorForFilter {
+    pub fn new(filter: ObjectFilter, display: String) -> Self {
+        Self { filter, display }
+    }
+}
+
+impl StaticAbilityKind for SetChosenColorForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SetChosenColor
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen_color) = game.chosen_color(source) else {
+            return Vec::new();
+        };
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::SetColors(crate::color::ColorSet::from(chosen_color)),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// Permanents matching a filter have an activated or triggered ability.
+#[derive(Clone, PartialEq)]
+pub struct GrantObjectAbilityForFilter {
+    pub filter: ObjectFilter,
+    pub ability: Ability,
+    pub display: String,
+    pub condition: Option<crate::ConditionExpr>,
+}
+
+impl std::fmt::Debug for GrantObjectAbilityForFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GrantObjectAbilityForFilter")
+            .field("filter", &self.filter)
+            .field("ability", &self.ability)
+            .field(
+                "generated_modification",
+                &Modification::AddAbilityGeneric(self.ability.clone()),
+            )
+            .field("display", &self.display)
+            .field("condition", &self.condition)
+            .finish()
+    }
+}
+
+impl GrantObjectAbilityForFilter {
+    pub fn new(filter: ObjectFilter, ability: Ability, display: String) -> Self {
+        Self {
+            filter,
+            ability,
+            display,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+}
+
+impl StaticAbilityKind for GrantObjectAbilityForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::GrantObjectAbilityForFilter
+    }
+
+    fn display(&self) -> String {
+        let mut ability_text = self.display.clone();
+        if let AbilityKind::Activated(activated) = &self.ability.kind
+            && activated.is_loyalty_ability
+            && let Some(rendered) = loyalty_activated_ability_display(activated, &ability_text)
+        {
+            ability_text = rendered;
+        }
+        if let Some((head, tail)) = ability_text.split_once(": ")
+            && let Some(first) = tail.chars().next()
+            && first.is_ascii_lowercase()
+        {
+            ability_text = format!("{head}: {}", capitalize_first(tail));
+        }
+
+        let filter_desc = self.filter.description();
+        let keyword_label = object_ability_keyword_label(&self.ability)
+            .or_else(|| explicit_granted_keyword_label(&ability_text));
+        if object_ability_is_static_keyword(&self.ability) {
+            ability_text = lowercase_first_ascii(&ability_text);
+        } else if let Some(label) = keyword_label.as_deref() {
+            ability_text = lowercase_first_ascii(label.trim());
+        }
+        let rendered_ability = match (&self.ability.kind, keyword_label.as_deref()) {
+            (_, Some(_)) => ability_text,
+            (AbilityKind::Activated(_) | AbilityKind::Triggered(_), _) => {
+                if !ability_text.ends_with('.') {
+                    ability_text.push('.');
+                }
+                format!("\"{ability_text}\"")
+            }
+            _ => ability_text,
+        };
+        let subject = if filter_desc == "Sliver" {
+            "All Slivers".to_string()
+        } else {
+            grant_subject_text(&self.filter)
+        };
+        let verb = if grant_subject_is_plural(&subject) {
+            "have"
+        } else {
+            "has"
+        };
+        let mut text = format!("{subject} {verb} {rendered_ability}");
+        if let Some(condition) = &self.condition {
+            let condition_text = describe_static_condition(condition);
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
+            if let Some(rest) = condition_text.strip_prefix("as long as ") {
+                return format!("as long as {rest}, {text}");
+            }
+            text.push(' ');
+            text.push_str(&condition_text);
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
+        Some(&self.ability)
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![effect_with_optional_static_condition(
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Filter(self.filter.clone()),
+                Modification::AddAbilityGeneric(self.ability.clone()),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            &self.condition,
+        )]
+    }
+}
+
+fn loyalty_activated_ability_display(
+    activated: &crate::ability::ActivatedAbility,
+    fallback: &str,
+) -> Option<String> {
+    let tail = fallback
+        .split_once(": ")
+        .map(|(_, tail)| tail)
+        .unwrap_or(fallback);
+    let cost = if activated.mana_cost.is_free() {
+        "0".to_string()
+    } else {
+        let [cost] = activated.mana_cost.as_all()? else {
+            return None;
+        };
+        let effect = cost.effect_ref()?;
+        if let Some(remove) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()
+            && remove.counter_type == CounterType::Loyalty
+            && let Value::Fixed(amount) = remove.count
+        {
+            format!("−{amount}")
+        } else if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>()
+            && put.counter_type == CounterType::Loyalty
+            && matches!(put.target, crate::target::ChooseSpec::Source)
+            && let Value::Fixed(amount) = put.amount
+        {
+            format!("+{amount}")
+        } else {
+            return None;
+        }
+    };
+    Some(format!("[{cost}]: {tail}"))
+}
+
+fn grant_subject_is_plural(subject: &str) -> bool {
+    let lower = subject.trim().to_ascii_lowercase();
+    if lower.starts_with("enchanted ")
+        || lower.starts_with("equipped ")
+        || lower.starts_with("this ")
+        || lower.starts_with("that ")
+    {
+        return false;
+    }
+    if lower.starts_with("all ")
+        || lower.starts_with("other ")
+        || lower.starts_with("each ")
+        || lower.starts_with("those ")
+        || lower.ends_with('s')
+    {
+        return true;
+    }
+    [
+        "permanents",
+        "creatures",
+        "artifacts",
+        "enchantments",
+        "lands",
+        "planeswalkers",
+        "battles",
+        "spells",
+        "cards",
+        "tokens",
+    ]
+    .iter()
+    .any(|noun| lower.contains(noun))
+}

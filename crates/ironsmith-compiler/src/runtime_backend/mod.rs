@@ -215,5 +215,4 @@ pub(crate) fn parse_card_text_allow_unsupported(
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
 mod tests;

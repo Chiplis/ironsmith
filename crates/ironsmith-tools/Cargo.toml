@@ -126,6 +126,11 @@ path = "src/bin/audit_parser_module_sizes.rs"
 test = false
 
 [[bin]]
+name = "audit_source_file_sizes"
+path = "src/bin/audit_source_file_sizes.rs"
+test = false
+
+[[bin]]
 name = "export_cedh_support_report"
 path = "src/bin/export_cedh_support_report.rs"
 test = false
