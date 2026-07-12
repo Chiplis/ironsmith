@@ -1,17 +1,16 @@
 #[path = "cant_shapes/attack_unless.rs"]
 mod attack_unless;
 pub(crate) use attack_unless::{
-    AttackUnlessConditionFact, AttackUnlessScope, AttackUnlessSurface,
-    parse_attack_unless_condition_tokens,
+    AttackUnlessScope, AttackUnlessSurface, parse_attack_unless_condition_tokens,
 };
 
 #[path = "cant_shapes/attack_tax.rs"]
 mod attack_tax;
-pub(crate) use attack_tax::{PerAttackerCantTaxFact, parse_per_attacker_cant_tax_tokens};
+pub(crate) use attack_tax::parse_per_attacker_cant_tax_tokens;
 
 #[path = "cant_shapes/blocking.rs"]
 mod blocking;
-pub(crate) use blocking::{BlockingCantFact, BlockingCantSubject, parse_blocking_cant_fact_tokens};
+pub(crate) use blocking::{BlockingCantFact, parse_blocking_cant_fact_tokens};
 
 #[path = "cant_shapes/direct.rs"]
 mod direct;

@@ -10436,7 +10436,7 @@ fn painters_servant_does_not_add_color_without_a_chosen_color() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_roaming_throne_variant_duplicates_matching_creature_triggers() {
-    let throne_def = CardDefinitionBuilder::new(CardId::from_raw(1), "Roaming Throne Variant")
+    let throne_def = CardDefinitionBuilder::new(CardId::new(), "Roaming Throne Variant")
         .card_types(vec![CardType::Artifact, CardType::Creature])
         .subtypes(vec![Subtype::Golem])
         .power_toughness(PowerToughness::fixed(4, 4))

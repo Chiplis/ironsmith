@@ -2,8 +2,8 @@ use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
-use super::{line_families, permission_shapes, primitives};
-use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, TokenWordView, lex_line};
+use super::{line_families, primitives};
+use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, lex_line};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConditionalFollowupActor {
@@ -40,22 +40,6 @@ pub(crate) enum KeywordMarkerKind {
     TicketSticker,
     Compleated,
     Dredge,
-}
-
-pub(crate) fn parse_word_prefix_presence(words: &TokenWordView<'_>, expected: &[&str]) -> bool {
-    permission_shapes::prefix_words(&words.word_refs(), expected)
-}
-
-pub(crate) fn parse_any_word_prefix_presence(
-    words: &TokenWordView<'_>,
-    expected: &[&[&str]],
-) -> bool {
-    for prefix in expected {
-        if permission_shapes::prefix_words(&words.word_refs(), prefix) {
-            return true;
-        }
-    }
-    false
 }
 
 fn conditional_followup_actor(input: &mut LexStream<'_>) -> WResult<ConditionalFollowupActor> {
@@ -173,13 +157,10 @@ pub(crate) fn recognizes_core_keyword_marker(text: &str) -> bool {
     )
 }
 
-pub(crate) fn recognizes_static_keyword_marker(text: &str) -> bool {
-    parse_keyword_marker_text(text).is_some()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime_backend::lexer::TokenWordView;
 
     #[test]
     fn parses_conditional_and_may_action_prefixes() {
@@ -205,7 +186,10 @@ mod tests {
             Some(KeywordMarkerKind::Prototype)
         );
         assert!(recognizes_ticket_sticker_marker("{TK}{TK} — Prize sticker"));
-        assert!(recognizes_static_keyword_marker("Compleated"));
+        assert_eq!(
+            parse_keyword_marker_text("Compleated"),
+            Some(KeywordMarkerKind::Compleated)
+        );
         assert!(!recognizes_core_keyword_marker("Dredge 4"));
     }
 }

@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(test)]
+use crate::runtime_backend::ir::RewriteSemanticDocument;
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct RewriteNormalizationState {
@@ -278,7 +280,6 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
         annotations,
         items,
         overload_branch,
-        semantic_facts,
         allow_unsupported,
     } = ast;
     let overload_branch = if let Some(branch) = overload_branch {
@@ -302,12 +303,11 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
         annotations,
         items: normalized_items,
         overload_branch,
-        semantic_facts,
         allow_unsupported,
     })
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn rewrite_document_to_normalized_card_ast(
     doc: RewriteSemanticDocument,
 ) -> Result<NormalizedCardAst, CardTextError> {

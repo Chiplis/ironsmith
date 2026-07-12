@@ -76,7 +76,6 @@ pub(crate) struct MetadataLineCst {
 #[derive(Debug, Clone)]
 pub(crate) struct KeywordLineCst {
     pub(crate) info: LineInfo,
-    pub(crate) text: String,
     pub(crate) parse_tokens: Vec<OwnedLexToken>,
     pub(crate) full_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) kind: KeywordLineKindCst,
@@ -129,9 +128,7 @@ pub(crate) struct ActivatedLineCst {
     pub(crate) info: LineInfo,
     pub(crate) cost: ActivationCostCst,
     pub(crate) cost_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) effect_text: String,
     pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) presentation_label: Option<String>,
     pub(crate) chosen_option: Option<ChosenOptionContext>,
 }
 
@@ -147,9 +144,7 @@ pub(crate) struct TriggeredLineCst {
     pub(crate) info: LineInfo,
     pub(crate) full_text: String,
     pub(crate) full_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) trigger_text: String,
     pub(crate) trigger_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) effect_text: String,
     pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) intervening_if: Option<PredicateAst>,
     pub(crate) max_triggers_per_turn: Option<u32>,
@@ -160,7 +155,6 @@ pub(crate) struct TriggeredLineCst {
 #[derive(Debug, Clone)]
 pub(crate) struct StaticLineCst {
     pub(crate) info: LineInfo,
-    pub(crate) text: String,
     pub(crate) parse_tokens: Vec<OwnedLexToken>,
     pub(crate) chosen_option: Option<ChosenOptionContext>,
     pub(crate) parsed: Option<LineAst>,

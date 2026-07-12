@@ -269,13 +269,6 @@ pub(super) fn parse_embedded_token_rule_tokens(
     )
 }
 
-pub(crate) fn parse_inline_noncreature_spell_damage_text(
-    source_text: &str,
-) -> Option<InlineNoncreatureSpellDamageShape> {
-    let tokens = lex_line(source_text, 0).ok()?;
-    parse_inline_noncreature_spell_damage_tokens(&tokens)
-}
-
 pub(crate) fn parse_inline_noncreature_spell_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<InlineNoncreatureSpellDamageShape> {

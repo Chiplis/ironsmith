@@ -6,8 +6,10 @@ use crate::cards::builders::CardTextError;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
 
+#[cfg(test)]
+use super::super::super::lexer::lex_line;
 use super::super::super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, lex_line, render_token_slice, token_slice_at_is,
+    LexStream, OwnedLexToken, TokenKind, render_token_slice, token_slice_at_is,
     token_slice_first_is,
 };
 use super::super::super::token_primitives::locate_index as locate_token_index;

@@ -39,11 +39,6 @@ pub(super) fn exact_any(words: &[&str], alternatives: &[&[&str]]) -> bool {
     alternatives.iter().any(|expected| exact(words, expected))
 }
 
-pub(super) fn prefix(words: &[&str], expected: &[&str]) -> bool {
-    let mut input: primitives::WordSliceInput<'_> = words;
-    parse_phrase(&mut input, expected).is_ok()
-}
-
 pub(super) fn present(words: &[&str], expected: &[&str]) -> bool {
     let mut input: primitives::WordSliceInput<'_> = words;
     repeat_till::<_, _, (), _, _, _, _>(

@@ -210,12 +210,6 @@ pub(crate) fn parse_cost_modifier_direction_words(
     }
 }
 
-pub(crate) fn parse_cost_modifier_direction_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<CostModifierDirectionFact> {
-    parse_cost_modifier_direction_words(&TokenWordView::new(tokens).word_refs())
-}
-
 pub(crate) fn parse_this_spell_target_fact(tokens: &[OwnedLexToken]) -> Option<CostTargetFact> {
     parse_target_fact(tokens, false, true)
 }
@@ -918,10 +912,6 @@ mod tests {
         assert_eq!(
             parse_known_spell_cost_condition(&lex("an opponent controls seven or more lands")),
             Some(KnownSpellCostConditionFact::OpponentControlsLandsOrMore(7))
-        );
-        assert_eq!(
-            parse_cost_modifier_direction_tokens(&lex("two less to cast")),
-            Some(CostModifierDirectionFact::Less)
         );
         assert!(parse_where_x_clause_tokens(&lex("less to cast, where X is three")).is_some());
     }

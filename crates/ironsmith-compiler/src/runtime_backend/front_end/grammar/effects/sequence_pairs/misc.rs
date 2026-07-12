@@ -10,8 +10,8 @@ use super::super::super::primitives;
 use super::{
     contains_sequence_phrase, contains_sequence_word, ends_content_sequence, finish_sequence_words,
     matches_complete_content_sequence, matches_complete_sequence, same_words_without_articles,
-    seek_sequence_phrase, sequence_any_phrase, sequence_content_phrase, sequence_phrase,
-    starts_content_sequence, starts_sequence,
+    seek_sequence_phrase, sequence_any_phrase, sequence_phrase, starts_content_sequence,
+    starts_sequence,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

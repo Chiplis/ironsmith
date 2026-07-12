@@ -266,26 +266,6 @@ pub(crate) fn lower_activation_cost_cst(
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::exile_from_hand(*count, *color_filter));
             }
-            ActivationCostSegmentCst::ExileFromGraveyard { count, card_type } => {
-                flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let mut filter = ObjectFilter::default()
-                    .owned_by(PlayerFilter::You)
-                    .in_zone(crate::zone::Zone::Graveyard);
-                if let Some(card_type) = card_type {
-                    filter = filter.with_type(*card_type);
-                }
-                let tag = format!("exile_cost_{exile_tag_id}");
-                exile_tag_id += 1;
-                costs.push(Cost::validated_effect(Effect::choose_objects(
-                    filter,
-                    ChoiceCount::exactly(*count as usize),
-                    PlayerFilter::You,
-                    tag.clone(),
-                )));
-                costs.push(Cost::validated_effect(Effect::exile(
-                    crate::target::ChooseSpec::tagged(tag),
-                )));
-            }
             ActivationCostSegmentCst::ExileChosen {
                 choice_count,
                 filter,

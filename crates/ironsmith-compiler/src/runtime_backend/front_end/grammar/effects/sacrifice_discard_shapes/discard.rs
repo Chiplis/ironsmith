@@ -86,7 +86,6 @@ pub(crate) enum DiscardTrailingShape {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DiscardAlternativeShape<'a> {
     pub(crate) discard_tokens: &'a [OwnedLexToken],
-    pub(crate) alternative_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -261,7 +260,6 @@ pub(crate) fn parse_discard_alternative_shape(
         if !alternative_tokens.is_empty() && starts_new_action {
             return Some(DiscardAlternativeShape {
                 discard_tokens: &tokens[..marker_offset],
-                alternative_tokens,
             });
         }
 
@@ -350,10 +348,6 @@ mod tests {
         assert_eq!(
             parser_token_word_refs(shape.discard_tokens),
             ["two", "black", "or", "red", "cards"]
-        );
-        assert_eq!(
-            parser_token_word_refs(shape.alternative_tokens),
-            ["sacrifice", "a", "creature"]
         );
     }
 

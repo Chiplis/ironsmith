@@ -1,7 +1,7 @@
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::runtime_backend::front_end::lexer::{
-    OwnedLexToken, TokenKind, lex_line, parser_token_word_refs, render_token_slice,
+    OwnedLexToken, TokenKind, parser_token_word_refs, render_token_slice,
 };
 use crate::runtime_backend::token_definition::{
     BuiltinTokenShape, InlineNoncreatureSpellDamageShape, TokenCrewShape, TokenEmbeddedRuleShape,
@@ -111,9 +111,7 @@ pub(crate) fn parse_token_power_as_though_greater_shape_tokens(
 #[path = "rules/embedded_rules.rs"]
 mod embedded_rules;
 use embedded_rules::parse_embedded_token_rule_tokens;
-pub(crate) use embedded_rules::{
-    parse_inline_noncreature_spell_damage_text, parse_inline_noncreature_spell_damage_tokens,
-};
+pub(crate) use embedded_rules::parse_inline_noncreature_spell_damage_tokens;
 
 fn trimmed_render(tokens: &[OwnedLexToken]) -> String {
     render_token_slice(tokens).trim().to_string()
@@ -184,10 +182,6 @@ pub(super) fn first_double_quoted_tokens(tokens: &[OwnedLexToken]) -> Option<&[O
     let close_idx = consumed_through_open + relative_close;
     let quoted = tokens.get(open_idx + 1..close_idx)?;
     (!quoted.is_empty()).then_some(quoted)
-}
-
-pub(super) fn first_double_quoted_text(tokens: &[OwnedLexToken]) -> Option<String> {
-    first_double_quoted_tokens(tokens).map(trimmed_render)
 }
 
 fn parse_tap_symbol<'a>(
@@ -304,15 +298,6 @@ fn pronoun_rules_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     )?;
     let tail = strip_quote_tokens(tail);
     (!tail.is_empty()).then_some(tail)
-}
-
-pub(crate) fn parse_token_rules_surfaces_text(source_text: &str) -> TokenRulesSurfaces {
-    let Some(tokens) = lex_line(source_text, 0).ok() else {
-        return TokenRulesSurfaces {
-            embedded_rules: Vec::new(),
-        };
-    };
-    parse_token_rules_surfaces_tokens(&tokens)
 }
 
 pub(crate) fn parse_token_rules_surfaces_tokens(tokens: &[OwnedLexToken]) -> TokenRulesSurfaces {

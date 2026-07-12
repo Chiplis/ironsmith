@@ -397,24 +397,6 @@ pub(crate) fn parse_cant_cast_restriction_words(
     )
 }
 
-pub(crate) fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {
-    restriction_grammar::parse_cant_cast_subject_words(words)
-        .map(|parsed| (parsed.player, parsed.consumed))
-}
-
-pub(crate) fn parse_cast_more_than_one_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
-    restriction_grammar::parse_cast_more_than_one_limit_filter_words(words)
-}
-
-pub(crate) fn parse_cast_additional_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
-    restriction_grammar::parse_cast_additional_limit_filter_words(words)
-}
-
-pub(crate) fn parse_cast_limit_qualifier(words: &[&str]) -> Option<(ObjectFilter, usize)> {
-    restriction_grammar::parse_activation_cast_limit_qualifier_words(words)
-        .map(|parsed| (parsed.filter, parsed.consumed))
-}
-
 pub(crate) fn strip_static_restriction_condition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::ConditionExpr, Vec<OwnedLexToken>)>, CardTextError> {
@@ -587,13 +569,6 @@ pub(crate) fn target_ast_player_filter(
 
 pub(crate) fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
     restriction_grammar::parse_cast_restriction_tail_filter_words(words)
-}
-
-pub(crate) fn parse_card_type_list_filter(
-    words: &[&str],
-    zone: Option<Zone>,
-) -> Option<ObjectFilter> {
-    restriction_grammar::parse_card_type_list_filter_words(words, zone)
 }
 
 fn parse_and_or_disjunction_filter(

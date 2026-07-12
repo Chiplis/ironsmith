@@ -4,7 +4,6 @@ use crate::filter::Comparison;
 use crate::runtime_backend::front_end::grammar::leaf;
 use winnow::combinator::{alt, opt, repeat_till};
 use winnow::error::ModalResult as WResult;
-use winnow::prelude::*;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

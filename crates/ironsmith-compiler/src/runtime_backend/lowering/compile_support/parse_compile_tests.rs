@@ -1,12 +1,9 @@
 use super::*;
 use crate::cards::TextSpan;
-use crate::effect::{Condition, Value};
-use crate::effects::{
-    AmassEffect, ConditionalEffect, ExecuteWithSourceEffect, ForEachObject, ForEachTaggedEffect,
-    GrantPlayTaggedEffect, InvestigateEffect, MoveToZoneEffect, TaggedEffect,
-};
+use crate::effect::Value;
 use crate::ids::CardId;
 use crate::runtime_backend::RefState;
+use crate::runtime_backend::lexer::lex_line;
 use crate::target::ChooseSpec;
 use crate::types::{CardType, Subtype};
 use std::path::Path;
@@ -104,28 +101,6 @@ fn lowering_handlers_do_not_reach_into_lowered_subject_fields() {
     assert!(
         unexpected.is_empty(),
         "lowering handlers must use LoweredSubject methods, found {unexpected:?}"
-    );
-}
-
-#[test]
-fn subject_roles_capture_binding_modes() {
-    assert_eq!(
-        LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
-            .as_role(SubjectRole::Chooser)
-            .binding_mode(),
-        SubjectBindingMode::Chooser
-    );
-    assert_eq!(
-        LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
-            .as_role(SubjectRole::LibraryOwner)
-            .binding_mode(),
-        SubjectBindingMode::OwnedZone
-    );
-    assert_eq!(
-        LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
-            .as_role(SubjectRole::AffectedPlayer)
-            .binding_mode(),
-        SubjectBindingMode::AffectedPlayer
     );
 }
 
@@ -282,7 +257,8 @@ fn parse_text_gargoyle_sentinel_keeps_the_activation_on_self() {
 fn parse_equipment_rules_text_keeps_single_quoted_activated_grant() {
     let source_text = "Colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.";
 
-    let rules_text = token_grammar::parse_equipment_rules_text(source_text)
+    let source_tokens = lex_line(source_text, 0).expect("equipment rules fixture should lex");
+    let rules_text = token_grammar::parse_equipment_rules_tokens(&source_tokens)
         .expect("equipment rules shape")
         .text;
 
@@ -1055,11 +1031,4 @@ fn compile_shared_you_then_that_player_draw_preserves_prior_non_you_binding() {
         debug.contains("player: DamagedPlayer"),
         "second draw should preserve damaged-player binding: {debug}"
     );
-}
-
-#[test]
-fn parse_token_pt_reuses_unsigned_pt_word_parser() {
-    assert_eq!(parse_token_pt("2/3"), Some((2, 3)));
-    assert_eq!(parse_token_pt("+2/3"), None);
-    assert_eq!(parse_token_pt("2/-3"), None);
 }

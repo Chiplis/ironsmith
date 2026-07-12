@@ -119,6 +119,7 @@ fn parse_leaf_die_sides(input: &mut &str) -> WResult<u32> {
     .parse_next(input)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_number_or_x(input: &mut &str) -> WResult<LeafNumber> {
     alt((
         terminated("x", word_boundary).value(LeafNumber::X),
@@ -274,12 +275,9 @@ pub(crate) fn parse_number_i32_complete(raw: &str) -> Result<i32, CardTextError>
     finish_text_parse(raw, parse_number_i32, "leaf-number-i32")
 }
 
+#[cfg(test)]
 pub(crate) fn parse_number_or_x_complete(raw: &str) -> Result<LeafNumber, CardTextError> {
     finish_text_parse(raw, parse_number_or_x, "leaf-number-or-x")
-}
-
-pub(crate) fn parse_leaf_count_word_tokens(tokens: &[OwnedLexToken]) -> Result<u32, CardTextError> {
-    primitives::parse_all(tokens, parse_leaf_count_token, "leaf-count-word")
 }
 
 fn repetition_adverb_number_value(word: &str) -> Option<u32> {

@@ -1,5 +1,3 @@
-use super::*;
-
 #[path = "token_copy_control_shapes/sequences.rs"]
 mod sequences;
 pub(crate) use sequences::*;

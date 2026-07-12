@@ -96,8 +96,7 @@ pub(crate) enum BecomeCopySourceShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct BecomeAuraShape<'a> {
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub(crate) struct BecomeAuraShape {
     pub(crate) attachment_you_control: bool,
 }
 
@@ -106,7 +105,7 @@ pub(crate) struct BecomeBodySurfaceShape<'a> {
     pub(crate) body_tokens: &'a [OwnedLexToken],
     pub(crate) exact_kind: Option<BecomeExactKind>,
     pub(crate) copy_source: BecomeCopySourceShape<'a>,
-    pub(crate) aura: Option<BecomeAuraShape<'a>>,
+    pub(crate) aura: Option<BecomeAuraShape>,
     pub(crate) equal_to_source_power_toughness: bool,
 }
 
@@ -279,7 +278,6 @@ pub(crate) fn parse_become_body_surface_shape(
     })
     .map(|(_, tail)| tail);
     let aura = aura_tail.map(|tail_tokens| BecomeAuraShape {
-        tail_tokens,
         attachment_you_control: permission_shapes::prefix_tokens(tail_tokens, &["you", "control"]),
     });
     let equal_to_source_power_toughness =

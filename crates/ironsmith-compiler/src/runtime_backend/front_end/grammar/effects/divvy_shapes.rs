@@ -1,5 +1,4 @@
 use winnow::combinator::{peek, repeat_till};
-use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 

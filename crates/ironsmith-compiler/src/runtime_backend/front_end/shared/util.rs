@@ -4,35 +4,36 @@ use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::TextSpan;
 use crate::cards::builders::{
-    AdditionalCostChoiceOptionAst, CHOSEN_OBJECTS_TAG, CardTextError, IT_TAG, KeywordAction,
-    ParsedAbility, PlayerAst, ReferenceImports, TargetAst,
+    AdditionalCostChoiceOptionAst, CardTextError, KeywordAction, ParsedAbility, ReferenceImports,
+    TargetAst,
 };
+#[cfg(test)]
+use crate::cards::builders::{IT_TAG, PlayerAst};
 use crate::cost::OptionalCost;
 use crate::cost::TotalCost;
 use crate::costs::Cost;
-use crate::effect::{Effect, EventValueSpec, Value};
+use crate::effect::{Effect, Value};
 use crate::filter::AlternativeCastKind;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
-use crate::static_abilities::{StaticAbility, StaticAbilityId};
+use crate::static_abilities::StaticAbility;
+#[cfg(test)]
+use crate::target::TaggedOpbjectRelation;
 use crate::target::{
     ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SourceReferenceSurface,
-    TaggedOpbjectRelation,
 };
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 use crate::{ChoiceCount, PowerToughness, TagKey};
 
 use super::activation_and_restrictions::activated_line_core::parse_activation_cost;
-use super::clause_support::parse_effect_sentences_lexed;
-use super::effect_sentences::find_verb;
 use super::grammar::abilities::{
     FlashbackCostClause, parse_flashback_cost_clause_tokens,
     parse_flashback_keyword_line_spec_lexed,
 };
 pub(crate) use super::grammar::filters::{
     intern_counter_name, parse_counter_type_from_tokens, parse_counter_type_word,
-    parse_counter_type_words, parse_filter_counter_constraint_words,
+    parse_filter_counter_constraint_words,
 };
 use super::grammar::leaf;
 use super::grammar::primitives::token_slice_span;
@@ -51,15 +52,10 @@ use super::grammar::shared_util::target_semantics;
 use super::grammar::shared_util::token_facts;
 use super::grammar::shared_util::value_expr;
 use super::grammar::shared_util::value_shapes;
-use super::grammar::targets::{
-    EnchantedObjectTargetKind, TargetControllerSetConstraint, TargetPreparationFacts,
-    TargetUnionShape, parse_chosen_object_target, parse_enchanted_object_target_kind,
-    parse_referenced_target_prefix, parse_target_controller_set_suffix, parse_target_envelope,
-    parse_target_for_each_suffix, parse_target_preparation_facts, parse_target_union_shape,
-};
-use super::keyword_static::parse_this_spell_cost_condition;
-use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_token_slice};
-use super::object_filters::{parse_object_filter, parse_object_filter_words};
+use super::grammar::targets::parse_target_envelope;
+#[cfg(test)]
+use super::lexer::lex_line;
+use super::lexer::{OwnedLexToken, TokenKind, render_token_slice};
 use super::token_primitives as shared_tokens;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -82,7 +78,7 @@ thread_local! {
         RefCell::new(SourceReferenceContext::default());
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn with_source_reference_context<T>(card_name: &str, f: impl FnOnce() -> T) -> T {
     with_source_reference_context_aliases(card_name, Vec::new(), f)
 }
@@ -282,17 +278,8 @@ pub(crate) fn strip_leading_token_words_any<'a>(
     leaf::parse_leaf_leading_selected_tokens(tokens, leading_words).rest
 }
 
-pub(crate) fn parse_choice_count_word_prefix(words: &[&str]) -> Option<(ChoiceCount, usize)> {
-    let parsed = leaf::parse_leaf_choice_count_prefix_words(words)?;
-    Some((parsed.count, parsed.consumed))
-}
-
 pub(crate) fn strip_leading_articles(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     strip_leading_article_tokens(tokens).to_vec()
-}
-
-pub(crate) fn word_refs_at_is_article(words: &[&str], idx: usize) -> bool {
-    words.get(idx).is_some_and(|word| is_article(word))
 }
 
 pub(crate) fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
@@ -470,26 +457,6 @@ pub(crate) fn find_activation_cost_start(tokens: &[OwnedLexToken]) -> Option<usi
     token_facts::parse_activation_cost_start_tokens(tokens).map(|fact| fact.token_index)
 }
 
-pub(crate) fn contains_source_from_your_graveyard_phrase(words: &[&str]) -> bool {
-    reference_shapes::contains_source_from_your_graveyard(words)
-}
-
-pub(crate) fn contains_source_from_your_hand_phrase(words: &[&str]) -> bool {
-    reference_shapes::contains_source_from_your_hand(words)
-}
-
-pub(crate) fn contains_from_command_zone_phrase(words: &[&str]) -> bool {
-    reference_shapes::contains_from_command_zone(words)
-}
-
-pub(crate) fn contains_discard_source_phrase(words: &[&str]) -> bool {
-    reference_shapes::contains_discard_source(words)
-}
-
-pub(crate) fn is_basic_color_word(word: &str) -> bool {
-    token_facts::parse_basic_color_word(word).is_some()
-}
-
 pub(crate) fn join_sentences_with_period(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
     let mut joined = Vec::new();
     for (idx, sentence) in sentences.iter().enumerate() {
@@ -499,14 +466,6 @@ pub(crate) fn join_sentences_with_period(sentences: &[Vec<OwnedLexToken>]) -> Ve
         joined.extend(sentence.clone());
     }
     joined
-}
-
-pub(crate) fn split_cost_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
-    token_facts::parse_cost_segments_tokens(tokens)
-        .segments
-        .into_iter()
-        .map(|segment| segment.to_vec())
-        .collect()
 }
 
 pub(crate) fn parse_next_end_step_token_delay_flags(
@@ -520,13 +479,6 @@ pub(crate) fn parse_next_end_step_token_delay_flags(
         facts.exile_reference,
         facts.player,
     )
-}
-
-pub(crate) fn token_boundary_for_word(
-    tokens: &[OwnedLexToken],
-    word_index: usize,
-) -> Option<usize> {
-    token_facts::token_boundary_for_word(tokens, word_index)
 }
 
 pub(crate) fn remove_first_may_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -616,10 +568,6 @@ pub(crate) fn parser_trace_stack(stage: &str, tokens: &[OwnedLexToken]) {
         crate::runtime_backend::token_word_refs(tokens).join(" ")
     );
     eprintln!("{}", std::backtrace::Backtrace::force_capture());
-}
-
-pub(crate) fn contains_until_end_of_turn(words: &[&str]) -> bool {
-    leaf::find_leaf_canonical_until_end_of_turn_words(words).is_some()
 }
 
 pub(crate) fn map_span_to_original(
@@ -765,14 +713,6 @@ pub(crate) fn parse_filter_keyword_constraint_words(
     words: &[&str],
 ) -> Option<(FilterKeywordConstraint, usize)> {
     reference_shapes::parse_filter_keyword_constraint_words(words)
-}
-
-pub(crate) fn word_is_cycling_keyword_marker(word: &str) -> bool {
-    reference_shapes::cycling_keyword_root(word).is_some()
-}
-
-pub(crate) fn cycling_keyword_root(word: &str) -> Option<&str> {
-    reference_shapes::cycling_keyword_root(word)
 }
 
 pub(crate) fn apply_filter_keyword_constraint(
@@ -981,21 +921,6 @@ pub(crate) fn parse_greater_than_or_equal_quantity_prefix(
     Ok(comparison_to_strict_at_least_threshold(&comparison).map(|count| (count, used)))
 }
 
-pub(crate) fn parse_greater_than_or_equal_quantity_prefix_words(
-    words: &[&str],
-    allow_default_one: bool,
-    article_implies_min_one: bool,
-    error_context: &str,
-) -> Result<Option<(u32, usize)>, CardTextError> {
-    let (comparison, used) = parse_quantity_comparison_prefix_words(
-        words,
-        allow_default_one,
-        article_implies_min_one,
-        error_context,
-    )?;
-    Ok(comparison_to_strict_at_least_threshold(&comparison).map(|count| (count, used)))
-}
-
 pub(crate) fn parse_less_than_or_equal_quantity_prefix(
     tokens: &[OwnedLexToken],
     allow_default_one: bool,
@@ -1009,25 +934,6 @@ pub(crate) fn parse_less_than_or_equal_quantity_prefix(
         error_context,
     )?;
     Ok(comparison_to_strict_at_most_threshold(&comparison).map(|count| (count, used)))
-}
-
-pub(crate) fn parse_target_count_range_prefix(
-    tokens: &[OwnedLexToken],
-) -> Option<(ChoiceCount, usize)> {
-    let (count, rest) = super::grammar::primitives::parse_prefix(
-        tokens,
-        super::grammar::leaf::parse_leaf_target_count_range_prefix_lexed,
-    )?;
-    Some((count, tokens.len().checked_sub(rest.len())?))
-}
-
-pub(crate) fn parse_choice_count_token_prefix(
-    tokens: &[OwnedLexToken],
-) -> (ChoiceCount, Vec<OwnedLexToken>) {
-    if let Some((count, used)) = parse_choice_count_token_prefix_consumed(tokens) {
-        return (count, trim_commas(&tokens[used..]));
-    }
-    (ChoiceCount::exactly(1), tokens.to_vec())
 }
 
 pub(crate) fn parse_choice_count_token_prefix_consumed(
@@ -1397,10 +1303,6 @@ pub(crate) fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCo
     } else {
         target
     }
-}
-
-pub(crate) fn is_source_from_your_graveyard_words(words: &[&str]) -> bool {
-    reference_shapes::is_source_from_your_graveyard(words)
 }
 
 pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {

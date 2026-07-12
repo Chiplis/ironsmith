@@ -9,12 +9,6 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PermissionSourceKindFact {
-    Card,
-    Spell,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ZonePermissionLifetimeFact {
     Static,
     ThisTurn,
@@ -33,12 +27,6 @@ pub(crate) enum SpellNumberFact {
     Plural,
     Mixed,
     Unspecified,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceZonePermissionFact {
-    pub(crate) source_kind: PermissionSourceKindFact,
-    pub(crate) zone: Zone,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,11 +50,6 @@ pub(crate) struct FlashGrantFact<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RevealedTopLibraryPermissionFact<'a> {
-    pub(crate) permission_tokens: &'a [OwnedLexToken],
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ManaValueComparisonTokens<'a> {
     pub(crate) tokens: &'a [OwnedLexToken],
     pub(crate) placement: ManaValuePlacementFact,
@@ -78,22 +61,6 @@ pub(crate) struct FreeCastFromZoneFact<'a> {
     pub(crate) zone: Zone,
     pub(crate) mana_value: Option<ManaValueComparisonTokens<'a>>,
     pub(crate) subject_number: SpellNumberFact,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AllowAnyColorCastSuffixFact<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-}
-
-pub(crate) fn parse_source_zone_permission_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<SourceZonePermissionFact> {
-    primitives::parse_all(
-        tokens,
-        parse_source_zone_permission,
-        "source zone permission",
-    )
-    .ok()
 }
 
 pub(crate) fn parse_play_from_zone_tokens(
@@ -128,17 +95,6 @@ pub(crate) fn parse_flash_grant_tokens(tokens: &[OwnedLexToken]) -> Option<Flash
     primitives::parse_all(tokens, parse_flash_grant, "flash grant permission").ok()
 }
 
-pub(crate) fn parse_revealed_top_library_permission_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<RevealedTopLibraryPermissionFact<'_>> {
-    primitives::parse_all(
-        tokens,
-        parse_revealed_top_library_permission,
-        "revealed top-library permission",
-    )
-    .ok()
-}
-
 pub(crate) fn parse_free_cast_from_zone_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FreeCastFromZoneFact<'_>> {
@@ -165,31 +121,6 @@ fn parse_mana_value_one_of(input: &mut LexStream<'_>) -> WResult<Vec<i32>> {
             })
         })
         .collect()
-}
-
-pub(crate) fn parse_allow_any_color_cast_suffix_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<AllowAnyColorCastSuffixFact<'_>> {
-    let (body_tokens, _) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
-        (allow_any_color_cast_suffix, semantic_finish).void()
-    })?;
-    let body_tokens = trim_sentence_edges(body_tokens);
-    (!body_tokens.is_empty()).then_some(AllowAnyColorCastSuffixFact { body_tokens })
-}
-
-fn parse_source_zone_permission<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<SourceZonePermissionFact> {
-    semantic_kw("this").parse_next(input)?;
-    let source_kind = alt((
-        semantic_kw("card").value(PermissionSourceKindFact::Card),
-        semantic_kw("spell").value(PermissionSourceKindFact::Spell),
-    ))
-    .parse_next(input)?;
-    semantic_kw("from").parse_next(input)?;
-    let zone = zone_location.parse_next(input)?;
-    semantic_finish(input)?;
-    Ok(SourceZonePermissionFact { source_kind, zone })
 }
 
 fn parse_play_from_zone<'a>(input: &mut LexStream<'a>) -> WResult<PlayFromZoneFact<'a>> {
@@ -233,35 +164,6 @@ fn parse_flash_grant<'a>(input: &mut LexStream<'a>) -> WResult<FlashGrantFact<'a
         filter_tokens: trim_sentence_edges(filter_tokens),
         lifetime,
     })
-}
-
-fn parse_revealed_top_library_permission<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<RevealedTopLibraryPermissionFact<'a>> {
-    semantic_phrase(&["until", "end", "of", "turn", "for", "as", "long", "as"])
-        .parse_next(input)?;
-    alt((
-        semantic_phrase(&["that", "card"]),
-        semantic_phrase(&["that", "revealed", "card"]),
-        semantic_phrase(&["the", "revealed", "card"]),
-    ))
-    .parse_next(input)?;
-    semantic_phrase(&[
-        "remains", "on", "top", "of", "your", "library", "play", "with", "the", "top", "card",
-        "of", "your", "library", "revealed", "and",
-    ])
-    .parse_next(input)?;
-    let permission_tokens = repeat::<_, _, (), _, _>(1.., any.void())
-        .take()
-        .parse_next(input)?;
-    let permission_tokens = trim_sentence_edges(permission_tokens);
-    if permission_tokens.is_empty() {
-        return Err(primitives::backtrack_err(
-            "revealed top-library permission",
-            "permission tail",
-        ));
-    }
-    Ok(RevealedTopLibraryPermissionFact { permission_tokens })
 }
 
 fn parse_free_cast_from_zone<'a>(input: &mut LexStream<'a>) -> WResult<FreeCastFromZoneFact<'a>> {
@@ -413,37 +315,6 @@ fn without_paying_mana_cost<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         semantic_phrase(&["without", "paying", "that", "cards", "mana", "cost"]),
     ))
     .void()
-    .parse_next(input)
-}
-
-fn allow_any_color_cast_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((
-        (
-            semantic_phrase(&["and", "mana", "of", "any", "type", "can", "be", "spent"]),
-            semantic_kw("to"),
-            semantic_kw("cast"),
-            alt((
-                semantic_kw("them"),
-                semantic_phrase(&["those", "spells"]),
-                semantic_kw("it"),
-                semantic_phrase(&["that", "spell"]),
-            )),
-        )
-            .void(),
-        (
-            semantic_phrase(&[
-                "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
-                "any", "color", "to", "cast",
-            ]),
-            alt((
-                semantic_kw("it"),
-                semantic_phrase(&["that", "spell"]),
-                semantic_kw("them"),
-                semantic_phrase(&["those", "spells"]),
-            )),
-        )
-            .void(),
-    ))
     .parse_next(input)
 }
 
@@ -599,34 +470,6 @@ mod tests {
                 .unwrap()
                 .zone,
             Zone::Command
-        );
-    }
-
-    #[test]
-    fn typed_permission_zone_free_cast_migration_parses_suffix_and_revealed_facts() {
-        let any_color_tokens =
-            lex("you may cast them and mana of any type can be spent to cast those spells");
-        let stripped = parse_allow_any_color_cast_suffix_tokens(&any_color_tokens).unwrap();
-        assert_eq!(
-            render_token_slice(stripped.body_tokens),
-            "you may cast them"
-        );
-
-        let revealed_tokens = lex(
-            "until end of turn for as long as that revealed card remains on top of your library play with the top card of your library revealed and you may play that card",
-        );
-        let revealed = parse_revealed_top_library_permission_tokens(&revealed_tokens).unwrap();
-        assert_eq!(
-            render_token_slice(revealed.permission_tokens),
-            "you may play that card"
-        );
-
-        assert_eq!(
-            parse_source_zone_permission_tokens(&lex("this card from your graveyard")),
-            Some(SourceZonePermissionFact {
-                source_kind: PermissionSourceKindFact::Card,
-                zone: Zone::Graveyard,
-            })
         );
     }
 }

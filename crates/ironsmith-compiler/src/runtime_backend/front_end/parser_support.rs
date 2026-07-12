@@ -10,36 +10,7 @@ use super::grammar::primitives as grammar;
 use super::grammar::restriction_facts::{
     parse_activation_restriction_tokens, parse_trigger_restriction_tokens,
 };
-use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, lex_line, render_token_slice, split_lexed_sentences,
-};
-
-pub(crate) fn split_text_for_parse(
-    raw_text: &str,
-    normalized_text: &str,
-    line_index: usize,
-) -> (Vec<String>, ParsedRestrictions) {
-    let line_sentences = split_sentences_for_parse(normalized_text, line_index);
-    let mut restrictions = ParsedRestrictions::default();
-    let mut parsed_portion = Vec::new();
-    for sentence in line_sentences {
-        if sentence.text.is_empty() {
-            continue;
-        }
-
-        if queue_restriction(&sentence.tokens, &mut restrictions) {
-            continue;
-        }
-
-        parsed_portion.push(sentence.text);
-    }
-
-    for restriction in extract_parenthetical_restrictions(raw_text) {
-        let _ = queue_restriction(&restriction.tokens, &mut restrictions);
-    }
-
-    (parsed_portion, restrictions)
-}
+use super::lexer::{LexStream, OwnedLexToken, TokenKind, split_lexed_sentences};
 
 /// Splits an already-lexed line into semantic sentences and typed restriction
 /// facts without rendering and lexing the source a second time.
@@ -113,78 +84,6 @@ pub(crate) fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]
         || looks_like_when_you_do_followup_lexed(tokens)
         || looks_like_if_no_one_does_followup_lexed(tokens)
         || looks_like_otherwise_followup_lexed(tokens)
-}
-
-struct ParsedSentenceSurface {
-    text: String,
-    tokens: Vec<OwnedLexToken>,
-}
-
-fn split_sentences_for_parse(line: &str, line_index: usize) -> Vec<ParsedSentenceSurface> {
-    if let Ok(tokens) = lex_line(line, line_index) {
-        let sentences = split_lexed_sentences(&tokens)
-            .into_iter()
-            .map(|tokens| ParsedSentenceSurface {
-                text: render_token_slice(tokens).trim().to_string(),
-                tokens: tokens.to_vec(),
-            })
-            .filter(|sentence| !sentence.text.is_empty())
-            .collect::<Vec<_>>();
-        if !sentences.is_empty() {
-            return sentences;
-        }
-    }
-
-    split_sentences_for_parse_fallback(line)
-        .into_iter()
-        .map(|text| ParsedSentenceSurface {
-            tokens: lex_line(&text, line_index).unwrap_or_default(),
-            text,
-        })
-        .collect()
-}
-
-fn split_sentences_for_parse_fallback(line: &str) -> Vec<String> {
-    let mut sentences = Vec::new();
-    let mut current = String::new();
-    let mut paren_depth = 0u32;
-    let mut quote_depth = 0u32;
-
-    for ch in line.chars() {
-        if ch == '(' {
-            paren_depth = paren_depth.saturating_add(1);
-            current.push(ch);
-            continue;
-        }
-        if ch == ')' {
-            if paren_depth > 0 {
-                paren_depth -= 1;
-            }
-            current.push(ch);
-            continue;
-        }
-        if ch == '"' || ch == '“' || ch == '”' {
-            quote_depth = if quote_depth == 0 { 1 } else { 0 };
-            current.push(ch);
-            continue;
-        }
-        if ch == '.' && paren_depth == 0 && quote_depth == 0 {
-            let sentence = current.trim();
-            if !sentence.is_empty() {
-                sentences.push(sentence.to_string());
-            }
-            current.clear();
-            continue;
-        }
-        current.push(ch);
-    }
-
-    let sentence = current.trim();
-    if !sentence.is_empty() {
-        sentences.push(sentence.to_string());
-    }
-
-    sentences
 }
 
 fn parse_at_trigger_intro_inner<'a>(
@@ -310,33 +209,4 @@ fn queue_restriction(tokens: &[OwnedLexToken], pending: &mut ParsedRestrictions)
     } else {
         false
     }
-}
-
-fn extract_parenthetical_restrictions(line: &str) -> Vec<ParsedSentenceSurface> {
-    let mut restrictions = Vec::new();
-    let mut paren_depth = 0u32;
-    let mut start = None::<usize>;
-
-    for (byte_idx, ch) in line.char_indices() {
-        match ch {
-            '(' => {
-                if paren_depth == 0 {
-                    start = Some(byte_idx + ch.len_utf8());
-                }
-                paren_depth = paren_depth.saturating_add(1);
-            }
-            ')' => {
-                if paren_depth == 1 {
-                    if let Some(start_idx) = start.take() {
-                        let inside = &line[start_idx..byte_idx];
-                        restrictions.extend(split_sentences_for_parse(inside, 0));
-                    }
-                }
-                paren_depth = paren_depth.saturating_sub(1);
-            }
-            _ => {}
-        }
-    }
-
-    restrictions
 }

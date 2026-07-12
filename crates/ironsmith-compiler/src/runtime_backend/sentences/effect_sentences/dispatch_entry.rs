@@ -1,51 +1,24 @@
-use winnow::Parser as _;
-use winnow::combinator::{alt, cut_err, dispatch, fail, opt, peek};
-use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
-use winnow::prelude::*;
-use winnow::token::{any, take_till};
-
 use self::subject_verb_followups::{
     PostParseFollowupResult, PreParseFollowupResult, is_still_lands_followup_sentence,
     previous_sentence_is_temporary_land_animation, run_post_parse_followup_registry,
     run_pre_parse_followup_registry,
 };
 use super::super::activation_and_restrictions::{
-    parse_choose_card_type_phrase_words, parse_mana_usage_restriction_sentence_lexed,
-    parse_single_word_keyword_action, parse_target_player_choose_objects_clause,
-    parse_you_choose_objects_clause,
+    parse_mana_usage_restriction_sentence_lexed, parse_single_word_keyword_action,
 };
 use super::super::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
 };
 use super::super::grammar::effects as effect_grammar;
-use super::super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;
-use super::super::grammar::primitives::{self as grammar, TokenWordView};
+use super::super::grammar::primitives::{self as grammar};
 use super::super::grammar::structure::split_leading_result_prefix_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    LexStream, LexedClause, OwnedLexToken, TokenKind, complete_word_sequence_choice,
-    complete_word_sequence_surface, contains_token_word_sequence, lex_line, locate_word_sequence,
-    split_lexed_sentences, token_slice_at_is, word_prefix_choice_present,
-    word_sequence_choice_present, word_sequence_present, word_slice_first_is,
+    LexedClause, OwnedLexToken, TokenKind, contains_token_word_sequence, split_lexed_sentences,
+    token_slice_at_is,
 };
-use super::super::object_filters::{
-    is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
-};
-use super::super::permission_helpers::{
-    parse_until_end_of_turn_may_play_tagged_clause,
-    parse_until_your_next_turn_may_play_tagged_clause,
-};
-use super::super::token_primitives::{
-    LeadingMayActor, TurnDurationPhrase, find_window_by, items_end_with, items_have,
-    items_start_with, locate_index, parse_leading_may_action_lexed, parse_turn_duration_prefix,
-    parse_value_comparison_tokens, strip_leading_if_you_do_lexed, word_view_has_any_prefix,
-    word_view_has_prefix,
-};
-use super::super::util::{
-    helper_tag_for_tokens, is_article, mana_pips_from_token, parse_color, parse_counter_type_words,
-    parse_number, parse_subject, parse_target_phrase, span_from_tokens, token_boundary_for_word,
-    trim_commas, words,
-};
+use super::super::token_primitives::{LeadingMayActor, find_window_by};
+use super::super::util::{span_from_tokens, trim_commas};
 use super::bundle_rules::{
     parse_same_sentence_copy_and_may_cast_copy, parse_typed_effect_bundle_lexed,
 };
@@ -54,25 +27,19 @@ use super::divvy::try_parse_divvy_sentence_sequence;
 use super::looked_cards_family;
 use super::sentence_helpers::*;
 use super::sequence_rules::{subject_verb_sequence_route, try_parse_subject_verb_sequence_rule};
-use super::zone_handlers::parse_exile_top_library_clause;
 use super::{
-    SubjectVerbPrimitiveClause, find_verb, parse_effect_sentence_lexed, parse_restriction_duration,
-    parse_subtype_word, parse_token_copy_modifier_sentence, trim_edge_punctuation,
-    try_build_unless,
+    SubjectVerbPrimitiveClause, parse_effect_sentence_lexed, parse_restriction_duration,
+    parse_token_copy_modifier_sentence, trim_edge_punctuation, try_build_unless,
 };
-#[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
     InsteadSemantics, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst,
-    PreventNextTimeDamageTargetAst, ReturnControllerAst, SubjectAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, TokenCopyFollowup, Verb,
+    PreventNextTimeDamageTargetAst, ReturnControllerAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TokenCopyFollowup,
     ZoneReplacementDurationAst,
 };
-use crate::color::ColorSet;
-use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
-use crate::filter::Comparison;
-use crate::mana::ManaSymbol;
+use crate::effect::{EventValueSpec, Until, Value};
 use crate::parse_trace;
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface, TaggedObjectConstraint,
@@ -1826,10 +1793,11 @@ mod tests {
     use super::super::super::lexer::lex_line;
     use super::super::super::permission_helpers::parse_until_end_of_turn_may_play_tagged_clause;
     use super::super::super::util::{parse_subject, trim_commas};
+    use super::super::chain_carry::Verb;
     use super::super::zone_handlers::parse_exile_top_library_clause;
     use super::super::{parse_effect_chain, parse_effect_sentence_lexed};
     use super::{
-        ConsultCastCost, ConsultCastTiming, Verb, parse_bargained_face_down_cast_mana_value_gate,
+        ConsultCastCost, ConsultCastTiming, parse_bargained_face_down_cast_mana_value_gate,
         parse_consult_cast_clause, parse_consult_condition_value,
         parse_consult_mana_value_condition_tokens,
         parse_counted_looked_cards_into_your_hand_tokens, parse_if_you_dont_sentence,

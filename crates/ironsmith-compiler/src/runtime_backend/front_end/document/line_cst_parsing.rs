@@ -98,7 +98,8 @@ pub(super) fn parse_triggered_line_cst(
             parsed.full_text = normalized.clone();
             parse_trace::event(format!(
                 "trigger split: conditional trigger=\"{}\" effects=\"{}\"",
-                parsed.trigger_text, parsed.effect_text
+                render_token_slice(&parsed.trigger_parse_tokens),
+                render_token_slice(&parsed.effect_parse_tokens)
             ));
             return Ok(parsed);
         }
@@ -118,7 +119,8 @@ pub(super) fn parse_triggered_line_cst(
             if let Some(parsed) = probe.supported_cst(line, tokens_without_cap) {
                 parse_trace::event(format!(
                     "trigger split: comma trigger=\"{}\" effects=\"{}\"",
-                    parsed.trigger_text, parsed.effect_text
+                    render_token_slice(&parsed.trigger_parse_tokens),
+                    render_token_slice(&parsed.effect_parse_tokens)
                 ));
                 return Ok(parsed);
             }
@@ -207,7 +209,8 @@ pub(super) fn parse_triggered_line_cst(
         }
         parse_trace::event(format!(
             "trigger split: selected trigger=\"{}\" effects=\"{}\"",
-            split.trigger_text, split.effect_text
+            render_token_slice(&split.trigger_parse_tokens),
+            render_token_slice(&split.effect_parse_tokens)
         ));
         return Ok(split);
     }
@@ -252,9 +255,7 @@ pub(super) fn parse_triggered_line_cst(
                 info: line.info.clone(),
                 full_text: normalized.to_string(),
                 full_parse_tokens: tokens_without_cap.to_vec(),
-                trigger_text: render_token_slice(condition_tokens).trim().to_string(),
                 trigger_parse_tokens: condition_tokens.to_vec(),
-                effect_text: String::new(),
                 effect_parse_tokens: Vec::new(),
                 max_triggers_per_turn: trailing_cap,
                 intervening_if: None,
@@ -281,7 +282,6 @@ pub(super) fn parse_static_line_cst(
     }
     let make_static = |chosen_option: Option<ChosenOptionContext>| StaticLineCst {
         info: line.info.clone(),
-        text: normalized.to_string(),
         parse_tokens: parse_tokens.clone(),
         chosen_option,
         parsed: None,
@@ -460,7 +460,6 @@ pub(super) fn parse_level_item_cst(
     if let Some((cost_tokens, effect_parse_tokens)) =
         split_activation_text_tokens_lexed(&line.tokens)
     {
-        let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
         let normalized_cost_tokens =
             normalize_activation_cost_tokens_for_builder(builder, line, cost_tokens.clone())?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
@@ -470,11 +469,9 @@ pub(super) fn parse_level_item_cst(
                     line.info.clone(),
                     cost,
                     normalized_cost_tokens,
-                    effect_text,
                     effect_parse_tokens,
                     ActivationTiming::AnyTime,
                     false,
-                    None,
                     None,
                 )?;
                 return Ok(Some(LevelItemCst {

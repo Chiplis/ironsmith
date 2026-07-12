@@ -13,8 +13,7 @@ use super::super::permission_shapes::{
 use super::super::primitives;
 use winnow::Parser as _;
 use winnow::combinator::{alt, opt, peek, repeat_till};
-use winnow::error::{ContextError, ErrMode, ModalResult};
-use winnow::prelude::*;
+use winnow::error::ModalResult;
 use winnow::token::any;
 
 #[path = "generic_program_shapes/voting.rs"]

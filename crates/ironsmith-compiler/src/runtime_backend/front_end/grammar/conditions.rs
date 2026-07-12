@@ -1,7 +1,6 @@
 use winnow::Parser;
 use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
-use winnow::prelude::*;
 
 use crate::cards::builders::{DamageBySpec, PlayerAst};
 use crate::color::ColorSet;
@@ -11,9 +10,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
-use super::super::lexer::{
-    LexStream, LexedClause, OwnedLexToken, TokenWordView, render_token_slice,
-};
+use super::super::lexer::{LexStream, LexedClause, OwnedLexToken};
 use super::super::util::{
     comparison_to_at_least_threshold, comparison_to_strict_at_least_threshold,
     comparison_to_strict_at_most_threshold, comparison_to_value_comparison_operator,
@@ -41,7 +38,7 @@ mod status_shapes;
 #[path = "conditions/zone_change_shapes.rs"]
 mod zone_change_shapes;
 
-pub(crate) use counter_shapes::{PlayerCounterConditionShape, parse_player_counter_condition};
+pub(crate) use counter_shapes::parse_player_counter_condition;
 
 #[derive(Debug, Clone, PartialEq)]
 enum LifeRelationShape {
@@ -1072,20 +1069,6 @@ pub(crate) fn parse_player_status_condition(
     parse_player_status_shape(tokens)
 }
 
-pub(crate) fn parse_player_status_condition_words(
-    words: &[&str],
-) -> Option<PlayerStatusConditionAst> {
-    let shape = status_shapes::parse_player_status_words(words)?;
-    let player = match shape.subject_words {
-        Some(subject) => parse_player_status_subject_words(subject)?,
-        None => PlayerFilter::You,
-    };
-    Some(PlayerStatusConditionAst {
-        player,
-        status: shape.status,
-    })
-}
-
 fn parse_player_status_shape(tokens: &[OwnedLexToken]) -> Option<PlayerStatusConditionAst> {
     let shape = status_shapes::parse_player_status_tokens(tokens)?;
     let player = match shape.subject_tokens {
@@ -1587,12 +1570,6 @@ fn parse_player_status_subject_clause(clause: LexedClause<'_>) -> Option<PlayerF
     lower_player_status_subject_reference(reference)
 }
 
-fn parse_player_status_subject_words(words: &[&str]) -> Option<PlayerFilter> {
-    let reference =
-        parse_leaf_player_reference_words(words, LeafPlayerReferenceMode::PlayerStatusSubject)?;
-    lower_player_status_subject_reference(reference)
-}
-
 fn lower_player_status_subject_reference(reference: LeafPlayerReference) -> Option<PlayerFilter> {
     match reference {
         LeafPlayerReference::You => Some(PlayerFilter::You),
@@ -1637,7 +1614,8 @@ fn parse_life_relation_player_subject_clause(clause: LexedClause<'_>) -> Option<
         LeafPlayerReference::AnyPlayer => Some(PlayerFilter::Any),
         LeafPlayerReference::DefendingPlayer => Some(PlayerFilter::Defending),
         LeafPlayerReference::AttackingPlayer => Some(PlayerFilter::Attacking),
-        _ => None,
+        #[cfg(test)]
+        LeafPlayerReference::EachPlayer | LeafPlayerReference::ItsController => None,
     }
 }
 
@@ -1967,17 +1945,6 @@ mod tests {
         let parsed = parse_player_status_condition(&tokens).expect("that-player status");
         assert_eq!(parsed.player, PlayerFilter::IteratedPlayer);
         assert_eq!(parsed.status, PlayerStatusAst::Monarch);
-
-        let parsed = parse_player_status_condition_words(&[
-            "attacking",
-            "player",
-            "has",
-            "the",
-            "initiative",
-        ])
-        .expect("attacking-player status words");
-        assert_eq!(parsed.player, PlayerFilter::Attacking);
-        assert_eq!(parsed.status, PlayerStatusAst::Initiative);
     }
 
     #[test]

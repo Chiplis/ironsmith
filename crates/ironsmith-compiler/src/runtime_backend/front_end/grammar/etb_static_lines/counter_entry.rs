@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till, separated};
+use winnow::combinator::{alt, opt, peek, repeat_till, separated};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, rest};

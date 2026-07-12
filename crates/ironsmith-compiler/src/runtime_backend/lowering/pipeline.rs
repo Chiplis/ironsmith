@@ -1,5 +1,7 @@
 use crate::cards::ParseAnnotations;
-use crate::cards::builders::{CardDefinition, CardDefinitionBuilder, CardTextError};
+#[cfg(test)]
+use crate::cards::builders::CardDefinition;
+use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
 use crate::parse_trace;
 
 use super::document_parser;
@@ -15,15 +17,6 @@ pub(crate) fn parse_text_to_semantic_document(
     document_parser::parse_text_to_semantic_document(builder, text, allow_unsupported)
 }
 
-#[allow(dead_code)]
-pub(crate) fn lower_semantic_document(
-    doc: RewriteSemanticDocument,
-) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    let parsed = parse_semantic_document(doc)?;
-    let prepared = prepare_parsed_document(parsed)?;
-    lower_prepared_document(prepared)
-}
-
 pub(crate) fn parse_semantic_document(
     doc: RewriteSemanticDocument,
 ) -> Result<ParsedCardAst, CardTextError> {
@@ -36,25 +29,13 @@ pub(crate) fn prepare_parsed_document(
     lower::prepare_parsed_card_ast_for_lowering(ast)
 }
 
-#[allow(dead_code)]
-pub(crate) fn prepare_semantic_document(
-    doc: RewriteSemanticDocument,
-) -> Result<NormalizedCardAst, CardTextError> {
-    prepare_parsed_document(parse_semantic_document(doc)?)
-}
-
-pub(crate) fn lower_prepared_document(
-    ast: NormalizedCardAst,
-) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    lower::lower_normalized_card_ast(ast)
-}
-
 pub(crate) fn lower_prepared_document_with_facts(
     ast: NormalizedCardAst,
 ) -> Result<LoweredCardDocument, CardTextError> {
     lower::lower_normalized_card_ast_with_facts(ast)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_text_with_annotations_lowered(
     builder: CardDefinitionBuilder,
     text: String,
@@ -85,14 +66,6 @@ pub(crate) fn parse_text_with_annotations_lowered_with_facts(
     Ok(lowered)
 }
 
-pub(crate) fn parse_text_with_annotations(
-    builder: CardDefinitionBuilder,
-    text: String,
-    allow_unsupported: bool,
-) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    parse_text_with_annotations_lowered(builder, text, allow_unsupported)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,20 +78,18 @@ mod tests {
     use crate::zone::Zone;
 
     #[test]
-    fn document_semantic_facts_survive_every_pipeline_stage() -> Result<(), CardTextError> {
+    fn document_semantic_facts_drive_pipeline_rewrites() -> Result<(), CardTextError> {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Semantic Facts Pipeline")
             .card_types(vec![CardType::Instant]);
         let text = "Return target nonland permanent you don't control to its owner's hand.\nOverload {1}{U}";
 
         let (semantic, _) = parse_text_to_semantic_document(builder, text.to_string(), false)?;
-        assert!(semantic.semantic_facts.overload_rewrite.is_some());
         assert_eq!(
             semantic.overload_items.as_ref().map(|items| items.len()),
             Some(1)
         );
 
         let parsed = parse_semantic_document(semantic)?;
-        assert!(parsed.semantic_facts.overload_rewrite.is_some());
         assert_eq!(
             parsed
                 .overload_branch
@@ -128,7 +99,6 @@ mod tests {
         );
 
         let prepared = prepare_parsed_document(parsed)?;
-        assert!(prepared.semantic_facts.overload_rewrite.is_some());
         assert_eq!(
             prepared
                 .overload_branch
@@ -138,7 +108,6 @@ mod tests {
         );
 
         let lowered = lower_prepared_document_with_facts(prepared)?;
-        assert!(lowered.semantic_facts.overload_rewrite.is_some());
         let Some(AlternativeCastingMethod::Overload { effects, .. }) =
             lowered.definition.alternative_casts.first()
         else {
@@ -293,7 +262,7 @@ mod tests {
         };
         assert_eq!(prepared_line.semantic_facts, expected_facts);
 
-        let (definition, _) = lower_prepared_document(prepared)?;
+        let definition = lower_prepared_document_with_facts(prepared)?.definition;
         let [ability] = definition.abilities.as_slice() else {
             panic!(
                 "expected one triggered ability, got {:?}",

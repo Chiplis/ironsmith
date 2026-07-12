@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, ControlDurationAst, EffectAst, EventValueSpec, ExtraTurnAnchorAst, IT_TAG,
     ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst,
@@ -19,7 +18,7 @@ use super::super::grammar::effects::resource_shapes::{
     self as resource_grammar, ResourceLookHandFollowup, ResourceLookObjectKind, ResourceLookShape,
     ResourceShuffleShape,
 };
-use super::super::grammar::primitives::{self as grammar, TokenWordView, contains_word};
+use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::{
     parse_trailing_if_predicate_lexed, parse_trailing_instead_if_predicate_lexed,
     parse_who_player_predicate_lexed, split_trailing_if_clause_lexed,
@@ -29,24 +28,12 @@ use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
     parse_value_binding_clause,
 };
-use super::super::lexer::{
-    LexedClause, complete_word_sequence_choice, complete_word_sequence_surface,
-    locate_word_sequence, token_prefix_present, token_slice_at_is, token_slice_at_is_any,
-    token_slice_first_is, token_slice_first_is_any, word_choice_present,
-    word_prefix_choice_present, word_prefix_present, word_present, word_sequence_choice_present,
-    word_sequence_present, word_slice_find_any_phrase_start, word_suffix_choice_present,
-};
+use super::super::lexer::{LexedClause, token_slice_at_is, token_slice_first_is};
 use super::super::object_filters::parse_object_filter;
-use super::super::token_primitives::{find_window_by, items_have, locate_index, locate_last_index};
 use super::super::util::{
-    comparison_to_strict_at_least_threshold, is_article, is_source_reference_words,
-    mana_pips_from_token, parse_card_type, parse_choice_count_before_target_prefix,
-    parse_choice_count_token_prefix_consumed, parse_mana_symbol, parse_number,
-    parse_number_word_u32, parse_quantity_comparison_prefix, parse_target_count_range_prefix,
-    parse_target_phrase, parse_value, parse_value_expr_words, replace_unbound_x_with_value,
-    source_choose_spec_for_surface, source_reference_surface_for_words, span_from_tokens,
-    strip_leading_article_word_refs, this_source_surface_for_words, token_boundary_for_word,
-    trim_commas, value_contains_unbound_x, words, wrap_target_count,
+    mana_pips_from_token, parse_choice_count_before_target_prefix, parse_mana_symbol, parse_number,
+    parse_target_phrase, parse_value, replace_unbound_x_with_value, span_from_tokens, trim_commas,
+    value_contains_unbound_x, wrap_target_count,
 };
 use super::clause_pattern_helpers::extract_subject_player;
 use super::creation_handlers::{parse_create, parse_incubate, parse_investigate};

@@ -2,10 +2,12 @@ use winnow::combinator::alt;
 use winnow::error::{ModalResult as WResult, StrContext, StrContextValue};
 use winnow::prelude::*;
 
+#[cfg(test)]
 use crate::cards::builders::CardTextError;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::primitives;
+#[cfg(test)]
 use super::common::{finish_text_parse, phrase};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +24,7 @@ pub(crate) struct LeafConditionIntroPrefix<'a> {
     pub(crate) rest: &'a [OwnedLexToken],
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LeafConditionIntroWordPrefix {
     pub(crate) intro: ConditionIntro,
@@ -40,6 +43,7 @@ pub(crate) struct LeafStaticConditionIntroPrefix<'a> {
     pub(crate) rest: &'a [OwnedLexToken],
 }
 
+#[cfg(test)]
 pub(crate) fn parse_condition_intro(input: &mut &str) -> WResult<ConditionIntro> {
     alt((
         phrase("for as long as").value(ConditionIntro::ForAsLongAs),
@@ -77,6 +81,7 @@ pub(crate) fn parse_leaf_condition_intro_prefix_tokens(
     Some(LeafConditionIntroPrefix { intro, rest })
 }
 
+#[cfg(test)]
 pub(crate) fn parse_leaf_condition_intro_prefix_words(
     words: &[&str],
 ) -> Option<LeafConditionIntroWordPrefix> {
@@ -103,10 +108,12 @@ pub(crate) fn parse_leaf_static_condition_intro_prefix_tokens(
     Some(LeafStaticConditionIntroPrefix { intro, rest })
 }
 
+#[cfg(test)]
 pub(crate) fn parse_condition_intro_complete(raw: &str) -> Result<ConditionIntro, CardTextError> {
     finish_text_parse(raw, parse_condition_intro, "leaf-condition-intro")
 }
 
+#[cfg(test)]
 fn parse_leaf_condition_intro_word_slice(
     input: &mut primitives::WordSliceInput<'_>,
 ) -> WResult<ConditionIntro> {

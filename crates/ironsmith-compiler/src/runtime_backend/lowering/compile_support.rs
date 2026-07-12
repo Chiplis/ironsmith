@@ -1,63 +1,34 @@
-#![allow(dead_code)]
-
-#[allow(unused_imports)]
-use crate::ability;
-#[allow(unused_imports)]
+use super::grammar::token_definitions as token_grammar;
+use super::token_definition::TokenDefinitionSpec;
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming, TriggeredAbility};
-#[allow(unused_imports)]
 use crate::card::PowerToughness;
-#[allow(unused_imports)]
 use crate::cards::CardDefinition;
-#[allow(unused_imports)]
-#[allow(unused_imports)]
 use crate::cards::builders::{
     COPIED_STACK_OBJECT_TAG, CardDefinitionBuilder, CardTextError, ClashOpponentAst,
     ControlDurationAst, DamageBySpec, EffectAst, EffectLoweringContext, ExchangeValueAst,
     ExchangeValueKindAst, ExtraTurnAnchorAst, GrantedAbilityAst, IT_TAG, IdGenContext,
-    IfResultPredicate, LineAst, LoweringFrame, NormalizedLine, ObjectRefAst, ParseAnnotations,
-    PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
-    RetargetModeAst, ReturnControllerAst, SharedTypeConstraintAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec,
+    IfResultPredicate, LoweringFrame, NormalizedLine, ObjectRefAst, PlayerAst, PredicateAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
+    ReturnControllerAst, SharedTypeConstraintAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec,
 };
-#[allow(unused_imports)]
 use crate::color::{Color, ColorSet};
-#[allow(unused_imports)]
 use crate::cost::TotalCost;
-#[allow(unused_imports)]
 use crate::effect::{
     ChoiceCount, Condition, Effect, EffectId, EffectMode, EffectPredicate, EmblemDescription,
     EventValueSpec, Until, Value,
 };
-#[allow(unused_imports)]
 use crate::effects::composition::VoteOption;
-#[allow(unused_imports)]
-use crate::events::cause::CauseFilter;
-#[allow(unused_imports)]
 use crate::filter::{
     ObjectFilter, ObjectRef, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
-#[allow(unused_imports)]
 use crate::ids::CardId;
-#[allow(unused_imports)]
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::static_abilities::{CopyTriggeredAbilities, StaticAbility};
-#[allow(unused_imports)]
 use crate::target::ChooseSpec;
-#[allow(unused_imports)]
 use crate::triggers::{DamagedBySource, Trigger};
-#[allow(unused_imports)]
 use crate::types::{CardType, Subtype};
-#[allow(unused_imports)]
 use crate::zone::Zone;
-#[allow(unused_imports)]
-use std::collections::HashMap;
-
-use super::grammar::leaf as leaf_grammar;
-use super::grammar::token_definitions as token_grammar;
-use super::token_definition::TokenDefinitionSpec;
-use super::token_primitives::{find_window_by, items_have, locate_index};
-use super::util::parse_unsigned_pt_word;
-use crate::runtime_backend::lexer::{OwnedLexToken, TokenKind};
 
 use super::ast::{EmblemAbilityAst, EmblemDescriptionAst};
 use super::effect_ast_traversal::{
@@ -67,7 +38,6 @@ use super::effect_pipeline::{
     EffectPreludeTag, PreparedEffectsForLowering, PreparedPredicateForLowering,
     PreparedTriggeredEffectsForLowering,
 };
-use super::effect_sentences::parse_subtype_word;
 use super::lowering_support::{
     rewrite_lower_parsed_ability as lower_parsed_ability, rewrite_lower_static_ability_ast,
     rewrite_parsed_triggered_ability, rewrite_prepare_effects_for_lowering,
@@ -93,11 +63,7 @@ use super::static_ability_helpers::{
     lower_granted_abilities_ast_to_object_abilities, persist_triggered_ability,
     suspend_exile_triggered_abilities, undying_triggered_ability,
 };
-use super::util::{
-    contains_until_end_of_turn, map_span_to_original, parse_card_type, parse_number_word_i32,
-};
-
-const EQUIPPED_CREATURE_PHRASE: &[&str] = &["equipped", "creature"];
+use super::util::map_span_to_original;
 
 #[path = "compile_support/choose_effect_helpers.rs"]
 mod choose_effect_helpers;
@@ -126,12 +92,13 @@ mod tag_support;
 #[path = "compile_support/trigger_support.rs"]
 mod trigger_support;
 
+#[cfg(test)]
+use crate::cards::builders::ParseAnnotations;
 pub(crate) use choose_effect_helpers::{
     compile_choose_objects_across_zones_with_subject, compile_choose_objects_with_subject,
     compile_choose_player_with_subject,
 };
 pub(crate) use control_flow_handlers::{
-    choose_spec_for_targeted_player_filter, collect_targeted_player_specs_from_filter,
     compile_effects_in_iterated_object_context, compile_effects_in_iterated_player_context,
     compile_effects_preserving_last_effect, compile_if_do_with_opponent_did,
     compile_if_do_with_opponent_doesnt, compile_if_do_with_player_did,
@@ -143,33 +110,34 @@ pub(crate) use control_flow_handlers::{
 pub(crate) use effect_dispatch::compile_effect;
 pub(crate) use iterated_player_validation::{
     choose_spec_mentions_iterated_player, condition_mentions_iterated_player,
-    effect_contains_pending_effect_metric, effect_mentions_iterated_player,
-    effects_contain_pending_effect_metric, effects_mention_iterated_player,
-    object_filter_mentions_iterated_player, validate_iterated_player_bindings_in_lowered_effects,
-    value_contains_pending_effect_metric, value_mentions_iterated_player,
+    effect_mentions_iterated_player, effects_contain_pending_effect_metric,
+    effects_mention_iterated_player, object_filter_mentions_iterated_player,
+    value_mentions_iterated_player,
 };
 pub(crate) use player_effect_helpers::{
-    LoweredSubject, SubjectBindingMode, SubjectRole, compile_player_dual_effect,
-    compile_player_effect_from_resolved_filter, compile_player_filter_effect,
-    compile_player_role_effect, compile_player_value_effect,
+    LoweredSubject, SubjectRole, compile_player_effect_from_resolved_filter,
+    compile_player_role_effect,
 };
 pub(crate) use prepared_effects::{
-    compile_condition_from_predicate_ast_with_env, compile_effect_prelude_tags,
-    compile_prepared_predicate_for_lowering, compile_statement_effects,
-    compile_statement_effects_with_imports, materialize_prepared_effects_with_trigger_context,
-    materialize_prepared_statement_effects, materialize_prepared_triggered_effects,
+    compile_condition_from_predicate_ast_with_env,
+    materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
+    materialize_prepared_triggered_effects,
 };
+#[cfg(test)]
+pub(crate) use prepared_effects::{
+    compile_statement_effects, compile_statement_effects_with_imports,
+};
+#[cfg(test)]
+pub(crate) use tag_support::collect_tag_spans_from_effect;
 pub(crate) use tag_support::{
-    choose_spec_references_exiled_tag, choose_spec_references_tag, collect_tag_spans_from_effect,
-    collect_tag_spans_from_effects_with_context, collect_tag_spans_from_target,
+    choose_spec_references_exiled_tag, collect_tag_spans_from_effects_with_context,
     effect_references_event_derived_amount, effect_references_it_tag,
     effect_references_its_controller, effect_references_tag, effects_reference_it_tag,
     effects_reference_its_controller, effects_reference_tag,
     effects_reference_tag_in_object_position, filter_references_tag, is_exile_cost_collection_tag,
     is_revealed_collection_tag, is_searched_collection_tag,
-    is_sentence_helper_exiled_collection_tag, object_ref_references_tag,
-    player_filter_references_tag, predicate_references_tag, restriction_references_tag,
-    target_references_tag, value_references_event_derived_amount, value_references_tag,
+    is_sentence_helper_exiled_collection_tag, predicate_references_tag,
+    value_references_event_derived_amount,
 };
 pub(crate) use trigger_support::{
     compile_trigger_effects, compile_trigger_effects_with_imports, compile_trigger_spec,
@@ -1622,20 +1590,6 @@ fn resolve_effect_player_filter(
     Ok((filter, choices))
 }
 
-pub(crate) fn compile_player_effect<YouBuilder, OtherBuilder>(
-    player: PlayerAst,
-    ctx: &mut EffectLoweringContext,
-    allow_target: bool,
-    build_you: YouBuilder,
-    build_other: OtherBuilder,
-) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError>
-where
-    YouBuilder: FnOnce() -> Effect,
-    OtherBuilder: FnOnce(PlayerFilter) -> Effect,
-{
-    compile_player_dual_effect(player, ctx, allow_target, build_you, build_other)
-}
-
 fn try_compile_simultaneous_each_player_scry(
     player_filter: PlayerFilter,
     inner_effects: &[Effect],
@@ -1698,42 +1652,6 @@ fn compile_emblem_description(
         text: emblem.text.clone(),
         abilities,
     })
-}
-
-pub(crate) fn compile_player_effect_with_generated_object_tag<YouBuilder, OtherBuilder>(
-    player: PlayerAst,
-    ctx: &mut EffectLoweringContext,
-    allow_target: bool,
-    tag_prefix: &str,
-    build_you: YouBuilder,
-    build_other: OtherBuilder,
-) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError>
-where
-    YouBuilder: FnOnce() -> Effect,
-    OtherBuilder: FnOnce(PlayerFilter) -> Effect,
-{
-    let (mut effects, choices) =
-        compile_player_dual_effect(player, ctx, allow_target, build_you, build_other)?;
-    if ctx.auto_tag_object_targets {
-        let tag = ctx.next_tag(tag_prefix);
-        if let Some(effect) = effects.pop() {
-            effects.push(effect.tag(tag.clone()));
-        }
-        ctx.last_object_tag = Some(tag);
-    }
-    Ok((effects, choices))
-}
-
-pub(crate) fn compile_player_effect_from_filter<Builder>(
-    player: PlayerAst,
-    ctx: &mut EffectLoweringContext,
-    allow_target: bool,
-    build: Builder,
-) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError>
-where
-    Builder: FnOnce(PlayerFilter) -> Effect,
-{
-    compile_player_filter_effect(player, ctx, allow_target, build)
 }
 
 fn compile_exchange_life_totals_effect(
@@ -2280,7 +2198,6 @@ fn build_equipment_token_from_rules_shape(
                 builder = builder.with_ability(equipment_equip_ability(equip.amount)?);
                 handled_any = true;
             }
-            token_grammar::EquipmentRuleLineShape::Other(_) => return None,
         }
     }
 
@@ -3319,10 +3236,6 @@ fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDefini
 pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let shape = token_grammar::parse_token_definition_shape_text(name)?;
     lower_token_definition_shape(shape)
-}
-
-pub(crate) fn parse_token_pt(word: &str) -> Option<(i32, i32)> {
-    parse_unsigned_pt_word(word)
 }
 
 pub(crate) fn target_mentions_graveyard(target: &TargetAst) -> bool {

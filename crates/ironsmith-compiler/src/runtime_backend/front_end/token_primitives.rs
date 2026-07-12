@@ -1,27 +1,23 @@
-use winnow::combinator::{alt, dispatch, fail, opt, peek, seq};
+use winnow::combinator::{opt, peek, seq};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 
 use crate::cards::builders::TextSpan;
 use crate::effect::Until;
 
+#[cfg(test)]
+use super::grammar::leaf::parse_leaf_turn_duration_prefix_tokens;
 use super::grammar::leaf::{
     LeafDurationPhrase, LeafTurnDurationPhrase, parse_leaf_restriction_duration_prefix_tokens,
-    parse_leaf_restriction_duration_suffix_tokens, parse_leaf_turn_duration_prefix_tokens,
-    parse_leaf_turn_duration_suffix_tokens,
+    parse_leaf_restriction_duration_suffix_tokens, parse_leaf_turn_duration_suffix_tokens,
 };
 use super::grammar::primitives as grammar;
 use super::grammar::sentence_markers;
 use super::grammar::static_keyword_line_shapes;
 #[cfg(test)]
-pub(crate) use super::grammar::values::parse_count_range_prefix;
-pub(crate) use super::grammar::values::{
-    parse_mana_symbol, parse_mana_symbol_group, parse_modal_choose_range, parse_scryfall_mana_cost,
-    parse_type_line_with, parse_value_comparison_tokens,
-};
-use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, TokenWordView, contains_token_kind, render_token_slice,
-};
+pub(crate) use super::grammar::values::parse_value_comparison_tokens;
+pub(crate) use super::grammar::values::{parse_mana_symbol, parse_scryfall_mana_cost};
+use super::lexer::{LexStream, OwnedLexToken, TokenKind, contains_token_kind, render_token_slice};
 pub(crate) type LexedInput<'a> = LexStream<'a>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,17 +26,6 @@ pub(crate) enum TurnDurationPhrase {
     UntilEndOfTurn,
     UntilYourNextTurn,
     UntilYourNextTurnEnd,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CommonSentenceHead {
-    ForEach,
-    If,
-    Until,
-    WhereXIs,
-    Target,
-    CountPrefix,
 }
 
 fn until_from_leaf_duration(duration: LeafDurationPhrase) -> Until {
@@ -55,48 +40,6 @@ fn until_from_leaf_duration(duration: LeafDurationPhrase) -> Until {
     }
 }
 
-pub(crate) fn items_start_with<T: PartialEq>(items: &[T], prefix: &[T]) -> bool {
-    crate::slice_primitives::starts_with(items, prefix)
-}
-
-pub(crate) fn items_end_with<T: PartialEq>(items: &[T], suffix: &[T]) -> bool {
-    crate::slice_primitives::ends_with(items, suffix)
-}
-
-#[allow(dead_code)]
-pub(crate) fn items_end_with_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
-    crate::slice_primitives::ends_with_any(items, patterns)
-}
-
-pub(crate) fn items_have<T: PartialEq>(items: &[T], expected: &T) -> bool {
-    crate::slice_primitives::contains(items, expected)
-}
-
-#[allow(dead_code)]
-pub(crate) fn items_have_any<T: PartialEq>(items: &[T], expected: &[T]) -> bool {
-    crate::slice_primitives::contains_any(items, expected)
-}
-
-#[allow(dead_code)]
-pub(crate) fn items_have_all<T: PartialEq>(items: &[T], expected: &[T]) -> bool {
-    crate::slice_primitives::contains_all(items, expected)
-}
-
-#[allow(dead_code)]
-pub(crate) fn slice_all_match<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> bool {
-    crate::slice_primitives::all_match(items, predicate)
-}
-
-#[allow(dead_code)]
-pub(crate) fn slice_eq_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
-    crate::slice_primitives::equals_any(items, patterns)
-}
-
-#[allow(dead_code)]
-pub(crate) fn items_start_with_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
-    crate::slice_primitives::starts_with_any(items, patterns)
-}
-
 pub(crate) fn iter_contains<I, T>(items: I, expected: &T) -> bool
 where
     I: IntoIterator,
@@ -106,90 +49,11 @@ where
     crate::slice_primitives::iter_contains(items, expected)
 }
 
-pub(crate) use crate::slice_primitives::iter_eq;
-
-pub(crate) fn slice_strip_prefix<'a, T: PartialEq>(
-    items: &'a [T],
-    prefix: &[T],
-) -> Option<&'a [T]> {
-    crate::slice_primitives::strip_prefix(items, prefix)
-}
-
-pub(crate) fn slice_strip_suffix<'a, T: PartialEq>(
-    items: &'a [T],
-    suffix: &[T],
-) -> Option<&'a [T]> {
-    crate::slice_primitives::strip_suffix(items, suffix)
-}
-
-#[allow(dead_code)]
-pub(crate) fn slice_strip_any_prefix<'a, 'p, T: PartialEq>(
-    items: &'a [T],
-    patterns: &'p [&'p [T]],
-) -> Option<(&'p [T], &'a [T])> {
-    crate::slice_primitives::strip_any_prefix(items, patterns)
-}
-
-#[allow(dead_code)]
-pub(crate) fn slice_strip_any_suffix<'a, 'p, T: PartialEq>(
-    items: &'a [T],
-    patterns: &'p [&'p [T]],
-) -> Option<(&'p [T], &'a [T])> {
-    crate::slice_primitives::strip_any_suffix(items, patterns)
-}
-
 pub(crate) fn locate_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
     for (idx, item) in items.iter().enumerate() {
         if predicate(item) {
             return Some(idx);
         }
-    }
-    None
-}
-
-pub(crate) fn locate_index_with<T>(
-    items: &[T],
-    mut predicate: impl FnMut(usize, &T) -> bool,
-) -> Option<usize> {
-    for (idx, item) in items.iter().enumerate() {
-        if predicate(idx, item) {
-            return Some(idx);
-        }
-    }
-    None
-}
-
-pub(crate) fn locate_last_index<T>(
-    items: &[T],
-    mut predicate: impl FnMut(&T) -> bool,
-) -> Option<usize> {
-    let mut idx = items.len();
-    while idx > 0 {
-        idx -= 1;
-        if predicate(&items[idx]) {
-            return Some(idx);
-        }
-    }
-    None
-}
-
-pub(crate) fn locate_window_index<T: PartialEq>(items: &[T], window: &[T]) -> Option<usize> {
-    if window.is_empty() {
-        return Some(0);
-    }
-    if window.len() > items.len() {
-        return None;
-    }
-    let mut idx = 0usize;
-    while idx + window.len() <= items.len() {
-        let end = idx + window.len();
-        if items
-            .get(idx..end)
-            .is_some_and(|candidate| candidate == window)
-        {
-            return Some(idx);
-        }
-        idx += 1;
     }
     None
 }
@@ -223,21 +87,6 @@ pub(crate) fn parse_lexed_prefix<'a, O>(
 pub(crate) fn parse_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<&'a str> {
     grammar::word_text(input)
 }
-
-pub(crate) fn parse_word_eq<'a>(
-    expected: &'static str,
-) -> impl Parser<LexedInput<'a>, (), ErrMode<ContextError>> {
-    grammar::kw(expected).void()
-}
-
-pub(crate) fn parse_word_phrase<'a>(
-    expected: &'static [&'static str],
-) -> impl Parser<LexedInput<'a>, (), ErrMode<ContextError>> {
-    grammar::phrase(expected)
-}
-
-pub(crate) use sentence_markers::parse_any_word_prefix_presence as word_view_has_any_prefix;
-pub(crate) use sentence_markers::parse_word_prefix_presence as word_view_has_prefix;
 
 pub(crate) fn rewrite_followup_intro_to_if_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     // Preserve reflexive "when" prefixes so lowering emits a stack-queued
@@ -383,59 +232,6 @@ pub(crate) fn lexed_head_words(tokens: &[OwnedLexToken]) -> Option<(&str, Option
     parse_lexed_prefix(tokens, parse_head_words).map(|(head, _)| head)
 }
 
-#[allow(dead_code)]
-fn parse_common_sentence_head_inner<'a>(input: &mut LexedInput<'a>) -> WResult<CommonSentenceHead> {
-    use CommonSentenceHead::{CountPrefix, ForEach, If, Target, Until, WhereXIs};
-
-    dispatch! {peek(grammar::word_parser_text);
-        "for" => parse_word_phrase(&["for", "each"]).value(ForEach),
-        "each" => parse_word_eq("each").value(ForEach),
-        "if" => parse_word_eq("if").value(If),
-        "until" => parse_word_eq("until").value(Until),
-        "where" => parse_word_phrase(&["where", "x", "is"]).value(WhereXIs),
-        "target" => parse_word_eq("target").value(Target),
-        "up" => parse_word_phrase(&["up", "to"]).value(CountPrefix),
-        "one" => alt((
-            parse_word_phrase(&["one", "or", "more"]),
-            parse_word_phrase(&["one", "or", "both"]),
-        ))
-        .value(CountPrefix),
-        "a" => parse_word_eq("a").value(CountPrefix),
-        "an" => parse_word_eq("an").value(CountPrefix),
-        _ => fail::<_, CommonSentenceHead, _>,
-    }
-    .parse_next(input)
-}
-
-#[allow(dead_code)]
-pub(crate) fn parse_common_sentence_head(
-    tokens: &[OwnedLexToken],
-) -> Option<(CommonSentenceHead, &[OwnedLexToken])> {
-    parse_lexed_prefix(tokens, parse_common_sentence_head_inner)
-}
-
-#[allow(dead_code)]
-pub(crate) fn split_lexed_once_on_delimiter(
-    tokens: &[OwnedLexToken],
-    delimiter: TokenKind,
-) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    grammar::split_lexed_once_on_delimiter(tokens, delimiter)
-}
-
-#[allow(dead_code)]
-pub(crate) fn split_lexed_once_on_comma(
-    tokens: &[OwnedLexToken],
-) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-}
-
-#[allow(dead_code)]
-pub(crate) fn split_lexed_once_on_period(
-    tokens: &[OwnedLexToken],
-) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    split_lexed_once_on_delimiter(tokens, TokenKind::Period)
-}
-
 fn turn_duration_from_leaf(duration: LeafTurnDurationPhrase) -> TurnDurationPhrase {
     match duration {
         LeafTurnDurationPhrase::ThisTurn => TurnDurationPhrase::ThisTurn,
@@ -445,6 +241,7 @@ fn turn_duration_from_leaf(duration: LeafTurnDurationPhrase) -> TurnDurationPhra
     }
 }
 
+#[cfg(test)]
 pub(crate) fn parse_turn_duration_prefix<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(TurnDurationPhrase, &'a [OwnedLexToken])> {

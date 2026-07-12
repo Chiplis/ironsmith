@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, cut_err, eof, fail, opt, peek, preceded, repeat, repeat_till};
+use winnow::combinator::{alt, cut_err, eof, opt, peek, preceded, repeat, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::token::any;
@@ -8,7 +8,6 @@ use crate::effect::{Value, ValueComparisonOperator};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
-use ironsmith_core::ValueSurfaceHint;
 
 use super::super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs,
@@ -336,13 +335,9 @@ pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
     Some(Value::PlayersWhoControlMoreThanYou(filter))
 }
 
-pub(crate) use super::leaf::parse_leaf_mana_symbol_inner as parse_mana_symbol_inner;
-
 pub(crate) fn parse_mana_symbol(raw: &str) -> Result<ManaSymbol, CardTextError> {
     super::leaf::parse_leaf_mana_symbol_complete(raw)
 }
-
-pub(crate) use super::leaf::parse_leaf_mana_symbol_group_inner as parse_mana_symbol_group_inner;
 
 pub(crate) fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
     super::leaf::parse_leaf_mana_symbol_group_complete(raw)
@@ -352,16 +347,6 @@ pub(crate) fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, Card
 pub(crate) fn parse_mana_symbol_group_rewrite(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
     let tokens = lex_line(raw.trim(), 0)?;
     parse_mana_symbol_group_tokens(&tokens)
-}
-
-#[cfg(test)]
-pub(crate) fn parse_count_word_rewrite(raw: &str) -> Result<u32, CardTextError> {
-    let tokens = lex_line(raw.trim(), 0)?;
-    parse_count_word_tokens(&tokens)
-}
-
-pub(crate) fn parse_count_word_tokens(tokens: &[OwnedLexToken]) -> Result<u32, CardTextError> {
-    super::leaf::parse_leaf_count_word_tokens(tokens)
 }
 
 fn parse_mana_cost_tokens_text(raw: &str, allow_empty: bool) -> Result<ManaCost, CardTextError> {
@@ -396,15 +381,6 @@ pub(crate) fn parse_mana_symbol_group_tokens(
 
 pub(crate) fn parse_mana_cost_tokens(tokens: &[OwnedLexToken]) -> Result<ManaCost, CardTextError> {
     super::leaf::parse_leaf_mana_cost_tokens(tokens)
-}
-
-#[cfg(test)]
-pub(crate) fn parse_count_range_prefix(
-    tokens: &[OwnedLexToken],
-) -> Option<((Option<Value>, Option<Value>), &[OwnedLexToken])> {
-    let (range, rest) =
-        primitives::parse_prefix(tokens, super::leaf::parse_leaf_count_range_prefix_lexed)?;
-    Some((range.into_min_max(), rest))
 }
 
 pub(crate) fn parse_value_comparison_tokens<'a>(
@@ -805,19 +781,6 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
     }
 
     None
-}
-
-#[cfg(test)]
-mod leaf_count_tests {
-    use super::*;
-
-    #[test]
-    fn count_word_tokens_use_leaf_number_parser() {
-        assert_eq!(parse_count_word_rewrite("2").unwrap(), 2);
-        assert_eq!(parse_count_word_rewrite("two").unwrap(), 2);
-        assert_eq!(parse_count_word_rewrite("a").unwrap(), 1);
-        assert!(parse_count_word_rewrite("another").is_err());
-    }
 }
 
 #[cfg(test)]

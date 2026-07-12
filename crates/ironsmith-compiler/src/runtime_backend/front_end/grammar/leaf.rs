@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod activation_heads;
 mod articles;
 mod casting;
@@ -21,95 +19,81 @@ pub(crate) use activation_heads::{
     parse_leaf_activation_cost_head_tokens,
 };
 pub(crate) use articles::{
-    LeafArticle, LeafLeadingTokenWords, LeafLeadingWordRefs, parse_leaf_article,
     parse_leaf_article_complete, parse_leaf_leading_articles_tokens,
     parse_leaf_leading_articles_words, parse_leaf_leading_indefinite_article_tokens,
     parse_leaf_leading_selected_tokens,
 };
-pub(crate) use casting::{LeafAlternativeCastPrefix, parse_leaf_alternative_cast_prefix_words};
+pub(crate) use casting::parse_leaf_alternative_cast_prefix_words;
+#[cfg(test)]
+pub(crate) use condition_prefixes::parse_condition_intro_complete;
 pub(crate) use condition_prefixes::{
-    ConditionIntro, LeafConditionIntroPrefix, LeafConditionIntroWordPrefix,
-    LeafStaticConditionIntro, LeafStaticConditionIntroPrefix, parse_condition_intro,
-    parse_condition_intro_complete, parse_leaf_condition_intro_lexed,
-    parse_leaf_condition_intro_prefix_tokens, parse_leaf_condition_intro_prefix_words,
+    ConditionIntro, parse_leaf_condition_intro_prefix_tokens,
     parse_leaf_static_condition_intro_prefix_tokens,
 };
+#[cfg(test)]
+pub(crate) use counts::parse_leaf_count_range_prefix_lexed;
 pub(crate) use counts::{
-    LeafChoiceCountPrefix, LeafCountRange, parse_leaf_another_event_count_comparison_lexed,
     parse_leaf_another_event_count_comparison_tokens, parse_leaf_choice_count_prefix_lexed,
     parse_leaf_choice_count_prefix_tokens, parse_leaf_choice_count_prefix_words,
-    parse_leaf_count_range_prefix_lexed, parse_leaf_modal_choose_range_tokens,
-    parse_leaf_modal_value_token, parse_leaf_target_count_range_prefix_lexed,
+    parse_leaf_modal_choose_range_tokens, parse_leaf_modal_value_token,
+    parse_leaf_target_count_range_prefix_lexed,
 };
+#[cfg(test)]
+pub(crate) use durations::parse_duration_phrase_complete;
 pub(crate) use durations::{
-    LeafConditionalDurationKind, LeafDurationPhrase, LeafDurationPrefix, LeafDurationSuffix,
-    LeafDurationWordSpan, LeafTurnDurationPhrase, find_leaf_canonical_until_end_of_turn_words,
-    find_leaf_duration_words, parse_duration_phrase_complete,
-    parse_leaf_conditional_duration_kind_tokens, parse_leaf_duration_phrase,
-    parse_leaf_duration_phrase_lexed, parse_leaf_duration_prefix_words,
+    LeafConditionalDurationKind, LeafDurationPhrase, LeafTurnDurationPhrase,
+    parse_leaf_conditional_duration_kind_tokens, parse_leaf_duration_phrase_lexed,
     parse_leaf_restriction_duration_prefix_tokens, parse_leaf_restriction_duration_suffix_tokens,
     parse_leaf_turn_duration_phrase_lexed, parse_leaf_turn_duration_prefix_tokens,
     parse_leaf_turn_duration_suffix_tokens, strip_leaf_this_turn_tokens,
 };
 pub(crate) use filter_atoms::{
-    LeafDemonstrativeObjectHead, LeafObjectReferenceHead, parse_leaf_card_type,
-    parse_leaf_card_type_complete, parse_leaf_color, parse_leaf_color_complete,
-    parse_leaf_demonstrative_object_head, parse_leaf_demonstrative_object_head_complete,
-    parse_leaf_non_card_type, parse_leaf_non_card_type_complete, parse_leaf_non_color,
-    parse_leaf_non_color_complete, parse_leaf_non_subtype, parse_leaf_non_subtype_complete,
-    parse_leaf_non_supertype, parse_leaf_non_supertype_complete, parse_leaf_object_reference_head,
-    parse_leaf_object_reference_head_complete, parse_leaf_subtype, parse_leaf_subtype_complete,
-    parse_leaf_subtype_flexible, parse_leaf_subtype_flexible_complete, parse_leaf_supertype,
-    parse_leaf_supertype_complete, parse_leaf_zone, parse_leaf_zone_complete,
+    LeafDemonstrativeObjectHead, parse_leaf_card_type_complete, parse_leaf_color_complete,
+    parse_leaf_demonstrative_object_head_complete, parse_leaf_non_card_type_complete,
+    parse_leaf_non_color_complete, parse_leaf_non_subtype_complete,
+    parse_leaf_non_supertype_complete, parse_leaf_object_reference_head_complete,
+    parse_leaf_subtype_complete, parse_leaf_subtype_flexible_complete,
+    parse_leaf_supertype_complete, parse_leaf_zone_complete,
 };
+#[cfg(test)]
+pub(crate) use mana::parse_leaf_mana_symbol_group_tokens;
 pub(crate) use mana::{
     LeafManaCostPrefix, LeafManaPipToken, parse_leaf_bare_mana_symbol_complete,
     parse_leaf_fixed_mana_cost_prefix_lexed, parse_leaf_fixed_mana_cost_prefix_tokens,
     parse_leaf_fixed_mana_output_lexed, parse_leaf_fixed_mana_output_tokens,
-    parse_leaf_legacy_bare_mana_token, parse_leaf_legacy_mana_cost_prefix_words,
     parse_leaf_mana_cost_lexed, parse_leaf_mana_cost_prefix_lexed,
     parse_leaf_mana_cost_prefix_tokens, parse_leaf_mana_cost_tokens, parse_leaf_mana_group_token,
     parse_leaf_mana_symbol_complete, parse_leaf_mana_symbol_group_complete,
-    parse_leaf_mana_symbol_group_inner, parse_leaf_mana_symbol_group_tokens,
-    parse_leaf_mana_symbol_inner, parse_leaf_pawprint_label_count_complete,
-    parse_leaf_pawprint_label_count_token, parse_leaf_spelled_mana_word,
-    parse_leaf_spelled_mana_word_complete, parse_leaf_surface_mana_pip_lexed,
-    parse_leaf_surface_mana_pip_token,
+    parse_leaf_pawprint_label_count_token, parse_leaf_spelled_mana_word_complete,
+    parse_leaf_surface_mana_pip_lexed, parse_leaf_surface_mana_pip_token,
 };
+#[cfg(test)]
+pub(crate) use numbers::parse_number_or_x_complete;
 pub(crate) use numbers::{
-    LeafNumber, LeafNumberPrefix, parse_article_number, parse_leaf_count_token,
-    parse_leaf_count_word_tokens, parse_leaf_die_sides_complete,
+    LeafNumber, LeafNumberPrefix, parse_leaf_count_token, parse_leaf_die_sides_complete,
     parse_leaf_number_or_x_prefix_lexed, parse_leaf_number_or_x_prefix_tokens,
     parse_leaf_number_prefix_lexed, parse_leaf_number_prefix_tokens,
-    parse_leaf_number_prefix_words, parse_leaf_number_token_lexed, parse_number,
-    parse_number_complete, parse_number_i32, parse_number_i32_complete, parse_number_or_x,
-    parse_number_or_x_complete, parse_unsigned_number, parse_word_number,
+    parse_leaf_number_prefix_words, parse_leaf_number_token_lexed, parse_number_complete,
+    parse_number_i32_complete,
 };
 pub(crate) use player_subjects::{
-    LeafPlayerReferenceMode, parse_leaf_player_reference_lexed, parse_leaf_player_reference_tokens,
-    parse_leaf_player_reference_words,
+    LeafPlayerReferenceMode, parse_leaf_player_reference_tokens, parse_leaf_player_reference_words,
 };
 pub(crate) use power_toughness::{
-    parse_leaf_power_toughness, parse_leaf_power_toughness_complete, parse_leaf_pt_modifier_values,
-    parse_leaf_pt_modifier_values_complete, parse_leaf_unsigned_pt,
+    parse_leaf_power_toughness_complete, parse_leaf_pt_modifier_values_complete,
     parse_leaf_unsigned_pt_complete,
 };
-pub(crate) use references::{
-    LeafPlayerReference, parse_player_reference, parse_player_reference_complete,
-};
+pub(crate) use references::LeafPlayerReference;
+#[cfg(test)]
+pub(crate) use references::parse_player_reference_complete;
 pub(crate) use source_references::{
-    LeafSourceAnaphor, LeafSourceReferenceAlias, parse_leaf_source_anaphor_words,
+    LeafSourceReferenceAlias, parse_leaf_source_anaphor_words,
     parse_leaf_source_reference_alias_words, parse_leaf_source_reference_aliases_for_name,
     parse_leaf_source_reference_possessive_alias_words, parse_leaf_this_source_reference_surface,
     parse_leaf_this_source_reference_words, push_leaf_source_reference_alias,
-    push_leaf_source_reference_alias_words, sort_leaf_source_reference_aliases,
-    strip_leaf_source_possessive_suffix,
+    push_leaf_source_reference_alias_words, strip_leaf_source_possessive_suffix,
 };
-pub(crate) use targets::{
-    LeafRandomTargetKind, LeafRandomTargetMarker, LeafTargetArticle, LeafTargetArticleToken,
-    LeafTargetHead, LeafTargetHeadPrefix, LeafTopTargetPrefix, parse_leaf_target_head_prefix_lexed,
-    parse_leaf_target_head_tokens,
-};
+pub(crate) use targets::parse_leaf_target_head_tokens;
 
 #[cfg(test)]
 use crate::effect::{Comparison, Value};

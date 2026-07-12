@@ -6,7 +6,7 @@ use winnow::token::{literal, take_till};
 use super::super::{leaf, permission_shapes, primitives};
 use crate::cards::builders::{PlayerAst, SubjectAst, TagKey, TargetAst};
 use crate::effect::Value;
-use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, TokenWordView};
+use crate::runtime_backend::lexer::{LexStream, OwnedLexToken};
 use crate::target::{ChooseSpec, ObjectFilter};
 
 #[path = "become_shapes/descriptors.rs"]

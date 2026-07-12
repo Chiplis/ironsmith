@@ -7,7 +7,7 @@ use crate::filter::StackObjectKind;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
-use super::super::super::lexer::{LexStream, OwnedLexToken, render_token_slice};
+use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::{filters, leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -82,7 +82,7 @@ fn parse_single_graveyard_suffix_lexed<'a>(input: &mut LexStream<'a>) -> WResult
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::super::lexer::lex_line;
+    use super::super::super::super::lexer::{lex_line, render_token_slice};
     use super::*;
 
     #[test]

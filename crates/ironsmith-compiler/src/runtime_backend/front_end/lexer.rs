@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use logos::Logos;
 use winnow::stream::{Location, TokenSlice};
 
@@ -205,22 +203,12 @@ impl OwnedLexToken {
         Self::new(TokenKind::Colon, ":", span)
     }
 
-    pub(crate) fn semicolon(span: TextSpan) -> Self {
-        Self::new(TokenKind::Semicolon, ";", span)
-    }
-
     pub(crate) fn quote(span: TextSpan) -> Self {
         Self::new(TokenKind::Quote, "\"", span)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn synthetic_word(slice: impl Into<String>) -> Self {
         Self::word(slice, TextSpan::synthetic())
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn synthetic_comma() -> Self {
-        Self::comma(TextSpan::synthetic())
     }
 
     pub(crate) fn as_word(&self) -> Option<&str> {
@@ -404,6 +392,7 @@ fn push_normalized_token_words(
 
 pub(crate) use super::grammar::lexical::*;
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LexCursor<'a> {
     tokens: &'a [OwnedLexToken],
@@ -412,6 +401,7 @@ pub(crate) struct LexCursor<'a> {
 
 pub(crate) type LexStream<'a> = TokenSlice<'a, LexToken>;
 
+#[cfg(test)]
 impl<'a> LexCursor<'a> {
     pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
         Self { tokens, pos: 0 }
@@ -524,7 +514,6 @@ pub(crate) fn render_token_slice(tokens: &[OwnedLexToken]) -> String {
     rendered
 }
 
-#[allow(dead_code)]
 pub(crate) fn trim_lexed_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let mut start = 0usize;
     let mut end = tokens.len();

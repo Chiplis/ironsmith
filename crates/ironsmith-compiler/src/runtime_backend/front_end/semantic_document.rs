@@ -78,7 +78,6 @@ pub(crate) fn parse_semantic_document(
         annotations,
         items,
         overload_items,
-        semantic_facts,
         allow_unsupported,
     } = doc;
     let overload_branch = overload_items
@@ -91,7 +90,6 @@ pub(crate) fn parse_semantic_document(
         annotations,
         items: parse_rewrite_items(items)?,
         overload_branch,
-        semantic_facts,
         allow_unsupported,
     })
 }

@@ -5,7 +5,7 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::{any, take};
 
-use super::super::super::super::lexer::{LexedClause, TokenKind};
+use super::super::super::super::lexer::LexedClause;
 use super::super::super::primitives::{self, WordSliceInput};
 use super::surface;
 
@@ -28,22 +28,18 @@ pub(crate) enum WinnowCaptureKind<'p> {
     OneOfPhrase(&'p [&'p [&'p str]]),
     UntilPhrase(&'p [&'p str]),
     UntilLastPhrase(&'p [&'p str]),
-    UntilLastPhraseBeforeToken(&'p [&'p str], TokenKind),
     UntilAnyPhrase(&'p [&'p [&'p str]]),
     UntilLastAnyPhrase(&'p [&'p [&'p str]]),
-    UntilToken(TokenKind),
     OneOrMoreWords,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WinnowAtom<'p> {
     Word(&'p str),
-    Token(TokenKind),
     AnyWord(&'p [&'p str]),
     Phrase(&'p [&'p str]),
     AnyPhrase(&'p [&'p [&'p str]]),
     Optional(&'p [WinnowAtom<'p>]),
-    AnySequence(&'p [&'p [WinnowAtom<'p>]]),
     Capture(&'p str, WinnowCaptureKind<'p>),
     RoleCapture(&'p str, WinnowCaptureRole, WinnowCaptureKind<'p>),
 }
@@ -62,10 +58,6 @@ impl<'p> WinnowSequence<'p> {
         WinnowAtom::Word(word)
     }
 
-    pub(crate) const fn token(kind: TokenKind) -> WinnowAtom<'p> {
-        WinnowAtom::Token(kind)
-    }
-
     pub(crate) const fn any_word(words: &'p [&'p str]) -> WinnowAtom<'p> {
         WinnowAtom::AnyWord(words)
     }
@@ -80,10 +72,6 @@ impl<'p> WinnowSequence<'p> {
 
     pub(crate) const fn optional(atoms: &'p [WinnowAtom<'p>]) -> WinnowAtom<'p> {
         WinnowAtom::Optional(atoms)
-    }
-
-    pub(crate) const fn any_sequence(alternatives: &'p [&'p [WinnowAtom<'p>]]) -> WinnowAtom<'p> {
-        WinnowAtom::AnySequence(alternatives)
     }
 
     pub(crate) const fn capture(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
@@ -130,10 +118,6 @@ impl<'p> WinnowSequence<'p> {
         self.parse_full(clause).is_some()
     }
 
-    pub(crate) fn accepts_prefix(self, clause: LexedClause<'_>) -> bool {
-        self.parse_prefix(clause).is_some()
-    }
-
     pub(crate) fn parse_full<'a>(self, clause: LexedClause<'a>) -> Option<WinnowSequenceMatch<'p>> {
         self.parse_from(clause, 0, true)
     }
@@ -148,7 +132,7 @@ impl<'p> WinnowSequence<'p> {
     pub(crate) fn locate_in<'a>(self, clause: LexedClause<'a>) -> Option<WinnowSequenceMatch<'p>> {
         let words = clause.word_refs();
         for start in 0..=words.len() {
-            if let Some(parsed) = self.parse_from_words(Some(clause), &words, start, false) {
+            if let Some(parsed) = self.parse_from_words(&words, start, false) {
                 return Some(parsed);
             }
         }
@@ -162,19 +146,18 @@ impl<'p> WinnowSequence<'p> {
         require_end: bool,
     ) -> Option<WinnowSequenceMatch<'p>> {
         let words = clause.word_refs();
-        self.parse_from_words(Some(clause), &words, start, require_end)
+        self.parse_from_words(&words, start, require_end)
     }
 
     fn parse_from_words(
         self,
-        clause: Option<LexedClause<'_>>,
         words: &[&str],
         start: usize,
         require_end: bool,
     ) -> Option<WinnowSequenceMatch<'p>> {
         let mut input: WordSliceInput<'_> = words.get(start..)?;
         let mut captures = Vec::new();
-        parse_atoms(self.atoms, clause, words.len(), &mut input, &mut captures).ok()?;
+        parse_atoms(self.atoms, words.len(), &mut input, &mut captures).ok()?;
         if require_end {
             parse_end(&mut input).ok()?;
         }
@@ -188,7 +171,6 @@ impl<'p> WinnowSequence<'p> {
 
 fn parse_atoms<'a, 'p>(
     atoms: &[WinnowAtom<'p>],
-    clause: Option<LexedClause<'_>>,
     full_word_count: usize,
     input: &mut WordSliceInput<'a>,
     captures: &mut Vec<WinnowSequenceCapture<'p>>,
@@ -197,15 +179,6 @@ fn parse_atoms<'a, 'p>(
         match *atom {
             WinnowAtom::Word(expected) => {
                 dynamic_word(expected).void().parse_next(input)?;
-            }
-            WinnowAtom::Token(expected) => {
-                let cursor = full_word_count.saturating_sub(input.len());
-                if !token_kind_at_word_boundary(clause, cursor, expected) {
-                    return Err(primitives::backtrack_err(
-                        "predicate token",
-                        "expected token kind",
-                    ));
-                }
             }
             WinnowAtom::AnyWord(expected) => {
                 any.verify(|word: &&str| one_of_words(word, expected))
@@ -223,7 +196,6 @@ fn parse_atoms<'a, 'p>(
                 let mut optional_captures = captures.clone();
                 if parse_atoms(
                     optional_atoms,
-                    clause,
                     full_word_count,
                     &mut probe,
                     &mut optional_captures,
@@ -234,51 +206,11 @@ fn parse_atoms<'a, 'p>(
                     *captures = optional_captures;
                 }
             }
-            WinnowAtom::AnySequence(alternatives) => {
-                let mut best_input = None;
-                let mut best_captures = None;
-                for alternative in alternatives {
-                    let mut probe = *input;
-                    let mut alternative_captures = captures.clone();
-                    if parse_atoms(
-                        alternative,
-                        clause,
-                        full_word_count,
-                        &mut probe,
-                        &mut alternative_captures,
-                    )
-                    .is_ok()
-                        && best_input
-                            .as_ref()
-                            .is_none_or(|best: &&[&str]| probe.len() < best.len())
-                    {
-                        best_input = Some(probe);
-                        best_captures = Some(alternative_captures);
-                    }
-                }
-                let (Some(parsed_input), Some(parsed_captures)) = (best_input, best_captures)
-                else {
-                    return Err(primitives::backtrack_err(
-                        "predicate alternative",
-                        "one of the expected alternatives",
-                    ));
-                };
-                *input = parsed_input;
-                *captures = parsed_captures;
-            }
             WinnowAtom::Capture(name, kind) => {
-                parse_capture(name, None, kind, clause, full_word_count, input, captures)?;
+                parse_capture(name, None, kind, full_word_count, input, captures)?;
             }
             WinnowAtom::RoleCapture(name, role, kind) => {
-                parse_capture(
-                    name,
-                    Some(role),
-                    kind,
-                    clause,
-                    full_word_count,
-                    input,
-                    captures,
-                )?;
+                parse_capture(name, Some(role), kind, full_word_count, input, captures)?;
             }
         }
     }
@@ -289,7 +221,6 @@ fn parse_capture<'a, 'p>(
     name: &'p str,
     role: Option<WinnowCaptureRole>,
     kind: WinnowCaptureKind<'p>,
-    clause: Option<LexedClause<'_>>,
     full_word_count: usize,
     input: &mut WordSliceInput<'a>,
     captures: &mut Vec<WinnowSequenceCapture<'p>>,
@@ -329,17 +260,6 @@ fn parse_capture<'a, 'p>(
                 .ok_or_else(|| primitives::backtrack_err("predicate capture", "following words"))?;
             take_words(input, count)?;
         }
-        WinnowCaptureKind::UntilLastPhraseBeforeToken(expected, delimiter) => {
-            let delimiter_word = word_index_before_token_kind(clause, start, delimiter)
-                .ok_or_else(|| primitives::backtrack_err("predicate capture", "delimiter"))?;
-            let relative_limit = delimiter_word.saturating_sub(start);
-            let searchable = input
-                .get(..relative_limit)
-                .ok_or_else(|| primitives::backtrack_err("predicate capture", "word range"))?;
-            let count = last_sequence_offset(searchable, expected)
-                .ok_or_else(|| primitives::backtrack_err("predicate capture", "following words"))?;
-            take_words(input, count)?;
-        }
         WinnowCaptureKind::UntilAnyPhrase(alternatives) => {
             let count = first_alternative_offset(input, alternatives)
                 .ok_or_else(|| primitives::backtrack_err("predicate capture", "following words"))?;
@@ -349,11 +269,6 @@ fn parse_capture<'a, 'p>(
             let count = last_alternative_offset(input, alternatives)
                 .ok_or_else(|| primitives::backtrack_err("predicate capture", "following words"))?;
             take_words(input, count)?;
-        }
-        WinnowCaptureKind::UntilToken(delimiter) => {
-            let delimiter_word = word_index_before_token_kind(clause, start, delimiter)
-                .ok_or_else(|| primitives::backtrack_err("predicate capture", "delimiter"))?;
-            take_words(input, delimiter_word.saturating_sub(start))?;
         }
     }
     let end = full_word_count.saturating_sub(input.len());
@@ -487,44 +402,6 @@ fn one_of_words(word: &str, expected: &[&str]) -> bool {
     false
 }
 
-fn token_kind_at_word_boundary(
-    clause: Option<LexedClause<'_>>,
-    word_cursor: usize,
-    expected: TokenKind,
-) -> bool {
-    clause
-        .and_then(|clause| {
-            clause
-                .token_index_after_words(word_cursor)
-                .map(|index| (clause, index))
-        })
-        .and_then(|(clause, index)| clause.tokens().get(index))
-        .is_some_and(|token| token.kind == expected)
-}
-
-fn word_index_before_token_kind(
-    clause: Option<LexedClause<'_>>,
-    start_word: usize,
-    delimiter: TokenKind,
-) -> Option<usize> {
-    let clause = clause?;
-    let start_token = clause.token_boundary_for_word_or_end(start_word)?;
-    let delimiter_token = clause
-        .tokens()
-        .iter()
-        .enumerate()
-        .skip(start_token)
-        .find_map(|(index, token)| (token.kind == delimiter).then_some(index))?;
-    Some(
-        clause
-            .words()
-            .token_start_indices()
-            .iter()
-            .take_while(|token_index| **token_index < delimiter_token)
-            .count(),
-    )
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WinnowSequenceMatch<'p> {
     pub(crate) word_range: Range<usize>,
@@ -532,10 +409,6 @@ pub(crate) struct WinnowSequenceMatch<'p> {
 }
 
 impl<'p> WinnowSequenceMatch<'p> {
-    pub(crate) fn captures(&self) -> &[WinnowSequenceCapture<'p>] {
-        &self.captures
-    }
-
     pub(crate) fn capture(&self, name: &str) -> Option<&WinnowSequenceCapture<'p>> {
         for capture in &self.captures {
             if capture.name == name {
@@ -577,10 +450,6 @@ impl<'p> WinnowSequenceMatch<'p> {
     ) -> Option<LexedClause<'a>> {
         self.capture_by_role(role)
             .and_then(|capture| capture.clause(clause))
-    }
-
-    pub(crate) fn matched_clause<'a>(&self, clause: LexedClause<'a>) -> Option<LexedClause<'a>> {
-        clause.between_word_range(self.word_range.start, self.word_range.end)
     }
 }
 

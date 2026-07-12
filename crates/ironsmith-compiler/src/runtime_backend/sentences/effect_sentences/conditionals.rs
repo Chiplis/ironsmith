@@ -1,36 +1,24 @@
-use super::super::activation_and_restrictions::activated_line_core::parse_named_number;
 use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::effects::{
     CounterSpellConditionalKind, ForEachPlayerKind, split_for_each_opponent_doesnt_clause_lexed,
     split_for_each_player_doesnt_clause_lexed, split_negated_who_this_way_filter_tokens_lexed,
 };
-use super::super::grammar::primitives as grammar;
 use super::super::grammar::values as shared_values;
 use super::super::lexer::OwnedLexToken;
-use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
-use super::super::token_primitives::{
-    items_end_with, items_have, items_start_with, locate_index, locate_last_index,
-    slice_strip_prefix,
-};
+use super::super::object_filters::parse_object_filter;
 use super::super::util::{
-    is_article, is_permanent_type, is_source_reference_words, parse_card_type,
-    parse_counter_type_word, parse_mana_symbol_word_flexible, parse_number,
-    parse_subtype_word as parse_shared_subtype_word,
-    parse_supertype_word as parse_shared_supertype_word, parse_target_phrase, parse_zone_word,
-    span_from_tokens, trim_commas, words,
+    parse_card_type, parse_subtype_word as parse_shared_subtype_word,
+    parse_supertype_word as parse_shared_supertype_word, parse_target_phrase, span_from_tokens,
+    trim_commas,
 };
-use super::{parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed};
-#[allow(unused_imports)]
+use super::parse_effect_chain_inner;
+#[cfg(test)]
+use super::parse_effect_chain_lexed;
 use crate::cards::builders::{
-    CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, IfResultPredicate, PlayerAst,
-    PredicateAst, TagKey, TargetAst, TextSpan,
+    CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst,
 };
-use crate::effect::{ChoiceCount, Value};
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::runtime_backend::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
-use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype, Supertype};
-use crate::zone::Zone;
 
 #[cfg(test)]
 pub(crate) fn parse_conditional_sentence_lexed(
@@ -48,10 +36,6 @@ pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextEr
 
 pub(crate) fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
     shared_values::parse_mana_symbol_group(raw)
-}
-
-pub(crate) fn parse_mana_symbol(part: &str) -> Result<ManaSymbol, CardTextError> {
-    shared_values::parse_mana_symbol(part)
 }
 
 pub(crate) fn parse_type_line(

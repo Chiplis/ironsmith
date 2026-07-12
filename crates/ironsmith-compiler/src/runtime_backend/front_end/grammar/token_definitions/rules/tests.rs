@@ -1,4 +1,10 @@
 use super::*;
+use crate::runtime_backend::front_end::lexer::lex_line;
+
+fn parse_rules(raw: &str) -> TokenRulesSurfaces {
+    let tokens = lex_line(raw, 0).expect("token rules fixture should lex");
+    parse_token_rules_surfaces_tokens(&tokens)
+}
 
 #[test]
 fn typed_amount_shapes_parse_crew_equip_and_power_bonus() {
@@ -30,33 +36,29 @@ fn typed_amount_shapes_parse_crew_equip_and_power_bonus() {
 
 #[test]
 fn inline_damage_shape_requires_trigger_subject_and_each_opponent() {
+    let damage = lex_line(
+        "Whenever you cast a noncreature spell, this token deals 2 damage to each opponent.",
+        0,
+    )
+    .unwrap();
     assert_eq!(
-        parse_inline_noncreature_spell_damage_text(
-            "Whenever you cast a noncreature spell, this token deals 2 damage to each opponent."
-        ),
+        parse_inline_noncreature_spell_damage_tokens(&damage),
         Some(InlineNoncreatureSpellDamageShape { amount: 2 })
     );
-    assert!(
-        parse_inline_noncreature_spell_damage_text(
-            "Whenever you cast a noncreature spell, draw a card."
-        )
-        .is_none()
-    );
+    let draw = lex_line("Whenever you cast a noncreature spell, draw a card.", 0).unwrap();
+    assert!(parse_inline_noncreature_spell_damage_tokens(&draw).is_none());
 }
 
 #[test]
 fn token_rules_surface_distinguishes_keyword_and_parseable_rules() {
-    let keyword = parse_token_rules_surfaces_text(
-        "1/1 green Splinter creature token with \"Cumulative upkeep {G}\"",
-    );
+    let keyword = parse_rules("1/1 green Splinter creature token with \"Cumulative upkeep {G}\"");
     assert!(keyword.embedded_rules.is_empty());
 
-    let triggered = parse_token_rules_surfaces_text(
-        "2/2 creature token with \"Whenever this token attacks, draw a card.\"",
-    );
+    let triggered =
+        parse_rules("2/2 creature token with \"Whenever this token attacks, draw a card.\"");
     assert!(triggered.embedded_rules.is_empty());
 
-    let typed = parse_token_rules_surfaces_text(
+    let typed = parse_rules(
         "2/2 black Alien Angel artifact creature token with \"Whenever an opponent casts a creature spell, this token isn't a creature until end of turn.\"",
     );
     assert_eq!(
@@ -64,7 +66,7 @@ fn token_rules_surface_distinguishes_keyword_and_parseable_rules() {
         vec![TokenEmbeddedRuleShape::OpponentCastsCreatureRemoveCreatureTypeUntilEndOfTurn]
     );
 
-    let dies_create = parse_token_rules_surfaces_text(
+    let dies_create = parse_rules(
         "1/1 green Boar creature token with \"When this token dies, create a Food token.\"",
     );
     assert_eq!(
@@ -128,7 +130,7 @@ fn token_tap_mana_rule_preserves_usage_restriction() {
 
 #[test]
 fn typed_damage_trigger_rules_preserve_combat_and_recipient_semantics() {
-    let poison = parse_token_rules_surfaces_text(
+    let poison = parse_rules(
         "1/1 Snake artifact creature token with \"Whenever this creature deals damage to a player, that player gets a poison counter.\"",
     );
     assert_eq!(
@@ -140,12 +142,12 @@ fn typed_damage_trigger_rules_preserve_combat_and_recipient_semantics() {
         }]
     );
 
-    let pronoun_followup = parse_token_rules_surfaces_text(
+    let pronoun_followup = parse_rules(
         "It has Whenever this creature deals damage to a player, that player gets a poison counter.",
     );
     assert_eq!(pronoun_followup.embedded_rules, poison.embedded_rules);
 
-    let loses = parse_token_rules_surfaces_text(
+    let loses = parse_rules(
         "1/1 Assassin creature token with \"Whenever this token deals combat damage to a player, that player loses the game.\"",
     );
     assert_eq!(
@@ -153,7 +155,7 @@ fn typed_damage_trigger_rules_preserve_combat_and_recipient_semantics() {
         vec![TokenEmbeddedRuleShape::DealsDamageToPlayerLoseGame { combat_only: true }]
     );
 
-    let destroy = parse_token_rules_surfaces_text(
+    let destroy = parse_rules(
         "1/1 Assassin creature token with \"Whenever this token deals damage to a planeswalker, destroy that planeswalker.\"",
     );
     assert_eq!(
@@ -164,7 +166,7 @@ fn typed_damage_trigger_rules_preserve_combat_and_recipient_semantics() {
 
 #[test]
 fn typed_multisentence_token_rules_preserve_costs_and_fallbacks() {
-    let upkeep = parse_token_rules_surfaces_text(
+    let upkeep = parse_rules(
         "6/6 Demon creature token with \"At the beginning of your upkeep, sacrifice another creature. If you can't, this token deals 6 damage to you.\"",
     );
     assert_eq!(
@@ -174,7 +176,7 @@ fn typed_multisentence_token_rules_preserve_costs_and_fallbacks() {
         }]
     );
 
-    let mana = parse_token_rules_surfaces_text(
+    let mana = parse_rules(
         "colorless artifact token named Banana with \"{T}, Sacrifice this token: Add {R} or {G}. You gain 2 life.\"",
     );
     assert_eq!(

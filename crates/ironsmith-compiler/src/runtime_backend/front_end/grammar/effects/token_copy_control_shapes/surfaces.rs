@@ -2,7 +2,6 @@ use super::super::*;
 
 use winnow::combinator::{alt, opt, repeat, repeat_till};
 use winnow::error::ModalResult as WResult;
-use winnow::prelude::*;
 use winnow::token::any;
 
 #[derive(Debug, Clone, PartialEq)]

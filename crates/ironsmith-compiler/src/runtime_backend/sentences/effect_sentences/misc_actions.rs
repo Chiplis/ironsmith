@@ -1,5 +1,4 @@
 use super::*;
-use crate::TextSpan;
 use crate::cards::builders::{
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
 };
@@ -9,39 +8,10 @@ use crate::runtime_backend::grammar::effects::misc_action_shapes::{
 };
 use crate::runtime_backend::grammar::leaf::parse_leaf_mana_cost_prefix_tokens;
 use crate::runtime_backend::lexer::token_slice_at_is;
-use crate::runtime_backend::parse_counter_type_from_tokens;
 
-const MONARCH_WORDS: &[&[&str]] = &[&["the", "monarch"], &["monarch"]];
-const INSTEAD_WORDS: &[&str] = &["instead"];
-const POWER_WORD: &str = "power";
-const IT_WORD: &str = "it";
-const NEXT_COMBAT_PHASE_THIS_TURN_WORDS: &[&str] = &["combat", "phase", "next", "this", "turn"];
-const COMBAT_PHASE_TURN_WORDS: &[&str] = &["combat", "turn"];
-const COMBAT_PHASE_WORDS: &[&str] = &["phase", "phases"];
-const DRAW_STEP_WORDS: &[&str] = &["draw", "step"];
-const TURN_WORDS: &[&str] = &["turn"];
-const END_TURN_WORDS: &[&[&str]] = &[&["the", "turn"], &["turn"]];
-const END_STEP_YOU_LOSE_WORDS: &[&str] = &["step", "you", "lose", "the", "game"];
-const COIN_WORDS: &[&[&str]] = &[&["a", "coin"], &["coin"]];
-const SELF_FLIP_TARGET_WORDS: &[&[&str]] = &[
-    &["it"],
-    &["this"],
-    &["this", "creature"],
-    &["this", "permanent"],
-];
-const ARTICLE_WORDS: &[&str] = &["a", "an"];
-const DIE_SIDED_SUFFIX: &str = "-sided";
-const SIDED_WORD: &str = "sided";
-const DIE_WORDS: &[&str] = &["die", "dice"];
-const CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
-const FOR_EACH_PREFIXES: &[&[&str]] = &[&["for", "each"], &["each"]];
-const ON_WORD: &str = "on";
-const FOR_EACH_EXPLICIT_PREFIX: &[&str] = &["for", "each"];
-const THIS_REFERENCE_PREFIXES: &[&[&str]] = &[&["this"], &["it"]];
 const ENERGY_WORD: &str = "e";
 const TICKET_WORD: &str = "tk";
 const ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
-const COUNTER_OR_COUNTERS_WORDS: &[&str] = &["counter", "counters"];
 const ENERGY_COUNTER_PAY_IGNORED_WORDS: &[&str] = &["and", "or", "energy", "counter", "counters"];
 const ENERGY_TEXT_WORD: &str = "energy";
 

@@ -938,6 +938,11 @@ def write_generated_source(
     lines.append("    names")
     lines.append("}")
     lines.append("")
+    lines.append("#[cfg(test)]")
+    lines.append("pub fn generated_parser_card_aliases() -> Vec<(String, String)> {")
+    lines.append("    generated_card_texts().aliases.clone()")
+    lines.append("}")
+    lines.append("")
     lines.append(
         "pub fn register_generated_parser_cards_chunk(registry: &mut CardRegistry, cursor: usize, chunk_size: usize) -> usize {"
     )

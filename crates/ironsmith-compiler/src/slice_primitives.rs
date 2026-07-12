@@ -20,10 +20,6 @@ pub(crate) fn contains_all<T: PartialEq>(items: &[T], expected: &[T]) -> bool {
     expected.iter().all(|candidate| contains(items, candidate))
 }
 
-pub(crate) fn all_match<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> bool {
-    items.iter().all(predicate)
-}
-
 pub(crate) fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) -> bool {
     if contains(items, &item) {
         false

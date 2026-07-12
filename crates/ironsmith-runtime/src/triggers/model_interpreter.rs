@@ -683,7 +683,6 @@ impl super::Trigger {
 
 #[cfg(test)]
 mod delayed_spec_tests {
-    use super::*;
     use crate::target::{ObjectFilter, PlayerFilter};
 
     #[test]

@@ -273,6 +273,7 @@ pub(crate) fn parse_leaf_fixed_mana_cost_prefix_tokens(
         .ok()
 }
 
+#[cfg(test)]
 pub(crate) fn parse_leaf_legacy_mana_cost_prefix_words(
     words: &[&str],
 ) -> Option<LeafManaCostPrefix> {
@@ -286,6 +287,7 @@ pub(crate) fn parse_leaf_legacy_mana_cost_prefix_words(
     })
 }
 
+#[cfg(test)]
 pub(crate) fn parse_leaf_mana_symbol_group_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<ManaSymbol>, CardTextError> {
@@ -317,6 +319,7 @@ fn parse_leaf_mana_symbol_group_spaced(input: &mut &str) -> WResult<Vec<ManaSymb
     spaced(parse_leaf_mana_symbol_group_inner).parse_next(input)
 }
 
+#[cfg(test)]
 fn parse_leaf_legacy_bare_mana_word_slice(
     input: &mut primitives::WordSliceInput<'_>,
 ) -> WResult<ManaSymbol> {
@@ -334,6 +337,7 @@ fn parse_leaf_legacy_bare_mana_word_slice(
     Ok(symbol)
 }
 
+#[cfg(test)]
 fn parse_leaf_legacy_mana_cost_prefix_word_slice(
     input: &mut primitives::WordSliceInput<'_>,
 ) -> WResult<ManaCost> {

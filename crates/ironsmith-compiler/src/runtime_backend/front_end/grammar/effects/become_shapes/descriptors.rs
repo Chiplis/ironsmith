@@ -3,7 +3,7 @@ use crate::effect::Value;
 use crate::runtime_backend::front_end::lexer::{
     OwnedLexToken, parser_token_word_refs, trim_lexed_commas,
 };
-use crate::types::{CardType, Subtype, SubtypeFamily};
+use crate::types::{CardType, Subtype};
 use winnow::combinator::alt;
 use winnow::prelude::*;
 

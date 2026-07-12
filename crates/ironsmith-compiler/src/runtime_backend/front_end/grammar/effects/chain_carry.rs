@@ -335,23 +335,6 @@ pub(crate) fn split_all_abilities_and_gain_tokens(
     .map(|(_, rest)| trim_lexed_commas(rest))
 }
 
-pub(crate) fn contains_beginning_end_step_words(words: &[&str]) -> bool {
-    contains_word_phrase(words, &["beginning", "of", "your", "next", "end", "step"])
-        || contains_word_phrase(words, &["beginning", "of", "the", "end", "step"])
-        || contains_word_phrase(words, &["beginning", "of", "next", "end", "step"])
-        || contains_word_phrase(words, &["beginning", "of", "the", "next", "end", "step"])
-}
-
-pub(crate) fn contains_beginning_upkeep_words(words: &[&str]) -> bool {
-    contains_word_phrase(words, &["beginning", "of", "your", "next", "upkeep"])
-        || contains_word_phrase(words, &["beginning", "of", "next", "upkeep"])
-        || contains_word_phrase(words, &["beginning", "of", "the", "next", "upkeep"])
-}
-
-pub(crate) fn contains_end_of_combat_words(words: &[&str]) -> bool {
-    contains_word_phrase(words, &["end", "of", "combat"])
-}
-
 pub(crate) fn parse_delayed_copy_facts_tokens(tokens: &[OwnedLexToken]) -> DelayedCopyFacts {
     let has_exile = contains_semantic_word(tokens, "exile", "exiles");
     let has_sacrifice = contains_semantic_word(tokens, "sacrifice", "sacrifices");
@@ -602,31 +585,6 @@ fn contains_beginning_upkeep_tokens(tokens: &[OwnedLexToken]) -> bool {
         .or_else(|| find_semantic_phrase(tokens, &["beginning", "of", "next", "upkeep"]))
         .or_else(|| find_semantic_phrase(tokens, &["beginning", "of", "the", "next", "upkeep"]))
         .is_some()
-}
-
-fn contains_word_phrase(words: &[&str], phrase: &'static [&'static str]) -> bool {
-    let mut input = words;
-    while !input.is_empty() {
-        let mut probe = input;
-        let mut matched = true;
-        for expected in phrase {
-            if primitives::word_slice_exact(expected)
-                .parse_next(&mut probe)
-                .is_err()
-            {
-                matched = false;
-                break;
-            }
-        }
-        if matched {
-            return true;
-        }
-        let skipped: WResult<&str> = any.parse_next(&mut input);
-        if skipped.is_err() {
-            break;
-        }
-    }
-    false
 }
 
 fn contains_semantic_word(

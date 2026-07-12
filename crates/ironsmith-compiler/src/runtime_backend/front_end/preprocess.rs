@@ -1,6 +1,6 @@
 use super::grammar::structure::MetadataLineKind;
 use super::grammar::{line_semantic_facts, preprocess as preprocess_grammar};
-use super::lexer::{TokenWordView, lex_line, parser_token_word_refs, render_token_slice};
+use super::lexer::lex_line;
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
 };

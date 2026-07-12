@@ -2,7 +2,6 @@ use super::*;
 
 use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
 use winnow::error::ModalResult as WResult;
-use winnow::prelude::*;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,11 +31,6 @@ pub(crate) struct CounterSpellConditionalShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ExileGreatestPowerCreatureShape<'a> {
     pub(crate) target_tokens: &'a [OwnedLexToken],
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ForEachRelativeControlShape<'a> {
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
 }
 
 fn for_each_player_kind<'a>(input: &mut LexStream<'a>) -> WResult<ForEachPlayerKind> {
@@ -119,20 +113,6 @@ pub(crate) fn parse_for_each_no_control_lose_game_tokens(
         "for-each-no-control-lose-game",
     )
     .ok()
-}
-
-pub(crate) fn parse_for_each_relative_control_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ForEachRelativeControlShape<'_>> {
-    let (_, tail_tokens) = primitives::parse_prefix(
-        tokens,
-        (
-            primitives::kw("who"),
-            alt((primitives::kw("control"), primitives::kw("controls"))),
-        )
-            .void(),
-    )?;
-    (!tail_tokens.is_empty()).then_some(ForEachRelativeControlShape { tail_tokens })
 }
 
 fn second_spell_cast_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -277,15 +257,5 @@ mod tests {
         let shape = parse_for_each_no_control_lose_game_tokens(&tokens).unwrap();
         assert_eq!(shape.player_kind, ForEachPlayerKind::Opponent);
         assert_eq!(render_token_slice(shape.filter_tokens), "a creature");
-    }
-
-    #[test]
-    fn parses_relative_control_prefix() {
-        let tokens = lex_line("who controls a creature draws a card", 0).unwrap();
-        let shape = parse_for_each_relative_control_tokens(&tokens).unwrap();
-        assert_eq!(
-            render_token_slice(shape.tail_tokens),
-            "a creature draws a card"
-        );
     }
 }

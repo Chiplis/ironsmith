@@ -23,8 +23,8 @@ use crate::runtime_backend::grammar::effects::{
 use crate::runtime_backend::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed;
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
+use crate::runtime_backend::util::trim_commas;
 use crate::runtime_backend::util::{helper_tag_for_tokens, parse_subject};
-use crate::runtime_backend::util::{parse_choice_count_token_prefix_consumed, trim_commas};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;

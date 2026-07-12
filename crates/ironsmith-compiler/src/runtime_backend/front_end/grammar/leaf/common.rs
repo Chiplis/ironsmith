@@ -1,8 +1,12 @@
-use winnow::ascii::{multispace0, space1};
+use winnow::ascii::multispace0;
+#[cfg(test)]
+use winnow::ascii::space1;
 use winnow::combinator::{alt, delimited, eof, peek, terminated};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
-use winnow::token::{literal, one_of};
+#[cfg(test)]
+use winnow::token::literal;
+use winnow::token::one_of;
 
 use crate::cards::builders::CardTextError;
 
@@ -22,6 +26,7 @@ pub(super) fn phrase<'a>(
     terminated(expected, word_boundary).void()
 }
 
+#[cfg(test)]
 pub(super) fn text_phrase_words<'a>(
     expected: &'static [&'static str],
 ) -> impl Parser<&'a str, (), ErrMode<ContextError>> {

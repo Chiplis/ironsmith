@@ -11,27 +11,22 @@ use super::super::super::primitives;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CreationWordClass {
     And,
-    AndOr,
     Article,
     ArticleOrThe,
-    Attached,
     Attacking,
     Cast,
     Copy,
     Counter,
     Create,
     Decayed,
-    DelayReference,
     DescriptorEnd,
     Except,
-    Exile,
     GrantVerb,
     Half,
     Haste,
     InlineReference,
     Legendary,
     LoseVerb,
-    NameEnd,
     Named,
     Of,
     On,
@@ -42,7 +37,6 @@ pub(crate) enum CreationWordClass {
     Put,
     PtX,
     RulesTextStart,
-    Sacrifice,
     Soulbond,
     SourceCounterLeading,
     Spell,
@@ -63,27 +57,22 @@ impl CreationWordClass {
     fn words(self) -> &'static [&'static str] {
         match self {
             Self::And => &["and"],
-            Self::AndOr => &["and", "or"],
             Self::Article => &["a", "an"],
             Self::ArticleOrThe => &["a", "an", "the"],
-            Self::Attached => &["attached"],
             Self::Attacking => &["attacking"],
             Self::Cast => &["cast", "casts"],
             Self::Copy => &["copy", "copies"],
             Self::Counter => &["counter", "counters"],
             Self::Create => &["create", "creates"],
             Self::Decayed => &["decayed"],
-            Self::DelayReference => &["token", "tokens", "permanent", "permanents", "it", "them"],
             Self::DescriptorEnd => &["with", "has", "have", "gain", "gains"],
             Self::Except => &["except"],
-            Self::Exile => &["exile"],
             Self::GrantVerb => &["has", "have", "gain", "gains"],
             Self::Half => &["half"],
             Self::Haste => &["haste"],
             Self::InlineReference => &["that", "it", "those", "thats", "its"],
             Self::Legendary => &["legendary"],
             Self::LoseVerb => &["lose", "loses"],
-            Self::NameEnd => &["with", "that", "which", "thats"],
             Self::Named => &["named"],
             Self::Of => &["of"],
             Self::On => &["on"],
@@ -127,7 +116,6 @@ impl CreationWordClass {
                 "deals",
                 "deal",
             ],
-            Self::Sacrifice => &["sacrifice"],
             Self::Soulbond => &["soulbond"],
             Self::SourceCounterLeading => &["a", "an", "one", "another"],
             Self::Spell => &["spell", "spells"],
@@ -155,8 +143,6 @@ pub(crate) enum CreationPhrase {
     AttackingThatPlayer,
     AttackTarget,
     BasicLandTypes,
-    BeginningNextEndStep,
-    BeginningYourNextEndStep,
     CardExiledThisWay,
     CardTypesAmong,
     ColorsOfMana,
@@ -243,16 +229,6 @@ impl CreationPhrase {
                     "basic", "land", "types", "among", "the", "lands", "you", "control",
                 ],
             ],
-            Self::BeginningNextEndStep => &[
-                &["beginning", "of", "your", "next", "end", "step"],
-                &["beginning", "of", "the", "next", "end", "step"],
-                &["beginning", "of", "next", "end", "step"],
-                &["beginning", "of", "the", "end", "step"],
-                &["beginning", "of", "end", "step"],
-            ],
-            Self::BeginningYourNextEndStep => {
-                &[&["beginning", "of", "your", "next", "end", "step"]]
-            }
             Self::CardExiledThisWay => &[
                 &["card", "exiled", "this", "way"],
                 &["cards", "exiled", "this", "way"],
@@ -494,14 +470,6 @@ pub(crate) struct CreationWords<'a> {
 impl<'a> CreationWords<'a> {
     pub(crate) fn new(words: &'a [&'a str]) -> Self {
         Self { words }
-    }
-
-    pub(crate) fn len(self) -> usize {
-        self.words.len()
-    }
-
-    pub(crate) fn is_empty(self) -> bool {
-        self.words.is_empty()
     }
 
     pub(crate) fn class_at(self, idx: usize, class: CreationWordClass) -> bool {

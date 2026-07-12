@@ -5,8 +5,6 @@ use crate::cards::CardDefinition;
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ParseAnnotations};
 use crate::{parse_loss, parse_trace};
 
-use super::model::SemanticDocument;
-
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct CompilePolicy {
     pub(crate) allow_unsupported: bool,
@@ -110,16 +108,5 @@ impl CardTextCompiler {
         } else {
             store_cached_parse(cache_key, result)
         }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn analyze(
-        builder: CardDefinitionBuilder,
-        text: String,
-        policy: CompilePolicy,
-    ) -> Result<SemanticDocument, CardTextError> {
-        let (doc, _) =
-            super::parse_text_to_semantic_document(builder, text, policy.allow_unsupported)?;
-        Ok(doc)
     }
 }

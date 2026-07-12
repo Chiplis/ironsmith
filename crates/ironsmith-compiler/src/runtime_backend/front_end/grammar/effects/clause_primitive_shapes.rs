@@ -237,14 +237,6 @@ pub(crate) fn is_it_reference_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_phrase(tokens, &["it"])
 }
 
-pub(crate) fn starts_with_trigger_intro_shape(tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_prefix(
-        trim_shape_edges(tokens),
-        alt((primitives::kw("when"), primitives::kw("whenever"))),
-    )
-    .is_some()
-}
-
 fn value_references_power(value: &Value) -> bool {
     match value {
         Value::SourcePower | Value::PowerOf(_) => true,

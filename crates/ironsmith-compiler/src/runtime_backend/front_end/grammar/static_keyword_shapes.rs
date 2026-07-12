@@ -1,7 +1,6 @@
-use winnow::combinator::eof;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
-use winnow::token::{literal, take, take_till};
+use winnow::token::{literal, take_till};
 
 use super::super::lexer::OwnedLexToken;
 use super::primitives;
@@ -40,26 +39,6 @@ pub(crate) fn parse_rule_id_head(rule_id: &str) -> Option<&str> {
     prefix.ok()?;
     let head: WResult<&str> = take_till(1.., '_').parse_next(&mut input);
     head.ok()
-}
-
-pub(crate) fn parse_plural_card_type_stem(word: &str) -> &str {
-    if word.as_bytes().last().copied() != Some(b's') {
-        return word;
-    }
-    let mut input = word;
-    let parsed_stem: WResult<&str> = take(word.len().saturating_sub(1)).parse_next(&mut input);
-    let Ok(stem) = parsed_stem else {
-        return word;
-    };
-    let suffix: WResult<&str> = literal('s').parse_next(&mut input);
-    if suffix.is_err() {
-        return word;
-    }
-    let complete: WResult<&str> = eof.parse_next(&mut input);
-    if complete.is_err() {
-        return word;
-    }
-    stem
 }
 
 pub(crate) fn parse_pt_components(raw: &str) -> Option<PtComponents<'_>> {
@@ -101,8 +80,6 @@ mod tests {
     #[test]
     fn parses_rule_head_and_pt_components() {
         assert_eq!(parse_rule_id_head("parse_ward_line"), Some("ward"));
-        assert_eq!(parse_plural_card_type_stem("creatures"), "creature");
-        assert_eq!(parse_plural_card_type_stem("artifact"), "artifact");
         assert_eq!(
             parse_pt_components("+2/-1"),
             Some(PtComponents {

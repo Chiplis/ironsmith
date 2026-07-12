@@ -66,12 +66,6 @@ pub(crate) struct SubtypeGrantVerbShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LifeManaGrantShape {
-    pub(crate) cast: TokenBoundary,
-    pub(crate) by: TokenBoundary,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PayLifeEtbShape {
     pub(crate) pay: TokenBoundary,
     pub(crate) saw_enter: bool,
@@ -114,10 +108,6 @@ pub(crate) fn parse_conditional_spell_keyword(
         "conditional-spell-keyword",
     )
     .ok()
-}
-
-pub(crate) fn parse_named_word(words: &[&str]) -> Option<WordBoundary> {
-    first_word(words, &["named"])
 }
 
 pub(crate) fn parse_attachment_restriction_span(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {
@@ -165,10 +155,6 @@ pub(crate) fn parse_pregame_battlefield_shape(
     })
 }
 
-pub(crate) fn parse_pregame_counter_word(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
-    first_token_word(tokens, &["counter", "counters"])
-}
-
 pub(crate) fn parse_composed_anthem_head(tokens: &[OwnedLexToken]) -> ComposedAnthemHead {
     if phrase_span(tokens, &["until", "end", "of", "turn"]).is_some() {
         return ComposedAnthemHead::Temporary;
@@ -176,10 +162,6 @@ pub(crate) fn parse_composed_anthem_head(tokens: &[OwnedLexToken]) -> ComposedAn
     ComposedAnthemHead::Permanent {
         action: first_token_word(tokens, &["get", "gets", "have", "has"]),
     }
-}
-
-pub(crate) fn parse_dont_untap_head(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
-    first_token_word(tokens, &["don't", "dont", "doesn't", "doesnt"])
 }
 
 pub(crate) fn parse_as_enters_subject<'a>(
@@ -246,14 +228,6 @@ pub(crate) fn parse_trigger_duplication_causes_word(words: &[&str]) -> Option<Wo
     first_word(words, &["causes"])
 }
 
-pub(crate) fn parse_enter_word(words: &[&str]) -> Option<WordBoundary> {
-    first_word(words, &["enter", "enters"])
-}
-
-pub(crate) fn parse_copy_exception_word(words: &[&str]) -> Option<WordBoundary> {
-    first_word(words, &["except"])
-}
-
 pub(crate) fn parse_copy_exception_type_removal_span(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenSpan> {
@@ -289,10 +263,6 @@ fn copy_exception_type_removal(input: &mut LexStream<'_>) -> WResult<usize> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_characteristic_equal_to_span(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {
-    phrase_span(tokens, &["equal", "to"])
-}
-
 pub(crate) fn parse_animation_verbs(tokens: &[OwnedLexToken]) -> Option<AnimationVerbShape> {
     let be = first_token_word(tokens, &["is", "are"])?;
     let tail = &tokens[be.token + 1..];
@@ -318,37 +288,6 @@ pub(crate) fn parse_subtype_grant_verbs(tokens: &[OwnedLexToken]) -> Option<Subt
             token: be.token + 1 + relative_with.token,
         },
     })
-}
-
-pub(crate) fn parse_mana_value_grant_for_word(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
-    first_token_word(tokens, &["for"])
-}
-
-pub(crate) fn parse_life_mana_grant_shape(tokens: &[OwnedLexToken]) -> Option<LifeManaGrantShape> {
-    Some(LifeManaGrantShape {
-        cast: first_token_word(tokens, &["cast"])?,
-        by: first_token_word(tokens, &["by"])?,
-    })
-}
-
-pub(crate) fn parse_permission_counter_word(words: &[&str]) -> Option<WordBoundary> {
-    first_word(words, &["counter", "counters"])
-}
-
-pub(crate) fn parse_attack_word(words: &[&str]) -> Option<WordBoundary> {
-    first_word(words, &["attack", "attacks"])
-}
-
-pub(crate) fn parse_retrace_have_word(words: &[&str]) -> Option<WordBoundary> {
-    first_word(words, &["have", "has"])
-}
-
-pub(crate) fn parse_hand_size_condition_comma(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
-    first_comma(tokens)
-}
-
-pub(crate) fn parse_draw_replacement_instead_word(words: &[&str]) -> Option<WordBoundary> {
-    first_word(words, &["instead"])
 }
 
 pub(crate) fn parse_pay_life_etb_shape(tokens: &[OwnedLexToken]) -> Option<PayLifeEtbShape> {
@@ -439,18 +378,6 @@ fn first_word(words: &[&str], expected: &[&str]) -> Option<WordBoundary> {
     }
 }
 
-fn first_comma(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
-    let mut input = LexStream::new(tokens);
-    let initial_len = input.len();
-    loop {
-        let token = initial_len.saturating_sub(input.len());
-        let parsed: WResult<&OwnedLexToken> = any.parse_next(&mut input);
-        if parsed.ok()?.is_comma() {
-            return Some(TokenBoundary { token });
-        }
-    }
-}
-
 fn phrase_span(tokens: &[OwnedLexToken], expected: &'static [&'static str]) -> Option<TokenSpan> {
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
@@ -520,20 +447,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_grant_and_replacement_boundaries() {
-        let line = tokens(&["you", "may", "cast", "spells", "by", "paying", "life"]);
-        assert_eq!(
-            parse_life_mana_grant_shape(&line),
-            Some(LifeManaGrantShape {
-                cast: TokenBoundary { token: 2 },
-                by: TokenBoundary { token: 4 },
-            })
-        );
-        assert_eq!(
-            parse_draw_replacement_instead_word(&["draw", "two", "instead"]),
-            Some(WordBoundary { word: 2 })
-        );
-
+    fn parses_copy_exception_boundary() {
         let copy = tokens(&[
             "it", "enters", "as", "a", "copy", "except", "its", "an", "artifact", "and", "it",
             "loses", "all", "other", "card", "types",

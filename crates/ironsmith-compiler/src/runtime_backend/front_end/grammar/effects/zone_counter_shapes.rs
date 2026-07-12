@@ -455,12 +455,6 @@ pub(crate) fn strip_trailing_instead(tokens: &[OwnedLexToken]) -> &[OwnedLexToke
     .unwrap_or(tokens)
 }
 
-pub(crate) fn strip_each_object_prefix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let (_, rest) =
-        primitives::parse_prefix(tokens, alt((primitives::kw("each"), primitives::kw("all"))))?;
-    Some(trim_shape_edges(rest))
-}
-
 pub(crate) fn strip_each_counter_prefix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (_, rest) = primitives::parse_prefix(tokens, primitives::kw("each"))?;
     Some(trim_shape_edges(rest))

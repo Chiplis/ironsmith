@@ -2,16 +2,14 @@ use crate::ability::ActivationTiming;
 use crate::cards::builders::{CardTextError, ParsedLineAst, ParsedRestrictions};
 
 use super::cst::{
-    ActivatedLineCst, KeywordLineCst, LevelItemKindCst, RewriteLineCst, SagaChapterLineCst,
-    StatementLineCst, StaticLineCst, TriggeredLineCst,
+    ActivatedLineCst, RewriteLineCst, SagaChapterLineCst, StatementLineCst, StaticLineCst,
+    TriggeredLineCst,
 };
 use super::grammar::activation_costs::{ActivationCostCst, ActivationCostSegmentCst};
 use super::ir::{
-    RewriteKeywordLine, RewriteLevelHeader, RewriteLevelItem, RewriteLevelItemKind,
-    RewriteModalBlock, RewriteModalMode, RewriteSagaChapterLine, RewriteSemanticItem,
-    RewriteUnsupportedLine,
+    RewriteKeywordLine, RewriteLevelHeader, RewriteLevelItem, RewriteModalBlock, RewriteModalMode,
+    RewriteSagaChapterLine, RewriteSemanticItem, RewriteUnsupportedLine,
 };
-use super::lexer::render_token_slice;
 use super::parser_support::split_tokens_for_parse;
 use super::util::join_sentences_with_period;
 
@@ -65,7 +63,6 @@ pub(crate) fn lower_non_metadata_rewrite_line_cst(
         )),
         RewriteLineCst::Keyword(keyword) => Ok(RewriteSemanticItem::Keyword(RewriteKeywordLine {
             info: keyword.info,
-            text: keyword.text,
             kind: keyword.kind,
             parse_tokens: keyword.parse_tokens,
             full_parse_tokens: keyword.full_parse_tokens,
@@ -120,11 +117,9 @@ fn lower_activated_line(
         info.clone(),
         cost,
         activated.cost_parse_tokens,
-        activated.effect_text,
         activated.effect_parse_tokens,
         ActivationTiming::AnyTime,
         activation_cost_cst_is_loyalty(&activated.cost),
-        activated.presentation_label,
         activated.chosen_option,
     )?;
     Ok(parsed_line_item(
@@ -141,9 +136,7 @@ fn lower_triggered_line(triggered: TriggeredLineCst) -> Result<RewriteSemanticIt
             info.clone(),
             &triggered.full_text,
             &triggered.full_parse_tokens,
-            &triggered.trigger_text,
             &triggered.trigger_parse_tokens,
-            &triggered.effect_text,
             &triggered.effect_parse_tokens,
             triggered.intervening_if.clone(),
             triggered.presentation.as_ref(),
@@ -174,10 +167,8 @@ fn lower_static_line(static_line: StaticLineCst) -> Result<RewriteSemanticItem, 
             Vec::new()
         } else {
             let parsed_tokens = join_sentences_with_period(&parsed_sentences);
-            let parsed_text = render_token_slice(&parsed_tokens).trim().to_string();
             vec![super::semantic_line_parsing::parse_static_line(
                 info.clone(),
-                &parsed_text,
                 &parsed_tokens,
                 static_line.chosen_option.as_ref(),
             )?]
@@ -185,7 +176,6 @@ fn lower_static_line(static_line: StaticLineCst) -> Result<RewriteSemanticItem, 
     } else {
         vec![super::semantic_line_parsing::parse_static_line(
             info.clone(),
-            &static_line.text,
             &static_line.parse_tokens,
             static_line.chosen_option.as_ref(),
         )?]
@@ -199,7 +189,6 @@ fn lower_statement_line(
     let info = statement_line.info;
     let chunks = super::semantic_line_parsing::parse_statement_token_groups_to_chunks(
         info.clone(),
-        &statement_line.text,
         &statement_line.parse_tokens,
         &statement_line.parse_groups,
     )?;
@@ -240,13 +229,6 @@ fn lower_level_header(
             .items
             .into_iter()
             .map(|item| RewriteLevelItem {
-                info: item.info,
-                text: item.text,
-                kind: match item.kind {
-                    LevelItemKindCst::KeywordActions => RewriteLevelItemKind::KeywordActions,
-                    LevelItemKindCst::StaticAbilities => RewriteLevelItemKind::StaticAbilities,
-                    LevelItemKindCst::ActivatedAbility => RewriteLevelItemKind::ActivatedAbility,
-                },
                 parsed: item.parsed,
             })
             .collect(),
@@ -257,6 +239,7 @@ fn lower_saga_chapter(saga: SagaChapterLineCst) -> Result<RewriteSemanticItem, C
     Ok(RewriteSemanticItem::SagaChapter(RewriteSagaChapterLine {
         info: saga.info,
         chapters: saga.chapters,
+        #[cfg(test)]
         text: saga.text,
         effects_ast: saga.effects_ast,
     }))

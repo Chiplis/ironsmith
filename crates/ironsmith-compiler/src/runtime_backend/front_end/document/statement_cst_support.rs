@@ -247,10 +247,6 @@ pub(super) fn extend_triggered_line_with_result_followups(
         }
 
         let followup_text = render_token_slice(&line.tokens).trim().to_string();
-        if !triggered.effect_text.is_empty() {
-            triggered.effect_text.push('\n');
-        }
-        triggered.effect_text.push_str(followup_text.as_str());
         if !triggered.full_text.is_empty() {
             triggered.full_text.push('\n');
         }
@@ -279,11 +275,6 @@ pub(super) fn extend_activated_line_with_result_followups(
             break;
         }
 
-        let followup_text = render_token_slice(&line.tokens).trim().to_string();
-        if !activated.effect_text.is_empty() {
-            activated.effect_text.push('\n');
-        }
-        activated.effect_text.push_str(followup_text.as_str());
         append_joined_line_tokens(&mut activated.effect_parse_tokens, &line.tokens);
 
         next_idx += 1;

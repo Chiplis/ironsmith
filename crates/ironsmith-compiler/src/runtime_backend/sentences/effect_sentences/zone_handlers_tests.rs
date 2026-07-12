@@ -1,4 +1,7 @@
 use super::*;
+use crate::runtime_backend::activation_helpers::{
+    parse_any_combination_mana_colors, parse_or_mana_color_choices,
+};
 use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
 use crate::runtime_backend::util::tokenize_line;
 

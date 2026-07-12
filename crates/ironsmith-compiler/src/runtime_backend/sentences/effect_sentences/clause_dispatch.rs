@@ -2,8 +2,8 @@ pub(crate) use self::become_clause::parse_become_clause;
 use self::helpers::{parse_controller_or_owner_of_target_subject, render_lower_words};
 use self::next_turn_cant::parse_next_turn_cant_clause;
 use super::super::activation_and_restrictions::{
-    build_may_cast_tagged_effect, find_negation_span, parse_cant_restriction_clause,
-    parse_cant_restrictions, parse_choose_card_type_phrase_words, parse_choose_color_phrase_words,
+    build_may_cast_tagged_effect, find_negation_span, parse_cant_restrictions,
+    parse_choose_card_type_phrase_words, parse_choose_color_phrase_words,
     parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
     parse_may_cast_it_sentence, parse_single_word_keyword_action,
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause_with_count_value,
@@ -14,30 +14,16 @@ use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::effects::clause_dispatch_shapes as clause_grammar;
 use super::super::grammar::effects::followup_shapes as followup_grammar;
 use super::super::grammar::effects::parse_mana_replacement_clause_spec_lexed;
-use super::super::grammar::primitives::{self as grammar, TokenWordView};
+use super::super::grammar::primitives::TokenWordView;
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
-use super::super::keyword_static::{
-    keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
-    parse_pt_modifier_values,
-};
-use super::super::lexer::{
-    LexedClause, OwnedLexToken, complete_word_sequence_choice, complete_word_sequence_surface,
-    contains_token_word, every_word_present, locate_word, locate_word_sequence,
-    token_slice_first_is, token_slice_first_is_any, word_choice_present, word_prefix_present,
-    word_sequence_present, word_slice_first_is_any, word_suffix_present,
-};
+use super::super::keyword_static::{parse_ability_line, parse_pt_modifier_values};
+use super::super::lexer::{LexedClause, OwnedLexToken, contains_token_word};
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
-use super::super::token_primitives::{
-    find_window_by, items_have, items_start_with, locate_index as locate_token_index,
-};
 use super::super::util::{
-    contains_until_end_of_turn, parse_card_type, parse_color, parse_number, parse_subject,
-    parse_subtype_flexible, parse_target_phrase, parse_value, parser_trace, parser_trace_stack,
-    span_from_tokens, token_boundary_for_word, trim_commas, word_refs_except,
+    parse_subject, parse_target_phrase, parser_trace, parser_trace_stack, span_from_tokens,
+    trim_commas,
 };
-use super::chain_carry::{parse_leading_player_may, remove_first_word, remove_through_first_word};
-use super::clause_pattern_helpers::extract_subject_player;
 use super::clause_primitives::run_clause_primitives;
 use super::dispatch_inner::{
     parse_additional_phase_sentence, parse_prevent_damage_sentence, parse_take_extra_turn_sentence,
@@ -56,14 +42,14 @@ use super::subject_verb_primitives::{
 };
 use super::verb_dispatch::parse_effect_with_verb;
 use super::verb_handlers::parse_control_duration;
-use super::zone_counter_helpers::{parse_half_starting_life_total_value, parse_put_counters};
+use super::zone_counter_helpers::parse_put_counters;
 use super::zone_handlers::{
     collapse_leading_signed_pt_modifier_tokens,
     parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_control, parse_sacrifice,
 };
 use super::{
     Verb, bind_implicit_player_context, find_verb, parse_effect_chain_with_subject_verb_primitives,
-    parse_simple_gain_ability_clause, parse_simple_lose_ability_clause, parse_subtype_word,
+    parse_simple_gain_ability_clause, parse_simple_lose_ability_clause,
 };
 use crate::TagKey;
 use crate::cards::builders::{
@@ -72,8 +58,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::object::CounterType;
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-use crate::types::{CardType, Subtype};
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 

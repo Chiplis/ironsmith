@@ -18,12 +18,6 @@ pub(super) struct PlayerStatusTokenShape<'a> {
     pub(super) status: PlayerStatusAst,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) struct PlayerStatusWordShape<'a> {
-    pub(super) subject_words: Option<&'a [&'a str]>,
-    pub(super) status: PlayerStatusAst,
-}
-
 pub(super) fn parse_subject_status(tokens: &[OwnedLexToken]) -> Option<SubjectStatusConditionAst> {
     let tokens = trim_clause(tokens);
     parse_subject_status_with_copula(tokens).or_else(|| parse_subject_status_without_copula(tokens))
@@ -79,41 +73,9 @@ pub(super) fn parse_player_status_tokens(
     })
 }
 
-pub(super) fn parse_player_status_words<'a>(
-    words: &'a [&'a str],
-) -> Option<PlayerStatusWordShape<'a>> {
-    let mut shortcut: primitives::WordSliceInput<'a> = words;
-    if alt((
-        primitives::word_slice_exact("youre"),
-        primitives::word_slice_exact("you're"),
-    ))
-    .parse_next(&mut shortcut)
-    .is_ok()
-    {
-        return Some(PlayerStatusWordShape {
-            subject_words: None,
-            status: parse_player_status_tail_words(shortcut)?,
-        });
-    }
-
-    let mut input: primitives::WordSliceInput<'a> = words;
-    let subject_words = take_until_player_status_action_words(&mut input).ok()?;
-    parse_player_status_action_words(&mut input).ok()?;
-    Some(PlayerStatusWordShape {
-        subject_words: Some(subject_words),
-        status: parse_player_status_tail_words(input)?,
-    })
-}
-
 pub(super) fn parse_player_status_tail_tokens(tokens: &[OwnedLexToken]) -> Option<PlayerStatusAst> {
     let tokens = trim_clause(tokens);
     primitives::parse_all(tokens, parse_player_status_tail_lexed, "player status tail").ok()
-}
-
-pub(super) fn parse_player_status_tail_words(words: &[&str]) -> Option<PlayerStatusAst> {
-    let mut input: primitives::WordSliceInput<'_> = words;
-    let status = parse_player_status_tail_word_slice(&mut input).ok()?;
-    input.is_empty().then_some(status)
 }
 
 pub(super) fn parse_player_achievement(
@@ -248,25 +210,6 @@ fn parse_player_status_tail_lexed(input: &mut LexStream<'_>) -> WResult<PlayerSt
     .parse_next(input)
 }
 
-fn parse_player_status_tail_word_slice(
-    input: &mut primitives::WordSliceInput<'_>,
-) -> WResult<PlayerStatusAst> {
-    opt(parse_article_word).parse_next(input)?;
-    alt((
-        primitives::word_slice_exact("monarch").value(PlayerStatusAst::Monarch),
-        primitives::word_slice_exact("initiative").value(PlayerStatusAst::Initiative),
-        (
-            alt((
-                primitives::word_slice_exact("max"),
-                primitives::word_slice_exact("maximum"),
-            )),
-            primitives::word_slice_exact("speed"),
-        )
-            .value(PlayerStatusAst::MaxSpeed),
-    ))
-    .parse_next(input)
-}
-
 fn parse_achievement_head(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], bool)> {
     let mut shortcut = LexStream::new(tokens);
     if alt((primitives::kw("you've"), primitives::kw("youve")))
@@ -373,26 +316,6 @@ fn parse_player_status_action(input: &mut LexStream<'_>) -> WResult<()> {
     .parse_next(input)
 }
 
-fn take_until_player_status_action_words<'a>(
-    input: &mut primitives::WordSliceInput<'a>,
-) -> WResult<&'a [&'a str]> {
-    repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(parse_player_status_action_words))
-        .map(|((), ())| ())
-        .take()
-        .parse_next(input)
-}
-
-fn parse_player_status_action_words(input: &mut primitives::WordSliceInput<'_>) -> WResult<()> {
-    alt((
-        primitives::word_slice_exact("are"),
-        primitives::word_slice_exact("have"),
-        primitives::word_slice_exact("has"),
-        primitives::word_slice_exact("is"),
-    ))
-    .void()
-    .parse_next(input)
-}
-
 fn parse_copula(input: &mut LexStream<'_>) -> WResult<()> {
     alt((primitives::kw("is"), primitives::kw("are")))
         .void()
@@ -404,16 +327,6 @@ fn parse_article(input: &mut LexStream<'_>) -> WResult<()> {
         primitives::kw("a"),
         primitives::kw("an"),
         primitives::kw("the"),
-    ))
-    .void()
-    .parse_next(input)
-}
-
-fn parse_article_word(input: &mut primitives::WordSliceInput<'_>) -> WResult<()> {
-    alt((
-        primitives::word_slice_exact("a"),
-        primitives::word_slice_exact("an"),
-        primitives::word_slice_exact("the"),
     ))
     .void()
     .parse_next(input)

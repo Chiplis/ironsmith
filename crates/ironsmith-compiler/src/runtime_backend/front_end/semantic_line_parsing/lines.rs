@@ -114,16 +114,13 @@ fn normalized_triggered_source_words_from_tokens(tokens: &[OwnedLexToken]) -> Ve
 
 pub(crate) fn parse_statement_token_groups_to_chunks(
     info: LineInfo,
-    text: &str,
     parse_tokens: &[OwnedLexToken],
     parse_groups: &[Vec<OwnedLexToken>],
 ) -> Result<Vec<LineAst>, CardTextError> {
     parse_statement_to_chunks_impl(
         &RewriteStatementLine {
             info,
-            text: text.to_string(),
             parse_tokens: parse_tokens.to_vec(),
-            parse_groups: parse_groups.to_vec(),
         },
         parse_tokens,
         parse_groups,
@@ -720,9 +717,7 @@ pub(crate) fn parse_triggered_line(
     info: LineInfo,
     full_text: &str,
     full_parse_tokens: &[OwnedLexToken],
-    trigger_text: &str,
     trigger_parse_tokens: &[OwnedLexToken],
-    effect_text: &str,
     effect_parse_tokens: &[OwnedLexToken],
     intervening_if: Option<PredicateAst>,
     presentation: Option<&PresentationLabel>,
@@ -734,10 +729,6 @@ pub(crate) fn parse_triggered_line(
             info,
             full_text: full_text.to_string(),
             full_parse_tokens: full_parse_tokens.to_vec(),
-            trigger_text: trigger_text.to_string(),
-            trigger_parse_tokens: trigger_parse_tokens.to_vec(),
-            effect_text: effect_text.to_string(),
-            effect_parse_tokens: effect_parse_tokens.to_vec(),
             intervening_if,
             max_triggers_per_turn,
             chosen_option: chosen_option.cloned(),
@@ -1641,14 +1632,12 @@ fn capitalize_first_equip_cost_alternative_display(tokens: &[OwnedLexToken]) -> 
 
 pub(crate) fn parse_static_line(
     info: LineInfo,
-    text: &str,
     parse_tokens: &[OwnedLexToken],
     chosen_option: Option<&ChosenOptionContext>,
 ) -> Result<LineAst, CardTextError> {
     parse_static_line_impl(
         &RewriteStaticLine {
             info,
-            text: text.to_string(),
             parse_tokens: parse_tokens.to_vec(),
             chosen_option: chosen_option.cloned(),
         },
@@ -1979,10 +1968,6 @@ fn test_rewrite_triggered_line(raw_line: &str, full_text: &str) -> RewriteTrigge
         info: test_line_info(raw_line),
         full_text: full_text.to_string(),
         full_parse_tokens: lex_line(full_text, 0).unwrap_or_default(),
-        trigger_text: String::new(),
-        trigger_parse_tokens: Vec::new(),
-        effect_text: String::new(),
-        effect_parse_tokens: Vec::new(),
         intervening_if: None,
         presentation: None,
         max_triggers_per_turn: Some(1),

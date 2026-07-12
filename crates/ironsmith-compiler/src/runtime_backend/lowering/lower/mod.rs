@@ -1,23 +1,14 @@
-use crate::Until;
-use crate::ability::{Ability, AbilityKind, ActivatedAbility, PresentationLabel};
+use crate::ability::{Ability, AbilityKind};
 use crate::cards::builders::{
-    CardDefinition, CardDefinitionBuilder, CardTextError, ChoiceCount, EffectAst, GiftTimingAst,
-    IT_TAG, InsteadSemantics, LibraryBottomOrderAst, LineAst, LineInfo, NormalizedLine,
-    OptionalCost, ParseAnnotations, ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst,
-    ParsedLevelAbilityItemAst, ParsedLineAst, ParsedModalAst, ParsedModalModeAst,
-    ParsedRestrictions, PlayerAst, PredicateAst, ReferenceImports, ReturnControllerAst,
-    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, TriggerSpec,
+    CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, LineAst, ParseAnnotations,
+    ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst,
+    ParsedModalAst, ParsedRestrictions, PlayerAst, PredicateAst, ReferenceImports,
+    SubjectVerbActionAst, TagKey, TriggerSpec,
 };
-use crate::color::ColorSet;
-use crate::cost::TotalCost;
-use crate::costs::Cost;
-use crate::mana::ManaSymbol;
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility;
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-use crate::types::{CardType, Subtype};
+use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
-use ironsmith_core::CostComponent;
 
 mod damage_and_cost_rewrites;
 mod line_lowering;
@@ -30,14 +21,13 @@ mod rewrite_text_helpers;
 
 #[cfg(test)]
 use super::semantic_line_parsing::{
-    align_rewrite_activated_parse_sentences, normalize_exert_followup_source_reference_tokens,
-    parse_keyword_line_for_test, parse_single_effect_lexed, parse_triggered_line,
-    strip_lexed_suffix_phrase,
+    normalize_exert_followup_source_reference_tokens, parse_keyword_line_for_test,
+    parse_single_effect_lexed, parse_triggered_line, strip_lexed_suffix_phrase,
 };
 pub(crate) use normalization_support::normalize_rewrite_line_ast_standalone;
-pub(crate) use normalization_support::{
-    prepare_parsed_card_ast_for_lowering, rewrite_document_to_normalized_card_ast,
-};
+pub(crate) use normalization_support::prepare_parsed_card_ast_for_lowering;
+#[cfg(test)]
+pub(crate) use normalization_support::rewrite_document_to_normalized_card_ast;
 
 pub(crate) use damage_and_cost_rewrites::*;
 pub(crate) use modal_and_level_lowering::*;
@@ -57,12 +47,7 @@ use super::effect_pipeline::{
     LoweredCardDocument, NormalizedAdditionalCostChoiceOptionAst, NormalizedCardAst,
     NormalizedCardItem, NormalizedLineAst, NormalizedLineChunk, NormalizedModalAst,
     NormalizedModalModeAst, NormalizedOverloadBranch, NormalizedParsedAbility,
-    NormalizedPreparedAbility, ParsedCardAst, ParsedOverloadBranch,
-};
-use super::ir::{
-    ChosenOptionContext, RewriteKeywordLine, RewriteKeywordLineKind, RewriteLevelHeader,
-    RewriteModalBlock, RewriteSagaChapterLine, RewriteSemanticDocument, RewriteSemanticItem,
-    RewriteStatementLine, RewriteStaticLine, RewriteTriggeredLine,
+    NormalizedPreparedAbility, ParsedCardAst,
 };
 use super::lowering_support::{
     rewrite_apply_delayed_trigger_followup_statement_to_last_ability,
@@ -75,9 +60,6 @@ use super::lowering_support::{
     rewrite_prepare_triggered_effects_for_lowering, rewrite_static_ability_for_keyword_action,
     rewrite_validate_iterated_player_bindings_in_lowered_effects,
 };
-use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects_ast};
 use super::reference_model::LoweredEffects;
-use super::reference_model::ReferenceEnv;
 use super::reference_model::ReferenceExports;
 use super::restriction_support::{apply_pending_restrictions_to_ability, is_restrictable_ability};
-use super::util::{find_first_sacrifice_cost_choice_tag, find_last_exile_cost_choice_tag};

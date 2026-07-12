@@ -1,22 +1,20 @@
 use winnow::Parser as _;
 use winnow::combinator::{alt, cut_err, dispatch, fail, opt, peek};
 use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
-use winnow::prelude::*;
 use winnow::token::take_till;
 
 use super::super::grammar::primitives as grammar;
-use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::util::{helper_tag_for_tokens, parse_subject, trim_commas};
 use super::dispatch_entry::{
     ConsultCastClause, ConsultCastCost, ConsultCastManaValueCondition, ConsultCastTiming,
-    ConsultSentenceParts, consult_stop_rule_is_single_match, parse_looked_card_reveal_filter,
+    ConsultSentenceParts, parse_looked_card_reveal_filter,
 };
 use super::search_library::normalize_search_library_filter;
 use super::{find_verb, parse_effect_chain, parse_effect_sentence_lexed};
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, LibraryBottomOrderAst, LibraryConsultModeAst,
-    ObjectFilter, PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst,
+    CardTextError, EffectAst, LibraryBottomOrderAst, LibraryConsultModeAst, ObjectFilter,
+    PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
 use crate::runtime_backend::front_end::grammar::effects as effect_grammar;
@@ -144,6 +142,7 @@ fn infer_consult_player_from_prefix(tokens: &[OwnedLexToken]) -> Option<PlayerAs
     }
 }
 
+#[cfg(test)]
 pub(crate) fn parse_consult_condition_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     effect_grammar::parse_consult_condition_value_shape(tokens)
 }

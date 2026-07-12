@@ -2,13 +2,10 @@ use super::super::grammar::abilities as ability_grammar;
 use super::super::grammar::activated_lines::{
     self as activated_line_grammar, OncePerTurnRestrictionNormalization,
 };
-use super::super::grammar::filters::spell_filters::parse_spell_filter_with_grammar_entrypoint;
-use super::super::keyword_static::parse_cost_modifier_mana_cost;
 use super::super::lexer::OwnedLexToken;
 use super::{joined_activation_clause_text, merge_mana_activation_conditions};
 use crate::ability::ActivationTiming;
-use crate::cards::builders::{CardTextError, EffectAst, PlayerAst};
-use crate::effect::Value;
+use crate::cards::builders::{EffectAst, PlayerAst};
 
 struct ActivateOnlySentenceDetails {
     timing: ActivationTiming,
@@ -224,18 +221,6 @@ pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken
     ability_grammar::is_trigger_only_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn parse_triggered_times_each_turn_sentence(
-    sentences: &[Vec<OwnedLexToken>],
-) -> Option<u32> {
-    sentences
-        .iter()
-        .find_map(|sentence| parse_triggered_times_each_turn_lexed(sentence))
-}
-
-pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
-    ability_grammar::parse_triggered_times_each_turn_from_words(words)
-}
-
 pub(crate) fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
     ability_grammar::parse_triggered_times_each_turn_lexed(tokens)
 }
@@ -244,8 +229,4 @@ pub(crate) fn parse_activation_condition_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ConditionExpr> {
     ability_grammar::parse_activation_condition_lexed(tokens)
-}
-
-pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
-    ability_grammar::parse_activation_count_per_turn(words)
 }

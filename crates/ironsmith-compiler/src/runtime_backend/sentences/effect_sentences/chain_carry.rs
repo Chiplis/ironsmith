@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use winnow::Parser;
 use winnow::combinator::{alt, repeat};
 use winnow::error::{ContextError, ErrMode};
@@ -26,7 +24,6 @@ use super::super::permission_helpers::{
 };
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex};
 use super::super::span_from_tokens;
-use super::super::token_primitives::locate_last_index as find_last_token_index;
 #[cfg(test)]
 use super::super::token_primitives::str_contains as string_contains;
 use super::super::util::{
@@ -35,17 +32,17 @@ use super::super::util::{
 };
 use super::dispatch_inner::parse_subject_verb_extension_sentence;
 use super::lex_chain_helpers::{
-    find_verb_lexed, find_verb_words_lexed, has_effect_head_without_verb_lexed,
-    segment_has_effect_head_lexed, split_effect_chain_on_and_lexed,
-    split_segments_on_comma_effect_head_lexed, split_segments_on_comma_then_lexed,
-    strip_leading_instead_prefix_lexed,
+    find_verb_lexed, has_effect_head_without_verb_lexed, segment_has_effect_head_lexed,
+    split_effect_chain_on_and_lexed, split_segments_on_comma_effect_head_lexed,
+    split_segments_on_comma_then_lexed, strip_leading_instead_prefix_lexed,
 };
+#[cfg(test)]
+use super::parse_effect_sentence_lexed;
 use super::search_library::parse_for_each_exiled_this_way_sentence;
 use super::sentence_helpers::*;
 use super::{
     SubjectVerbPrimitiveClause, parse_cant_effect_sentence_lexed, parse_effect_clause_lexed,
-    parse_effect_sentence_lexed, parse_predicate_lexed, parse_search_library_sentence_lexed,
-    parse_sentence_exile_source_with_counters_lexed,
+    parse_search_library_sentence_lexed, parse_sentence_exile_source_with_counters_lexed,
     parse_sentence_put_onto_battlefield_with_counters_on_it_lexed,
     parse_sentence_return_with_counters_on_it_lexed, parse_sentence_unless_pays,
     parse_simple_gain_ability_clause_lexed, parse_simple_lose_ability_clause_lexed,
@@ -57,7 +54,6 @@ use crate::runtime_backend::grammar::shared_util::value_semantics::{
 
 const ENCHANTED_TAG_NAME: &str = "enchanted";
 const SENTENCE_HELPER_REVEALED_TAG_PREFIX: &str = "__sentence_helper_revealed";
-#[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, ReturnControllerAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
@@ -1367,18 +1363,6 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
     ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == ENCHANTED_TAG_NAME)
 }
 
-pub(crate) fn is_beginning_of_end_step_words(words: &[&str]) -> bool {
-    chain_grammar::contains_beginning_end_step_words(words)
-}
-
-pub(crate) fn is_beginning_of_upkeep_words(words: &[&str]) -> bool {
-    chain_grammar::contains_beginning_upkeep_words(words)
-}
-
-pub(crate) fn is_end_of_combat_words(words: &[&str]) -> bool {
-    chain_grammar::contains_end_of_combat_words(words)
-}
-
 pub(crate) fn target_is_generic_token_filter(target: &TargetAst) -> bool {
     let TargetAst::Object(filter, _, _) = target else {
         return false;
@@ -2589,20 +2573,10 @@ pub(crate) fn find_verb(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
     find_verb_lexed(tokens)
 }
 
-pub(crate) fn find_verb_words(words: &[&str]) -> Option<(Verb, usize)> {
-    find_verb_words_lexed(words)
-}
-
 pub(crate) fn parse_effect_chain(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     parse_effect_chain_lexed(tokens)
-}
-
-pub(crate) fn parse_or_action_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    parse_or_action_clause_lexed(tokens)
 }
 
 pub(crate) fn parse_effect_chain_with_subject_verb_primitives(
@@ -2630,13 +2604,6 @@ pub(crate) fn collapse_token_copy_next_end_step_exile_followup(
     collapse_token_copy_next_end_step_exile_followup_lexed(effects, tokens);
 }
 
-pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup(
-    effects: &mut Vec<EffectAst>,
-    tokens: &[OwnedLexToken],
-) {
-    collapse_token_copy_next_end_step_sacrifice_followup_lexed(effects, tokens);
-}
-
 pub(crate) fn collapse_token_copy_end_of_combat_exile_followup(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
@@ -2650,10 +2617,6 @@ pub(crate) fn maybe_apply_carried_player_with_clause(
     clause_tokens: &[OwnedLexToken],
 ) {
     maybe_apply_carried_player_with_clause_lexed(effect, carried_context, clause_tokens);
-}
-
-pub(crate) fn parse_leading_player_may(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
-    parse_leading_player_may_lexed(tokens)
 }
 
 pub(crate) fn remove_first_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {

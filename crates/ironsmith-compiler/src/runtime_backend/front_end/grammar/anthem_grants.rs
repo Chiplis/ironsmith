@@ -25,11 +25,9 @@ pub(crate) use addition_shapes::{
     parse_where_x_y_bindings_shape,
 };
 pub(crate) use anthem_keyword_shapes::{
-    AnthemKeywordColorSegment, AnthemKeywordCompoundSplit, AnthemKeywordHead, AnthemKeywordOrder,
-    AnthemKeywordTrailingCondition, AnthemKeywordTrailingConditionError, KeywordBeforeAnthemShape,
-    TokenTailSplit, parse_anthem_keyword_color_segment, parse_anthem_keyword_compound_split,
-    parse_anthem_keyword_head, parse_colon_tail_split, parse_keyword_before_anthem_shape,
-    split_anthem_keyword_and_have, split_anthem_keyword_and_is,
+    AnthemKeywordOrder, AnthemKeywordTrailingConditionError, parse_anthem_keyword_color_segment,
+    parse_anthem_keyword_compound_split, parse_anthem_keyword_head, parse_colon_tail_split,
+    parse_keyword_before_anthem_shape, split_anthem_keyword_and_have, split_anthem_keyword_and_is,
     split_anthem_keyword_trailing_condition,
 };
 mod granted_tail_shapes;
@@ -45,21 +43,16 @@ pub(crate) use clause_shapes::{
     parse_tail_shape, parse_word_token_candidates,
 };
 pub(crate) use compound_shapes::{
-    CarriedConditionalAnthemGrantShape, CarriedSubjectTypeAdditionShape,
-    ConditionalAnthemOtherwiseShape, ConditionalAnthemReplacementShape,
     parse_carried_conditional_anthem_grant, parse_carried_subject_type_addition,
     parse_conditional_anthem_otherwise, parse_conditional_anthem_replacement,
 };
 pub(crate) use condition_shapes::{
-    BlockingSourceConditionShape, ConjoinedConditionSplit, DevotionConditionError,
-    DevotionConditionShape, DevotionPlayerKind, EnteredCountConditionShape,
-    ExistentialConditionShape, ExistentialConditionTail, FixedStaticConditionKind,
-    SourceCounterConditionError, SourceCounterConditionShape, parse_blocking_source_condition,
-    parse_conjoined_condition_splits, parse_devotion_condition_shape,
-    parse_entered_count_condition, parse_existential_condition_shape,
-    parse_fixed_static_condition_kind, parse_life_total_or_less_condition,
-    parse_source_counter_condition, parse_source_in_graveyard_condition,
-    parse_x_value_at_least_condition,
+    DevotionConditionError, DevotionPlayerKind, ExistentialConditionTail, FixedStaticConditionKind,
+    SourceCounterConditionError, parse_blocking_source_condition, parse_conjoined_condition_splits,
+    parse_devotion_condition_shape, parse_entered_count_condition,
+    parse_existential_condition_shape, parse_fixed_static_condition_kind,
+    parse_life_total_or_less_condition, parse_source_counter_condition,
+    parse_source_in_graveyard_condition, parse_x_value_at_least_condition,
 };
 pub(crate) use continuing_shapes::{
     ContinuingSegmentShape, parse_continuing_segment_shape, parse_direct_have_tail,
@@ -70,33 +63,30 @@ pub(crate) use count_shapes::{
     parse_for_each_special_shape, parse_sticker_count_shape, strip_each_or_every,
 };
 pub(crate) use granted_tail_shapes::{
-    GrantedAbilityCandidate, GrantedAbilityConditionKind, GrantedAbilityConditionSplit,
-    GrantedSubjectFacts, SpecialGrantedKeyword, TypeAdditionSubjectSplit,
-    parse_granted_ability_candidates, parse_granted_subject_facts, parse_special_granted_keyword,
-    split_granted_ability_condition, split_type_addition_subject,
+    GrantedAbilityConditionKind, SpecialGrantedKeyword, parse_granted_ability_candidates,
+    parse_granted_subject_facts, parse_special_granted_keyword, split_granted_ability_condition,
+    split_type_addition_subject,
 };
 pub(crate) use misc_shapes::{
-    TrailingGrantSegmentShape, parse_equipment_equip_shape, parse_keyword_if_color_shape,
-    parse_trailing_grant_segment, split_keyword_if_color_segments, split_trailing_grant_segments,
+    parse_equipment_equip_shape, parse_keyword_if_color_shape, parse_trailing_grant_segment,
+    split_keyword_if_color_segments, split_trailing_grant_segments,
 };
 pub(crate) use soulbond_shapes::{SoulbondSharedEffect, parse_soulbond_shared_shape};
 pub(crate) use special_grant_shapes::{
-    AnthemGoadedShape, AnthemNoDefenderGrantShape, ColoredSpellProtectionShape,
-    CommanderCreatureSubject, SubjectColorAndGrantShape, parse_anthem_goaded_shape,
-    parse_anthem_no_defender_grant_tokens, parse_colored_spell_protection_tokens,
-    parse_commander_creature_subject_tokens, parse_no_defender_granted_fragment_tokens,
-    parse_subject_color_and_grant_tokens, parse_unblockable_keyword_fragment_tokens,
+    parse_anthem_goaded_shape, parse_anthem_no_defender_grant_tokens,
+    parse_colored_spell_protection_tokens, parse_commander_creature_subject_tokens,
+    parse_no_defender_granted_fragment_tokens, parse_subject_color_and_grant_tokens,
+    parse_unblockable_keyword_fragment_tokens,
 };
 pub(crate) use static_grant_facts::{
-    FirstSpellEachTurnSubject, GrantedAlternativeCastKeyword, StaticGrantDurationFact,
-    parse_every_subtype_family_tokens, parse_first_spell_each_turn_subject_tokens,
-    parse_granted_alternative_cast_keyword_tokens, parse_static_grant_duration_fact,
+    GrantedAlternativeCastKeyword, parse_every_subtype_family_tokens,
+    parse_first_spell_each_turn_subject_tokens, parse_granted_alternative_cast_keyword_tokens,
+    parse_static_grant_duration_fact,
 };
 pub(crate) use subject_shapes::{
     AnthemSubjectGrammarMatch, object_filter_specificity_score, parse_exact_anthem_subject_grammar,
 };
 pub(crate) use tail_static_shapes::{
-    BasePowerGrantShape, BasePowerToughnessGrantShape, BasePowerToughnessShape, IsntCreatureShape,
     IsntCreatureShapeError, parse_base_power_grant_shape, parse_base_power_toughness_grant_shape,
     parse_base_power_toughness_shape, parse_isnt_creature_shape, parse_multi_subject_segments,
     persistent_anthem_subject_facts,
@@ -554,24 +544,6 @@ pub(crate) fn parse_has_keyword_unblockable_head(
     let has_token = has_token?;
     (has_token > 0 && has_token + 1 < tokens.len())
         .then_some(HasKeywordUnblockableHead { has_token })
-}
-
-pub(crate) fn parse_first_spell_each_turn_subject_words(words: &[&str]) -> bool {
-    let mut input: primitives::WordSliceInput<'_> = words;
-    alt((
-        |input: &mut primitives::WordSliceInput<'_>| {
-            parse_word_phrase_input(
-                input,
-                &["the", "first", "spell", "you", "cast", "each", "turn"],
-            )
-        },
-        |input: &mut primitives::WordSliceInput<'_>| {
-            parse_word_phrase_input(input, &["first", "spell", "you", "cast", "each", "turn"])
-        },
-    ))
-    .parse_next(&mut input)
-    .is_ok()
-        && input.is_empty()
 }
 
 pub(crate) fn parse_granted_keyword_verb_facts(

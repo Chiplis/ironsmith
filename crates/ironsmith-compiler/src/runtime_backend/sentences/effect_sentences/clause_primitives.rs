@@ -4,7 +4,6 @@ use super::super::grammar::effects::{
     split_change_target_clause_lexed, split_change_target_unless_clause_lexed,
     split_choose_new_targets_clause_lexed,
 };
-use super::super::grammar::primitives as grammar;
 use super::super::grammar::trigger_surface;
 use super::super::lexer::LexedClause;
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
@@ -15,20 +14,16 @@ use super::super::permission_helpers::{
     parse_unsupported_play_cast_permission_clause, parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause,
 };
-use super::super::util::{
-    is_article, parse_subject, parse_target_phrase, parse_value_expr_words, span_from_tokens,
-};
+use super::super::util::{parse_subject, parse_target_phrase, span_from_tokens};
 use super::parse_restriction_duration;
 use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
-#[allow(unused_imports)]
 use crate::cards::builders::{
-    COPIED_STACK_OBJECT_TAG, CardTextError, ClashOpponentAst, EffectAst, GrantedAbilityAst, IT_TAG,
-    LineAst, OwnedLexToken, PlayerAst, PredicateAst, ReferenceImports, RetargetModeAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, TriggerSpec,
+    COPIED_STACK_OBJECT_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, LineAst,
+    OwnedLexToken, PlayerAst, ReferenceImports, RetargetModeAst, SubjectAst, SubjectVerbActionAst,
+    SubjectVerbRoleAst, TagKey, TargetAst,
 };
-use crate::effect::{ChoiceCount, Value};
-use crate::mana::ManaSymbol;
+use crate::effect::Value;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 

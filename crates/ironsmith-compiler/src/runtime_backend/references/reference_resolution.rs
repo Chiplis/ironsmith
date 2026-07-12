@@ -1,9 +1,9 @@
 use crate::cards::builders::{
     CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, PredicateAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, TriggerSpec,
+    SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
-use crate::filter::{Comparison, TaggedOpbjectRelation};
+use crate::filter::TaggedOpbjectRelation;
 use crate::target::ChooseSpec;
 use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
@@ -12,9 +12,11 @@ use ironsmith_core::{EffectMetric, EffectMetricSource};
 #[cfg(test)]
 use crate::TagKey;
 #[cfg(test)]
-use crate::cards::builders::{ObjectRefAst, PreventNextTimeDamageSourceAst, RetargetModeAst};
+use crate::cards::builders::{
+    ObjectRefAst, PreventNextTimeDamageSourceAst, RetargetModeAst, SubjectVerbRoleAst,
+};
 #[cfg(test)]
-use crate::types::Subtype;
+use crate::filter::Comparison;
 
 use super::compile_support::{
     effect_references_event_derived_amount, effects_reference_it_tag,

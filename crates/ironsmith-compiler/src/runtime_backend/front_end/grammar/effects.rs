@@ -15,9 +15,6 @@ use super::super::search_library_support::{
     split_search_library_count_value_clause_lexed, split_search_same_name_reference_filter,
     word_slice_mentions_nth_from_top,
 };
-use super::super::token_primitives::{
-    locate_index as locate_token_index, locate_last_index as locate_last_token_index,
-};
 use super::super::util::{
     is_article, parse_card_type, parse_choice_count_token_prefix_consumed, parse_color,
     parse_number, parse_subject, parse_subtype_word, parse_target_phrase, span_from_tokens,
@@ -25,10 +22,9 @@ use super::super::util::{
 };
 use super::primitives;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, LibraryBottomOrderAst,
-    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst,
-    SearchLibrarySlotAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
-    TextSpan,
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, PlayerAst, PredicateAst,
+    ReturnControllerAst, SearchLibrarySlotAst, SubjectAst, SubjectVerbActionAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::SearchSelectionMode;
 use crate::static_abilities::StaticAbilityId;

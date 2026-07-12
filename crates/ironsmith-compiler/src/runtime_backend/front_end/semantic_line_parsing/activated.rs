@@ -304,13 +304,6 @@ fn finalize_rewrite_activated_effect_sentences(
     }
 }
 
-pub(crate) fn align_rewrite_activated_parse_sentences(
-    parsed_sentences: &[String],
-    effect_parse_tokens: &[OwnedLexToken],
-) -> Option<Vec<Vec<OwnedLexToken>>> {
-    activated_grammar::align_activated_parse_sentences(parsed_sentences, effect_parse_tokens)
-}
-
 fn split_rewrite_activated_effect_text(
     effect_parse_tokens: &[OwnedLexToken],
 ) -> SplitRewriteActivatedEffectText {
@@ -412,11 +405,9 @@ pub(crate) fn parse_activated_line(
     info: LineInfo,
     cost: TotalCost,
     cost_parse_tokens: Vec<OwnedLexToken>,
-    effect_text: String,
     effect_parse_tokens: Vec<OwnedLexToken>,
     timing_hint: ActivationTiming,
     is_loyalty_ability: bool,
-    presentation_label: Option<String>,
     chosen_option: Option<ChosenOptionContext>,
 ) -> Result<ParsedActivatedLine, CardTextError> {
     parse_activated_line_impl(
@@ -431,11 +422,9 @@ pub(crate) fn parse_activated_line(
             info,
             cost,
             cost_parse_tokens: cost_parse_tokens.clone(),
-            effect_text,
             effect_parse_tokens: effect_parse_tokens.clone(),
             timing_hint,
             is_loyalty_ability,
-            presentation_label,
             chosen_option,
         },
         &effect_parse_tokens,

@@ -67,7 +67,6 @@ pub(crate) struct SubjectVerbPrimitiveClause<'a> {
     tokens: &'a [OwnedLexToken],
 }
 
-#[allow(dead_code)]
 impl<'a> SubjectVerbPrimitiveClause<'a> {
     pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
         Self { tokens }
@@ -125,10 +124,6 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
         self.lexed().first_word()
     }
 
-    pub(crate) fn rfind_word(self, expected: &str) -> Option<usize> {
-        self.lexed().rfind_word(expected)
-    }
-
     pub(crate) fn token_index_after_words(self, word_count: usize) -> Option<usize> {
         self.lexed().token_index_after_words(word_count)
     }
@@ -148,80 +143,8 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
         Some(self.from(token_idx))
     }
 
-    pub(crate) fn before_words(self, word_count: usize) -> Option<Self> {
-        let token_idx = self.token_index_after_words(word_count)?;
-        Some(self.before(token_idx))
-    }
-
-    pub(crate) fn without_token_range_trimmed_clause(
-        self,
-        start: usize,
-        len: usize,
-    ) -> SubjectVerbPrimitiveOwnedClause {
-        let end = start.saturating_add(len).min(self.tokens.len());
-        let mut tokens = self.tokens[..start.min(self.tokens.len())].to_vec();
-        tokens.extend_from_slice(&self.tokens[end..]);
-        let trimmed_tokens = LexedClause::new(&tokens).trimmed().tokens().to_vec();
-        SubjectVerbPrimitiveOwnedClause::new(trimmed_tokens)
-    }
-
-    pub(crate) fn without_token_ranges_trimmed_clause(
-        self,
-        ranges: &[(usize, usize)],
-    ) -> SubjectVerbPrimitiveOwnedClause {
-        let mut ranges = ranges
-            .iter()
-            .filter_map(|(start, len)| {
-                if *len == 0 {
-                    None
-                } else {
-                    let start = (*start).min(self.tokens.len());
-                    let end = start.saturating_add(*len).min(self.tokens.len());
-                    (start < end).then_some((start, end))
-                }
-            })
-            .collect::<Vec<_>>();
-        ranges.sort_unstable_by_key(|(start, _)| *start);
-
-        let mut tokens = Vec::new();
-        let mut cursor = 0usize;
-        for (start, end) in ranges {
-            if start > cursor {
-                tokens.extend_from_slice(&self.tokens[cursor..start]);
-            }
-            cursor = cursor.max(end);
-        }
-        if cursor < self.tokens.len() {
-            tokens.extend_from_slice(&self.tokens[cursor..]);
-        }
-        let trimmed_tokens = LexedClause::new(&tokens).trimmed().tokens().to_vec();
-        SubjectVerbPrimitiveOwnedClause::new(trimmed_tokens)
-    }
-
-    pub(crate) fn without_phrase_trimmed_clause(
-        self,
-        phrase: &[&str],
-    ) -> Option<SubjectVerbPrimitiveOwnedClause> {
-        self.lexed()
-            .without_phrase_trimmed(phrase)
-            .map(SubjectVerbPrimitiveOwnedClause::new)
-    }
-
-    pub(crate) fn without_any_phrase_trimmed_clause<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], SubjectVerbPrimitiveOwnedClause)> {
-        self.lexed()
-            .without_any_phrase_trimmed(phrases)
-            .map(|(phrase, tokens)| (phrase, SubjectVerbPrimitiveOwnedClause::new(tokens)))
-    }
-
     pub(crate) fn find_token_word(self, expected: &str) -> Option<usize> {
         self.lexed().find_token_word(expected)
-    }
-
-    pub(crate) fn find_token_word_any(self, expected: &[&str]) -> Option<usize> {
-        self.lexed().find_token_word_any(expected)
     }
 
     pub(crate) fn find_token_word_where(
@@ -236,10 +159,6 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
 
     pub(crate) fn find_unquoted_token_word(self, expected: &str) -> Option<usize> {
         self.lexed().find_unquoted_token_word(expected)
-    }
-
-    pub(crate) fn rfind_token_word(self, expected: &str) -> Option<usize> {
-        self.lexed().rfind_token_word(expected)
     }
 
     pub(crate) fn split_once_on_word(self, expected: &str) -> Option<(Self, Self)> {
@@ -260,63 +179,10 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
             .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
     }
 
-    pub(crate) fn split_once_on_word_any_trimmed(self, expected: &[&str]) -> Option<(Self, Self)> {
-        self.lexed()
-            .split_once_on_word_any_trimmed(expected)
-            .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
-    }
-
-    pub(crate) fn rsplit_once_on_word(self, expected: &str) -> Option<(Self, Self)> {
-        self.lexed()
-            .rsplit_once_on_word(expected)
-            .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
-    }
-
-    pub(crate) fn rsplit_once_on_word_trimmed(self, expected: &str) -> Option<(Self, Self)> {
-        self.lexed()
-            .rsplit_once_on_word_trimmed(expected)
-            .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
-    }
-
     pub(crate) fn split_once_on_comma(self) -> Option<(Self, Self)> {
         self.lexed()
             .split_once_on_comma()
             .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
-    }
-
-    pub(crate) fn split_once_on_phrase(self, expected: &[&str]) -> Option<(Self, Self)> {
-        self.lexed()
-            .split_once_on_phrase(expected)
-            .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
-    }
-
-    pub(crate) fn split_once_before_phrase(self, expected: &[&str]) -> Option<(Self, Self)> {
-        self.lexed()
-            .split_once_before_phrase(expected)
-            .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
-    }
-
-    pub(crate) fn split_once_on_any_phrase(
-        self,
-        phrases: &[&'static [&'static str]],
-    ) -> Option<(&'static [&'static str], Self, Self)> {
-        self.lexed()
-            .split_once_on_any_phrase(phrases)
-            .map(|(phrase, head, tail)| {
-                (phrase, Self::new(head.tokens()), Self::new(tail.tokens()))
-            })
-    }
-
-    pub(crate) fn count_word(self, expected: &str) -> usize {
-        self.lexed().count_word(expected)
-    }
-
-    pub(crate) fn contains_comma(self) -> bool {
-        self.lexed().contains_comma()
-    }
-
-    pub(crate) fn contains_comma_or_any_word(self, expected: &[&str]) -> bool {
-        self.lexed().contains_comma_or_any_word(expected)
     }
 
     pub(crate) fn trim(self) -> Vec<OwnedLexToken> {
@@ -327,57 +193,13 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
         Self::new(self.lexed().trimmed().tokens())
     }
 
-    pub(crate) fn trimmed_tokens(self) -> &'a [OwnedLexToken] {
-        self.lexed().trimmed_tokens()
-    }
-
     pub(crate) fn trimmed_word_refs(self) -> Vec<&'a str> {
         self.lexed().trimmed_word_refs()
-    }
-
-    pub(crate) fn comma_segments(self) -> Vec<Self> {
-        self.lexed()
-            .comma_segments()
-            .into_iter()
-            .map(|segment| Self::new(segment.tokens()))
-            .collect()
-    }
-
-    pub(crate) fn trimmed_comma_segments(self) -> Vec<Self> {
-        self.lexed()
-            .trimmed_comma_segments()
-            .into_iter()
-            .map(|segment| Self::new(segment.tokens()))
-            .collect()
-    }
-
-    pub(crate) fn and_segments(self) -> Vec<Self> {
-        self.lexed()
-            .and_segments()
-            .into_iter()
-            .map(|segment| Self::new(segment.tokens()))
-            .collect()
-    }
-
-    pub(crate) fn trimmed_and_segments(self) -> Vec<Self> {
-        self.lexed()
-            .trimmed_and_segments()
-            .into_iter()
-            .map(|segment| Self::new(segment.tokens()))
-            .collect()
     }
 
     pub(crate) fn trimmed_and_comma_segments(self) -> Vec<Self> {
         self.lexed()
             .trimmed_and_comma_segments()
-            .into_iter()
-            .map(|segment| Self::new(segment.tokens()))
-            .collect()
-    }
-
-    pub(crate) fn period_segments(self) -> Vec<Self> {
-        self.lexed()
-            .period_segments()
             .into_iter()
             .map(|segment| Self::new(segment.tokens()))
             .collect()
@@ -391,40 +213,10 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
             .collect()
     }
 
-    pub(crate) fn split_comma_then(self) -> Option<(Self, Self)> {
-        self.lexed()
-            .split_comma_then()
-            .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
-    }
-
-    pub(crate) fn split_comma_then_trimmed(self) -> Option<(Self, Self)> {
-        self.lexed()
-            .split_comma_then_trimmed()
-            .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
-    }
-
-    pub(crate) fn split_once_on_then(self) -> Option<(Self, Self)> {
-        self.lexed()
-            .split_once_on_then()
-            .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
-    }
-
     pub(crate) fn split_once_on_then_trimmed(self) -> Option<(Self, Self)> {
         self.lexed()
             .split_once_on_then_trimmed()
             .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
-    }
-
-    pub(crate) fn comma_then_idx(self) -> Option<usize> {
-        self.lexed().comma_then_idx()
-    }
-
-    pub(crate) fn without_leading_connectors_clause(self) -> Self {
-        Self::new(self.lexed().without_leading_connectors_clause().tokens())
-    }
-
-    pub(crate) fn without_trailing_words_clause(self, words: &[&str]) -> Self {
-        Self::new(self.lexed().without_trailing_words_clause(words).tokens())
     }
 
     pub(crate) fn parse_with_lexed(
@@ -457,13 +249,11 @@ impl<'a> std::ops::Deref for SubjectVerbPrimitiveClause<'a> {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct SubjectVerbPrimitiveOwnedClause {
     tokens: Vec<OwnedLexToken>,
 }
 
-#[allow(dead_code)]
 impl SubjectVerbPrimitiveOwnedClause {
     pub(crate) fn new(tokens: Vec<OwnedLexToken>) -> Self {
         Self { tokens }
@@ -489,20 +279,8 @@ impl SubjectVerbPrimitiveOwnedClause {
         self.tokens.len()
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.tokens.is_empty()
-    }
-
     pub(crate) fn first_word(&self) -> Option<&str> {
         self.as_clause().first_word()
-    }
-
-    pub(crate) fn word_refs(&self) -> Vec<&str> {
-        self.as_clause().word_refs()
-    }
-
-    pub(crate) fn find_token_word(&self, expected: &str) -> Option<usize> {
-        self.as_clause().find_token_word(expected)
     }
 
     pub(crate) fn from_tokens(&self, idx: usize) -> &[OwnedLexToken] {
@@ -528,19 +306,6 @@ impl SubjectVerbPrimitiveOwnedClause {
             0,
             OwnedLexToken::word(word.to_string(), TextSpan::synthetic()),
         );
-    }
-
-    pub(crate) fn remove_leading_word(&mut self, expected: &str) -> bool {
-        if self
-            .tokens
-            .first()
-            .is_some_and(|token| registry_token_matches_word(token, expected))
-        {
-            self.tokens.remove(0);
-            true
-        } else {
-            false
-        }
     }
 
     pub(crate) fn replace_leading_word(&mut self, word: &str) -> bool {
@@ -980,6 +745,7 @@ pub(crate) fn parse_sentence_you_and_player_each_create(
 mod tests {
     use super::*;
     use crate::effect::EventValueSpec;
+    use crate::runtime_backend::ast::SubjectVerbSubjectAst;
     use crate::runtime_backend::lexer::lex_line;
 
     #[test]

@@ -2,44 +2,15 @@ use super::*;
 use crate::runtime_backend::lexer::{
     lex_line, render_token_slice, split_lexed_sentences, trim_lexed_commas,
 };
-use crate::runtime_backend::parser_support::split_text_for_parse;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::{CardDefinitionBuilder, LineAst, NormalizedLine};
+    use crate::cards::builders::{CardDefinitionBuilder, LineAst, LineInfo, NormalizedLine};
     use crate::ids::CardId;
     use crate::runtime_backend::RewriteKeywordLineKind;
     use crate::runtime_backend::pipeline::parse_text_to_semantic_document;
     use crate::types::CardType;
-
-    #[test]
-    fn rewrite_activated_sentence_alignment_merges_inner_quoted_periods() {
-        let effect_text = r#"target creature gains "{t}: add {g}." until end of turn. any player may activate this ability."#;
-        let effect_parse_tokens = lex_line(effect_text, 0)
-            .expect("rewrite lexer should classify quoted activated effect");
-        let rendered_effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
-        let (parsed_sentences, _) = split_text_for_parse(
-            rendered_effect_text.as_str(),
-            rendered_effect_text.as_str(),
-            0,
-        );
-        let token_sentence_texts = split_lexed_sentences(&effect_parse_tokens)
-            .into_iter()
-            .map(|tokens| render_token_slice(tokens).trim().to_string())
-            .collect::<Vec<_>>();
-
-        let aligned = align_rewrite_activated_parse_sentences(&parsed_sentences, &effect_parse_tokens)
-            .unwrap_or_else(|| {
-                panic!(
-                    "quoted activated sentences should align against existing token slices: parsed={parsed_sentences:?} token_sentences={token_sentence_texts:?}"
-                )
-            });
-
-        assert_eq!(aligned.len(), 2);
-        assert_eq!(render_token_slice(&aligned[0]).trim(), parsed_sentences[0]);
-        assert_eq!(render_token_slice(&aligned[1]).trim(), parsed_sentences[1]);
-    }
 
     #[test]
     fn rewrite_exert_followup_subject_rewrite_uses_existing_tokens() {
@@ -64,7 +35,7 @@ mod tests {
         let tokens = lex_line(text, 0).expect("rewrite lexer should classify exert keyword line");
 
         let parsed = parse_keyword_line_for_test(
-            super::LineInfo {
+            LineInfo {
                 line_index: 0,
                 display_line_index: 0,
                 raw_line: text.to_string(),
@@ -103,7 +74,7 @@ mod tests {
             lex_line(token_text, 0).expect("rewrite lexer should classify exert keyword line");
 
         let parsed = parse_keyword_line_for_test(
-            super::LineInfo {
+            LineInfo {
                 line_index: 0,
                 display_line_index: 0,
                 raw_line: "placeholder exert text".to_string(),
@@ -152,7 +123,7 @@ mod tests {
             .expect("rewrite lexer should classify burning rune demon effect");
 
         let parsed = parse_triggered_line(
-            super::LineInfo {
+            LineInfo {
                 line_index: 0,
                 display_line_index: 0,
                 raw_line: full_text.to_string(),
@@ -166,9 +137,7 @@ mod tests {
             },
             full_text,
             &full_tokens,
-            trigger_text,
             &trigger_tokens,
-            effect_text,
             &effect_tokens,
             None,
             None,

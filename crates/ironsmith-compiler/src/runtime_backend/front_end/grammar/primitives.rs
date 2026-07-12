@@ -1040,26 +1040,6 @@ pub(crate) fn match_word_suffix<'a>(
     Some(&tokens[..token_start])
 }
 
-/// Splits `tokens` at the first occurrence of word sequence `separator`,
-/// using `TokenWordView` for proper multi-word token splitting.
-/// Returns `(before, after)` where `before` ends just before the separator
-/// and `after` starts just after it.
-#[cfg(test)]
-pub(crate) fn words_split_once<'a>(
-    tokens: &'a [LexToken],
-    separator: &[&str],
-) -> Option<(&'a [LexToken], &'a [LexToken])> {
-    if separator.is_empty() {
-        return Some((&[], tokens));
-    }
-    let view = TokenWordView::new(tokens);
-    let word_idx = view.find_phrase_start(separator)?;
-    let token_start = view.token_boundary_for_word(word_idx)?;
-    let after_word_idx = word_idx + separator.len();
-    let token_end = view.token_index_after_words(after_word_idx)?;
-    Some((&tokens[..token_start], &tokens[token_end..]))
-}
-
 // ---------------------------------------------------------------------------
 // Word-slice parsers
 //

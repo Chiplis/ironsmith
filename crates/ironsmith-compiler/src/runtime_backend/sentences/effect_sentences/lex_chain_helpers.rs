@@ -1,17 +1,7 @@
-#![allow(dead_code)]
-
 use super::super::clause_support::parse_ability_line_lexed;
 use super::super::grammar::effects::chain_splitting as chain_grammar;
 use super::super::lexer::OwnedLexToken;
 use super::chain_carry::Verb;
-use super::clause_pattern_helpers::{
-    parse_can_attack_as_though_no_defender_clause, parse_prevent_all_damage_clause,
-    parse_prevent_next_damage_clause,
-};
-use super::clause_primitives::{
-    parse_attack_or_block_this_turn_if_able_clause, parse_attack_this_turn_if_able_clause,
-    parse_must_block_if_able_clause,
-};
 
 pub(crate) fn strip_leading_instead_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
     chain_grammar::strip_leading_instead_tokens(tokens).map(<[_]>::to_vec)
@@ -31,53 +21,13 @@ pub(crate) fn is_token_creation_context(tokens: &[OwnedLexToken]) -> bool {
     chain_grammar::is_token_creation_context_tokens(tokens)
 }
 
-pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
-    chain_grammar::split_effect_chain_on_and_tokens(tokens, false)
-        .into_iter()
-        .map(<[_]>::to_vec)
-        .collect()
-}
-
 pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
     let found = chain_grammar::find_chain_verb_tokens(tokens)?;
     Some((lower_chain_verb(found.kind), found.word_index))
 }
 
-pub(crate) fn find_verb_words_lexed(words: &[&str]) -> Option<(Verb, usize)> {
-    let found = chain_grammar::find_chain_verb_words(words)?;
-    Some((lower_chain_verb(found.kind), found.word_index))
-}
-
 pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     chain_grammar::split_effect_chain_on_and_tokens(tokens, true)
-}
-
-pub(crate) fn has_effect_head_without_verb(tokens: &[OwnedLexToken]) -> bool {
-    chain_grammar::has_basic_effect_head_tokens(tokens)
-        || parse_prevent_next_damage_clause(tokens)
-            .ok()
-            .flatten()
-            .is_some()
-        || parse_prevent_all_damage_clause(tokens)
-            .ok()
-            .flatten()
-            .is_some()
-        || parse_can_attack_as_though_no_defender_clause(tokens)
-            .ok()
-            .flatten()
-            .is_some()
-        || parse_attack_or_block_this_turn_if_able_clause(tokens)
-            .ok()
-            .flatten()
-            .is_some()
-        || parse_attack_this_turn_if_able_clause(tokens)
-            .ok()
-            .flatten()
-            .is_some()
-        || parse_must_block_if_able_clause(tokens)
-            .ok()
-            .flatten()
-            .is_some()
 }
 
 pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -88,32 +38,6 @@ pub(crate) fn segment_has_effect_head_lexed(tokens: &[OwnedLexToken]) -> bool {
     find_verb_lexed(tokens).is_some()
         || has_effect_head_without_verb_lexed(tokens)
         || chain_grammar::starts_with_player_may_tokens(tokens)
-}
-
-pub(crate) fn segment_has_effect_head(tokens: &[OwnedLexToken]) -> bool {
-    find_verb_lexed(tokens).is_some()
-        || has_effect_head_without_verb(tokens)
-        || chain_grammar::starts_with_player_may_tokens(tokens)
-}
-
-pub(crate) fn split_segments_on_comma_then(
-    segments: Vec<Vec<OwnedLexToken>>,
-) -> Vec<Vec<OwnedLexToken>> {
-    let segment_refs = segments.iter().map(Vec::as_slice).collect::<Vec<_>>();
-    split_segments_on_comma_then_lexed(segment_refs)
-        .into_iter()
-        .map(<[_]>::to_vec)
-        .collect()
-}
-
-pub(crate) fn split_segments_on_comma_effect_head(
-    segments: Vec<Vec<OwnedLexToken>>,
-) -> Vec<Vec<OwnedLexToken>> {
-    let segment_refs = segments.iter().map(Vec::as_slice).collect::<Vec<_>>();
-    split_segments_on_comma_effect_head_lexed(segment_refs)
-        .into_iter()
-        .map(<[_]>::to_vec)
-        .collect()
 }
 
 pub(crate) fn split_segments_on_comma_then_lexed(

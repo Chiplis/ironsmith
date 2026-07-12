@@ -1,5 +1,4 @@
 use crate::ConditionExpr;
-use crate::ability::Ability;
 use crate::color::ColorSet;
 use crate::cost::{OptionalCostRef, TotalCost};
 use crate::effect::{ChoiceCount, EffectId, Until, Value};
@@ -769,13 +768,11 @@ impl PredicateAst {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub(crate) enum SubjectVerbRoleAst {
     Actor,
     AffectedPlayer,
     Chooser,
     LibraryOwner,
-    ZoneOwner,
 }
 
 #[derive(Clone, PartialEq)]
@@ -1942,7 +1939,6 @@ impl std::fmt::Debug for SubjectVerbRoleAst {
             Self::AffectedPlayer => "AffectedPlayer",
             Self::Chooser => "Chooser",
             Self::LibraryOwner => "LibraryOwner",
-            Self::ZoneOwner => "ZoneOwner",
         };
         f.write_str(label)
     }

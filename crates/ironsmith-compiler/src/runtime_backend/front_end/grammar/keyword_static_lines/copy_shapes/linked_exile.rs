@@ -7,7 +7,7 @@ use crate::Zone;
 use crate::filter::ObjectFilter;
 use crate::object::CounterType;
 
-use super::super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use super::super::super::super::lexer::{LexStream, trim_lexed_commas};
 use super::super::super::{filters, leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

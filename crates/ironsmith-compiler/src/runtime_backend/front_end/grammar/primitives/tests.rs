@@ -33,14 +33,6 @@ fn words_match_any_prefix_skips_leading_non_word_tokens() {
 }
 
 #[test]
-fn words_split_once_basic() {
-    let tokens = lex_line("exile target creature from graveyard", 0).unwrap();
-    let (before, after) = words_split_once(&tokens, &["from"]).unwrap();
-    assert_eq!(before.len(), 3); // "exile", "target", "creature"
-    assert_eq!(after.len(), 1); // "graveyard"
-}
-
-#[test]
 fn strip_lexed_prefix_phrases_returns_matched_phrase_and_rest() {
     let tokens = lex_line("choose a new target for target spell", 0).unwrap();
     let (matched, rest) = strip_lexed_prefix_phrases(

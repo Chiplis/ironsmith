@@ -1,5 +1,4 @@
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
-use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, KeywordAction, ParsedAbility,
     PredicateAst, StaticAbilityAst, SubjectVerbActionAst, TargetAst, TriggerSpec,
@@ -35,7 +34,6 @@ use super::effect_pipeline::{
     NormalizedPreparedAbility, PreparedEffectsForLowering, PreparedPredicateForLowering,
     PreparedTriggeredEffectsForLowering,
 };
-use super::lexer::lex_line;
 use super::reference_model::{LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports};
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
 use super::static_ability_helpers::exalted_triggered_ability;
@@ -2305,6 +2303,7 @@ pub(crate) fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime_backend::lexer::lex_line;
 
     #[test]
     fn repeated_optional_exiles_prepare_plural_return_with_aggregate_tag() {

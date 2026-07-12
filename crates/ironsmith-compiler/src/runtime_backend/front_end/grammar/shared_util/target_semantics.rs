@@ -17,9 +17,7 @@ use crate::runtime_backend::util::{
     record_source_reference_surface, source_reference_surface_for_words, strip_possessive_suffix,
     this_source_surface_for_words,
 };
-use crate::target::{
-    ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface, TaggedOpbjectRelation,
-};
+use crate::target::{ObjectFilter, PlayerFilter, SourceReferenceSurface, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
 use crate::{ChoiceCount, TagKey};

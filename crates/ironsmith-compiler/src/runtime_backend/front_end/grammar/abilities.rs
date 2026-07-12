@@ -10,9 +10,8 @@ use crate::object::CounterType;
 use crate::target::PlayerFilter;
 
 use super::super::lexer::{
-    LexStream, LexToken, LexedClause, OwnedLexToken, TokenKind, contains_token_any_word,
-    contains_token_word, contains_token_word_sequence, locate_token_kind, locate_token_word,
-    trim_lexed_commas,
+    LexStream, LexToken, OwnedLexToken, TokenKind, contains_token_any_word, contains_token_word,
+    contains_token_word_sequence, locate_token_kind, locate_token_word, trim_lexed_commas,
 };
 use super::super::util::trim_edge_punctuation_tokens;
 use super::primitives;
@@ -28,20 +27,17 @@ mod surface;
 pub(crate) use activation_conditions::{
     is_activate_only_restriction_sentence_lexed, is_any_player_may_activate_sentence_lexed,
     is_trigger_only_restriction_sentence_lexed, parse_activate_only_timing_lexed,
-    parse_activation_condition_lexed, parse_activation_count_per_turn,
-    parse_triggered_times_each_turn_from_words, parse_triggered_times_each_turn_lexed,
+    parse_activation_condition_lexed, parse_triggered_times_each_turn_lexed,
 };
 pub(crate) use flashback::{
-    FlashbackCostClause, FlashbackKeywordLineSpec, parse_flashback_cost_clause_tokens,
+    FlashbackCostClause, parse_flashback_cost_clause_tokens,
     parse_flashback_keyword_line_spec_lexed,
 };
 pub(crate) use mana_usage::{
     is_mana_spend_bonus_sentence_lexed, is_spend_mana_restriction_sentence_lexed,
     parse_mana_spend_bonus_sentence_lexed, parse_mana_usage_restriction_sentence_lexed,
 };
-pub(crate) use spell_countered_trigger::{
-    SpellCounteredTriggerSpec, parse_spell_countered_trigger_spec_lexed,
-};
+pub(crate) use spell_countered_trigger::parse_spell_countered_trigger_spec_lexed;
 pub(crate) use static_shapes::{
     is_draw_replacement_double_line_lexed, is_draw_replacement_skip_empty_library_line_lexed,
     is_land_reveal_enters_static_line_lexed, is_opening_hand_begin_game_static_line_lexed,
@@ -736,11 +732,6 @@ pub(crate) fn is_shuffle_into_library_from_graveyard_line_lexed(tokens: &[OwnedL
         && contains_token_word(tokens, "shuffle")
         && contains_token_word(tokens, "library")
         && contains_token_word(tokens, "instead")
-}
-
-pub(crate) fn is_discard_or_redirect_replacement_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    super::static_keyword_replacement_shapes::parse_discard_or_redirect_replacement(tokens)
-        .is_some()
 }
 
 fn parse_unsigned_integer_token<'a>(

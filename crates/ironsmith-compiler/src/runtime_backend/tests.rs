@@ -21,12 +21,12 @@ use super::{
     RewriteKeywordLineKind, RewriteSemanticItem, lex_line, lower_activation_cost_cst,
     parse_activate_only_timing_lexed, parse_activation_condition_lexed,
     parse_activation_cost_rewrite, parse_activation_cost_tokens_rewrite,
-    parse_cant_effect_sentence, parse_cant_effect_sentence_lexed, parse_cost_reduction_line,
-    parse_count_word_rewrite, parse_effect_sentence_lexed, parse_mana_cost_rewrite,
-    parse_mana_symbol_group_rewrite, parse_mana_usage_restriction_sentence_lexed,
-    parse_restriction_duration, parse_restriction_duration_lexed, parse_text_to_semantic_document,
-    parse_text_with_annotations_lowered, parse_triggered_times_each_turn_lexed,
-    parse_type_line_rewrite, split_lexed_sentences, token_word_refs,
+    parse_cant_effect_sentence_lexed, parse_cost_reduction_line, parse_effect_sentence_lexed,
+    parse_mana_cost_rewrite, parse_mana_symbol_group_rewrite,
+    parse_mana_usage_restriction_sentence_lexed, parse_restriction_duration_lexed,
+    parse_text_to_semantic_document, parse_text_with_annotations_lowered,
+    parse_triggered_times_each_turn_lexed, parse_type_line_rewrite, split_lexed_sentences,
+    token_word_refs,
 };
 use crate::runtime_backend::util::parse_value_expr_words;
 
@@ -180,21 +180,14 @@ fn parser_mod_non_test_reexports_stay_minimal() {
     let allowed = [
         "pub(crate) use super::*;",
         "pub(crate) use crate::cards::builders::GrantedAbilityAst;",
-        "pub(crate) use activation_and_restrictions::{ is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed, };",
         "pub(crate) use effect_sentences::{CarryContext, TokenCopyFollowup, Verb, parse_type_line};",
-        "pub(crate) use grammar::filters::parse_object_filter_with_grammar_entrypoint as parse_object_filter;",
-        "pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint as parse_spell_filter;",
         "pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;",
-        "pub(crate) use grammar::structure::parse_predicate_with_grammar_entrypoint_lexed as parse_predicate_lexed;",
         "pub(crate) use ir::RewriteSemanticDocument as LegacySemanticDocument;",
         "pub(crate) use lexer::{OwnedLexToken, token_word_refs};",
-        "pub(crate) use object_filters::{ is_comparison_or_delimiter, merge_spell_filters, parse_object_filter_lexed, spell_filter_has_identity, };",
         "pub(crate) use permission_helpers::{PermissionClauseSpec, PermissionLifetime};",
-        "pub(crate) use pipeline::parse_text_to_semantic_document;",
-        "pub(crate) use pipeline::parse_text_with_annotations;",
         "pub(crate) use reference_model::{ReferenceEnv, ReferenceExports, ReferenceImports};",
         "pub(crate) use shared_types::{ CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine, NormalizedLine, };",
-        "pub(crate) use util::{ SubjectAst, contains_until_end_of_turn, find_activation_cost_start, is_basic_color_word, parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_number_or_x_value, parse_power_toughness, parse_scryfall_mana_cost, parse_target_phrase, replace_unbound_x_with_value, span_from_tokens, starts_with_activation_cost, token_boundary_for_word, value_contains_unbound_x, words, };",
+        "pub(crate) use util::{ SubjectAst, parse_counter_type_from_tokens, parse_power_toughness, parse_scryfall_mana_cost, span_from_tokens, };",
         "pub(crate) use facade::{CardTextCompiler, CompilePolicy, CompiledCardText};",
     ];
 
@@ -2043,7 +2036,8 @@ fn rewrite_document_parser_supports_activate_only_once_each_turn_without_period(
             matches!(
                 line,
                 super::cst::RewriteLineCst::Static(static_line)
-                    if static_line.text == "activate only once each turn"
+                    if render_token_slice(&static_line.parse_tokens).trim()
+                        == "activate only once each turn"
             )
         }),
         "expected static CST line for activate-only-once line, got {cst:?}"
@@ -2119,10 +2113,10 @@ fn rewrite_document_parser_splits_activation_cost_on_colon_outside_quotes() {
         })
         .expect("expected activated CST line");
 
+    let effect_text = render_token_slice(&activated.effect_parse_tokens);
     assert!(
-        activated.effect_text.contains("fire: ice"),
-        "expected quoted inner colon to stay in effect text, got {:?}",
-        activated.effect_text
+        effect_text.contains("fire: ice"),
+        "expected quoted inner colon to stay in effect text, got {effect_text:?}"
     );
 }
 
@@ -2227,7 +2221,7 @@ fn rewrite_static_lowering_reuses_token_sentences_for_multi_sentence_lines()
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify multi-sentence static line");
 
-    let parsed = super::parse_static_line(rewrite_line_info(text), text, &tokens, None)?;
+    let parsed = super::parse_static_line(rewrite_line_info(text), &tokens, None)?;
 
     match parsed {
         crate::cards::builders::LineAst::StaticAbilities(abilities) => {
@@ -2246,7 +2240,7 @@ fn rewrite_static_lowering_reuses_token_split_for_compound_unblockable_line()
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify compound buff static line");
 
-    let parsed = super::parse_static_line(rewrite_line_info(text), text, &tokens, None)?;
+    let parsed = super::parse_static_line(rewrite_line_info(text), &tokens, None)?;
 
     match parsed {
         crate::cards::builders::LineAst::StaticAbilities(abilities) => {
@@ -2390,7 +2384,7 @@ fn rewrite_statement_lowering_reuses_full_token_slice_for_pact_line() -> Result<
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify pact statement line");
 
     let parsed_chunks =
-        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), text, &tokens, &[])?;
+        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), &tokens, &[])?;
 
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
@@ -2414,7 +2408,6 @@ fn rewrite_statement_lowering_uses_parse_tokens_when_groups_are_missing()
 
     let parsed_chunks = super::parse_statement_token_groups_to_chunks(
         rewrite_line_info("placeholder statement text"),
-        "placeholder statement text",
         &tokens,
         &[],
     )?;
@@ -2438,7 +2431,7 @@ fn rewrite_statement_lowering_parses_soul_partition_via_parser_path() -> Result<
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify Soul Partition text");
 
     let parsed_chunks =
-        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), text, &tokens, &[])?;
+        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), &tokens, &[])?;
 
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
@@ -2460,7 +2453,7 @@ fn rewrite_statement_lowering_parses_empty_laboratory_via_parser_path() -> Resul
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify Empty Laboratory text");
 
     let parsed_chunks =
-        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), text, &tokens, &[])?;
+        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), &tokens, &[])?;
 
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
@@ -2484,7 +2477,7 @@ fn rewrite_statement_lowering_parses_shape_anew_via_parser_path() -> Result<(), 
     let tokens = lex_line(text, 0).expect("rewrite lexer should classify Shape Anew text");
 
     let parsed_chunks =
-        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), text, &tokens, &[])?;
+        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), &tokens, &[])?;
 
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
@@ -2527,7 +2520,7 @@ fn rewrite_statement_lowering_parses_nissas_encouragement_via_parser_path()
         lex_line(text, 0).expect("rewrite lexer should classify Nissa's Encouragement text");
 
     let parsed_chunks =
-        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), text, &tokens, &[])?;
+        super::parse_statement_token_groups_to_chunks(rewrite_line_info(text), &tokens, &[])?;
 
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
@@ -2574,9 +2567,7 @@ fn rewrite_triggered_lowering_uses_parse_tokens_when_text_fields_are_stale()
         rewrite_line_info("placeholder triggered text"),
         "placeholder triggered text",
         &full_tokens,
-        "placeholder trigger text",
         &trigger_tokens,
-        "placeholder effect text",
         &effect_tokens,
         None,
         None,
@@ -2608,9 +2599,7 @@ fn rewrite_combat_death_blocked_damage_special_case_uses_parse_tokens() -> Resul
         rewrite_line_info("placeholder triggered text"),
         "placeholder triggered text",
         &full_tokens,
-        "placeholder trigger text",
         &trigger_tokens,
-        "placeholder effect text",
         &effect_tokens,
         None,
         None,
@@ -2744,7 +2733,6 @@ fn rewrite_token_word_view_caches_lower_words_and_word_token_indices() {
     assert_eq!(words.get(3), Some("your"));
     assert_eq!(words.token_boundary_for_word(4), Some(4));
     assert!(words.starts_with(&["activate", "only"]));
-    assert!(words.has_phrase(&["during", "your", "turn"]));
 }
 
 #[test]
@@ -2851,17 +2839,6 @@ fn rewrite_rule_engine_lex_clause_view_normalizes_parser_word_shapes() {
 }
 
 #[test]
-fn rewrite_token_word_view_find_preserves_word_indices() {
-    let tokens = lex_line("Whenever one or more cards are exiled this way", 0)
-        .expect("rewrite lexer should classify followup text");
-    let words = TokenWordView::new(&tokens);
-
-    assert_eq!(words.find_word("whenever"), Some(0));
-    assert_eq!(words.find_word("this"), Some(7));
-    assert_eq!(words.find_word("way"), Some(8));
-}
-
-#[test]
 fn rewrite_parser_support_detects_this_way_followup_intro() {
     let tokens = lex_line("Whenever one or more cards are exiled this way", 0)
         .expect("rewrite lexer should classify followup text");
@@ -2891,11 +2868,17 @@ fn rewrite_parser_support_detects_when_you_do_followup_intro() {
 
 #[test]
 fn rewrite_parser_support_splits_quoted_sentences_and_queues_restrictions() {
-    let (parsed_sentences, restrictions) = super::parser_support::split_text_for_parse(
-        "Draw a card. \"Choose one.\" Activate only during your turn.",
+    let tokens = lex_line(
         "Draw a card. \"Choose one.\" Activate only during your turn.",
         0,
-    );
+    )
+    .expect("rewrite lexer should classify quoted sentences and restrictions");
+    let (parsed_sentence_tokens, restrictions) =
+        super::parser_support::split_tokens_for_parse(&tokens);
+    let parsed_sentences = parsed_sentence_tokens
+        .iter()
+        .map(|tokens| super::lexer::render_token_slice(tokens).trim().to_string())
+        .collect::<Vec<_>>();
 
     assert_eq!(
         parsed_sentences,
@@ -5074,7 +5057,7 @@ fn rewrite_lexed_value_and_permission_helpers_match_existing_semantics() {
         .expect("rewrite lexer should classify permission clause");
 
     assert!(matches!(
-        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value_lexed(
+        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
             &count_tokens,
         ),
         Some(crate::effect::Value::Count(filter)) if filter.card_types == vec![CardType::Creature]
@@ -5187,13 +5170,6 @@ fn assert_source_counter_surface_in_card_context(
                 super::grammar::shared_util::value_semantics::parse_equal_to_number_of_counters_on_reference_value(&tokens)
                     .expect("source counter reference value should parse");
             assert_source_counter_surface(&parsed, expected_surface);
-
-            let parsed_lexed =
-                super::grammar::shared_util::value_semantics::parse_equal_to_number_of_counters_on_reference_value_lexed(
-                    &tokens,
-                )
-                .expect("lexed source counter reference value should parse");
-            assert_source_counter_surface(&parsed_lexed, expected_surface);
         },
     );
 }
@@ -5536,7 +5512,7 @@ fn rewrite_lexed_value_helpers_cover_offset_and_aggregate_counts() {
     .expect("rewrite lexer should classify spells-cast count-value clause");
 
     assert!(matches!(
-        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
+        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
             &offset_tokens
         ),
         Some(crate::effect::Value::Add(base, offset))
@@ -5544,7 +5520,7 @@ fn rewrite_lexed_value_helpers_cover_offset_and_aggregate_counts() {
                 && matches!(*offset, crate::effect::Value::Fixed(2))
     ));
     assert!(matches!(
-        super::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value_lexed(
+        super::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value(
             &aggregate_tokens,
         ),
         Some(crate::effect::Value::GreatestPower(filter))
@@ -5552,7 +5528,7 @@ fn rewrite_lexed_value_helpers_cover_offset_and_aggregate_counts() {
                 && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
     assert!(matches!(
-        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value_lexed(
+        super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
             &spells_cast_tokens,
         ),
         Some(crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. })
@@ -6268,69 +6244,6 @@ fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast_with_any_c
 }
 
 #[test]
-fn rewrite_token_primitives_cover_count_range_prefixes() {
-    let up_to = lex_line("up to three target creatures", 0)
-        .expect("rewrite lexer should classify up-to count range");
-    let one = lex_line("one target creature", 0)
-        .expect("rewrite lexer should classify exact-one count range");
-    let one_or_more = lex_line("one or more creatures", 0)
-        .expect("rewrite lexer should classify one-or-more count range");
-    let one_or_both = lex_line("one or both modes", 0)
-        .expect("rewrite lexer should classify one-or-both count range");
-
-    let up_to_range = super::token_primitives::parse_count_range_prefix(&up_to)
-        .expect("up-to prefix should parse");
-    let one_range =
-        super::token_primitives::parse_count_range_prefix(&one).expect("one prefix should parse");
-    let one_or_more_range = super::token_primitives::parse_count_range_prefix(&one_or_more)
-        .expect("one-or-more prefix should parse");
-    let one_or_both_range = super::token_primitives::parse_count_range_prefix(&one_or_both)
-        .expect("one-or-both prefix should parse");
-
-    assert_eq!(
-        up_to_range.0,
-        (
-            Some(crate::effect::Value::Fixed(0)),
-            Some(crate::effect::Value::Fixed(3))
-        )
-    );
-    assert_eq!(
-        TokenWordView::new(up_to_range.1).to_word_refs(),
-        vec!["target", "creatures"]
-    );
-    assert_eq!(
-        one_range.0,
-        (
-            Some(crate::effect::Value::Fixed(1)),
-            Some(crate::effect::Value::Fixed(1))
-        )
-    );
-    assert_eq!(
-        TokenWordView::new(one_range.1).to_word_refs(),
-        vec!["target", "creature"]
-    );
-    assert_eq!(
-        one_or_more_range.0,
-        (Some(crate::effect::Value::Fixed(1)), None)
-    );
-    assert_eq!(
-        TokenWordView::new(one_or_more_range.1).to_word_refs(),
-        vec!["creatures"]
-    );
-    assert_eq!(
-        one_or_both_range.0,
-        (
-            Some(crate::effect::Value::Fixed(1)),
-            Some(crate::effect::Value::Fixed(2))
-        )
-    );
-    assert_eq!(
-        TokenWordView::new(one_or_both_range.1).to_word_refs(),
-        vec!["modes"]
-    );
-}
-
-#[test]
 fn rewrite_token_primitives_cover_turn_duration_prefix_and_suffix_phrases() {
     let prefixed = lex_line("Until the end of your next turn, you may play that card", 0)
         .expect("rewrite lexer should classify prefixed duration phrase");
@@ -6468,54 +6381,6 @@ fn rewrite_token_primitives_cover_bare_value_comparison_phrases() {
     assert_eq!(
         TokenWordView::new(greater_equal_remainder).to_word_refs(),
         vec!["3"]
-    );
-}
-
-#[test]
-fn rewrite_values_count_range_prefix_parses_modal_ranges_directly() {
-    let up_to_two = lex_line("up to two", 0).expect("rewrite lexer should classify count range");
-    let one = lex_line("one target", 0).expect("rewrite lexer should classify choose range");
-    let one_or_both =
-        lex_line("one or both targets", 0).expect("rewrite lexer should classify choose range");
-
-    let (up_to_range, up_to_remainder) =
-        super::grammar::values::parse_count_range_prefix(&up_to_two)
-            .expect("direct values count-range parser should accept up-to phrase");
-    let (one_range, one_remainder) = super::grammar::values::parse_count_range_prefix(&one)
-        .expect("direct values count-range parser should accept bare one");
-    let (one_or_both_range, one_or_both_remainder) =
-        super::grammar::values::parse_count_range_prefix(&one_or_both)
-            .expect("direct values count-range parser should accept one-or-both phrase");
-
-    assert_eq!(
-        up_to_range,
-        (
-            Some(crate::effect::Value::Fixed(0)),
-            Some(crate::effect::Value::Fixed(2))
-        )
-    );
-    assert!(up_to_remainder.is_empty());
-    assert_eq!(
-        one_range,
-        (
-            Some(crate::effect::Value::Fixed(1)),
-            Some(crate::effect::Value::Fixed(1))
-        )
-    );
-    assert_eq!(
-        TokenWordView::new(one_remainder).to_word_refs(),
-        vec!["target"]
-    );
-    assert_eq!(
-        one_or_both_range,
-        (
-            Some(crate::effect::Value::Fixed(1)),
-            Some(crate::effect::Value::Fixed(2))
-        )
-    );
-    assert_eq!(
-        TokenWordView::new(one_or_both_remainder).to_word_refs(),
-        vec!["targets"]
     );
 }
 
@@ -11261,10 +11126,6 @@ fn rewrite_grammar_replacement_static_probes_match_keyword_static_shapes() {
         0,
     )
     .expect("rewrite lexer should classify discard-or-redirect replacement line");
-    assert!(
-        super::grammar::abilities::is_discard_or_redirect_replacement_line_lexed(&discard_tokens),
-        "grammar-owned discard-or-redirect probe should match"
-    );
     assert!(
         super::keyword_static::parse_discard_or_redirect_replacement_line(&discard_tokens)
             .expect("discard-or-redirect replacement line should parse")
@@ -17968,42 +17829,6 @@ fn rewrite_lexed_effect_entrypoint_parses_two_additional_combat_phases() {
 }
 
 #[test]
-fn rewrite_count_word_parser_handles_digits_and_words() {
-    assert_eq!(parse_count_word_rewrite("2").expect("digit count"), 2);
-    assert_eq!(parse_count_word_rewrite("three").expect("word count"), 3);
-    assert_eq!(
-        parse_count_word_rewrite("twenty-one").expect("hyphenated word count"),
-        21
-    );
-
-    let digit_tokens = lex_line("2", 0).expect("lexer should classify digit count");
-    assert_eq!(
-        super::grammar::values::parse_count_word_tokens(&digit_tokens)
-            .expect("token count parser should parse digits"),
-        2
-    );
-
-    let word_tokens = lex_line("three", 0).expect("lexer should classify word count");
-    assert_eq!(
-        super::grammar::values::parse_count_word_tokens(&word_tokens)
-            .expect("token count parser should parse count words"),
-        3
-    );
-
-    let split_word_tokens = lex_line("twenty one", 0).expect("lexer should classify split words");
-    assert_eq!(
-        super::grammar::values::parse_number_prefix_lexed(&split_word_tokens),
-        Some((21, 2))
-    );
-
-    let hundred_tokens = lex_line("one hundred", 0).expect("lexer should classify hundred");
-    assert_eq!(
-        super::grammar::values::parse_number_prefix_lexed(&hundred_tokens),
-        Some((100, 2))
-    );
-}
-
-#[test]
 fn rewrite_mana_symbol_group_parser_handles_hybrid_symbols() {
     let symbols =
         parse_mana_symbol_group_rewrite("{W/U}").expect("parser should parse hybrid mana group");
@@ -18022,12 +17847,6 @@ fn rewrite_mana_symbol_group_parser_handles_multiple_slash_separators() {
 
 #[test]
 fn rewrite_parser_root_values_entrypoints_match_grammar_outputs() {
-    let root_count = parse_count_word_rewrite("three")
-        .expect("parser-root count-word entrypoint should succeed");
-    let grammar_count = super::grammar::values::parse_count_word_rewrite("three")
-        .expect("grammar count-word parser should succeed");
-    assert_eq!(root_count, grammar_count);
-
     let root_symbols = parse_mana_symbol_group_rewrite("{W/U/B}")
         .expect("parser-root mana-group entrypoint should succeed");
     let grammar_symbols = super::grammar::values::parse_mana_symbol_group("{W/U/B}")

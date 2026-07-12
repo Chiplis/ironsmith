@@ -1,10 +1,5 @@
 use super::*;
 
-pub(crate) use crate::runtime_backend::activation_helpers::{
-    is_mana_pool_tail_tokens, parse_add_mana, parse_any_combination_mana_colors,
-    parse_or_mana_color_choices,
-};
-
 const STRIKE_WORD: &str = "strike";
 const ANOTHER_WORD: &str = "another";
 const STRIKE_COUNTER_PREFIXES: &[(&str, CounterType)] = &[

@@ -10,19 +10,17 @@ use winnow::error::ModalResult as WResult;
 use winnow::stream::Stream;
 use winnow::token::any;
 
-use super::activation_and_restrictions::keyword_activated_lines::{
-    parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
-};
 use super::activation_and_restrictions::parse_payment_clause_as_total_cost;
 use super::clause_support::{
     parse_ability_line_lexed, parse_effect_sentences_lexed, parse_static_ability_ast_line_lexed,
     parse_trigger_clause_lexed, parse_triggered_line_lexed,
 };
+#[cfg(test)]
+use super::cst::KeywordLineKindCst;
 use super::cst::{
-    ActivatedLineCst, KeywordLineKindCst, LevelHeaderCst, LevelItemCst, LevelItemKindCst,
-    MetadataLineCst, ModalBlockCst, ModalModeCst, RewriteDocumentCst, RewriteLineCst,
-    SagaChapterLineCst, StatementLineCst, StaticLineCst, TriggerIntroCst, TriggeredLineCst,
-    UnsupportedLineCst,
+    ActivatedLineCst, LevelHeaderCst, LevelItemCst, LevelItemKindCst, MetadataLineCst,
+    ModalBlockCst, ModalModeCst, RewriteDocumentCst, RewriteLineCst, SagaChapterLineCst,
+    StatementLineCst, StaticLineCst, TriggerIntroCst, TriggeredLineCst, UnsupportedLineCst,
 };
 use super::cst_lowering::lower_activation_cost_cst;
 use super::cst_lowering::lower_non_metadata_rewrite_line_cst;
@@ -50,20 +48,15 @@ use super::keyword_static::{
     parse_spell_cost_increase_per_target_beyond_first_line, parse_spells_cost_modifier_line,
 };
 use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView,
-    complete_token_word_sequence, complete_token_word_sequence_choice,
-    complete_word_sequence_choice, contains_token_word_sequence, lex_line, locate_token_kind,
-    locate_token_word, render_token_slice, token_prefix_choice_present, token_prefix_present,
-    token_slice_first_is, token_slice_last_kind, token_word_refs, token_word_suffix_present,
-    trim_lexed_commas,
+    LexStream, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView, lex_line,
+    locate_token_word, render_token_slice, token_word_refs, trim_lexed_commas,
 };
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
 };
 use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
 use super::token_primitives::{
-    clone_sentence_chunk_tokens, items_have, items_start_with, lexed_head_words, locate_index,
-    locate_index as locate_token_index, locate_window_index,
+    clone_sentence_chunk_tokens, lexed_head_words, locate_index as locate_token_index,
 };
 use super::util::{
     map_span_to_original, parse_level_header, parse_level_up_line_lexed, parse_power_toughness,
@@ -88,14 +81,13 @@ use line_cst_parsing::{
     parse_triggered_line_cst, strict_unsupported_triggered_line_error,
 };
 use line_dispatch::{LineDispatchResult, dispatch_standard_line_cst};
-#[cfg(test)]
-use statement_cst_support::looks_like_statement_line;
 use statement_cst_support::{
     extend_activated_line_with_result_followups, extend_statement_line_with_result_followups,
     extend_triggered_line_with_result_followups, looks_like_statement_line_lexed,
-    normalize_statement_parse_groups_lexed, parse_colon_nonactivation_statement_fallback,
-    parse_statement_line_cst,
+    parse_colon_nonactivation_statement_fallback, parse_statement_line_cst,
 };
+#[cfg(test)]
+use statement_cst_support::{looks_like_statement_line, normalize_statement_parse_groups_lexed};
 use unsupported::diagnose_known_unsupported_rewrite_line;
 
 fn rewrite_line_cst_kind(line: &RewriteLineCst) -> &'static str {
@@ -247,9 +239,7 @@ fn should_try_combined_static_tokens(
 
 #[derive(Debug, Clone)]
 struct TriggeredSplitCandidate {
-    trigger_text: String,
     trigger_parse_tokens: Vec<OwnedLexToken>,
-    effect_text: String,
     effect_parse_tokens: Vec<OwnedLexToken>,
     intervening_if: Option<PredicateAst>,
     max_triggers_per_turn: Option<u32>,
@@ -265,9 +255,7 @@ impl TriggeredSplitCandidate {
             info: line.info.clone(),
             full_text: render_token_slice(full_parse_tokens).trim().to_string(),
             full_parse_tokens: full_parse_tokens.to_vec(),
-            trigger_text: self.trigger_text,
             trigger_parse_tokens: self.trigger_parse_tokens,
-            effect_text: self.effect_text,
             effect_parse_tokens: self.effect_parse_tokens,
             intervening_if: self.intervening_if,
             presentation: trigger_presentation_from_preprocessed_line(line),
@@ -340,18 +328,16 @@ fn render_triggered_split_candidate(
 
     let (trigger_tokens, max_triggers_per_turn) =
         strip_trigger_frequency_suffix_tokens(trigger_candidate_tokens);
-    let trigger_text = render_token_slice(trigger_tokens).trim().to_string();
-    let effect_text = render_token_slice(effect_candidate_tokens)
-        .trim()
-        .to_string();
-    if trigger_text.is_empty() || effect_text.is_empty() {
+    if render_token_slice(trigger_tokens).trim().is_empty()
+        || render_token_slice(effect_candidate_tokens)
+            .trim()
+            .is_empty()
+    {
         return None;
     }
 
     Some(TriggeredSplitCandidate {
-        trigger_text,
         trigger_parse_tokens: trigger_tokens.to_vec(),
-        effect_text,
         effect_parse_tokens: effect_candidate_tokens.to_vec(),
         intervening_if,
         max_triggers_per_turn: max_triggers_per_turn.or(trailing_cap),
@@ -563,7 +549,6 @@ fn parse_labeled_conditional_replacement_sentence_split(
     let mut lines = if prevention_then_trigger.is_some() {
         vec![RewriteLineCst::Static(StaticLineCst {
             info: first_sentence_line.info.clone(),
-            text: first_sentence_line.info.normalized.normalized.clone(),
             parse_tokens: first_sentence_line.tokens.clone(),
             chosen_option: None,
             parsed: parsed_prevention,
@@ -1847,16 +1832,16 @@ mod tests {
 
         match cst.lines.as_slice() {
             [super::RewriteLineCst::Triggered(triggered)] => {
+                let effect_text = render_token_slice(&triggered.effect_parse_tokens);
                 assert!(
-                    triggered.effect_text.contains("roll a d20"),
+                    effect_text.contains("roll a d20"),
                     "expected initial roll clause in triggered effect text, got {:?}",
-                    triggered.effect_text
+                    effect_text
                 );
                 assert!(
-                    triggered.effect_text.contains("1—9")
-                        && triggered.effect_text.contains("10—20"),
+                    effect_text.contains("1—9") && effect_text.contains("10—20"),
                     "expected numeric result followups to merge into triggered line, got {:?}",
-                    triggered.effect_text
+                    effect_text
                 );
             }
             other => panic!("expected one merged triggered line, got {other:?}"),
@@ -2545,24 +2530,16 @@ mod tests {
             "at the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. put that card into your hand and the rest on the bottom of your library in a random order."
         );
         assert_eq!(
-            parsed.trigger_text,
+            render_token_slice(&parsed.trigger_parse_tokens),
             "the beginning of your second main phase"
         );
         assert_eq!(
-            parsed.effect_text,
+            render_token_slice(&parsed.effect_parse_tokens),
             "reveal cards from the top of your library until you reveal a land card. put that card into your hand and the rest on the bottom of your library in a random order."
         );
         assert_eq!(
             render_token_slice(&parsed.full_parse_tokens),
             parsed.full_text
-        );
-        assert_eq!(
-            render_token_slice(&parsed.trigger_parse_tokens),
-            parsed.trigger_text
-        );
-        assert_eq!(
-            render_token_slice(&parsed.effect_parse_tokens),
-            parsed.effect_text
         );
     }
 
@@ -2575,13 +2552,15 @@ mod tests {
         let parsed =
             parse_triggered_line_cst(&line).expect("Barrensteppe Siege Mardu trigger should parse");
 
-        assert_eq!(parsed.trigger_text, "the beginning of your end step");
+        assert_eq!(
+            render_token_slice(&parsed.trigger_parse_tokens),
+            "the beginning of your end step"
+        );
+        let effect_text = render_token_slice(&parsed.effect_parse_tokens);
         assert!(
-            parsed
-                .effect_text
-                .contains("each opponent sacrifices a creature of their choice"),
+            effect_text.contains("each opponent sacrifices a creature of their choice"),
             "expected sacrifice-choice effect text, got {}",
-            parsed.effect_text
+            effect_text
         );
         assert!(
             matches!(
@@ -2602,8 +2581,14 @@ mod tests {
         let parsed =
             parse_triggered_line_cst(&line).expect("Thunder Brute tribute trigger should parse");
 
-        assert_eq!(parsed.trigger_text, "this creature enters");
-        assert_eq!(parsed.effect_text, "it gains haste until end of turn.");
+        assert_eq!(
+            render_token_slice(&parsed.trigger_parse_tokens),
+            "this creature enters"
+        );
+        assert_eq!(
+            render_token_slice(&parsed.effect_parse_tokens),
+            "it gains haste until end of turn."
+        );
         assert_eq!(
             parsed.intervening_if,
             Some(crate::cards::builders::PredicateAst::Not(Box::new(
@@ -2621,13 +2606,15 @@ mod tests {
         let parsed =
             parse_triggered_line_cst(&line).expect("Barrensteppe Siege Abzan trigger should parse");
 
-        assert_eq!(parsed.trigger_text, "the beginning of your end step");
+        assert_eq!(
+            render_token_slice(&parsed.trigger_parse_tokens),
+            "the beginning of your end step"
+        );
+        let effect_text = render_token_slice(&parsed.effect_parse_tokens);
         assert!(
-            parsed
-                .effect_text
-                .contains("put a +1/+1 counter on each creature you control"),
+            effect_text.contains("put a +1/+1 counter on each creature you control"),
             "expected counter effect text, got {}",
-            parsed.effect_text
+            effect_text
         );
     }
 
@@ -2870,10 +2857,9 @@ mod tests {
                 let parsed = parse_triggered_line_cst(line)
                     .expect("named source leaves trigger should parse as triggered CST");
 
-                assert_eq!(parsed.trigger_text, "emrakul leaves the battlefield");
                 assert_eq!(
                     render_token_slice(&parsed.trigger_parse_tokens),
-                    parsed.trigger_text
+                    "emrakul leaves the battlefield"
                 );
             },
         );
@@ -2944,10 +2930,9 @@ mod tests {
         match cst.lines.as_slice() {
             [super::RewriteLineCst::Activated(activated)] => {
                 assert_eq!(render_token_slice(&activated.cost_parse_tokens), "{t}");
-                assert_eq!(activated.effect_text, "draw a card.");
                 assert_eq!(
                     render_token_slice(&activated.effect_parse_tokens),
-                    activated.effect_text
+                    "draw a card."
                 );
             }
             other => panic!("expected one activated line, got {other:?}"),
@@ -2970,12 +2955,18 @@ mod tests {
                 super::RewriteLineCst::Static(static_line),
                 super::RewriteLineCst::Triggered(triggered),
             ] => {
-                assert_eq!(static_line.text, "reveal the first card you draw each turn");
                 assert_eq!(
-                    triggered.trigger_text,
+                    render_token_slice(&static_line.parse_tokens),
+                    "reveal the first card you draw each turn"
+                );
+                assert_eq!(
+                    render_token_slice(&triggered.trigger_parse_tokens),
                     "you reveal an instant card this way"
                 );
-                assert_eq!(triggered.effect_text, "draw a card");
+                assert_eq!(
+                    render_token_slice(&triggered.effect_parse_tokens),
+                    "draw a card"
+                );
             }
             other => {
                 panic!("expected static plus triggered reveal-first-draw split, got {other:?}")
@@ -3001,8 +2992,14 @@ mod tests {
                     triggered.full_text,
                     "When this creature enters, draw a card"
                 );
-                assert_eq!(triggered.trigger_text, "this creature enters");
-                assert_eq!(triggered.effect_text, "draw a card");
+                assert_eq!(
+                    render_token_slice(&triggered.trigger_parse_tokens),
+                    "this creature enters"
+                );
+                assert_eq!(
+                    render_token_slice(&triggered.effect_parse_tokens),
+                    "draw a card"
+                );
             }
             other => panic!("expected rewritten championed-with-this trigger, got {other:?}"),
         }
@@ -3482,14 +3479,13 @@ fn try_parse_labeled_line_dispatch(
         && let Some((cost_tokens, effect_parse_tokens)) =
             split_activation_text_tokens_lexed(&body_line.tokens)
     {
-        let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
-        Some((cost_tokens, effect_parse_tokens, effect_text))
+        Some((cost_tokens, effect_parse_tokens))
     } else {
         None
     };
     let prefer_activation = labeled_activation
         .as_ref()
-        .is_some_and(|(cost_tokens, _, _)| looks_like_activation_cost_prefix(cost_tokens));
+        .is_some_and(|(cost_tokens, _)| looks_like_activation_cost_prefix(cost_tokens));
 
     if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
         if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
@@ -3548,7 +3544,7 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if prefer_activation
-        && let Some((cost_tokens, effect_parse_tokens, effect_text)) = labeled_activation.clone()
+        && let Some((cost_tokens, effect_parse_tokens)) = labeled_activation.clone()
     {
         let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
             &preprocessed.builder,
@@ -3562,9 +3558,7 @@ fn try_parse_labeled_line_dispatch(
                         info: line.info.clone(),
                         cost,
                         cost_parse_tokens: normalized_cost_tokens,
-                        effect_text,
                         effect_parse_tokens,
-                        presentation_label: Some(label.trim().to_string()),
                         chosen_option: preserve_as_choice_label
                             .then(|| {
                                 document_grammar::parse_chosen_option_context_tokens(label_tokens)
@@ -3655,7 +3649,7 @@ fn try_parse_labeled_line_dispatch(
         }
     }
 
-    if let Some((cost_tokens, effect_parse_tokens, effect_text)) = labeled_activation {
+    if let Some((cost_tokens, effect_parse_tokens)) = labeled_activation {
         let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
             &preprocessed.builder,
             line,
@@ -3668,9 +3662,7 @@ fn try_parse_labeled_line_dispatch(
                         info: line.info.clone(),
                         cost,
                         cost_parse_tokens: normalized_cost_tokens,
-                        effect_text,
                         effect_parse_tokens,
-                        presentation_label: Some(label.trim().to_string()),
                         chosen_option: preserve_as_choice_label
                             .then(|| {
                                 document_grammar::parse_chosen_option_context_tokens(label_tokens)
@@ -4081,8 +4073,7 @@ pub(crate) fn parse_document_cst(
                     }
 
                     let suffix_line = rewrite_line_tokens(line, &suffix_tokens);
-                    let Some((label, _, body_tokens)) =
-                        split_label_prefix_lexed(&suffix_line.tokens)
+                    let Some((_, _, body_tokens)) = split_label_prefix_lexed(&suffix_line.tokens)
                     else {
                         return Err(CardTextError::ParseError(format!(
                             "parser could not recover keyword activation suffix: '{}'",
@@ -4097,7 +4088,6 @@ pub(crate) fn parse_document_cst(
                             line.info.raw_line
                         )));
                     };
-                    let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
                     let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
                         &preprocessed.builder,
                         line,
@@ -4108,9 +4098,7 @@ pub(crate) fn parse_document_cst(
                         info: suffix_line.info.clone(),
                         cost,
                         cost_parse_tokens: normalized_cost_tokens,
-                        effect_text,
                         effect_parse_tokens,
-                        presentation_label: Some(label.trim().to_string()),
                         chosen_option: None,
                     });
                     trace_cst_line(&cst);
@@ -4226,7 +4214,6 @@ fn lower_document_cst(
         annotations: preprocessed.annotations,
         items,
         overload_items,
-        semantic_facts,
         allow_unsupported,
     })
 }

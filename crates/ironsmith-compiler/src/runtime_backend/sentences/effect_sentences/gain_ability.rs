@@ -2,6 +2,7 @@ use super::super::activation_and_restrictions::parse_single_word_keyword_action;
 use super::super::clause_support::{
     parse_static_ability_ast_line_lexed, parse_trigger_clause_lexed, parse_triggered_line_lexed,
 };
+#[cfg(test)]
 use super::super::compile_support::compile_statement_effects;
 use super::super::grammar::primitives::{TokenWordView, split_lexed_slices_on_and};
 use super::super::grammar::structure::parse_trailing_if_predicate_lexed;
@@ -26,7 +27,6 @@ use super::dispatch_inner::trim_edge_punctuation;
 use super::lex_chain_helpers::find_verb_lexed;
 use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
-#[allow(unused_imports)]
 use super::{Verb, find_verb, parse_effect_chain, parse_effect_sentence_lexed};
 use crate::ability::Ability;
 use crate::cards::builders::{
@@ -2027,7 +2027,6 @@ mod tests {
     use super::super::super::util::tokenize_line;
     use super::*;
     use crate::CardId;
-    use crate::ability::AbilityKind;
     use crate::cards::builders::CardDefinitionBuilder;
 
     #[test]

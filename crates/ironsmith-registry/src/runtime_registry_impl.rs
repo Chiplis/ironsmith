@@ -249,6 +249,12 @@ impl CardRegistry {
         generated_registry::generated_parser_card_names()
     }
 
+    /// Generated flavor/printed-name aliases used by registry integration tests.
+    #[cfg(test)]
+    pub fn generated_parser_card_aliases() -> Vec<(String, String)> {
+        generated_registry::generated_parser_card_aliases()
+    }
+
     /// Names of cards currently supported by the registry implementation.
     pub fn supported_card_names() -> Vec<String> {
         let mut registry = Self::with_builtin_cards();

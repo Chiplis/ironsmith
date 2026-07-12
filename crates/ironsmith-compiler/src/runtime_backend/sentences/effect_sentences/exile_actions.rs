@@ -422,13 +422,6 @@ pub(crate) fn parse_graveyard_owner_prefix_lexed(
     effect_grammar::parse_exile_graveyard_owner_shape(tokens)
 }
 
-fn parse_library_owner_prefix_lexed(
-    tokens: &[OwnedLexToken],
-    default_player: PlayerAst,
-) -> Option<ParsedOwnerPrefix> {
-    effect_grammar::parse_exile_library_owner_shape(tokens, default_player)
-}
-
 fn parse_exile_dynamic_count_from_top_library_clause(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,

@@ -132,39 +132,6 @@ pub(crate) fn parse_discard_trigger_card_filter(
     }
 }
 
-pub(crate) fn parse_subtype_list_enters_trigger_filter(
-    tokens: &[OwnedLexToken],
-    other: bool,
-) -> Option<ObjectFilter> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.is_empty() {
-        return None;
-    }
-
-    let (controller, subject_end) = subtype_list_controller_suffix(&words);
-
-    let mut subtypes = Vec::new();
-    for word in &words[..subject_end] {
-        if trigger_subject_grammar::trigger_word_is_connector(word) {
-            continue;
-        }
-        if let Some(subtype) = parse_subtype_flexible(word) {
-            if !subtypes.iter().any(|existing| existing == &subtype) {
-                subtypes.push(subtype);
-            }
-        }
-    }
-    if subtypes.is_empty() {
-        return None;
-    }
-
-    let mut filter = ObjectFilter::default();
-    filter.subtypes = subtypes;
-    filter.controller = controller;
-    filter.other = other;
-    Some(filter)
-}
-
 fn subtype_list_controller_suffix(words: &[&str]) -> (Option<PlayerFilter>, usize) {
     if let Some(suffix) =
         crate::runtime_backend::grammar::trigger_subjects::parse_trigger_control_suffix(words)
@@ -217,14 +184,6 @@ pub(crate) fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter
     }
 }
 
-pub(crate) fn contains_opponent_word(words: &[&str]) -> bool {
-    trigger_subject_grammar::parse_trigger_subject_surface_facts(words).contains_opponent
-}
-
-pub(crate) fn contains_your_team_words(words: &[&str]) -> bool {
-    trigger_subject_grammar::parse_trigger_subject_surface_facts(words).on_your_team
-}
-
 pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter> {
     trigger_subject_grammar::parse_trigger_subject_surface_facts(subject)
         .player
@@ -254,98 +213,12 @@ pub(crate) fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<P
     Some(trigger_controller_player_filter(controller))
 }
 
-pub(crate) fn parse_trigger_subject_filter(
-    subject_tokens: &[OwnedLexToken],
-) -> Result<Option<ObjectFilter>, CardTextError> {
-    if subject_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let mut subject_tokens = strip_leading_one_or_more(subject_tokens);
-    let mut other = false;
-    if subject_tokens
-        .first()
-        .and_then(OwnedLexToken::as_word)
-        .is_some_and(trigger_subject_grammar::trigger_word_is_other_modifier)
-    {
-        other = true;
-        subject_tokens = &subject_tokens[1..];
-    }
-    if subject_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
-    if is_source_reference_words(&subject_words) {
-        return Ok(None);
-    }
-    if let Some(suffix) =
-        crate::runtime_backend::grammar::trigger_subjects::parse_trigger_control_suffix(
-            &subject_words,
-        )
-        && trigger_source_words(&subject_words[..suffix.subject_end])
-    {
-        let mut filter = ObjectFilter::default();
-        filter.controller = Some(trigger_controller_player_filter(suffix.controller));
-        return Ok(Some(filter));
-    }
-    let subject_facts =
-        trigger_subject_grammar::parse_trigger_subject_surface_facts(&subject_words);
-    if subject_facts.any_source {
-        return Ok(Some(ObjectFilter::default()));
-    }
-    if subject_facts.relative_pronoun {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported trigger subject filter (clause: '{}')",
-            subject_words.join(" ")
-        )));
-    }
-
-    parse_object_filter(subject_tokens, other)
-        .map(Some)
-        .map_err(|_| {
-            CardTextError::ParseError(format!(
-                "unsupported trigger subject filter (clause: '{}')",
-                crate::runtime_backend::token_word_refs(subject_tokens).join(" ")
-            ))
-        })
-}
-
-pub(crate) fn trigger_subject_player_selector(
-    subject_tokens: &[OwnedLexToken],
-) -> Option<PlayerFilter> {
-    let subject_tokens = strip_leading_one_or_more(subject_tokens);
-    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
-    parse_trigger_subject_player_filter(&subject_words)
-}
-
 pub(crate) fn attacking_filter_for_player(player: PlayerFilter) -> ObjectFilter {
     let mut filter = ObjectFilter::creature();
     if !matches!(player, PlayerFilter::Any) {
         filter.controller = Some(player);
     }
     filter
-}
-
-pub(crate) fn parse_attack_trigger_subject_filter(
-    subject_tokens: &[OwnedLexToken],
-) -> Result<Option<ObjectFilter>, CardTextError> {
-    if let Some(player) = trigger_subject_player_selector(subject_tokens) {
-        return Ok(Some(attacking_filter_for_player(player)));
-    }
-    let Some(mut filter) = parse_trigger_subject_filter(subject_tokens)? else {
-        return Ok(None);
-    };
-
-    // Attack/combat-trigger subjects are creatures by default even when
-    // expressed only as a subtype ("a Sliver", "one or more Goblins", etc.).
-    if filter.card_types.is_empty() {
-        filter.card_types.push(crate::types::CardType::Creature);
-    } else if filter.card_types.len() > 1 && filter.all_card_types.is_empty() {
-        filter.all_card_types = std::mem::take(&mut filter.card_types);
-    }
-
-    Ok(Some(filter))
 }
 
 pub(crate) fn strip_leading_one_or_more_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {

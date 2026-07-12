@@ -10,8 +10,8 @@ use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken};
 use super::super::super::primitives;
 use super::{
     contains_content_sequence, contains_sequence_phrase, contains_sequence_word,
-    finish_sequence_words, matches_complete_content_sequence, seek_sequence_phrase,
-    sequence_any_phrase, sequence_phrase, starts_content_sequence, starts_sequence,
+    matches_complete_content_sequence, seek_sequence_phrase, sequence_any_phrase, sequence_phrase,
+    starts_content_sequence, starts_sequence,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

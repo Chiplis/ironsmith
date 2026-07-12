@@ -5,7 +5,7 @@ use winnow::token::any;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{leaf, primitives, static_keyword_cost_shapes};
-use super::nearby_primitives::{semantic_all, semantic_kw, semantic_phrase};
+use super::nearby_primitives::semantic_kw;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CostPrefixCondition<'a> {

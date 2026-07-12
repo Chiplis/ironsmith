@@ -30,7 +30,6 @@ pub(crate) struct PumpCreatureTypeChoiceShape<'a> {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MustAttackCreatureTypeChoiceShape<'a> {
-    pub(crate) base_subject_tokens: &'a [OwnedLexToken],
     pub(crate) filter_subject_tokens: &'a [OwnedLexToken],
     pub(crate) trailing_subject_tokens: &'a [OwnedLexToken],
 }
@@ -127,7 +126,6 @@ pub(crate) fn parse_must_attack_creature_type_choice_shape(
     let (base_subject_tokens, trailing_subject_tokens) =
         split_inline_choice_subject(subject_tokens)?;
     Some(MustAttackCreatureTypeChoiceShape {
-        base_subject_tokens,
         filter_subject_tokens: strip_leading_all(base_subject_tokens),
         trailing_subject_tokens,
     })

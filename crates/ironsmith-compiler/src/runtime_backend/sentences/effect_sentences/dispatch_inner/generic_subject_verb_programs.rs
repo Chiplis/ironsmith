@@ -2865,6 +2865,7 @@ fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
 #[cfg(test)]
 mod generic_subject_verb_program_tests {
     use super::*;
+    use crate::Subtype;
 
     #[test]
     fn top_cards_counted_hand_remainder_uses_captured_owners() {
@@ -2903,7 +2904,10 @@ mod generic_subject_verb_program_tests {
             debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
             "{debug}"
         );
-        assert!(debug.matches("player: TargetOpponent").count() >= 2, "{debug}");
+        assert!(
+            debug.matches("player: TargetOpponent").count() >= 2,
+            "{debug}"
+        );
     }
 
     #[test]

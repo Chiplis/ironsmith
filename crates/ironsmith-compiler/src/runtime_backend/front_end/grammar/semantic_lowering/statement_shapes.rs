@@ -7,7 +7,6 @@ use crate::ConditionExpr;
 use crate::color::{Color, ColorSet};
 use crate::effect::Value;
 use crate::object::CounterType;
-use crate::target::PlayerFilter;
 use crate::types::Subtype;
 
 use super::super::super::lexer::{

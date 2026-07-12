@@ -10,7 +10,6 @@ use crate::mana::ManaCost;
 use crate::object::CounterType;
 use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype, Supertype};
-use crate::zone::Zone;
 
 use super::super::lexer::{LexStream, OwnedLexToken};
 
@@ -54,7 +53,6 @@ pub(crate) struct ActivationCostCst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub(crate) enum ActivationCostSegmentCst {
     Mana(ManaCost),
     Tap,
@@ -93,10 +91,6 @@ pub(crate) enum ActivationCostSegmentCst {
     ExileFromHand {
         count: u32,
         color_filter: Option<ColorSet>,
-    },
-    ExileFromGraveyard {
-        count: u32,
-        card_type: Option<CardType>,
     },
     ExileChosen {
         choice_count: ChoiceCount,

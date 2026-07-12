@@ -1,7 +1,7 @@
 use winnow::combinator::{alt, eof};
 use winnow::prelude::*;
 
-use crate::cards::builders::{PlayerAst, PredicateAst, TargetAst, TextSpan};
+use crate::cards::builders::{PredicateAst, TargetAst, TextSpan};
 use crate::effect::ChoiceCount;
 use crate::runtime_backend::grammar::primitives;
 use crate::runtime_backend::grammar::structure::{

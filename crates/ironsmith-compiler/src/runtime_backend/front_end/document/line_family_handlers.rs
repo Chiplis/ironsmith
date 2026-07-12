@@ -66,7 +66,6 @@ pub(super) fn run_labeled_line_family(
 fn sticker_sheet_ticket_marker_static_line(ctx: &LineDispatchContext<'_>) -> StaticLineCst {
     StaticLineCst {
         info: ctx.line.info.clone(),
-        text: ctx.line.info.normalized.normalized.clone(),
         parse_tokens: ctx.line.tokens.clone(),
         chosen_option: None,
         parsed: None,
@@ -152,7 +151,6 @@ pub(super) fn run_max_speed_labeled_line_family(
     if let Some((cost_tokens, effect_parse_tokens)) =
         split_activation_text_tokens_lexed(&activation_line.tokens)
     {
-        let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
         let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
             &ctx.preprocessed.builder,
             ctx.line,
@@ -165,9 +163,7 @@ pub(super) fn run_max_speed_labeled_line_family(
                         info: ctx.line.info.clone(),
                         cost,
                         cost_parse_tokens: normalized_cost_tokens,
-                        effect_text,
                         effect_parse_tokens,
-                        presentation_label: None,
                         chosen_option: None,
                     }),
                     ctx.idx + 1,
@@ -256,7 +252,6 @@ pub(super) fn run_draft_rule_line_family(
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Static(StaticLineCst {
             info: ctx.line.info.clone(),
-            text: ctx.line.info.normalized.normalized.clone(),
             parse_tokens: ctx.line.tokens.clone(),
             chosen_option: None,
             parsed: None,
@@ -578,15 +573,11 @@ pub(super) fn run_station_line_family(
         cost_tokens.clone(),
     )?;
     let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
-    let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
-
     let mut lines = vec![RewriteLineCst::Activated(ActivatedLineCst {
         info: ctx.line.info.clone(),
         cost,
         cost_parse_tokens: normalized_cost_tokens,
-        effect_text,
         effect_parse_tokens,
-        presentation_label: None,
         chosen_option: None,
     })];
 
@@ -679,14 +670,11 @@ pub(super) fn run_station_threshold_line_family(
             cost_tokens.clone(),
         )?;
         let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
-        let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
         lines.push(RewriteLineCst::Activated(ActivatedLineCst {
             info: ctx.line.info.clone(),
             cost,
             cost_parse_tokens: normalized_cost_tokens,
-            effect_text,
             effect_parse_tokens,
-            presentation_label: None,
             chosen_option: Some(chosen_option),
         }));
         return Ok(Some(LineDispatchResult {
@@ -758,14 +746,12 @@ fn station_threshold_is_creature_pt_threshold(
 pub(super) fn run_partner_with_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some(partner_name) = partner_with_name_from_line(ctx.line) else {
+    let Some(_) = partner_with_name_from_line(ctx.line) else {
         return Ok(None);
     };
 
-    let partner_static_text = format!("partner with {partner_name}");
     let partner_static = StaticLineCst {
         info: ctx.line.info.clone(),
-        text: partner_static_text,
         parse_tokens: tokens_before_reminder_or_terminal_period(&ctx.line.tokens).to_vec(),
         chosen_option: None,
         parsed: None,
@@ -780,17 +766,13 @@ pub(super) fn run_partner_with_keyword_line_family(
 pub(super) fn run_partner_variant_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
     if line_grammar::parse_partner_variant(&ctx.line.tokens).is_none() {
         return Ok(None);
     }
 
-    let visible_label = keyword_special_lines::parse_partner_visible_label_tokens(&ctx.line.tokens)
-        .unwrap_or_else(|| raw.to_string());
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Static(StaticLineCst {
             info: ctx.line.info.clone(),
-            text: visible_label,
             parse_tokens: ctx.line.tokens.clone(),
             chosen_option: None,
             parsed: None,
@@ -829,14 +811,12 @@ pub(super) fn run_surge_line_family(
         cost_tokens,
     );
     let alternative_line = rewrite_line_tokens(ctx.line, &parse_tokens);
-    let Some(mut keyword) = parse_keyword_line_cst(&alternative_line)? else {
+    let Some(keyword) = parse_keyword_line_cst(&alternative_line)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower surge keyword line: '{}'",
             ctx.line.info.raw_line
         )));
     };
-    keyword.text = ctx.line.info.raw_line.clone();
-
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Keyword(keyword),
         ctx.idx + 1,
@@ -878,14 +858,12 @@ pub(super) fn run_freerunning_line_family(
         cost_tokens,
     );
     let alternative_line = rewrite_line_tokens(ctx.line, &parse_tokens);
-    let Some(mut keyword) = parse_keyword_line_cst(&alternative_line)? else {
+    let Some(keyword) = parse_keyword_line_cst(&alternative_line)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower freerunning keyword line: '{}'",
             ctx.line.info.raw_line
         )));
     };
-    keyword.text = ctx.line.info.raw_line.clone();
-
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Keyword(keyword),
         ctx.idx + 1,
@@ -924,7 +902,6 @@ pub(super) fn run_keyword_line_family(
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Static(StaticLineCst {
                 info: ctx.line.info.clone(),
-                text: ctx.line.info.normalized.normalized.clone(),
                 parse_tokens: ctx.line.tokens.clone(),
                 chosen_option: None,
                 parsed: None,
@@ -1036,13 +1013,11 @@ pub(super) fn run_additional_combat_after_this_phase_line_family(
 pub(super) fn run_ward_or_echo_static_prefix_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let normalized = ctx.line.info.normalized.normalized.as_str();
     Ok(
         is_ward_or_echo_static_prefix_line_lexed(&ctx.line.tokens).then(|| {
             LineDispatchResult::single(
                 RewriteLineCst::Static(StaticLineCst {
                     info: ctx.line.info.clone(),
-                    text: normalized.to_string(),
                     parse_tokens: rewrite_keyword_dash_parse_tokens(&ctx.line.tokens),
                     chosen_option: None,
                     parsed: None,
@@ -1057,27 +1032,11 @@ pub(super) fn run_activation_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     if (!line_starts_with_lparen_token(ctx.line) || is_fully_parenthetical_line(ctx.line))
-        && let Some((mut presentation_label, cost_tokens, effect_parse_tokens)) =
-            split_label_prefix_lexed(&ctx.line.tokens)
-                .filter(|(label, _, _)| is_named_ability_label(label.as_str()))
-                .and_then(|(label, _, body_tokens)| {
-                    split_activation_text_tokens_lexed(body_tokens).map(
-                        |(cost_tokens, effect_tokens)| (Some(label), cost_tokens, effect_tokens),
-                    )
-                })
-                .or_else(|| {
-                    split_activation_text_tokens_lexed(&ctx.line.tokens)
-                        .map(|(cost_tokens, effect_tokens)| (None, cost_tokens, effect_tokens))
-                })
+        && let Some((cost_tokens, effect_parse_tokens)) = split_label_prefix_lexed(&ctx.line.tokens)
+            .filter(|(label, _, _)| is_named_ability_label(label.as_str()))
+            .and_then(|(_, _, body_tokens)| split_activation_text_tokens_lexed(body_tokens))
+            .or_else(|| split_activation_text_tokens_lexed(&ctx.line.tokens))
     {
-        if presentation_label.is_none() {
-            presentation_label = original_activation_presentation_label(
-                ctx.line,
-                &cost_tokens,
-                &effect_parse_tokens,
-            );
-        }
-        let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
         let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
             &ctx.preprocessed.builder,
             ctx.line,
@@ -1089,9 +1048,7 @@ pub(super) fn run_activation_line_family(
                     info: ctx.line.info.clone(),
                     cost,
                     cost_parse_tokens: normalized_cost_tokens,
-                    effect_text,
                     effect_parse_tokens,
-                    presentation_label,
                     chosen_option: None,
                 };
                 let (activated, next_idx) = extend_activated_line_with_result_followups(
@@ -1112,32 +1069,6 @@ pub(super) fn run_activation_line_family(
     }
 
     Ok(None)
-}
-
-fn original_activation_presentation_label(
-    line: &PreprocessedLine,
-    cost_tokens: &[OwnedLexToken],
-    effect_tokens: &[OwnedLexToken],
-) -> Option<String> {
-    let (label, _, body_tokens) = split_label_prefix_lexed(&line.info.source_tokens)?;
-    if !is_named_ability_label(label.as_str()) {
-        return None;
-    }
-    let (original_cost_tokens, original_effect_tokens) =
-        split_activation_text_tokens_lexed(body_tokens)?;
-    let original_effect_tokens = tokens_before_reminder_or_terminal_period(&original_effect_tokens);
-    let effect_tokens = tokens_before_reminder_or_terminal_period(effect_tokens);
-    let original_cost_text = render_token_slice(&original_cost_tokens);
-    let cost_text = render_token_slice(cost_tokens);
-    let original_effect_text = render_token_slice(original_effect_tokens);
-    let effect_text = render_token_slice(effect_tokens);
-    let costs_match = original_cost_text
-        .trim()
-        .eq_ignore_ascii_case(cost_text.trim());
-    let effects_match = original_effect_text
-        .trim()
-        .eq_ignore_ascii_case(effect_text.trim());
-    (costs_match && effects_match).then(|| label.trim().to_string())
 }
 
 #[cfg(test)]
@@ -1652,7 +1583,7 @@ fn try_parse_trailing_keyword_activation_dispatch(
     };
 
     let suffix_line = rewrite_line_tokens(line, &suffix_tokens);
-    let Some((label, _, body_tokens)) = split_label_prefix_lexed(&suffix_line.tokens) else {
+    let Some((_, _, body_tokens)) = split_label_prefix_lexed(&suffix_line.tokens) else {
         return Err(CardTextError::ParseError(format!(
             "parser could not recover keyword activation suffix: '{}'",
             line.info.raw_line
@@ -1665,7 +1596,6 @@ fn try_parse_trailing_keyword_activation_dispatch(
             line.info.raw_line
         )));
     };
-    let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
     let normalized_cost_tokens =
         normalize_activation_cost_tokens_for_builder(builder, line, cost_tokens.clone())?;
     let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
@@ -1673,9 +1603,7 @@ fn try_parse_trailing_keyword_activation_dispatch(
         info: suffix_line.info.clone(),
         cost,
         cost_parse_tokens: normalized_cost_tokens,
-        effect_text,
         effect_parse_tokens,
-        presentation_label: Some(label.trim().to_string()),
         chosen_option: None,
     });
 

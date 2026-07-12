@@ -1,5 +1,5 @@
 use winnow::combinator::{alt, opt, peek, repeat, repeat_till};
-use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
+use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::rest;
 

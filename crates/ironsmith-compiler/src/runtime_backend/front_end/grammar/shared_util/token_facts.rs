@@ -4,13 +4,18 @@
 //! `front_end/shared/util.rs`.  Callers may retain compatibility signatures,
 //! but they no longer scan words or punctuation themselves.
 
-use winnow::combinator::{alt, eof, peek, repeat_till};
+use winnow::combinator::{alt, eof};
+#[cfg(test)]
+use winnow::combinator::{peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
+#[cfg(test)]
 use winnow::token::any;
 
 use crate::ChoiceCount;
-use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken, TokenWordView};
+#[cfg(test)]
+use crate::runtime_backend::front_end::lexer::LexStream;
+use crate::runtime_backend::front_end::lexer::{OwnedLexToken, TokenWordView};
 
 use super::super::{leaf, primitives};
 
@@ -20,6 +25,7 @@ pub(crate) struct ActivationCostStartFact {
     pub(crate) head: leaf::LeafActivationCostHead,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CostSegmentsFact<'a> {
     pub(crate) segments: Vec<&'a [OwnedLexToken]>,
@@ -42,16 +48,6 @@ pub(crate) struct ChoiceCountBeforeTargetFact {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BasicColorWord {
-    White,
-    Blue,
-    Black,
-    Red,
-    Green,
-    Colorless,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OutlawWord {
     Outlaw,
     NonOutlaw,
@@ -65,6 +61,7 @@ pub(crate) fn parse_activation_cost_start_tokens(
     Some(ActivationCostStartFact { token_index, head })
 }
 
+#[cfg(test)]
 pub(crate) fn parse_cost_segments_tokens(tokens: &[OwnedLexToken]) -> CostSegmentsFact<'_> {
     let mut segments = Vec::new();
     let mut remaining = tokens;
@@ -87,13 +84,6 @@ pub(crate) fn parse_cost_segments_tokens(tokens: &[OwnedLexToken]) -> CostSegmen
 pub(crate) fn parse_first_may_word_token(tokens: &[OwnedLexToken]) -> Option<MayWordBoundaryFact> {
     let (token_index, _, _) = primitives::find_prefix(tokens, || primitives::kw("may"))?;
     Some(MayWordBoundaryFact { token_index })
-}
-
-pub(crate) fn token_boundary_for_word(
-    tokens: &[OwnedLexToken],
-    word_index: usize,
-) -> Option<usize> {
-    TokenWordView::new(tokens).token_boundary_for_word(word_index)
 }
 
 /// Pure lexical transform: strips a caller-provided set without assigning any
@@ -120,14 +110,6 @@ pub(crate) fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
 pub(crate) fn non_article_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     let view = TokenWordView::new(tokens);
     non_article_word_refs(&view.word_refs())
-}
-
-pub(crate) fn parse_basic_color_word(word: &str) -> Option<BasicColorWord> {
-    let mut input = word;
-    (parse_basic_color_text, eof)
-        .map(|(color, _)| color)
-        .parse_next(&mut input)
-        .ok()
 }
 
 pub(crate) fn parse_outlaw_word(word: &str) -> Option<OutlawWord> {
@@ -158,18 +140,6 @@ pub(crate) fn parse_choice_count_before_target_tokens(
     })
 }
 
-fn parse_basic_color_text(input: &mut &str) -> WResult<BasicColorWord> {
-    alt((
-        "white".value(BasicColorWord::White),
-        "blue".value(BasicColorWord::Blue),
-        "black".value(BasicColorWord::Black),
-        "red".value(BasicColorWord::Red),
-        "green".value(BasicColorWord::Green),
-        "colorless".value(BasicColorWord::Colorless),
-    ))
-    .parse_next(input)
-}
-
 fn parse_outlaw_text(input: &mut &str) -> WResult<OutlawWord> {
     alt((
         alt(("outlaws", "outlaw")).value(OutlawWord::Outlaw),
@@ -178,6 +148,7 @@ fn parse_outlaw_text(input: &mut &str) -> WResult<OutlawWord> {
     .parse_next(input)
 }
 
+#[cfg(test)]
 fn parse_cost_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
     let boundary = || {
         alt((

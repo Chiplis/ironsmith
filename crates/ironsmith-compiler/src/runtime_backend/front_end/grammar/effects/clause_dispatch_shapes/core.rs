@@ -5,7 +5,6 @@ use crate::runtime_backend::front_end::grammar::leaf;
 use crate::runtime_backend::front_end::lexer::TokenWordView;
 use winnow::combinator::{alt, repeat};
 use winnow::error::ModalResult as WResult;
-use winnow::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ClauseSubjectVerbShape<'a> {

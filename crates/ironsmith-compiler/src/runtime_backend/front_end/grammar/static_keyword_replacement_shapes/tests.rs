@@ -10,20 +10,6 @@ fn tokens(words: &[&str]) -> Vec<OwnedLexToken> {
 }
 
 #[test]
-fn parses_counter_and_token_markers() {
-    let counter = tokens(&["that", "many", "plus", "one"]);
-    assert_eq!(
-        parse_counter_replacement_plus(&counter),
-        Some(CounterReplacementMarker::Plus(TokenBoundary { token: 2 }))
-    );
-    let token = tokens(&["create", "a", "treasure", "token"]);
-    assert_eq!(
-        parse_token_creation_token_word(&token),
-        Some(TokenBoundary { token: 3 })
-    );
-}
-
-#[test]
 fn parses_prevention_prefixes() {
     let line = tokens(&[
         "prevent",

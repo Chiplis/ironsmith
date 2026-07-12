@@ -8,7 +8,7 @@ use super::super::leaf::{
     parse_leaf_choice_count_prefix_lexed, parse_leaf_target_count_range_prefix_lexed,
 };
 use super::super::primitives;
-use super::clause_facts::{exact, exact_any, prefix, prefix_remainder};
+use super::clause_facts::{exact, exact_any, prefix};
 use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken, TokenWordView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

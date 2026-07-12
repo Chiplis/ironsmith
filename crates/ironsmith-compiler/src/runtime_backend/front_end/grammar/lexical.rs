@@ -1,4 +1,4 @@
-use winnow::combinator::{eof, peek, repeat_till};
+use winnow::combinator::repeat_till;
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 use winnow::token::{any, take};
@@ -18,8 +18,7 @@ struct ParsedWordSequence<'p> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ParsedTokenSequence<'p> {
-    sequence: &'p [&'p str],
+struct ParsedTokenSequence {
     start: usize,
     end: usize,
 }
@@ -64,66 +63,6 @@ fn parse_word_sequence_at<'p>(
     Some(parsed)
 }
 
-fn parse_complete_word_sequence<'p>(
-    words: &[&str],
-    expected: &'p [&'p str],
-) -> Option<ParsedWordSequence<'p>> {
-    let mut input = words;
-    let parsed = (word_sequence_parser(expected), eof)
-        .map(|(parsed, _)| parsed)
-        .parse_next(&mut input)
-        .ok()?;
-    Some(parsed)
-}
-
-fn parse_first_word_sequence<'p>(
-    words: &[&str],
-    expected: &'p [&'p str],
-) -> Option<ParsedWordSequence<'p>> {
-    let mut input = words;
-    let mut parsed = repeat_till(0.., any.void(), word_sequence_parser(expected))
-        .map(|((), parsed)| parsed)
-        .parse_next(&mut input)
-        .ok()?;
-    parsed.end = words.len().saturating_sub(input.len());
-    parsed.start = parsed.end.saturating_sub(expected.len());
-    Some(parsed)
-}
-
-fn parse_first_word_sequence_choice<'p>(
-    words: &[&str],
-    expected: &[&'p [&'p str]],
-) -> Option<ParsedWordSequence<'p>> {
-    let mut best: Option<ParsedWordSequence<'p>> = None;
-    for sequence in expected {
-        if sequence.is_empty() {
-            continue;
-        }
-        let Some(candidate) = parse_first_word_sequence(words, sequence) else {
-            continue;
-        };
-        let replace = best
-            .as_ref()
-            .is_none_or(|current| candidate.start < current.start);
-        if replace {
-            best = Some(candidate);
-        }
-    }
-    best
-}
-
-fn parse_complete_word_sequence_choice<'p>(
-    words: &[&str],
-    expected: &[&'p [&'p str]],
-) -> Option<ParsedWordSequence<'p>> {
-    for sequence in expected {
-        if let Some(parsed) = parse_complete_word_sequence(words, sequence) {
-            return Some(parsed);
-        }
-    }
-    None
-}
-
 fn parse_word_choice_at<'p>(
     words: &[&str],
     start: usize,
@@ -151,41 +90,6 @@ fn parse_first_word_choice<'p>(
             if word == *candidate {
                 return Some((index, candidate));
             }
-        }
-        index += 1;
-    }
-    None
-}
-
-fn parse_last_word_choice<'p>(words: &[&str], expected: &'p [&'p str]) -> Option<(usize, &'p str)> {
-    let mut input = words;
-    let mut index = 0usize;
-    let mut last = None;
-    while !input.is_empty() {
-        let parsed: Result<&str, ErrMode<ContextError>> = any.parse_next(&mut input);
-        let word = parsed.ok()?;
-        for candidate in expected {
-            if word == *candidate {
-                last = Some((index, *candidate));
-                break;
-            }
-        }
-        index += 1;
-    }
-    last
-}
-
-fn parse_word_boundary_by(
-    words: &[&str],
-    mut predicate: impl FnMut(&str) -> bool,
-) -> Option<usize> {
-    let mut input = words;
-    let mut index = 0usize;
-    while !input.is_empty() {
-        let parsed: Result<&str, ErrMode<ContextError>> = any.parse_next(&mut input);
-        let word = parsed.ok()?;
-        if predicate(word) {
-            return Some(index);
         }
         index += 1;
     }
@@ -241,7 +145,7 @@ fn same_token_sequence(actual: &[OwnedLexToken], expected: &[&str]) -> bool {
 
 fn token_sequence_parser<'a, 'p>(
     expected: &'p [&'p str],
-) -> impl Parser<LexStream<'a>, ParsedTokenSequence<'p>, ErrMode<ContextError>> + 'p {
+) -> impl Parser<LexStream<'a>, ParsedTokenSequence, ErrMode<ContextError>> + 'p {
     move |input: &mut LexStream<'a>| {
         let actual: &[OwnedLexToken] = take(expected.len()).parse_next(input)?;
         if !same_token_sequence(actual, expected) {
@@ -251,17 +155,16 @@ fn token_sequence_parser<'a, 'p>(
             ));
         }
         Ok(ParsedTokenSequence {
-            sequence: expected,
             start: 0,
             end: expected.len(),
         })
     }
 }
 
-fn parse_first_token_sequence<'p>(
+fn parse_first_token_sequence(
     tokens: &[OwnedLexToken],
-    expected: &'p [&'p str],
-) -> Option<ParsedTokenSequence<'p>> {
+    expected: &[&str],
+) -> Option<ParsedTokenSequence> {
     if expected.is_empty() {
         return None;
     }
@@ -272,21 +175,6 @@ fn parse_first_token_sequence<'p>(
         .ok()?;
     parsed.end = tokens.len().saturating_sub(input.len());
     parsed.start = parsed.end.saturating_sub(expected.len());
-    Some(parsed)
-}
-
-fn parse_token_sequence_at<'p>(
-    tokens: &[OwnedLexToken],
-    start: usize,
-    expected: &'p [&'p str],
-) -> Option<ParsedTokenSequence<'p>> {
-    let tail = tokens.get(start..)?;
-    let mut input = LexStream::new(tail);
-    let mut parsed = token_sequence_parser(expected)
-        .parse_next(&mut input)
-        .ok()?;
-    parsed.start = start;
-    parsed.end = start + expected.len();
     Some(parsed)
 }
 
@@ -307,105 +195,8 @@ fn parse_token_boundary_by(
     None
 }
 
-fn parse_last_token_boundary_by(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    let mut input = LexStream::new(tokens);
-    let mut index = 0usize;
-    let mut last = None;
-    while !input.is_empty() {
-        let parsed: Result<&OwnedLexToken, ErrMode<ContextError>> = any.parse_next(&mut input);
-        let token = parsed.ok()?;
-        if predicate(token) {
-            last = Some(index);
-        }
-        index += 1;
-    }
-    last
-}
-
 pub(crate) fn token_word_pieces_for_token(token: &OwnedLexToken) -> &[TokenWordPiece] {
     token.parser_word_pieces()
-}
-
-pub(crate) fn locate_word_sequence(words: &[&str], expected: &[&str]) -> Option<usize> {
-    if expected.is_empty() {
-        return None;
-    }
-    parse_first_word_sequence(words, expected).map(|parsed| parsed.start)
-}
-
-pub(crate) fn word_slice_find_phrase_start_or_zero(
-    words: &[&str],
-    expected: &[&str],
-) -> Option<usize> {
-    if expected.is_empty() {
-        Some(0)
-    } else {
-        parse_first_word_sequence(words, expected).map(|parsed| parsed.start)
-    }
-}
-
-pub(crate) fn word_slice_find_any_phrase_start<'p>(
-    words: &[&str],
-    expected: &'p [&'p [&'p str]],
-) -> Option<(&'p [&'p str], usize)> {
-    parse_first_word_sequence_choice(words, expected).map(|parsed| (parsed.sequence, parsed.start))
-}
-
-pub(crate) fn locate_word_sequence_choice_span(
-    words: &[&str],
-    expected: &[&[&str]],
-) -> Option<(usize, usize)> {
-    parse_first_word_sequence_choice(words, expected)
-        .map(|parsed| (parsed.start, parsed.end.saturating_sub(parsed.start)))
-}
-
-pub(crate) fn word_slice_find_phrase_value<T: Clone>(
-    words: &[&str],
-    expected: &[(&[&str], T)],
-) -> Option<(T, usize)> {
-    let mut best: Option<(T, usize)> = None;
-    for (sequence, value) in expected {
-        if sequence.is_empty() {
-            continue;
-        }
-        let Some(parsed) = parse_first_word_sequence(words, sequence) else {
-            continue;
-        };
-        if best
-            .as_ref()
-            .is_none_or(|(_, current_start)| parsed.start < *current_start)
-        {
-            best = Some((value.clone(), parsed.start));
-        }
-    }
-    best
-}
-
-pub(crate) fn word_slice_find_any_phrase_start_or_zero<'p>(
-    words: &[&str],
-    expected: &'p [&'p [&'p str]],
-) -> Option<(&'p [&'p str], usize)> {
-    let mut best: Option<(&'p [&'p str], usize)> = None;
-    for sequence in expected {
-        let candidate = if sequence.is_empty() {
-            Some(0)
-        } else {
-            parse_first_word_sequence(words, sequence).map(|parsed| parsed.start)
-        };
-        let Some(start) = candidate else {
-            continue;
-        };
-        if best
-            .as_ref()
-            .is_none_or(|(_, current_start)| start < *current_start)
-        {
-            best = Some((sequence, start));
-        }
-    }
-    best
 }
 
 pub(crate) fn word_slice_find_window_by(
@@ -416,79 +207,6 @@ pub(crate) fn word_slice_find_window_by(
     parse_word_window_boundary(words, window_len, predicate)
 }
 
-pub(crate) fn word_slice_has_window_by(
-    words: &[&str],
-    window_len: usize,
-    predicate: impl FnMut(&[&str]) -> bool,
-) -> bool {
-    parse_word_window_boundary(words, window_len, predicate).is_some()
-}
-
-pub(crate) fn word_sequence_present(words: &[&str], expected: &[&str]) -> bool {
-    !expected.is_empty() && parse_first_word_sequence(words, expected).is_some()
-}
-
-pub(crate) fn word_sequence_or_empty_present(words: &[&str], expected: &[&str]) -> bool {
-    expected.is_empty() || parse_first_word_sequence(words, expected).is_some()
-}
-
-pub(crate) fn word_sequence_choice_present(words: &[&str], expected: &[&[&str]]) -> bool {
-    parse_first_word_sequence_choice(words, expected).is_some()
-}
-
-pub(crate) fn word_sequence_choice_or_empty_present(words: &[&str], expected: &[&[&str]]) -> bool {
-    for sequence in expected {
-        if sequence.is_empty() || parse_first_word_sequence(words, sequence).is_some() {
-            return true;
-        }
-    }
-    false
-}
-
-pub(crate) fn complete_word_sequence_surface(words: &[&str], expected: &[&str]) -> bool {
-    parse_complete_word_sequence(words, expected).is_some()
-}
-
-pub(crate) fn complete_word_sequence_choice(words: &[&str], expected: &[&[&str]]) -> bool {
-    parse_complete_word_sequence_choice(words, expected).is_some()
-}
-
-pub(crate) fn complete_word_sequence_at(words: &[&str], idx: usize, expected: &[&str]) -> bool {
-    words
-        .get(idx..)
-        .is_some_and(|tail| parse_complete_word_sequence(tail, expected).is_some())
-}
-
-pub(crate) fn complete_word_sequence_choice_at(
-    words: &[&str],
-    idx: usize,
-    expected: &[&[&str]],
-) -> bool {
-    words
-        .get(idx..)
-        .is_some_and(|tail| parse_complete_word_sequence_choice(tail, expected).is_some())
-}
-
-pub(crate) fn word_slice_at_is(words: &[&str], idx: usize, expected: &str) -> bool {
-    words.get(idx).is_some_and(|word| *word == expected)
-}
-
-pub(crate) fn word_slice_at_is_any(words: &[&str], idx: usize, expected: &[&str]) -> bool {
-    parse_word_choice_at(words, idx, expected).is_some()
-}
-
-pub(crate) fn word_slice_first_is(words: &[&str], expected: &str) -> bool {
-    words.first().is_some_and(|word| *word == expected)
-}
-
-pub(crate) fn word_slice_first_is_any(words: &[&str], expected: &[&str]) -> bool {
-    parse_word_choice_at(words, 0, expected).is_some()
-}
-
-pub(crate) fn word_slice_last_is(words: &[&str], expected: &str) -> bool {
-    words.last().is_some_and(|word| *word == expected)
-}
-
 pub(crate) fn word_slice_last_is_any(words: &[&str], expected: &[&str]) -> bool {
     words
         .len()
@@ -497,69 +215,8 @@ pub(crate) fn word_slice_last_is_any(words: &[&str], expected: &[&str]) -> bool 
         .is_some()
 }
 
-pub(crate) fn word_slice_matching_phrase<'p>(
-    words: &[&str],
-    expected: &'p [&'p [&'p str]],
-) -> Option<&'p [&'p str]> {
-    parse_complete_word_sequence_choice(words, expected).map(|parsed| parsed.sequence)
-}
-
-pub(crate) fn word_slice_matching_prefix<'p>(
-    words: &[&str],
-    expected: &'p [&'p [&'p str]],
-) -> Option<&'p [&'p str]> {
-    for sequence in expected {
-        if parse_word_sequence_at(words, 0, sequence).is_some() {
-            return Some(sequence);
-        }
-    }
-    None
-}
-
-pub(crate) fn word_slice_matching_value<T: Clone>(
-    words: &[&str],
-    expected: &[(&[&str], T)],
-) -> Option<T> {
-    for (sequence, value) in expected {
-        if parse_complete_word_sequence(words, sequence).is_some() {
-            return Some(value.clone());
-        }
-    }
-    None
-}
-
-pub(crate) fn word_suffix_present(words: &[&str], expected: &[&str]) -> bool {
-    words
-        .len()
-        .checked_sub(expected.len())
-        .and_then(|start| parse_word_sequence_at(words, start, expected))
-        .is_some()
-}
-
-pub(crate) fn word_suffix_choice_present(words: &[&str], expected: &[&[&str]]) -> bool {
-    for sequence in expected {
-        if word_suffix_present(words, sequence) {
-            return true;
-        }
-    }
-    false
-}
-
 pub(crate) fn word_prefix_present(words: &[&str], expected: &[&str]) -> bool {
     parse_word_sequence_at(words, 0, expected).is_some()
-}
-
-pub(crate) fn word_prefix_present_at(words: &[&str], idx: usize, expected: &[&str]) -> bool {
-    parse_word_sequence_at(words, idx, expected).is_some()
-}
-
-pub(crate) fn word_prefix_choice_present(words: &[&str], expected: &[&[&str]]) -> bool {
-    for sequence in expected {
-        if parse_word_sequence_at(words, 0, sequence).is_some() {
-            return true;
-        }
-    }
-    false
 }
 
 pub(crate) fn word_slice_strip_prefix<'a>(
@@ -568,104 +225,6 @@ pub(crate) fn word_slice_strip_prefix<'a>(
 ) -> Option<&'a [&'a str]> {
     parse_word_sequence_at(words, 0, expected)?;
     Some(&words[expected.len()..])
-}
-
-pub(crate) fn word_slice_strip_suffix<'a>(
-    words: &'a [&'a str],
-    expected: &[&str],
-) -> Option<&'a [&'a str]> {
-    let start = words.len().checked_sub(expected.len())?;
-    parse_word_sequence_at(words, start, expected)?;
-    Some(&words[..start])
-}
-
-pub(crate) fn word_slice_strip_any_prefix<'a, 'p>(
-    words: &'a [&'a str],
-    expected: &'p [&'p [&'p str]],
-) -> Option<(&'p [&'p str], &'a [&'a str])> {
-    for sequence in expected {
-        if parse_word_sequence_at(words, 0, sequence).is_some() {
-            return Some((sequence, &words[sequence.len()..]));
-        }
-    }
-    None
-}
-
-pub(crate) fn word_slice_strip_prefix_value<'w, 'a, T: Clone>(
-    words: &'w [&'a str],
-    expected: &[(&[&str], T)],
-) -> Option<(T, &'w [&'a str])> {
-    for (sequence, value) in expected {
-        if parse_word_sequence_at(words, 0, sequence).is_some() {
-            return Some((value.clone(), &words[sequence.len()..]));
-        }
-    }
-    None
-}
-
-pub(crate) fn word_slice_strip_first_word<'w, 'a>(
-    words: &'w [&'a str],
-    expected: &str,
-) -> Option<&'w [&'a str]> {
-    words
-        .first()
-        .is_some_and(|word| *word == expected)
-        .then_some(&words[1..])
-}
-
-pub(crate) fn word_slice_strip_first_word_value<'w, 'a, T: Clone>(
-    words: &'w [&'a str],
-    expected: &[(&str, T)],
-) -> Option<(T, &'w [&'a str])> {
-    let first = words.first()?;
-    for (word, value) in expected {
-        if first == word {
-            return Some((value.clone(), &words[1..]));
-        }
-    }
-    None
-}
-
-pub(crate) fn word_slice_strip_any_suffix<'a, 'p>(
-    words: &'a [&'a str],
-    expected: &'p [&'p [&'p str]],
-) -> Option<(&'p [&'p str], &'a [&'a str])> {
-    for sequence in expected {
-        let Some(start) = words.len().checked_sub(sequence.len()) else {
-            continue;
-        };
-        if parse_word_sequence_at(words, start, sequence).is_some() {
-            return Some((sequence, &words[..start]));
-        }
-    }
-    None
-}
-
-pub(crate) fn word_slice_strip_suffix_value<'w, 'a, T: Clone>(
-    words: &'w [&'a str],
-    expected: &[(&[&str], T)],
-) -> Option<(T, &'w [&'a str])> {
-    for (sequence, value) in expected {
-        let Some(start) = words.len().checked_sub(sequence.len()) else {
-            continue;
-        };
-        if parse_word_sequence_at(words, start, sequence).is_some() {
-            return Some((value.clone(), &words[..start]));
-        }
-    }
-    None
-}
-
-pub(crate) fn word_present(words: &[&str], expected: &str) -> bool {
-    parse_first_word_choice(words, &[expected]).is_some()
-}
-
-pub(crate) fn locate_word(words: &[&str], expected: &str) -> Option<usize> {
-    parse_first_word_choice(words, &[expected]).map(|(idx, _)| idx)
-}
-
-pub(crate) fn locate_word_choice(words: &[&str], expected: &[&str]) -> Option<usize> {
-    parse_first_word_choice(words, expected).map(|(idx, _)| idx)
 }
 
 pub(crate) fn word_slice_find_any_word_from(
@@ -677,41 +236,11 @@ pub(crate) fn word_slice_find_any_word_from(
     parse_first_word_choice(tail, expected).map(|(idx, _)| start + idx)
 }
 
-pub(crate) fn locate_word_by(words: &[&str], predicate: impl FnMut(&str) -> bool) -> Option<usize> {
-    parse_word_boundary_by(words, predicate)
-}
-
 pub(crate) fn locate_last_word_by(
     words: &[&str],
     predicate: impl FnMut(&str) -> bool,
 ) -> Option<usize> {
     parse_last_word_boundary_by(words, predicate)
-}
-
-pub(crate) fn word_choice_present(words: &[&str], expected: &[&str]) -> bool {
-    parse_first_word_choice(words, expected).is_some()
-}
-
-pub(crate) fn word_choice_absent(words: &[&str], expected: &[&str]) -> bool {
-    parse_first_word_choice(words, expected).is_none()
-}
-
-pub(crate) fn every_word_present(words: &[&str], expected: &[&str]) -> bool {
-    for word in expected {
-        if parse_first_word_choice(words, &[*word]).is_none() {
-            return false;
-        }
-    }
-    true
-}
-
-pub(crate) fn word_slice_all_words_are_any(words: &[&str], expected: &[&str]) -> bool {
-    for word in words {
-        if parse_first_word_choice(expected, &[*word]).is_none() {
-            return false;
-        }
-    }
-    true
 }
 
 pub(crate) fn find_token_word_sequence(
@@ -726,44 +255,6 @@ pub(crate) fn find_token_word_sequence_span(
     expected: &[&str],
 ) -> Option<(usize, usize)> {
     parse_first_token_sequence(tokens, expected).map(|parsed| (parsed.start, parsed.end))
-}
-
-pub(crate) fn find_any_token_word_sequence_span<'p>(
-    tokens: &[OwnedLexToken],
-    expected: &'p [&'p [&'p str]],
-) -> Option<(&'p [&'p str], usize, usize)> {
-    let mut best: Option<ParsedTokenSequence<'p>> = None;
-    for sequence in expected {
-        let Some(candidate) = parse_first_token_sequence(tokens, sequence) else {
-            continue;
-        };
-        if best
-            .as_ref()
-            .is_none_or(|current| candidate.start < current.start)
-        {
-            best = Some(candidate);
-        }
-    }
-    best.map(|parsed| (parsed.sequence, parsed.start, parsed.end))
-}
-
-pub(crate) fn find_token_word_sequence_value<T: Clone>(
-    tokens: &[OwnedLexToken],
-    expected: &[(&[&str], T)],
-) -> Option<(T, usize, usize)> {
-    let mut best: Option<(T, usize, usize)> = None;
-    for (sequence, value) in expected {
-        let Some(parsed) = parse_first_token_sequence(tokens, sequence) else {
-            continue;
-        };
-        if best
-            .as_ref()
-            .is_none_or(|(_, current_start, _)| parsed.start < *current_start)
-        {
-            best = Some((value.clone(), parsed.start, parsed.end));
-        }
-    }
-    best
 }
 
 pub(crate) fn contains_token_word_sequence(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
@@ -784,117 +275,12 @@ pub(crate) fn token_slice_at_is_any(
         .is_some_and(|token| token.is_any_word(expected))
 }
 
-pub(crate) fn token_slice_at_kind(
-    tokens: &[OwnedLexToken],
-    idx: usize,
-    expected: TokenKind,
-) -> bool {
-    tokens.get(idx).is_some_and(|token| token.kind == expected)
-}
-
 pub(crate) fn token_slice_first_is(tokens: &[OwnedLexToken], expected: &str) -> bool {
     token_slice_at_is(tokens, 0, expected)
 }
 
-pub(crate) fn token_slice_first_is_any(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    token_slice_at_is_any(tokens, 0, expected)
-}
-
-pub(crate) fn token_slice_first_kind(tokens: &[OwnedLexToken], expected: TokenKind) -> bool {
-    token_slice_at_kind(tokens, 0, expected)
-}
-
 pub(crate) fn token_slice_last_is(tokens: &[OwnedLexToken], expected: &str) -> bool {
     tokens.last().is_some_and(|token| token.is_word(expected))
-}
-
-pub(crate) fn token_slice_last_kind(tokens: &[OwnedLexToken], expected: TokenKind) -> bool {
-    tokens.last().is_some_and(|token| token.kind == expected)
-}
-
-pub(crate) fn token_prefix_present(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    parse_token_sequence_at(tokens, 0, expected).is_some()
-}
-
-pub(crate) fn token_prefix_present_at(
-    tokens: &[OwnedLexToken],
-    idx: usize,
-    expected: &[&str],
-) -> bool {
-    parse_token_sequence_at(tokens, idx, expected).is_some()
-}
-
-pub(crate) fn token_prefix_choice_present(tokens: &[OwnedLexToken], expected: &[&[&str]]) -> bool {
-    for sequence in expected {
-        if parse_token_sequence_at(tokens, 0, sequence).is_some() {
-            return true;
-        }
-    }
-    false
-}
-
-pub(crate) fn complete_token_word_sequence(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    parse_complete_word_sequence(&words, expected).is_some()
-}
-
-pub(crate) fn complete_token_word_sequence_choice(
-    tokens: &[OwnedLexToken],
-    expected: &[&[&str]],
-) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    parse_complete_word_sequence_choice(&words, expected).is_some()
-}
-
-pub(crate) fn token_word_suffix_present(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    words
-        .len()
-        .checked_sub(expected.len())
-        .and_then(|start| parse_word_sequence_at(&words, start, expected))
-        .is_some()
-}
-
-pub(crate) fn token_slice_ends_with_any(tokens: &[OwnedLexToken], expected: &[&[&str]]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    for sequence in expected {
-        let Some(start) = words.len().checked_sub(sequence.len()) else {
-            continue;
-        };
-        if parse_word_sequence_at(&words, start, sequence).is_some() {
-            return true;
-        }
-    }
-    false
-}
-
-pub(crate) fn token_slice_strip_word_prefix<'a>(
-    tokens: &'a [OwnedLexToken],
-    expected: &[&str],
-) -> Option<&'a [OwnedLexToken]> {
-    if expected.is_empty() {
-        return Some(tokens);
-    }
-    let view = TokenWordView::new(tokens);
-    parse_word_sequence_at(&view.word_refs(), 0, expected)?;
-    let token_end = view.token_index_after_words(expected.len())?;
-    Some(&tokens[token_end..])
-}
-
-pub(crate) fn token_slice_strip_any_word_prefix<'a, 'p>(
-    tokens: &'a [OwnedLexToken],
-    expected: &'p [&'p [&'p str]],
-) -> Option<(&'p [&'p str], &'a [OwnedLexToken])> {
-    let view = TokenWordView::new(tokens);
-    let words = view.word_refs();
-    for sequence in expected {
-        if parse_word_sequence_at(&words, 0, sequence).is_none() {
-            continue;
-        }
-        let token_end = view.token_index_after_words(sequence.len())?;
-        return Some((sequence, &tokens[token_end..]));
-    }
-    None
 }
 
 pub(crate) fn locate_token_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
@@ -906,10 +292,6 @@ pub(crate) fn locate_token_word_choice(
     expected: &[&str],
 ) -> Option<usize> {
     parse_token_boundary_by(tokens, |token| token.is_any_word(expected))
-}
-
-pub(crate) fn locate_last_token_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
-    parse_last_token_boundary_by(tokens, |token| token.is_word(expected))
 }
 
 pub(crate) fn contains_token_word(tokens: &[OwnedLexToken], expected: &str) -> bool {
@@ -991,30 +373,6 @@ impl<'a> TokenWordView<'a> {
         word_prefix_present(&self.words, expected)
     }
 
-    pub(crate) fn starts_with_at(&self, idx: usize, expected: &[&str]) -> bool {
-        word_prefix_present_at(&self.words, idx, expected)
-    }
-
-    pub(crate) fn starts_with_any(&self, expected: &[&[&str]]) -> bool {
-        word_prefix_choice_present(&self.words, expected)
-    }
-
-    pub(crate) fn equals_at(&self, idx: usize, expected: &[&str]) -> bool {
-        complete_word_sequence_at(&self.words, idx, expected)
-    }
-
-    pub(crate) fn equals_any_at(&self, idx: usize, expected: &[&[&str]]) -> bool {
-        complete_word_sequence_choice_at(&self.words, idx, expected)
-    }
-
-    pub(crate) fn ends_with(&self, expected: &[&str]) -> bool {
-        word_suffix_present(&self.words, expected)
-    }
-
-    pub(crate) fn ends_with_any(&self, expected: &[&[&str]]) -> bool {
-        word_suffix_choice_present(&self.words, expected)
-    }
-
     pub(crate) fn slice_eq(&self, start: usize, expected: &[&str]) -> bool {
         self.words
             .get(start..start.saturating_add(expected.len()))
@@ -1027,25 +385,6 @@ impl<'a> TokenWordView<'a> {
             })
     }
 
-    pub(crate) fn find_phrase_start(&self, expected: &[&str]) -> Option<usize> {
-        locate_word_sequence(&self.words, expected)
-    }
-
-    pub(crate) fn find_any_phrase_start<'p>(
-        &self,
-        expected: &'p [&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], usize)> {
-        parse_first_word_sequence_choice(&self.words, expected)
-            .map(|parsed| (parsed.sequence, parsed.start))
-    }
-
-    pub(crate) fn find_phrase_value<T: Clone>(
-        &self,
-        expected: &[(&[&str], T)],
-    ) -> Option<(T, usize)> {
-        word_slice_find_phrase_value(&self.words, expected)
-    }
-
     pub(crate) fn find_window_by(
         &self,
         window_len: usize,
@@ -1054,101 +393,12 @@ impl<'a> TokenWordView<'a> {
         word_slice_find_window_by(&self.words, window_len, predicate)
     }
 
-    pub(crate) fn contains_window_by(
-        &self,
-        window_len: usize,
-        predicate: impl FnMut(&[&str]) -> bool,
-    ) -> bool {
-        word_slice_has_window_by(&self.words, window_len, predicate)
-    }
-
-    pub(crate) fn has_phrase(&self, expected: &[&str]) -> bool {
-        word_sequence_present(&self.words, expected)
-    }
-
-    pub(crate) fn has_any_phrase(&self, expected: &[&[&str]]) -> bool {
-        word_sequence_choice_present(&self.words, expected)
-    }
-
-    pub(crate) fn find_word(&self, expected: &str) -> Option<usize> {
-        locate_word(&self.words, expected)
-    }
-
-    pub(crate) fn find_any_word(&self, expected: &[&str]) -> Option<usize> {
-        locate_word_choice(&self.words, expected)
-    }
-
     pub(crate) fn find_any_word_from(&self, expected: &[&str], start: usize) -> Option<usize> {
         word_slice_find_any_word_from(&self.words, expected, start)
     }
 
     pub(crate) fn rfind_word(&self, expected: &str) -> Option<usize> {
         locate_last_word_by(&self.words, |word| word == expected)
-    }
-
-    pub(crate) fn contains_word(&self, expected: &str) -> bool {
-        word_present(&self.words, expected)
-    }
-
-    pub(crate) fn contains_any_word(&self, expected: &[&str]) -> bool {
-        word_choice_present(&self.words, expected)
-    }
-
-    pub(crate) fn contains_no_words(&self, expected: &[&str]) -> bool {
-        word_choice_absent(&self.words, expected)
-    }
-
-    pub(crate) fn contains_all_words(&self, expected: &[&str]) -> bool {
-        every_word_present(&self.words, expected)
-    }
-
-    pub(crate) fn at_is(&self, idx: usize, expected: &str) -> bool {
-        word_slice_at_is(&self.words, idx, expected)
-    }
-
-    pub(crate) fn at_is_any(&self, idx: usize, expected: &[&str]) -> bool {
-        word_slice_at_is_any(&self.words, idx, expected)
-    }
-
-    pub(crate) fn first_is(&self, expected: &str) -> bool {
-        word_slice_first_is(&self.words, expected)
-    }
-
-    pub(crate) fn first_is_any(&self, expected: &[&str]) -> bool {
-        word_slice_first_is_any(&self.words, expected)
-    }
-
-    pub(crate) fn last_is(&self, expected: &str) -> bool {
-        word_slice_last_is(&self.words, expected)
-    }
-
-    pub(crate) fn last_is_any(&self, expected: &[&str]) -> bool {
-        word_slice_last_is_any(&self.words, expected)
-    }
-
-    pub(crate) fn matching_value<T: Clone>(&self, expected: &[(&[&str], T)]) -> Option<T> {
-        word_slice_matching_value(&self.words, expected)
-    }
-
-    pub(crate) fn strip_prefix_value<'s, T: Clone>(
-        &'s self,
-        expected: &[(&[&str], T)],
-    ) -> Option<(T, &'s [&'a str])> {
-        word_slice_strip_prefix_value(&self.words, expected)
-    }
-
-    pub(crate) fn strip_first_word_value<'s, T: Clone>(
-        &'s self,
-        expected: &[(&str, T)],
-    ) -> Option<(T, &'s [&'a str])> {
-        word_slice_strip_first_word_value(&self.words, expected)
-    }
-
-    pub(crate) fn strip_suffix_value<'s, T: Clone>(
-        &'s self,
-        expected: &[(&[&str], T)],
-    ) -> Option<(T, &'s [&'a str])> {
-        word_slice_strip_suffix_value(&self.words, expected)
     }
 
     pub(crate) fn first(&self) -> Option<&str> {
@@ -1233,7 +483,6 @@ pub(crate) struct LexedClause<'a> {
     tokens: &'a [OwnedLexToken],
 }
 
-#[allow(dead_code)]
 impl<'a> LexedClause<'a> {
     pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
         Self { tokens }
@@ -1277,13 +526,6 @@ impl<'a> LexedClause<'a> {
         self.words().word_refs()
     }
 
-    pub(crate) fn word_refs_where(self, mut predicate: impl FnMut(&str) -> bool) -> Vec<&'a str> {
-        self.word_refs()
-            .into_iter()
-            .filter(|word| predicate(word))
-            .collect()
-    }
-
     pub(crate) fn word_len(self) -> usize {
         self.words().len()
     }
@@ -1302,16 +544,6 @@ impl<'a> LexedClause<'a> {
         })
     }
 
-    pub(crate) fn first_is_word(self, expected: &str) -> bool {
-        self.word_refs()
-            .first()
-            .is_some_and(|word| *word == expected)
-    }
-
-    pub(crate) fn first_is_any_word(self, expected: &[&str]) -> bool {
-        parse_word_choice_at(&self.word_refs(), 0, expected).is_some()
-    }
-
     pub(crate) fn first_word(self) -> Option<&'a str> {
         self.tokens
             .iter()
@@ -1320,129 +552,8 @@ impl<'a> LexedClause<'a> {
             .next()
     }
 
-    pub(crate) fn matches_words(self, expected: &[&str]) -> bool {
-        parse_complete_word_sequence(&self.word_refs(), expected).is_some()
-    }
-
-    pub(crate) fn matches_any_words(self, phrases: &[&[&str]]) -> bool {
-        parse_complete_word_sequence_choice(&self.word_refs(), phrases).is_some()
-    }
-
-    pub(crate) fn matching_word_value<T: Clone>(self, phrases: &[(&[&str], T)]) -> Option<T> {
-        let words = self.word_refs();
-        word_slice_matching_value(words.as_slice(), phrases)
-    }
-
-    pub(crate) fn find_word_value<T: Clone>(self, phrases: &[(&[&str], T)]) -> Option<(T, usize)> {
-        let words = self.word_refs();
-        word_slice_find_phrase_value(words.as_slice(), phrases)
-    }
-
-    pub(crate) fn starts_with(self, expected: &[&str]) -> bool {
-        parse_word_sequence_at(&self.word_refs(), 0, expected).is_some()
-    }
-
-    pub(crate) fn starts_with_any(self, phrases: &[&[&str]]) -> bool {
-        let words = self.word_refs();
-        for sequence in phrases {
-            if parse_word_sequence_at(&words, 0, sequence).is_some() {
-                return true;
-            }
-        }
-        false
-    }
-
-    pub(crate) fn ends_with(self, expected: &[&str]) -> bool {
-        let words = self.word_refs();
-        word_suffix_present(&words, expected)
-    }
-
-    pub(crate) fn ends_with_any(self, phrases: &[&[&str]]) -> bool {
-        let words = self.word_refs();
-        word_suffix_choice_present(&words, phrases)
-    }
-
-    pub(crate) fn strip_prefix_clause(self, expected: &[&str]) -> Option<Self> {
-        let words = self.word_refs();
-        let matched = parse_word_sequence_at(&words, 0, expected)?;
-        let token_idx = self.words().token_index_after_words(matched.end)?;
-        Some(self.from(token_idx))
-    }
-
-    pub(crate) fn strip_any_prefix_clause<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], Self)> {
-        let words = self.word_refs();
-        let mut returned_sequence = None;
-        let mut consumed_words = 0usize;
-        for sequence in phrases {
-            let Some(matched) = parse_word_sequence_at(&words, 0, sequence) else {
-                continue;
-            };
-            returned_sequence.get_or_insert(*sequence);
-            consumed_words = consumed_words.max(matched.end);
-        }
-        let returned_sequence = returned_sequence?;
-        let token_idx = self.words().token_index_after_words(consumed_words)?;
-        Some((returned_sequence, self.from(token_idx)))
-    }
-
-    pub(crate) fn strip_prefix_value_clause<T: Clone>(
-        self,
-        phrases: &[(&[&str], T)],
-    ) -> Option<(T, Self)> {
-        let words = self.word_refs();
-        word_slice_strip_prefix_value(&words, phrases).and_then(|(value, tail_words)| {
-            let consumed = words.len().saturating_sub(tail_words.len());
-            let token_idx = self.words().token_index_after_words(consumed)?;
-            Some((value, self.from(token_idx)))
-        })
-    }
-
-    pub(crate) fn strip_suffix_clause(self, expected: &[&str]) -> Option<Self> {
-        let words = self.words();
-        let word_count = words.len().checked_sub(expected.len())?;
-        parse_word_sequence_at(&words.word_refs(), word_count, expected)?;
-        let token_idx = words.token_index_after_words(word_count)?;
-        Some(self.before(token_idx))
-    }
-
-    pub(crate) fn strip_any_suffix_clause<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], Self)> {
-        let words = self.word_refs();
-        for sequence in phrases {
-            let Some(start) = words.len().checked_sub(sequence.len()) else {
-                continue;
-            };
-            if parse_word_sequence_at(&words, start, sequence).is_none() {
-                continue;
-            }
-            let token_idx = self.words().token_index_after_words(start)?;
-            return Some((sequence, self.before(token_idx)));
-        }
-        None
-    }
-
-    pub(crate) fn strip_suffix_value_clause<T: Clone>(
-        self,
-        phrases: &[(&[&str], T)],
-    ) -> Option<(T, Self)> {
-        let words = self.word_refs();
-        word_slice_strip_suffix_value(&words, phrases).and_then(|(value, head_words)| {
-            let token_idx = self.words().token_index_after_words(head_words.len())?;
-            Some((value, self.before(token_idx)))
-        })
-    }
-
     pub(crate) fn token_boundary_for_word(self, word_idx: usize) -> Option<usize> {
         self.words().token_boundary_for_word(word_idx)
-    }
-
-    pub(crate) fn token_boundary_for_word_or_end(self, word_idx: usize) -> Option<usize> {
-        self.words().token_boundary_for_word_or_end(word_idx)
     }
 
     pub(crate) fn token_index_after_words(self, word_count: usize) -> Option<usize> {
@@ -1475,102 +586,8 @@ impl<'a> LexedClause<'a> {
         Some(self.between(range.start, range.end))
     }
 
-    pub(crate) fn without_word_range_trimmed(
-        self,
-        word_start: usize,
-        word_len: usize,
-    ) -> Vec<OwnedLexToken> {
-        let token_start = self
-            .token_boundary_for_word(word_start)
-            .unwrap_or(self.tokens.len());
-        let token_end = self
-            .token_boundary_for_word(word_start + word_len)
-            .unwrap_or(self.tokens.len());
-        let mut tokens = self.tokens[..token_start].to_vec();
-        tokens.extend_from_slice(&self.tokens[token_end..]);
-        LexedClause::new(&tokens).trim()
-    }
-
-    pub(crate) fn without_phrase_trimmed(self, phrase: &[&str]) -> Option<Vec<OwnedLexToken>> {
-        let words = self.word_refs();
-        let matched = parse_first_word_sequence(&words, phrase)?;
-        Some(self.without_word_range_trimmed(matched.start, phrase.len()))
-    }
-
-    pub(crate) fn without_any_phrase_trimmed<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], Vec<OwnedLexToken>)> {
-        let words = self.word_refs();
-        let matched = parse_first_word_sequence_choice(&words, phrases)?;
-        Some((
-            matched.sequence,
-            self.without_word_range_trimmed(matched.start, matched.sequence.len()),
-        ))
-    }
-
-    pub(crate) fn find_word(self, expected: &str) -> Option<usize> {
-        parse_first_word_choice(&self.word_refs(), &[expected]).map(|(idx, _)| idx)
-    }
-
-    pub(crate) fn find_word_any(self, expected: &[&str]) -> Option<usize> {
-        parse_first_word_choice(&self.word_refs(), expected).map(|(idx, _)| idx)
-    }
-
     pub(crate) fn rfind_word(self, expected: &str) -> Option<usize> {
         self.words().rfind_word(expected)
-    }
-
-    pub(crate) fn find_phrase_start(self, expected: &[&str]) -> Option<usize> {
-        parse_first_word_sequence(&self.word_refs(), expected).map(|matched| matched.start)
-    }
-
-    pub(crate) fn find_any_phrase_start<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], usize)> {
-        let words = self.word_refs();
-        parse_first_word_sequence_choice(&words, phrases)
-            .map(|matched| (matched.sequence, matched.start))
-    }
-
-    pub(crate) fn find_any_phrase_span<'p>(
-        self,
-        phrases: &'p [&'p [&'p str]],
-    ) -> Option<(usize, usize)> {
-        let words = self.word_refs();
-        locate_word_sequence_choice_span(&words, phrases)
-    }
-
-    pub(crate) fn contains_word(self, expected: &str) -> bool {
-        parse_first_word_choice(&self.word_refs(), &[expected]).is_some()
-    }
-
-    pub(crate) fn contains_any_word(self, expected: &[&str]) -> bool {
-        parse_first_word_choice(&self.word_refs(), expected).is_some()
-    }
-
-    pub(crate) fn contains_no_words(self, expected: &[&str]) -> bool {
-        parse_first_word_choice(&self.word_refs(), expected).is_none()
-    }
-
-    pub(crate) fn count_word(self, expected: &str) -> usize {
-        self.word_refs()
-            .into_iter()
-            .filter(|word| *word == expected)
-            .count()
-    }
-
-    pub(crate) fn contains_comma(self) -> bool {
-        contains_token_kind(self.tokens, TokenKind::Comma)
-    }
-
-    pub(crate) fn contains_comma_or_any_word(self, expected: &[&str]) -> bool {
-        self.contains_comma() || parse_first_word_choice(&self.word_refs(), expected).is_some()
-    }
-
-    pub(crate) fn contains_all_words(self, expected: &[&str]) -> bool {
-        every_word_present(&self.word_refs(), expected)
     }
 
     pub(crate) fn find_token_word(self, expected: &str) -> Option<usize> {
@@ -1609,10 +626,6 @@ impl<'a> LexedClause<'a> {
         None
     }
 
-    pub(crate) fn rfind_token_word(self, expected: &str) -> Option<usize> {
-        locate_last_token_word(self.tokens, expected)
-    }
-
     pub(crate) fn split_once_on_word(self, expected: &str) -> Option<(Self, Self)> {
         let idx = locate_token_word(self.tokens, expected)?;
         Some((self.before(idx), self.from(idx + 1)))
@@ -1628,82 +641,9 @@ impl<'a> LexedClause<'a> {
         Some((self.before(idx), self.from(idx + 1)))
     }
 
-    pub(crate) fn split_once_on_word_any_trimmed(self, expected: &[&str]) -> Option<(Self, Self)> {
-        self.split_once_on_word_any(expected)
-            .map(|(head, tail)| (head.trimmed(), tail.trimmed()))
-    }
-
-    pub(crate) fn rsplit_once_on_word(self, expected: &str) -> Option<(Self, Self)> {
-        let idx = locate_last_token_word(self.tokens, expected)?;
-        Some((self.before(idx), self.from(idx + 1)))
-    }
-
-    pub(crate) fn rsplit_once_on_word_trimmed(self, expected: &str) -> Option<(Self, Self)> {
-        self.rsplit_once_on_word(expected)
-            .map(|(head, tail)| (head.trimmed(), tail.trimmed()))
-    }
-
     pub(crate) fn split_once_on_comma(self) -> Option<(Self, Self)> {
         let idx = locate_token_kind(self.tokens, TokenKind::Comma)?;
         Some((self.before(idx), self.from(idx + 1)))
-    }
-
-    pub(crate) fn split_once_before_word(self, expected: &str) -> Option<(Self, Self)> {
-        let idx = locate_token_word(self.tokens, expected)?;
-        Some((self.before(idx), self.from(idx)))
-    }
-
-    pub(crate) fn split_once_before_phrase(self, expected: &[&str]) -> Option<(Self, Self)> {
-        let words = self.word_refs();
-        let word_idx = parse_first_word_sequence(&words, expected)?.start;
-        let token_idx = self.token_boundary_for_word(word_idx)?;
-        Some((self.before(token_idx), self.from(token_idx)))
-    }
-
-    pub(crate) fn split_once_on_phrase(self, expected: &[&str]) -> Option<(Self, Self)> {
-        let words = self.word_refs();
-        let word_idx = parse_first_word_sequence(&words, expected)?.start;
-        let start_token_idx = self.token_boundary_for_word(word_idx)?;
-        let end_token_idx = self.token_index_after_words(word_idx + expected.len())?;
-        Some((self.before(start_token_idx), self.from(end_token_idx)))
-    }
-
-    pub(crate) fn split_once_before_any_phrase<'p>(
-        self,
-        phrases: &[&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], Self, Self)> {
-        let words = self.word_refs();
-        let matched = parse_first_word_sequence_choice(&words, phrases)?;
-        let token_idx = self.token_boundary_for_word(matched.start)?;
-        Some((
-            matched.sequence,
-            self.before(token_idx),
-            self.from(token_idx),
-        ))
-    }
-
-    pub(crate) fn split_once_on_any_phrase<'p>(
-        self,
-        phrases: &[&'p [&'p str]],
-    ) -> Option<(&'p [&'p str], Self, Self)> {
-        let words = self.word_refs();
-        let matched = parse_first_word_sequence_choice(&words, phrases)?;
-        let start_token_idx = self.token_boundary_for_word(matched.start)?;
-        let end_token_idx = self.token_index_after_words(matched.end)?;
-        Some((
-            matched.sequence,
-            self.before(start_token_idx),
-            self.from(end_token_idx),
-        ))
-    }
-
-    pub(crate) fn take_until_token_matching<F>(self, mut predicate: F) -> Self
-    where
-        F: FnMut(&OwnedLexToken) -> bool,
-    {
-        let idx = parse_token_boundary_by(self.tokens, |token| predicate(token))
-            .unwrap_or(self.tokens.len());
-        self.before(idx)
     }
 
     pub(crate) fn trimmed(self) -> Self {
@@ -1712,10 +652,6 @@ impl<'a> LexedClause<'a> {
 
     pub(crate) fn trim(self) -> Vec<OwnedLexToken> {
         self.trimmed().tokens().to_vec()
-    }
-
-    pub(crate) fn trimmed_tokens(self) -> &'a [OwnedLexToken] {
-        self.trimmed().tokens()
     }
 
     pub(crate) fn trimmed_word_refs(self) -> Vec<&'a str> {
@@ -1741,10 +677,6 @@ impl<'a> LexedClause<'a> {
             .into_iter()
             .map(Self::new)
             .collect()
-    }
-
-    pub(crate) fn trimmed_and_segments(self) -> Vec<Self> {
-        self.and_segments().into_iter().map(Self::trimmed).collect()
     }
 
     pub(crate) fn trimmed_and_comma_segments(self) -> Vec<Self> {
@@ -1777,11 +709,6 @@ impl<'a> LexedClause<'a> {
         .map(|(head, tail)| (Self::new(head), Self::new(tail)))
     }
 
-    pub(crate) fn split_comma_then_trimmed(self) -> Option<(Self, Self)> {
-        self.split_comma_then()
-            .map(|(head, tail)| (head.trimmed(), tail.trimmed()))
-    }
-
     pub(crate) fn split_once_on_then(self) -> Option<(Self, Self)> {
         self.split_comma_then()
             .or_else(|| self.split_once_on_word("then"))
@@ -1792,40 +719,10 @@ impl<'a> LexedClause<'a> {
             .map(|(head, tail)| (head.trimmed(), tail.trimmed()))
     }
 
-    pub(crate) fn comma_then_idx(self) -> Option<usize> {
-        self.split_comma_then().map(|(head, _)| head.len())
-    }
-
-    pub(crate) fn without_leading_connectors_clause(self) -> Self {
-        let trimmed = self.trimmed();
-        let mut start = 0usize;
-        while start < trimmed.tokens.len()
-            && trimmed.tokens[start]
-                .as_word()
-                .is_some_and(|word| matches!(word, "then" | "and"))
-        {
-            start += 1;
-        }
-        trimmed.from(start)
-    }
-
-    pub(crate) fn without_trailing_words_clause(self, words: &[&str]) -> Self {
-        let trimmed = self.trimmed();
-        let mut end = trimmed.tokens.len();
-        while end > 0
-            && trimmed.tokens[end - 1]
-                .as_word()
-                .is_some_and(|word| crate::word_primitives::contains_word(words, word))
-        {
-            end -= 1;
-        }
-        trimmed.before(end)
-    }
-
     /// If this clause's trailing tokens exactly spell `phrase` (word for word),
     /// return the clause with that phrase removed; otherwise return it unchanged.
-    /// Unlike `without_trailing_words_clause`, this requires the exact ordered
-    /// phrase and does not trim, so callers can detect a match by token count.
+    /// This requires the exact ordered phrase and does not trim, so callers can
+    /// detect a match by token count.
     pub(crate) fn without_trailing_phrase(self, phrase: &[&str]) -> Self {
         let len = self.tokens.len();
         if phrase.is_empty() || len < phrase.len() {

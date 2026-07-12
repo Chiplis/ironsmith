@@ -1,7 +1,7 @@
-use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
+use winnow::combinator::{alt, opt, peek, repeat, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
-use winnow::token::{any, rest};
+use winnow::token::any;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;

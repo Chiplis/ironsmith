@@ -1,24 +1,12 @@
 use winnow::Parser;
 use winnow::combinator::alt;
-use winnow::error::{ContextError, ErrMode};
 
 use super::super::activation_and_restrictions::activated_line_core::parse_named_number;
 use super::super::keyword_static::parse_pt_modifier;
-use super::super::lexer::{
-    OwnedLexToken, complete_word_sequence_choice, complete_word_sequence_surface, locate_word,
-    token_prefix_present_at, token_slice_at_is, token_slice_at_is_any, token_slice_first_is_any,
-    word_prefix_choice_present, word_prefix_present, word_prefix_present_at, word_present,
-    word_sequence_choice_present, word_slice_at_is, word_slice_at_is_any,
-    word_slice_find_any_phrase_start, word_slice_first_is, word_slice_first_is_any,
-    word_slice_last_is, word_slice_last_is_any, word_suffix_present,
-};
+use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::{
     parse_attached_reference_or_another_disjunction, parse_object_filter_lexed, push_unique,
     set_has, slice_has,
-};
-use super::super::token_primitives::{
-    items_end_with, items_have, items_start_with, locate_index, locate_last_index,
-    slice_strip_prefix,
 };
 use super::super::util::{
     apply_filter_keyword_constraint, comparison_to_at_least_threshold,
@@ -36,7 +24,6 @@ use super::super::util::{
 };
 use super::primitives::{self, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or};
 use super::values::parse_mana_symbol;
-use crate::cards::TextSpan;
 use crate::cards::builders::{CardTextError, IT_TAG, PlayerAst, PredicateAst, TagKey};
 use crate::color::{Color, ColorSet};
 use crate::effect::Value;
@@ -65,20 +52,17 @@ mod simple;
 pub(crate) mod spell_filters;
 
 pub(super) use chosen_type_references::*;
-pub(super) use color_and_sticker_facts::*;
-pub(super) use counter_constraints::*;
-pub(super) use domain_unions::*;
+use color_and_sticker_facts::*;
+use domain_unions::*;
 pub(super) use meld_and_special_subjects::*;
-pub(super) use naming_and_reference::*;
-pub(super) use player_relations::*;
+use naming_and_reference::*;
+use player_relations::*;
 pub(super) use predicate_phrases::*;
 pub(crate) use predicate_phrases::{
     WinnowAtom as PermissionAtom, WinnowCaptureKind as PermissionCaptureKind,
     WinnowCaptureRole as PermissionCaptureRole, WinnowSequence as PermissionSequence,
 };
 pub(super) use reference_tag_stage::*;
-pub(super) use simple::*;
-pub(super) use spell_filters::*;
 
 pub(crate) use counter_constraints::{
     intern_counter_name, parse_counter_type_from_tokens, parse_counter_type_word,

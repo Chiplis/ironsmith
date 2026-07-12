@@ -1,5 +1,5 @@
 use super::activation_and_restrictions::{
-    normalize_cant_words, parse_ability_phrase, parse_activated_line, parse_activation_cost,
+    parse_ability_phrase, parse_activated_line, parse_activation_cost,
     parse_choose_land_type_phrase_words, parse_payment_clause_as_total_cost,
     parse_single_word_keyword_action,
 };
@@ -14,8 +14,7 @@ use super::grammar::abilities::{
     is_cast_this_spell_as_though_it_had_flash_line_lexed, is_companion_marker_line_lexed,
     is_creatures_cant_block_line_lexed,
     is_creatures_entering_dont_cause_abilities_to_trigger_line_lexed,
-    is_creatures_without_flying_cant_attack_line_lexed,
-    is_discard_or_redirect_replacement_line_lexed, is_doctors_companion_marker_line_lexed,
+    is_creatures_without_flying_cant_attack_line_lexed, is_doctors_companion_marker_line_lexed,
     is_double_damage_from_sources_you_control_of_chosen_type_line_lexed,
     is_draw_replace_exile_top_face_down_line_lexed, is_draw_replacement_double_line_lexed,
     is_draw_replacement_skip_empty_library_line_lexed,
@@ -59,9 +58,8 @@ use super::grammar::abilities::{
     parse_flying_block_restriction_line_lexed,
     parse_reveal_first_card_you_draw_each_turn_spec_lexed,
     parse_source_is_chosen_type_in_addition_line_lexed, parse_source_tap_status_condition_lexed,
-    parse_trigger_suppression_spec_lexed, parse_ward_pay_life_amount_lexed,
-    split_as_long_as_condition_prefix_lexed, split_if_this_spell_costs_line_lexed,
-    split_untap_each_other_players_untap_step_line_lexed,
+    parse_trigger_suppression_spec_lexed, split_as_long_as_condition_prefix_lexed,
+    split_if_this_spell_costs_line_lexed, split_untap_each_other_players_untap_step_line_lexed,
 };
 use super::grammar::anthem_grants as anthem_grant_grammar;
 use super::grammar::conditions::{
@@ -74,8 +72,8 @@ use super::grammar::filters::{
 };
 use super::grammar::leaf::parse_leaf_fixed_mana_cost_prefix_tokens;
 use super::grammar::primitives::{
-    split_lexed_slices_on_and, split_lexed_slices_on_comma,
-    split_lexed_slices_on_commas_or_semicolons, split_lexed_slices_on_period,
+    split_lexed_slices_on_and, split_lexed_slices_on_commas_or_semicolons,
+    split_lexed_slices_on_period,
 };
 use super::grammar::static_keyword_facts::early as early_static_facts;
 use super::grammar::static_keyword_facts::late as late_static_facts;
@@ -93,18 +91,9 @@ use super::grammar::{
 };
 use super::keyword_static_helpers::*;
 use super::lexer::{
-    LexedClause, OwnedLexToken, TokenKind, TokenWordView, complete_word_sequence_at,
-    complete_word_sequence_choice, complete_word_sequence_choice_at,
-    complete_word_sequence_surface, contains_token_kind, every_word_present, locate_token_kind,
-    locate_word_by, locate_word_sequence_choice_span, parser_token_word_refs, render_token_slice,
-    split_lexed_sentences, token_prefix_present, token_slice_at_is, token_slice_at_is_any,
-    token_slice_first_is, token_slice_first_is_any, trim_lexed_commas, word_choice_absent,
-    word_choice_present, word_prefix_choice_present, word_prefix_present_at,
-    word_sequence_choice_present, word_slice_at_is, word_slice_at_is_any,
-    word_slice_find_any_phrase_start, word_slice_find_phrase_start_or_zero, word_slice_first_is,
-    word_slice_first_is_any, word_slice_last_is, word_slice_last_is_any,
-    word_slice_strip_any_prefix, word_slice_strip_first_word, word_suffix_choice_present,
-    word_suffix_present,
+    LexedClause, OwnedLexToken, TokenKind, TokenWordView, contains_token_kind, locate_token_kind,
+    parser_token_word_refs, render_token_slice, split_lexed_sentences, token_slice_first_is,
+    trim_lexed_commas, word_slice_last_is_any,
 };
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
@@ -114,60 +103,41 @@ use super::static_ability_helpers::{
     static_ability_for_keyword_action,
 };
 use super::token_primitives::{
-    is_core_keyword_marker_text, is_ticket_sticker_marker_text, items_have, lexed_head_words,
-    slice_strip_prefix, slice_strip_suffix, split_em_dash_label_prefix,
-    split_em_dash_label_prefix_tokens,
+    is_core_keyword_marker_text, is_ticket_sticker_marker_text, lexed_head_words,
+    split_em_dash_label_prefix, split_em_dash_label_prefix_tokens,
 };
 use super::util::{
-    comparison_to_at_least_threshold, comparison_to_strict_at_least_threshold,
-    is_source_reference_words, leading_mana_cost_from_tokens, mana_pips_from_token,
+    comparison_to_at_least_threshold, is_source_reference_words, mana_pips_from_token,
     parse_alternative_cast_words, parse_card_type, parse_choice_count_token_prefix_consumed,
-    parse_color, parse_counter_type_word, parse_counter_type_words,
-    parse_filter_counter_constraint_words, parse_flashback_keyword_line,
+    parse_color, parse_counter_type_word, parse_flashback_keyword_line,
     parse_for_each_count_value_words, parse_greater_than_or_equal_quantity_prefix,
-    parse_greater_than_or_equal_quantity_prefix_words, parse_less_than_or_equal_quantity_prefix,
-    parse_mana_symbol_word_flexible, parse_number_word_i32, parse_quantity_comparison_prefix,
-    parse_subtype_flexible, parse_value, parse_value_expr_words, parse_zone_word,
+    parse_less_than_or_equal_quantity_prefix, parse_number_word_i32,
+    parse_quantity_comparison_prefix, parse_subtype_flexible, parse_value, parse_value_expr_words,
     source_reference_surface_for_possessive_words, strip_leading_article_word_refs,
     strip_leading_token_words_any, strip_leading_word_refs_any, trim_commas,
-    trim_edge_punctuation_tokens, word_refs_at_is_article, words,
+    trim_edge_punctuation_tokens,
 };
 use super::util::{source_choose_spec_for_surface, source_reference_surface_for_words};
-#[allow(unused_imports)]
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
-#[allow(unused_imports)]
-use crate::alternative_cast::AlternativeCastingMethod;
-#[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
     ReferenceImports, StaticAbilityAst, TagKey, TextSpan,
 };
-#[allow(unused_imports)]
 use crate::color::{Color, ColorSet};
-#[allow(unused_imports)]
 use crate::cost::TotalCost;
-#[allow(unused_imports)]
 use crate::effect::{Condition, Effect, EventValueSpec, Value};
-#[allow(unused_imports)]
 use crate::mana::{ManaCost, ManaSymbol};
-#[allow(unused_imports)]
 use crate::object::CounterType;
 use crate::runtime_backend::grammar::shared_util::value_semantics::{
     parse_aggregate_scope_value_lexed, parse_commander_cast_count_player,
-    parse_filter_comparison_tokens,
 };
-#[allow(unused_imports)]
 use crate::static_abilities::{
     Anthem, AnthemCountExpression, AnthemValue, GrantAbility, PowerToughnessChoiceOption,
     StaticAbility,
 };
-#[allow(unused_imports)]
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter};
-#[allow(unused_imports)]
 use crate::triggers::Trigger;
-#[allow(unused_imports)]
 use crate::types::{CardType, Subtype, Supertype};
-#[allow(unused_imports)]
 use crate::zone::Zone;
 use ironsmith_core::{EffectMetric, EffectMetricSource};
 use std::sync::LazyLock;

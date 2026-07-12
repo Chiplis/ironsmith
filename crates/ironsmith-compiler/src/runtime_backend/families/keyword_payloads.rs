@@ -57,7 +57,6 @@ fn rewrite_context(
 ) -> RewriteKeywordLine {
     RewriteKeywordLine {
         info: line.info.clone(),
-        text: line.info.normalized.normalized.clone(),
         kind,
         parse_tokens: tokens.to_vec(),
         full_parse_tokens: full_tokens.to_vec(),

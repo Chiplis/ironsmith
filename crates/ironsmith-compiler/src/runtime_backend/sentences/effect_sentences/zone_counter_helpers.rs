@@ -14,12 +14,11 @@ use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
 };
-use super::super::lexer::{TokenWordView, token_slice_at_is};
+use super::super::lexer::TokenWordView;
 use super::super::object_filters::parse_object_filter;
-use super::super::token_primitives::locate_index as locate_token_index;
 use super::super::util::{
     parse_counter_type_from_tokens, parse_target_phrase, parse_value,
-    record_source_reference_surface, span_from_tokens, trim_commas,
+    record_source_reference_surface, span_from_tokens,
 };
 use crate::runtime_backend::front_end::grammar::effects::zone_counter_shapes as shapes;
 use crate::runtime_backend::grammar::shared_util::value_semantics::{

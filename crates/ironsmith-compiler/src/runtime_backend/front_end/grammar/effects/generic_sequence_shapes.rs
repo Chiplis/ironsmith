@@ -5,7 +5,7 @@ use winnow::prelude::*;
 use crate::mana::ManaCost;
 use crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens;
 use crate::runtime_backend::grammar::{leaf, primitives};
-use crate::runtime_backend::lexer::{LexStream, LexedClause, OwnedLexToken};
+use crate::runtime_backend::lexer::{LexStream, OwnedLexToken};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DestroyConsultLoopShape<'a> {
@@ -513,7 +513,7 @@ pub(crate) fn parse_delayed_upkeep_payment_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_backend::lexer::lex_line;
+    use crate::runtime_backend::lexer::{LexedClause, lex_line};
 
     fn lex(raw: &str) -> Vec<OwnedLexToken> {
         lex_line(raw, 0).unwrap()

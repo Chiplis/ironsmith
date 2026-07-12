@@ -6,10 +6,7 @@ use super::primitives;
 
 #[path = "statement_player_counters.rs"]
 mod player_counters;
-pub(crate) use player_counters::{
-    PlayerCounterKind, PlayerCounterSubject, PlayerGetsCountersShape,
-    parse_player_gets_counters_surface_tokens, parse_player_gets_counters_tokens,
-};
+pub(crate) use player_counters::parse_player_gets_counters_surface_tokens;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DieRollAdjustmentShape;

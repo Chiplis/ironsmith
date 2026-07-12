@@ -2,7 +2,7 @@ use crate::cards::builders::OwnedLexToken;
 use crate::runtime_backend::front_end::grammar::primitives;
 use crate::runtime_backend::front_end::lexer::{LexStream, trim_lexed_commas};
 use winnow::Parser as _;
-use winnow::combinator::{alt, eof, opt, peek, repeat_till};
+use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;
@@ -145,15 +145,6 @@ fn simple_chosen_object_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> 
     ))
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)
-}
-
-pub(crate) fn is_simple_chosen_object_reference_tokens(tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_all(
-        tokens,
-        simple_chosen_object_reference,
-        "chosen object reference",
-    )
-    .is_ok()
 }
 
 fn parse_choose_target_verb_lexed<'a>(

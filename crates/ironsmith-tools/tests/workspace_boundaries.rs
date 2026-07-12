@@ -682,18 +682,23 @@ fn migrated_leaf_namespaces_are_typed_winnow_grammar() {
         );
     }
 
-    for typed_export in [
-        "LeafArticle",
-        "LeafCountRange",
-        "LeafDurationPhrase",
-        "LeafManaCostPrefix",
-        "LeafNumber",
-        "LeafPlayerReferenceMode",
-        "LeafTargetHead",
+    for (module, typed_result) in [
+        ("articles.rs", "pub(crate) enum LeafArticle"),
+        ("counts.rs", "pub(crate) struct LeafCountRange"),
+        ("durations.rs", "pub(crate) enum LeafDurationPhrase"),
+        ("mana.rs", "pub(crate) struct LeafManaCostPrefix"),
+        ("numbers.rs", "pub(crate) enum LeafNumber"),
+        (
+            "player_subjects.rs",
+            "pub(crate) enum LeafPlayerReferenceMode",
+        ),
+        ("targets.rs", "pub(crate) struct LeafTargetHead"),
     ] {
+        let relative = format!("{leaf_root}/{module}");
+        let content = read_repo_file(&root, &relative);
         assert!(
-            leaf_facade.contains(typed_export),
-            "leaf grammar facade must expose typed result {typed_export}"
+            content.contains(typed_result),
+            "{relative} must own typed parser result `{typed_result}`"
         );
     }
 }
@@ -715,7 +720,7 @@ fn migrated_line_families_consume_typed_grammar_results() {
             &[
                 "grammar::activation_restrictions::{",
                 "parse_static_restriction_condition_shape_tokens(tokens)",
-                "restriction_grammar::parse_activation_cast_limit_qualifier_words",
+                "restriction_grammar::parse_cant_cast_restriction_fact_words(words)",
             ],
         ),
         (
@@ -1515,14 +1520,14 @@ fn labeled_keyword_prefix_preservation_is_front_end_grammar_owned() {
 }
 
 #[test]
-fn compile_support_token_pt_parser_uses_char_checks() {
+fn token_pt_parsing_is_front_end_leaf_grammar_owned() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/lowering/compile_support.rs";
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/token_definitions/surface.rs";
     let content = read_repo_file(&root, relative);
     let helper = function_source(
         &content,
-        "pub(crate) fn parse_token_pt",
-        "pub(crate) fn target_mentions_graveyard",
+        "fn token_pt",
+        "fn parse_token_definition_pt_token",
     );
     let actual = non_test_raw_text_check_literals(helper)
         .into_iter()
@@ -1533,61 +1538,62 @@ fn compile_support_token_pt_parser_uses_char_checks() {
 
     assert_eq!(
         actual, expected,
-        "token P/T parsing should use char checks for signs, not raw prefix strings"
+        "token P/T parsing should delegate to typed leaf grammar, not raw string probes"
     );
 
-    for forbidden in [
-        "str_split_once_char(word, '/')",
-        "left.starts_with(['+', '-'])",
-        "right.starts_with(['+', '-'])",
-    ] {
-        assert!(
-            !helper.contains(forbidden),
-            "{relative} should route token P/T parsing through the shared unsigned P/T word parser, not raw fragment `{forbidden}`"
-        );
-    }
-
     assert!(
-        helper.contains("parse_unsigned_pt_word(word)"),
-        "{relative} should reuse the shared unsigned P/T word parser"
+        helper.contains("leaf::parse_leaf_unsigned_pt_complete(word)"),
+        "{relative} should route token P/T recognition through the typed leaf parser"
+    );
+
+    let lowering_relative =
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/compile_support.rs";
+    let lowering = read_repo_file(&root, lowering_relative);
+    assert!(
+        !lowering.contains("fn parse_token_pt"),
+        "{lowering_relative} must not regain parser-owned token P/T recognition"
     );
 }
 
 #[test]
-fn activated_sentence_alignment_is_front_end_grammar_owned() {
+fn activated_sentence_classification_is_front_end_grammar_owned() {
     let root = workspace_root();
-    let relative =
+    let grammar_relative =
         "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/activated_lowering.rs";
-    let content = read_repo_file(&root, relative);
-    let helper = function_source(
-        &content,
-        "pub(crate) fn align_activated_parse_sentences",
-        "#[cfg(test)]",
+    let grammar = read_repo_file(&root, grammar_relative);
+    let classifier = function_source(
+        &grammar,
+        "pub(crate) fn classify_activated_restriction_sentence",
+        "fn x_definition_intro",
     );
-    let actual = non_test_raw_text_check_literals(helper)
+    let actual = non_test_raw_text_check_literals(classifier)
         .into_iter()
-        .map(|literal| format!("{relative} -> {literal}"))
+        .map(|literal| format!("{grammar_relative} -> {literal}"))
         .collect::<BTreeSet<_>>();
 
     let expected = BTreeSet::new();
 
     assert_eq!(
         actual, expected,
-        "activated sentence alignment should compare token word prefixes, not rendered raw text prefixes"
+        "activated sentence classification should use token grammar, not rendered raw text probes"
     );
 
     let semantic_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_line_parsing/activated.rs";
     let semantic = read_repo_file(&root, semantic_relative);
-    let adapter = function_source(
+    let dispatcher = function_source(
         &semantic,
-        "pub(crate) fn align_rewrite_activated_parse_sentences",
+        "fn finalize_rewrite_activated_effect_sentences",
         "fn split_rewrite_activated_effect_text",
     );
     assert!(
-        adapter.contains(
-            "activated_grammar::align_activated_parse_sentences(parsed_sentences, effect_parse_tokens)"
-        ),
-        "{semantic_relative} should delegate activated sentence shape alignment to typed front-end grammar"
+        dispatcher.contains("activated_grammar::classify_activated_restriction_sentence(&tokens)")
+            && dispatcher.contains("parse_mana_restriction_tokens(&tokens)"),
+        "{semantic_relative} should delegate activated sentence recognition to typed front-end grammar"
+    );
+    assert!(
+        !grammar.contains("align_activated_parse_sentences")
+            && !semantic.contains("align_rewrite_activated_parse_sentences"),
+        "dead activated sentence-alignment adapters must not be restored"
     );
 }
 
@@ -1629,7 +1635,7 @@ fn filter_player_relation_core_shapes_use_typed_winnow_grammar() {
 
     for required in [
         "use winnow::combinator::{alt, opt};",
-        "use winnow::prelude::*;",
+        "use winnow::error::ModalResult as WResult;",
         "fn relation_phrase<'a>(",
         "fn parse_relation_axis_word_slice(",
         "fn parse_relation_verb_word_slice(",

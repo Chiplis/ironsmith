@@ -15,7 +15,7 @@ use ironsmith_core::ValueSurfaceHint;
 
 use super::super::lexer::{
     LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, contains_token_kind,
-    token_slice_first_is_any, trim_lexed_commas, word_slice_strip_prefix,
+    trim_lexed_commas, word_slice_strip_prefix,
 };
 use super::super::util::{parse_card_type, parse_subtype_flexible};
 use super::{leaf, primitives, values};

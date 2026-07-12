@@ -1,7 +1,7 @@
-use crate::cards::builders::{CardTextError, IT_TAG};
+use crate::cards::builders::CardTextError;
 #[cfg(test)]
-use crate::{CardType, PlayerFilter, Subtype, Zone};
-use crate::{ColorSet, ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::{CardType, PlayerFilter, Subtype, TaggedOpbjectRelation, Zone};
+use crate::{ColorSet, ObjectFilter};
 
 pub(crate) use super::grammar::filters::parse_simple_object_filter_words;
 use super::grammar::filters::{
@@ -10,10 +10,8 @@ use super::grammar::filters::{
     parse_filter_word_envelope, parse_simple_object_filter_lexed,
 };
 use super::grammar::primitives::split_lexed_slices_on_or;
-use super::keyword_static::parse_pt_modifier;
 use super::lexer::{OwnedLexToken, TokenWordView, parser_token_word_refs, token_slice_at_is};
-use super::util::{is_demonstrative_object_head, is_source_reference_words, non_article_word_refs};
-use crate::runtime_backend::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
+use super::util::non_article_word_refs;
 
 #[cfg(test)]
 const OBJECT_FILTER_ENCHANTED_TAG: &str = "enchanted";

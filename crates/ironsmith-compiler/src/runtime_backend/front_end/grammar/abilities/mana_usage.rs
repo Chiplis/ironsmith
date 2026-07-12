@@ -13,8 +13,8 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_l
 use super::super::filters::parse_spell_filter_with_grammar_entrypoint;
 use super::super::{leaf, primitives};
 use super::surface::{
-    matches_any_exact_tokens, matches_any_prefix_tokens, matches_exact_tokens, parse_phrase_words,
-    phrase_offset_words, take_word,
+    matches_any_exact_tokens, matches_any_prefix_tokens, parse_phrase_words, phrase_offset_words,
+    take_word,
 };
 use crate::runtime_backend::util::{parse_counter_type_from_tokens, parse_number};
 

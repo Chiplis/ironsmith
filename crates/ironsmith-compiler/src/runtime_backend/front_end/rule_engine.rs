@@ -1,9 +1,7 @@
-#![allow(dead_code)]
-
 use crate::cards::builders::CardTextError;
 use std::collections::HashMap;
 
-use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, contains_token_kind, token_word_refs};
+use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, contains_token_kind};
 
 pub(crate) const RULE_SHAPE_HAS_COLON: u32 = 1 << 0;
 pub(crate) const RULE_SHAPE_HAS_COMMA: u32 = 1 << 1;
@@ -13,48 +11,6 @@ pub(crate) const RULE_SHAPE_STARTS_WHEN: u32 = 1 << 4;
 pub(crate) const RULE_SHAPE_STARTS_WHENEVER: u32 = 1 << 5;
 pub(crate) const RULE_SHAPE_STARTS_AT: u32 = 1 << 6;
 pub(crate) const RULE_SHAPE_STARTS_MAY: u32 = 1 << 7;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RuleKey<'a> {
-    pub(crate) head: &'a str,
-    pub(crate) shape: u32,
-}
-
-impl<'a> RuleKey<'a> {
-    pub(crate) fn new(head: &'a str, shape: u32) -> Self {
-        Self { head, shape }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ClauseView<'a> {
-    pub(crate) raw: Option<&'a str>,
-    pub(crate) tokens: &'a [OwnedLexToken],
-    pub(crate) words: Vec<&'a str>,
-    pub(crate) key: RuleKey<'a>,
-}
-
-impl<'a> ClauseView<'a> {
-    pub(crate) fn from_tokens(tokens: &'a [OwnedLexToken]) -> Self {
-        let words = token_word_refs(tokens);
-        let head = words.first().copied().unwrap_or("");
-        let shape = compute_clause_rule_shape(tokens, &words);
-        Self {
-            raw: None,
-            tokens,
-            words,
-            key: RuleKey::new(head, shape),
-        }
-    }
-
-    pub(crate) fn display_text(&self) -> String {
-        if let Some(raw) = self.raw {
-            raw.trim().to_string()
-        } else {
-            self.words.join(" ")
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct LexClauseWords<'a>(TokenWordView<'a>);
@@ -121,38 +77,6 @@ pub(crate) fn unsupported_rule_error(
     ))
 }
 
-pub(crate) fn unsupported_rule_error_for_view(
-    rule_id: &str,
-    message: &str,
-    subject_label: &str,
-    view: &ClauseView<'_>,
-) -> CardTextError {
-    let text = view.display_text();
-    unsupported_rule_error(rule_id, message, subject_label, &text)
-}
-
-fn compute_clause_rule_shape(tokens: &[OwnedLexToken], words: &[&str]) -> u32 {
-    let mut shape = 0u32;
-    if contains_token_kind(tokens, TokenKind::Colon) {
-        shape |= RULE_SHAPE_HAS_COLON;
-    }
-    if contains_token_kind(tokens, TokenKind::Comma) {
-        shape |= RULE_SHAPE_HAS_COMMA;
-    }
-    if contains_token_kind(tokens, TokenKind::Semicolon) {
-        shape |= RULE_SHAPE_HAS_SEMICOLON;
-    }
-    match words.first().copied().unwrap_or("") {
-        "if" => shape |= RULE_SHAPE_STARTS_IF,
-        "when" => shape |= RULE_SHAPE_STARTS_WHEN,
-        "whenever" => shape |= RULE_SHAPE_STARTS_WHENEVER,
-        "at" => shape |= RULE_SHAPE_STARTS_AT,
-        "may" => shape |= RULE_SHAPE_STARTS_MAY,
-        _ => {}
-    }
-    shape
-}
-
 fn compute_lex_clause_rule_shape(tokens: &[OwnedLexToken], words: &LexClauseWords) -> u32 {
     let mut shape = 0u32;
     if contains_token_kind(tokens, TokenKind::Colon) {
@@ -175,7 +99,6 @@ fn compute_lex_clause_rule_shape(tokens: &[OwnedLexToken], words: &LexClauseWord
     shape
 }
 
-pub(crate) type ClauseRuleFn<T> = for<'a> fn(&ClauseView<'a>) -> Result<Option<T>, CardTextError>;
 pub(crate) type LexClauseRuleFn<T> =
     for<'a> fn(&LexClauseView<'a>) -> Result<Option<T>, CardTextError>;
 
@@ -231,15 +154,6 @@ impl LexRuleHintIndex {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct RuleDef<T> {
-    pub(crate) id: &'static str,
-    pub(crate) priority: u16,
-    pub(crate) heads: &'static [&'static str],
-    pub(crate) shape_mask: u32,
-    pub(crate) run: ClauseRuleFn<T>,
-}
-
-#[derive(Clone, Copy)]
 pub(crate) struct LexRuleDef<T> {
     pub(crate) id: &'static str,
     pub(crate) priority: u16,
@@ -249,42 +163,8 @@ pub(crate) struct LexRuleDef<T> {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct RuleIndex<T: 'static> {
-    rules: &'static [RuleDef<T>],
-}
-
-#[derive(Clone, Copy)]
 pub(crate) struct LexRuleIndex<T: 'static> {
     rules: &'static [LexRuleDef<T>],
-}
-
-impl<T: 'static> RuleIndex<T> {
-    pub(crate) const fn new(rules: &'static [RuleDef<T>]) -> Self {
-        Self { rules }
-    }
-
-    pub(crate) fn run_first<'a>(
-        &self,
-        view: &ClauseView<'a>,
-    ) -> Result<Option<(&'static str, T)>, CardTextError> {
-        let mut candidate_indices = self
-            .rules
-            .iter()
-            .enumerate()
-            .filter(|(_, rule)| rule_matches_view(rule, view))
-            .map(|(idx, _)| idx)
-            .collect::<Vec<_>>();
-
-        candidate_indices.sort_by_key(|idx| self.rules[*idx].priority);
-        for idx in candidate_indices {
-            let rule = &self.rules[idx];
-            if let Some(result) = (rule.run)(view)? {
-                return Ok(Some((rule.id, result)));
-            }
-        }
-
-        Ok(None)
-    }
 }
 
 impl<T: 'static> LexRuleIndex<T> {
@@ -316,21 +196,6 @@ impl<T: 'static> LexRuleIndex<T> {
     }
 }
 
-fn rule_matches_view<T>(rule: &RuleDef<T>, view: &ClauseView<'_>) -> bool {
-    let head_matches = rule.heads.is_empty()
-        || rule
-            .heads
-            .iter()
-            .any(|candidate| *candidate == view.key.head);
-    if !head_matches {
-        return false;
-    }
-    if rule.shape_mask == 0 {
-        return true;
-    }
-    (view.key.shape & rule.shape_mask) == rule.shape_mask
-}
-
 fn lex_rule_matches_view<T>(rule: &LexRuleDef<T>, view: &LexClauseView<'_>) -> bool {
     let head_matches =
         rule.heads.is_empty() || rule.heads.iter().any(|candidate| *candidate == view.head());
@@ -343,18 +208,7 @@ fn lex_rule_matches_view<T>(rule: &LexRuleDef<T>, view: &LexClauseView<'_>) -> b
     (view.shape & rule.shape_mask) == rule.shape_mask
 }
 
-pub(crate) type UnsupportedPredicate = for<'a> fn(&ClauseView<'a>) -> bool;
 pub(crate) type LexUnsupportedPredicate = for<'a> fn(&LexClauseView<'a>) -> bool;
-
-#[derive(Clone, Copy)]
-pub(crate) struct UnsupportedRuleDef {
-    pub(crate) id: &'static str,
-    pub(crate) priority: u16,
-    pub(crate) heads: &'static [&'static str],
-    pub(crate) shape_mask: u32,
-    pub(crate) message: &'static str,
-    pub(crate) predicate: UnsupportedPredicate,
-}
 
 #[derive(Clone, Copy)]
 pub(crate) struct LexUnsupportedRuleDef {
@@ -367,47 +221,8 @@ pub(crate) struct LexUnsupportedRuleDef {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct UnsupportedDiagnoser {
-    rules: &'static [UnsupportedRuleDef],
-}
-
-#[derive(Clone, Copy)]
 pub(crate) struct LexUnsupportedDiagnoser {
     rules: &'static [LexUnsupportedRuleDef],
-}
-
-impl UnsupportedDiagnoser {
-    pub(crate) const fn new(rules: &'static [UnsupportedRuleDef]) -> Self {
-        Self { rules }
-    }
-
-    pub(crate) fn diagnose(
-        &self,
-        view: &ClauseView<'_>,
-        subject_label: &'static str,
-    ) -> Option<CardTextError> {
-        let mut candidate_indices = self
-            .rules
-            .iter()
-            .enumerate()
-            .filter(|(_, rule)| unsupported_rule_matches_view(rule, view))
-            .map(|(idx, _)| idx)
-            .collect::<Vec<_>>();
-
-        candidate_indices.sort_by_key(|idx| self.rules[*idx].priority);
-        for idx in candidate_indices {
-            let rule = &self.rules[idx];
-            if (rule.predicate)(view) {
-                return Some(unsupported_rule_error_for_view(
-                    rule.id,
-                    rule.message,
-                    subject_label,
-                    view,
-                ));
-            }
-        }
-        None
-    }
 }
 
 impl LexUnsupportedDiagnoser {
@@ -442,21 +257,6 @@ impl LexUnsupportedDiagnoser {
         }
         None
     }
-}
-
-fn unsupported_rule_matches_view(rule: &UnsupportedRuleDef, view: &ClauseView<'_>) -> bool {
-    let head_matches = rule.heads.is_empty()
-        || rule
-            .heads
-            .iter()
-            .any(|candidate| *candidate == view.key.head);
-    if !head_matches {
-        return false;
-    }
-    if rule.shape_mask == 0 {
-        return true;
-    }
-    (view.key.shape & rule.shape_mask) == rule.shape_mask
 }
 
 fn lex_unsupported_rule_matches_view(

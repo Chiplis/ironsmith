@@ -7,7 +7,7 @@ use crate::cards::builders::{IT_TAG, TagKey};
 use crate::effect::{EventValueSpec, Value};
 use crate::filter::TaggedOpbjectRelation;
 use crate::runtime_backend::front_end::grammar::{filters, leaf, primitives, values};
-use crate::runtime_backend::front_end::lexer::{LexStream, LexedClause, OwnedLexToken};
+use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken};
 use crate::runtime_backend::front_end::shared::util::{
     source_choose_spec_for_surface, source_reference_surface_for_words,
     trim_edge_punctuation_tokens,
@@ -361,10 +361,6 @@ pub(crate) fn parse_draw_trailing_shape(tokens: &[OwnedLexToken]) -> Option<Draw
         return Some(DrawTrailingShape::Unless);
     }
     None
-}
-
-pub(crate) fn parse_draw_as_many_cards_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
-    parse_as_many_this_way(trimmed(tokens))
 }
 
 pub(crate) fn strip_draw_for_each_prefix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {

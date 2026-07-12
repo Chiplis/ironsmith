@@ -76,10 +76,6 @@ pub(crate) fn parse_spell_cost_increase_head(
     })
 }
 
-pub(crate) fn parse_if_cost_condition_comma(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
-    first_comma(tokens)
-}
-
 pub(crate) fn parse_cost_verb(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
     first_token_word(tokens, &["cost", "costs"])
 }
@@ -204,10 +200,6 @@ pub(crate) fn parse_relative_target_clause(tokens: &[OwnedLexToken]) -> Option<T
             &["that", "targets"] as &[&str],
         ],
     )
-}
-
-pub(crate) fn parse_trailing_target_condition_if(words: &[&str]) -> Option<WordBoundary> {
-    first_word(words, &["if"])
 }
 
 pub(crate) fn parse_last_cost_verb(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {

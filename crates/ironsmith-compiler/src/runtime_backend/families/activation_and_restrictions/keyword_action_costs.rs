@@ -6,9 +6,9 @@ use crate::runtime_backend::grammar::keyword_action_costs::{
     parse_keyword_ability_surface_tokens, parse_keyword_cost_action_surface_tokens,
     parse_keyword_damage_subject_split_tokens, parse_keyword_dynamic_mana_tail_tokens,
     parse_keyword_dynamic_payment_tokens, parse_keyword_payment_lead_tokens,
-    parse_keyword_trigger_object_head, parse_keyword_untap_restriction_words,
-    parse_normalized_keyword_words_tokens, parse_payment_alternative_split_tokens,
-    parse_single_graveyard_bottom_payment_tokens, parse_special_ability_phrase_words,
+    parse_keyword_untap_restriction_words, parse_normalized_keyword_words_tokens,
+    parse_payment_alternative_split_tokens, parse_single_graveyard_bottom_payment_tokens,
+    parse_special_ability_phrase_words,
 };
 use crate::runtime_backend::grammar::leaf::{
     LeafManaCostPrefix, parse_leaf_mana_cost_prefix_tokens,
@@ -1639,8 +1639,4 @@ pub(crate) fn maybe_strip_leading_damage_subject_tokens(
             .then_some(&tokens[split.action_first..])
         }
     }
-}
-
-pub(crate) fn is_trigger_objectish_word(word: &str) -> bool {
-    parse_keyword_trigger_object_head(word).is_some()
 }

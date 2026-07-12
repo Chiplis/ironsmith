@@ -30,17 +30,6 @@ pub(crate) struct PlayerGetsCountersShape {
     pub(crate) kind: PlayerCounterKind,
 }
 
-pub(crate) fn parse_player_gets_counters_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<PlayerGetsCountersShape> {
-    primitives::parse_all(
-        tokens,
-        player_gets_counters,
-        "player gets counters statement",
-    )
-    .ok()
-}
-
 pub(crate) fn parse_player_gets_counters_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerGetsCountersShape> {
@@ -50,14 +39,6 @@ pub(crate) fn parse_player_gets_counters_surface_tokens(
             primitives::find_prefix(tokens, || conjoined_player_gets_counters_clause)
                 .map(|(_, shape, _)| shape)
         })
-}
-
-fn player_gets_counters(
-    input: &mut LexStream<'_>,
-) -> winnow::error::ModalResult<PlayerGetsCountersShape> {
-    let shape = player_gets_counters_clause.parse_next(input)?;
-    eof.parse_next(input)?;
-    Ok(shape)
 }
 
 fn player_counter_subject(

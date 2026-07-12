@@ -7,7 +7,6 @@ use crate::cards::builders::{
 use crate::cost::OptionalCost;
 
 use super::ast::{StaticAbilityAst, TriggerSpec};
-use super::ir::DocumentSemanticFacts;
 use super::reference_model::{
     AnnotatedEffectSequence, ReferenceEnv, ReferenceExports, ReferenceImports,
 };
@@ -155,7 +154,6 @@ pub(crate) struct NormalizedCardAst {
     pub(crate) annotations: ParseAnnotations,
     pub(crate) items: Vec<NormalizedCardItem>,
     pub(crate) overload_branch: Option<NormalizedOverloadBranch>,
-    pub(crate) semantic_facts: DocumentSemanticFacts,
     pub(crate) allow_unsupported: bool,
 }
 
@@ -165,7 +163,6 @@ pub(crate) struct ParsedCardAst {
     pub(crate) annotations: ParseAnnotations,
     pub(crate) items: Vec<ParsedCardItem>,
     pub(crate) overload_branch: Option<ParsedOverloadBranch>,
-    pub(crate) semantic_facts: DocumentSemanticFacts,
     pub(crate) allow_unsupported: bool,
 }
 
@@ -173,5 +170,4 @@ pub(crate) struct ParsedCardAst {
 pub(crate) struct LoweredCardDocument {
     pub(crate) definition: CardDefinition,
     pub(crate) annotations: ParseAnnotations,
-    pub(crate) semantic_facts: DocumentSemanticFacts,
 }

@@ -156,12 +156,6 @@ fn clause_body(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     }
 }
 
-pub(crate) fn search_library_token_is_or(token: &OwnedLexToken) -> bool {
-    complete_shape(std::slice::from_ref(token), |input| {
-        primitives::kw("or").void().parse_next(input)
-    })
-}
-
 pub(crate) fn parse_shuffle_graveyard_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchShuffleGraveyardShape<'_>> {

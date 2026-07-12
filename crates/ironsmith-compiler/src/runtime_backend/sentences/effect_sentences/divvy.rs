@@ -9,7 +9,7 @@ use crate::cards::builders::{
     SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
-use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
 fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {

@@ -4,6 +4,7 @@ use crate::runtime_backend::grammar::trigger_clauses::{
     self as trigger_grammar, TriggerClauseAtom, TriggerClausePattern,
     trigger_clause_pattern as clause_shape,
 };
+use crate::runtime_backend::lexer::{token_slice_at_is, token_slice_at_is_any};
 
 type ClauseShape<'p> = TriggerClausePattern<'p>;
 
@@ -116,8 +117,6 @@ const THIS_BECOMES_MONSTROUS_TRIGGER_PATTERN: ClauseShape<'static> = clause_shap
             &["becomes", "monstrous"],
         ]
 );
-const CREATE_OR_CREATES_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["create"], &["creates"]]);
 const THIS_MUTATES_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -375,7 +374,6 @@ const DURING_YOUR_MAIN_PHASE_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix DURING_YOUR_MAIN_PHASE_SUFFIX);
 const FROM_YOUR_HAND_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["from", "your", "hand"]);
-const LOYALTY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["loyalty"]);
 const YOU_OPEN_ATTRACTION_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -554,20 +552,6 @@ const BECOMES_TARGET_OF_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["the", "target", "of"]);
 const SPELL_OR_SPELLS_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix_any & [&["spell"], &["spells"]]);
-const SPELL_OR_SPELLS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["spell", "spells"]]);
-const SPELL_OR_SPELLS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["spell"], &["spells"]]);
-const ABILITY_OR_ABILITIES_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["ability"], &["abilities"]]);
-const CAST_OR_CASTS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["cast"], &["casts"]]);
-const COPY_OR_COPIES_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["copy"], &["copies"]]);
-const DEAL_OR_DEALS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["deal"], &["deals"]]);
-const ENTER_OR_ENTERS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["enter"], &["enters"]]);
 const ATTACK_OR_ATTACKS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["attack"], &["attacks"]]);
 
@@ -599,31 +583,13 @@ const LEAVES_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["leaves
 const BATTLEFIELD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["battlefield"]);
 const THE_CREATURE_HAUNTS_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["the", "creature"]; suffix & ["haunts"]);
-const LEAVE_OR_LEAVES_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["leave"], &["leaves"]]);
-const DIE_OR_DIES_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["die"], &["dies"]]);
-const TRANSFORM_OR_TRANSFORMS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["transform"], &["transforms"]]);
 const INTO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["into"]);
 const SPELL_NOUN_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["spell"], &["spells"]]);
-const DRAW_OR_DRAWS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["draw"], &["draws"]]);
-const DISCARD_OR_DISCARDS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["discard"], &["discards"]]);
-const REVEAL_OR_REVEALS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["reveal"], &["reveals"]]);
-const SACRIFICE_OR_SACRIFICES_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["sacrifice"], &["sacrifices"]]);
-const BLOCK_OR_BLOCKS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["block"], &["blocks"]]);
-const BY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["by"]);
 const LINKING_BE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["is"], &["are"], &["was"], &["were"], &["be"], &["been"]]);
 const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
 const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
-const FOR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["for"]);
-const TO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["to"]);
 const ONLY_IT_ABILITY_TARGET_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -735,8 +701,6 @@ const SOURCE_ENCHANTMENT_WORD_PATTERN: ClauseShape<'static> =
 const SOURCE_LAND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["land"]);
 const SOURCE_PLANESWALKER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["planeswalker"]);
-const PLAY_OR_PLAYS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["play"], &["plays"]]);
 const LAND_OR_LANDS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["land"], &["lands"]]);
 
@@ -768,22 +732,7 @@ fn parse_player_or_object_damage_recipient(
 
     None
 }
-const SEARCH_OR_SEARCHES_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["search"], &["searches"]]);
-const SHUFFLE_OR_SHUFFLES_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["shuffle"], &["shuffles"]]);
-const GIVE_OR_GIVES_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["give"], &["gives"]]);
-const TAP_OR_TAPS_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["tap"], &["taps"]]);
-const TAPPED_WORD_EXACT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["tapped"]);
-const ACTIVATE_OR_ACTIVATES_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["activate"], &["activates"]]);
-const PUT_OR_PUTS_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["put"], &["puts"]]);
-const GET_OR_GETS_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["get"], &["gets"]]);
-const COUNTER_OR_COUNTERS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["counter"], &["counters"]]);
 const BECOMES_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["becomes"]);
-const DAMAGE_EXACT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["damage"]);
 const COMBAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["combat"]);
 const YOU_CONTRACTION_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["youre"], &["you're"]]);
@@ -797,8 +746,6 @@ const PERMANENT_OR_PERMANENTS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_words & [&["permanent", "permanents"]]);
 const ATTACHED_OBJECT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["enchanted"], &["equipped"]]);
-const ENERGY_COUNTER_DESCRIPTOR_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["e", "energy"]]);
 const PLAYER_GETS_ONE_OR_MORE_ENERGY_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["one", "or", "more", "e"]);
 const COUNTER_RECIPIENT_PREPOSITION_PATTERN: ClauseShape<'static> =
@@ -839,9 +786,6 @@ const SOURCE_KEYWORD_ACTION_TRAILING_WORD_PATTERN: ClauseShape<'static> = clause
             &["had"],
         ]
 );
-const NON_POSSESSIVE_PLURAL_SUFFIX_EXCLUSION_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["this"], &["its"]]);
-
 #[derive(Debug, Clone, Copy)]
 struct TriggerSuffixShape {
     shape: ClauseShape<'static>,
@@ -1499,14 +1443,6 @@ pub(crate) fn split_trigger_or_index(tokens: &[OwnedLexToken]) -> Option<usize> 
 
 pub(crate) fn has_leading_one_or_more(tokens: &[OwnedLexToken]) -> bool {
     leading_one_or_more_prefix_len(tokens).is_some()
-}
-
-pub(crate) fn strip_leading_one_or_more(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    if let Some(used) = leading_one_or_more_prefix_len(tokens) {
-        &tokens[used..]
-    } else {
-        tokens
-    }
 }
 
 pub(crate) fn leading_one_or_more_prefix_len(tokens: &[OwnedLexToken]) -> Option<usize> {

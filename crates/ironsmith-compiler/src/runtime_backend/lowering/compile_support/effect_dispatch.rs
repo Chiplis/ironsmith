@@ -6401,7 +6401,6 @@ fn subject_verb_role(role: SubjectVerbRoleAst) -> SubjectRole {
         SubjectVerbRoleAst::AffectedPlayer => SubjectRole::AffectedPlayer,
         SubjectVerbRoleAst::Chooser => SubjectRole::Chooser,
         SubjectVerbRoleAst::LibraryOwner => SubjectRole::LibraryOwner,
-        SubjectVerbRoleAst::ZoneOwner => SubjectRole::ZoneOwner,
     }
 }
 

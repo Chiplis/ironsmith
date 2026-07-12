@@ -1,3 +1,4 @@
+use super::player_counters::{PlayerCounterKind, PlayerCounterSubject, PlayerGetsCountersShape};
 use super::*;
 use crate::runtime_backend::front_end::lexer::lex_line;
 
@@ -19,7 +20,7 @@ fn recognizes_statement_surfaces() {
 
     let poison = lex_line("Each opponent gets a poison counter.", 0).unwrap();
     assert_eq!(
-        parse_player_gets_counters_tokens(&poison),
+        parse_player_gets_counters_surface_tokens(&poison),
         Some(PlayerGetsCountersShape {
             subject: PlayerCounterSubject::EachOpponent,
             count: 1,

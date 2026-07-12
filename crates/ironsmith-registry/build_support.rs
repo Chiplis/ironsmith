@@ -253,6 +253,8 @@ pub fn run_runtime_registry_build() {
 pub const GENERATED_PARSER_CARD_SOURCE_COUNT: usize = 0;
 pub fn generated_parser_entry_count() -> usize { 0 }
 pub fn generated_parser_card_names() -> Vec<String> { Vec::new() }
+#[cfg(test)]
+pub fn generated_parser_card_aliases() -> Vec<(String, String)> { Vec::new() }
 pub fn register_generated_parser_cards(_registry: &mut crate::cards::CardRegistry) {}
 pub fn register_generated_parser_cards_chunk(
     _registry: &mut crate::cards::CardRegistry,

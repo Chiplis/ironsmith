@@ -134,23 +134,23 @@ fn convert_line(line: RewriteLineCst) -> OracleGrammarLine {
         RewriteLineCst::Keyword(line) => OracleGrammarLine::Keyword {
             info: convert_info(&line.info),
             kind: format!("{:?}", line.kind),
-            text: line.text,
+            text: render_tokens(&line.full_parse_tokens),
             parse_text: render_tokens(&line.parse_tokens),
         },
         RewriteLineCst::Activated(line) => OracleGrammarLine::Activated {
             info: convert_info(&line.info),
             cost_text: render_tokens(&line.cost_parse_tokens),
             cost_debug: format!("{:?}", line.cost),
-            effect_text: line.effect_text,
+            effect_text: render_tokens(&line.effect_parse_tokens),
             effect_parse_text: render_tokens(&line.effect_parse_tokens),
             chosen_option_label: chosen_option_surface(line.chosen_option),
         },
         RewriteLineCst::Triggered(line) => OracleGrammarLine::Triggered {
             info: convert_info(&line.info),
             full_text: line.full_text,
-            trigger_text: line.trigger_text,
+            trigger_text: render_tokens(&line.trigger_parse_tokens),
             trigger_parse_text: render_tokens(&line.trigger_parse_tokens),
-            effect_text: line.effect_text,
+            effect_text: render_tokens(&line.effect_parse_tokens),
             effect_parse_text: render_tokens(&line.effect_parse_tokens),
             intervening_if_debug: line
                 .intervening_if
@@ -161,7 +161,7 @@ fn convert_line(line: RewriteLineCst) -> OracleGrammarLine {
         },
         RewriteLineCst::Static(line) => OracleGrammarLine::Static {
             info: convert_info(&line.info),
-            text: line.text,
+            text: render_tokens(&line.parse_tokens),
             parse_text: render_tokens(&line.parse_tokens),
             chosen_option_label: chosen_option_surface(line.chosen_option),
         },

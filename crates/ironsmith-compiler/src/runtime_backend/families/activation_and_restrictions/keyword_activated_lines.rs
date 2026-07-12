@@ -124,12 +124,6 @@ pub(crate) fn parse_cycling_line_lexed(
     }))
 }
 
-pub(crate) fn parse_channel_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<ParsedAbility>, CardTextError> {
-    parse_channel_line_lexed(tokens)
-}
-
 pub(crate) fn parse_channel_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
@@ -139,12 +133,6 @@ pub(crate) fn parse_channel_line_lexed(
 
     let clause_text = joined_activation_clause_text(tokens);
     parse_hand_keyword_activated_body_lexed(spec.body_tokens, "channel", "Channel", &clause_text)
-}
-
-pub(crate) fn parse_craft_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<ParsedAbility>, CardTextError> {
-    parse_craft_line_lexed(tokens)
 }
 
 pub(crate) fn parse_craft_line_lexed(
@@ -364,10 +352,6 @@ pub(crate) fn parse_cycling_search_filter(
             )))
         }
     }
-}
-
-pub(crate) fn is_land_subtype(subtype: Subtype) -> bool {
-    subtype.is_land_subtype()
 }
 
 pub(crate) fn parse_equip_line(

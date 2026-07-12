@@ -266,12 +266,6 @@ pub(crate) fn parse_who_tagged_filter_shape(tokens: &[OwnedLexToken]) -> Option<
     tagged_filter_after_action(tokens)
 }
 
-pub(crate) fn parse_negated_who_tagged_filter_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
-    tagged_filter_after_negation(tokens)
-}
-
 fn tapped_land_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseShape<'_>> {
     primitives::parse_prefix(trim(tokens), primitives::kw("who"))?;
     let (_, _, rest) = primitives::find_prefix(tokens, || {

@@ -403,6 +403,10 @@ impl WasmGame {
         let Some(continuation) = self.pending_live_continuation.as_mut() else {
             return;
         };
+        // Card definitions may be loaded lazily while a live replay is suspended.
+        // Keep their allocator progress outside the rollback boundary so the next
+        // lazy definition cannot reuse a CardId already cached by the game.
+        continuation.checkpoint.id_counters.card = snapshot_id_counters().card;
         continuation.speculative_progress = None;
         let target =
             continuation
@@ -457,6 +461,7 @@ impl WasmGame {
         let Some(continuation) = self.pending_live_continuation.as_mut() else {
             return;
         };
+        continuation.checkpoint.id_counters.card = snapshot_id_counters().card;
         continuation.speculative_progress = None;
         let target = hidden_position_continuation_target(
             continuation.checkpoint.game.hidden_card_entries(),

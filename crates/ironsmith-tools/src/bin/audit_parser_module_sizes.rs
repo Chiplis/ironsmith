@@ -692,10 +692,6 @@ fn main() {
             max_lines: 275,
         },
         Budget {
-            path: "front_end/grammar/token_definitions/equipment_compat.rs",
-            max_lines: 150,
-        },
-        Budget {
             path: "front_end/grammar/token_definitions/names.rs",
             max_lines: 525,
         },

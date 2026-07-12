@@ -1,7 +1,6 @@
-use winnow::combinator::{alt, opt, peek, repeat, repeat_till};
+use winnow::combinator::{alt, opt, repeat};
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
-use winnow::token::any;
 
 use crate::mana::ManaSymbol;
 use crate::runtime_backend::lexer::{LexStream, OwnedLexToken};
@@ -41,53 +40,6 @@ pub(crate) fn parse_fixed_mana_output_clause_spec_lexed(
     .ok()
 }
 
-fn parse_token_tap_add_single_mana_symbol_word_slice(
-    input: &mut primitives::WordSliceInput<'_>,
-) -> Result<ManaSymbol, ErrMode<ContextError>> {
-    let before_add = repeat_till(
-        0..,
-        any.void(),
-        peek(primitives::word_slice_exact("add")).void(),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(input)?;
-    primitives::word_slice_exact("add")
-        .void()
-        .parse_next(input)?;
-    if !before_add.iter().any(|word| *word == "t") {
-        return Err(primitives::backtrack_err(
-            "token tap-add mana",
-            "tap symbol before add",
-        ));
-    }
-
-    let Some((symbol_word, rest)) = input.split_first() else {
-        return Err(primitives::backtrack_err(
-            "token tap-add mana",
-            "single mana symbol after add",
-        ));
-    };
-    let symbol = leaf::parse_leaf_bare_mana_symbol_complete(symbol_word).map_err(|_| {
-        primitives::backtrack_err("token tap-add mana", "single mana symbol after add")
-    })?;
-    if matches!(symbol, ManaSymbol::Generic(_) | ManaSymbol::X) {
-        return Err(primitives::backtrack_err(
-            "token tap-add mana",
-            "non-generic, non-X mana symbol",
-        ));
-    }
-    *input = rest;
-    Ok(symbol)
-}
-
-pub(crate) fn parse_token_tap_add_single_mana_symbol_words(words: &[&str]) -> Option<ManaSymbol> {
-    let mut input: primitives::WordSliceInput<'_> = words;
-    parse_token_tap_add_single_mana_symbol_word_slice
-        .parse_next(&mut input)
-        .ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,31 +69,6 @@ mod tests {
         for raw in ["Add {W/U}.", "Add w."] {
             let tokens = lex_line(raw, 0).unwrap();
             assert!(parse_fixed_mana_output_clause_spec_lexed(&tokens).is_none());
-        }
-    }
-
-    #[test]
-    fn token_definition_requires_t_before_first_add() {
-        assert_eq!(
-            parse_token_tap_add_single_mana_symbol_words(&[
-                "plant", "with", "t", "then", "add", "g", "mana"
-            ]),
-            Some(ManaSymbol::Green)
-        );
-        assert_eq!(
-            parse_token_tap_add_single_mana_symbol_words(&["t", "add", "s"]),
-            Some(ManaSymbol::Snow)
-        );
-        assert!(parse_token_tap_add_single_mana_symbol_words(&["add", "g", "t"]).is_none());
-    }
-
-    #[test]
-    fn token_definition_rejects_generic_x_and_hybrid() {
-        for symbol in ["2", "x", "w/u"] {
-            assert!(
-                parse_token_tap_add_single_mana_symbol_words(&["token", "t", "add", symbol])
-                    .is_none()
-            );
         }
     }
 }

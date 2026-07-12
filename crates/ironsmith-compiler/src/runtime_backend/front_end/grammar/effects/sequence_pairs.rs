@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
@@ -255,18 +253,6 @@ pub(super) fn ends_content_sequence(
         }
     }
     false
-}
-
-pub(super) fn capture_until_sequence_phrase<'a>(
-    input: &mut LexStream<'a>,
-    alternatives: &[&'static [&'static str]],
-) -> WResult<Range<usize>> {
-    let initial_len = input.len();
-    let start = 0;
-    let end = seek_sequence_phrase(input, alternatives)?;
-    let consumed = initial_len.saturating_sub(input.len());
-    debug_assert_eq!(end, consumed);
-    Ok(start..end)
 }
 
 pub(super) fn same_words_without_articles(left: &[OwnedLexToken], right: &[OwnedLexToken]) -> bool {

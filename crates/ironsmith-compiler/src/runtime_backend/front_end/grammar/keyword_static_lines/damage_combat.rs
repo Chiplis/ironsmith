@@ -102,12 +102,6 @@ pub(crate) fn parse_prevent_damage_to_you_tokens(
     .ok()
 }
 
-pub(crate) fn parse_damage_amount_tail_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<DamageAmountTail<'_>> {
-    primitives::parse_all(tokens, parse_damage_amount_tail_lexed, "damage amount tail").ok()
-}
-
 pub(crate) fn parse_damage_redirect_controller_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DamageRedirectControllerSpec<'_>> {

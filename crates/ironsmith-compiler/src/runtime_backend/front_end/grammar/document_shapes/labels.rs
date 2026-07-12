@@ -9,7 +9,6 @@ use crate::runtime_backend::token_primitives::split_em_dash_label_prefix_tokens;
 pub(crate) enum PreservedKeywordLabelKind {
     CostOrCasting,
     Activated,
-    Triggered,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

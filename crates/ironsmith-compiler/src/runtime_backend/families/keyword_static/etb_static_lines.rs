@@ -1,22 +1,18 @@
 use crate::runtime_backend::grammar::etb_static_lines::{
-    self as etb_grammar, EntersTappedWithCountersClause, EntersWithAddedAbilitiesTail,
-    EntersWithCounterConditionShape, EntersWithCounterConditionTail,
-    EntersWithCounterConditionTailKind, EntersWithCounterKnownForEachKind,
-    EntersWithCountersClause, EtbAggregateKind, EtbAggregateValueKind, EtbAmongMetric,
+    self as etb_grammar, EntersWithAddedAbilitiesTail,
+    EntersWithCounterConditionShape,
+    EntersWithCounterConditionTailKind, EntersWithCounterKnownForEachKind, EtbAggregateKind, EtbAggregateValueKind, EtbAmongMetric,
     EtbAsLongAsClause, EtbGraveyardOwner, EtbNumberOffsetOperator, EtbReferenceValueKind,
     EtbSourceStatFallback, EtbSourceStatKind, EtbTaggedManaValueReference, WhereXKnownValue,
     WhereXPlayerMetric,
 };
 use crate::runtime_backend::grammar::filters::parse_counter_type_from_tokens;
-use crate::static_abilities::StaticAbilityId;
 use ironsmith_core::ValueSurfaceHint;
 
 const ETB_TRIGGER_INTRO_WORDS: &[&str] = &["if", "when", "whenever", "as"];
 const ETB_THIS_WORD: &str = "this";
 
-const ETB_IF_WORD: &str = "if";
 const ETB_ARTICLE_WORDS: &[&str] = &["a", "an"];
-const ETB_ONE_WORD: &str = "one";
 const ETB_ADDITIONAL_WORD: &str = "additional";
 const ETB_COUNTER_OR_COUNTERS_WORDS: &[&str] = &["counter", "counters"];
 const ETB_SOURCE_TAIL_HEAD_WORDS: &[&str] = &["this", "thiss"];
@@ -24,8 +20,6 @@ const ETB_SOURCE_TAIL_NOUN_WORDS: &[&str] = &["source", "spell", "card", "creatu
 const ETB_CONTROL_OWN_WORDS: &[&str] = &["control", "controls", "own", "owns"];
 const ETB_EQUAL_WORD: &str = "equal";
 const ETB_AND_WORD: &str = "and";
-const ETB_AND_OR_WORDS: &[&str] = &["and", "or"];
-
 fn etb_word_is_any(word: &str, expected: &[&str]) -> bool {
     expected.contains(&word)
 }

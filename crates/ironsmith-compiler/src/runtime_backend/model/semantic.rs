@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::ConditionExpr;
 use crate::ability::{Ability, AbilityKind, ActivationTiming, ManaUsageRestriction};
 use crate::alternative_cast::AlternativeCastingMethod;
@@ -7,7 +5,7 @@ use crate::cost::OptionalCost;
 use crate::effect::{EffectPredicate, Value};
 use crate::zone::Zone;
 
-use super::super::{KeywordAction, PlayerAst, SharedTypeConstraintAst, TargetAst, TotalCost};
+use super::super::{KeywordAction, TotalCost};
 use super::ast::{EffectAst, StaticAbilityAst, TriggerSpec};
 use super::reference_model::ReferenceImports;
 use super::shared_types::{LineInfo, LineSemanticFacts};
@@ -99,21 +97,6 @@ pub(crate) struct ParsedAbility {
 }
 
 impl ParsedAbility {
-    pub(crate) fn new(
-        ability: Ability,
-        effects_ast: Option<Vec<EffectAst>>,
-        reference_imports: ReferenceImports,
-        trigger_spec: Option<TriggerSpec>,
-    ) -> Self {
-        Self {
-            ability: ability.into(),
-            text: None,
-            effects_ast,
-            reference_imports,
-            trigger_spec,
-        }
-    }
-
     pub(crate) fn runtime(&self) -> &Ability {
         self.ability.as_runtime()
     }
@@ -157,10 +140,6 @@ impl ParsedOptionalCostAst {
         Self { runtime }
     }
 
-    pub(crate) fn as_runtime(&self) -> &OptionalCost {
-        &self.runtime
-    }
-
     pub(crate) fn into_runtime(self) -> OptionalCost {
         self.runtime
     }
@@ -182,6 +161,7 @@ impl ParsedAlternativeCastingMethodAst {
         Self { runtime }
     }
 
+    #[cfg(test)]
     pub(crate) fn as_runtime(&self) -> &AlternativeCastingMethod {
         &self.runtime
     }

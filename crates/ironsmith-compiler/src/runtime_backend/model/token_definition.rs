@@ -168,7 +168,6 @@ pub(crate) enum EquipmentRuleLineShape {
         keywords: Vec<TokenKeywordShape>,
     },
     Equip(TokenEquipShape),
-    Other(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

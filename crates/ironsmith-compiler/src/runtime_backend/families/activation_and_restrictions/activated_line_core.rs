@@ -458,20 +458,6 @@ pub(crate) fn last_exile_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> 
     super::super::util::find_last_exile_cost_choice_tag(mana_cost)
 }
 
-pub(crate) fn infer_activated_functional_zones(
-    cost_tokens: &[OwnedLexToken],
-    effect_sentences: &[Vec<OwnedLexToken>],
-) -> Vec<Zone> {
-    let effect_sentences = effect_sentences
-        .iter()
-        .map(Vec::as_slice)
-        .collect::<Vec<_>>();
-    crate::runtime_backend::grammar::functional_zones::parse_activated_functional_zones_tokens(
-        cost_tokens,
-        &effect_sentences,
-    )
-}
-
 pub(crate) fn infer_activated_functional_zones_lexed(
     cost_tokens: &[OwnedLexToken],
     effect_sentences: &[&[OwnedLexToken]],
@@ -482,21 +468,10 @@ pub(crate) fn infer_activated_functional_zones_lexed(
     )
 }
 
-pub(crate) fn parse_activate_only_timing(tokens: &[OwnedLexToken]) -> Option<ActivationTiming> {
-    activated_sentence_parsers::parse_activate_only_timing_lexed(tokens)
-}
-
 pub(crate) fn parse_activate_only_timing_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationTiming> {
     activated_sentence_parsers::parse_activate_only_timing_lexed(tokens)
-}
-
-pub(crate) fn normalize_activate_only_restriction(
-    tokens: &[OwnedLexToken],
-    timing: &ActivationTiming,
-) -> Option<String> {
-    activated_sentence_parsers::normalize_activate_only_restriction(tokens, timing)
 }
 
 pub(crate) fn flatten_mana_activation_conditions(
@@ -554,34 +529,10 @@ pub(crate) fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToke
     activated_sentence_parsers::is_activate_only_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn is_spend_mana_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
-    activated_sentence_parsers::is_spend_mana_restriction_sentence_lexed(tokens)
-}
-
-pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    activated_sentence_parsers::is_spend_mana_restriction_sentence_lexed(tokens)
-}
-
-pub(crate) fn parse_mana_usage_restriction_sentence(
-    tokens: &[OwnedLexToken],
-) -> Option<crate::ability::ManaUsageRestriction> {
-    activated_sentence_parsers::parse_mana_usage_restriction_sentence_lexed(tokens)
-}
-
 pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ability::ManaUsageRestriction> {
     activated_sentence_parsers::parse_mana_usage_restriction_sentence_lexed(tokens)
-}
-
-pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<crate::ability::ManaUsageRestriction> {
-    activated_sentence_parsers::parse_mana_spend_bonus_sentence_lexed(tokens)
-}
-
-pub(crate) fn is_any_player_may_activate_sentence(tokens: &[OwnedLexToken]) -> bool {
-    activated_sentence_parsers::is_any_player_may_activate_sentence_lexed(tokens)
 }
 
 pub(crate) fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -594,16 +545,6 @@ pub(crate) fn is_trigger_only_restriction_sentence(tokens: &[OwnedLexToken]) -> 
 
 pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     activated_sentence_parsers::is_trigger_only_restriction_sentence_lexed(tokens)
-}
-
-pub(crate) fn parse_triggered_times_each_turn_sentence(
-    sentences: &[Vec<OwnedLexToken>],
-) -> Option<u32> {
-    activated_sentence_parsers::parse_triggered_times_each_turn_sentence(sentences)
-}
-
-pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
-    activated_sentence_parsers::parse_triggered_times_each_turn_from_words(words)
 }
 
 pub(crate) fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
@@ -659,10 +600,7 @@ pub(crate) fn color_from_color_set(colors: ColorSet) -> Option<crate::color::Col
     found
 }
 
-pub(crate) fn parse_activation_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
-    activated_sentence_parsers::parse_activation_condition_lexed(tokens)
-}
-
+#[cfg(test)]
 pub(crate) fn parse_activation_condition_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ConditionExpr> {
@@ -672,10 +610,6 @@ pub(crate) fn parse_activation_condition_lexed(
 pub(crate) fn parse_cardinal_u32(word: &str) -> Option<u32> {
     let token = OwnedLexToken::word(word.to_string(), TextSpan::synthetic());
     parse_number(&[token]).map(|(value, _)| value)
-}
-
-pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
-    activated_sentence_parsers::parse_activation_count_per_turn(words)
 }
 
 pub(crate) fn parse_enters_tapped_line(

@@ -9,20 +9,9 @@ use crate::types::CardType;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TokenBoundary {
-    pub(crate) token: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TokenSpan {
     pub(crate) start: usize,
     pub(crate) end: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CounterReplacementMarker {
-    Plus(TokenBoundary),
-    Twice(TokenBoundary),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,22 +131,6 @@ fn discard_or_redirect_replacement<'a>(
     })
 }
 
-pub(crate) fn parse_counter_replacement_plus(
-    tokens: &[OwnedLexToken],
-) -> Option<CounterReplacementMarker> {
-    first_token_word(tokens, &["plus"]).map(CounterReplacementMarker::Plus)
-}
-
-pub(crate) fn parse_counter_replacement_twice(
-    tokens: &[OwnedLexToken],
-) -> Option<CounterReplacementMarker> {
-    first_token_word(tokens, &["twice"]).map(CounterReplacementMarker::Twice)
-}
-
-pub(crate) fn parse_token_creation_token_word(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
-    first_token_word(tokens, &["token", "tokens"])
-}
-
 pub(crate) fn parse_combat_prevention_prefix(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {
     phrase_span(
         tokens,
@@ -250,22 +223,6 @@ fn parse_word_phrase<'a>(
 
 fn parse_chosen_order(input: &mut primitives::WordSliceInput<'_>) -> WResult<()> {
     parse_word_phrase(input, &["any", "order"])
-}
-
-fn first_token_word(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<TokenBoundary> {
-    let mut input = LexStream::new(tokens);
-    let initial_len = input.len();
-    loop {
-        let token = initial_len.saturating_sub(input.len());
-        let parsed: WResult<&OwnedLexToken> = any.parse_next(&mut input);
-        let candidate = parsed.ok()?;
-        let Some(candidate_word) = candidate.as_word() else {
-            continue;
-        };
-        if expected.iter().any(|word| candidate_word == *word) {
-            return Some(TokenBoundary { token });
-        }
-    }
 }
 
 fn phrase_span(tokens: &[OwnedLexToken], expected: &'static [&'static str]) -> Option<TokenSpan> {

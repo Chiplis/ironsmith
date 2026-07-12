@@ -1,5 +1,5 @@
 use winnow::combinator::{eof, peek, repeat_till};
-use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
+use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 use winnow::token::any;
 
@@ -92,11 +92,6 @@ fn dynamic_word<'a, 'p>(
         *input = rest;
         Ok(*word)
     }
-}
-
-#[allow(dead_code)]
-fn parse_end(input: &mut WordSliceInput<'_>) -> WResult<()> {
-    eof.void().parse_next(input)
 }
 
 #[cfg(test)]

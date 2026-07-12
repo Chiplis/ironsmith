@@ -4,8 +4,8 @@ use super::super::super::lexer::{OwnedLexToken, TokenKind, TokenWordView, parser
 use super::super::keyword_static_lines::{self, AdditionalVoteKind};
 use super::super::leaf;
 use super::{
-    any_phrase_is_present, any_word_is_present, every_phrase_is_present, phrase_is_exact,
-    phrase_is_prefix, phrase_is_present, phrase_is_suffix, phrase_location,
+    any_word_is_present, every_phrase_is_present, phrase_is_exact, phrase_is_prefix,
+    phrase_is_present, phrase_is_suffix, phrase_location,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

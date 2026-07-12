@@ -1,7 +1,6 @@
 use super::*;
 use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
-use winnow::prelude::*;
 use winnow::token::any;
 
 pub(super) type GrammarFilterNormalizedWords<'a> = TokenWordView<'a>;

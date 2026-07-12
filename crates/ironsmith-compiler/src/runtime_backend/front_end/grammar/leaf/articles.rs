@@ -18,13 +18,13 @@ pub(crate) enum LeafArticle {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LeafLeadingTokenWords<'a> {
     pub(crate) rest: &'a [OwnedLexToken],
+    #[cfg(test)]
     pub(crate) consumed_words: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LeafLeadingWordRefs<'slice, 'word> {
     pub(crate) rest: &'slice [&'word str],
-    pub(crate) consumed_words: usize,
 }
 
 pub(crate) fn parse_leaf_article(input: &mut &str) -> WResult<LeafArticle> {
@@ -43,11 +43,12 @@ pub(crate) fn parse_leaf_article_complete(raw: &str) -> Result<LeafArticle, Card
 pub(crate) fn parse_leaf_leading_articles_tokens(
     tokens: &[OwnedLexToken],
 ) -> LeafLeadingTokenWords<'_> {
-    let (consumed_words, rest) =
+    let parsed =
         primitives::parse_prefix(tokens, parse_leading_articles_lexed).unwrap_or((0, tokens));
     LeafLeadingTokenWords {
-        rest,
-        consumed_words,
+        rest: parsed.1,
+        #[cfg(test)]
+        consumed_words: parsed.0,
     }
 }
 
@@ -58,6 +59,7 @@ pub(crate) fn parse_leaf_leading_indefinite_article_tokens(
         .unwrap_or((LeafArticle::A, tokens));
     LeafLeadingTokenWords {
         rest,
+        #[cfg(test)]
         consumed_words: usize::from(rest.len() != tokens.len()),
     }
 }
@@ -81,10 +83,11 @@ pub(crate) fn parse_leaf_leading_selected_tokens<'a>(
         }
         Ok(consumed)
     };
-    let (consumed_words, rest) = primitives::parse_prefix(tokens, parser).unwrap_or((0, tokens));
+    let parsed = primitives::parse_prefix(tokens, parser).unwrap_or((0, tokens));
     LeafLeadingTokenWords {
-        rest,
-        consumed_words,
+        rest: parsed.1,
+        #[cfg(test)]
+        consumed_words: parsed.0,
     }
 }
 
@@ -92,7 +95,6 @@ pub(crate) fn parse_leaf_leading_articles_words<'slice, 'word>(
     words: &'slice [&'word str],
 ) -> LeafLeadingWordRefs<'slice, 'word> {
     let mut input = words;
-    let original_len = input.len();
     loop {
         let mut probe = input;
         if parse_article_word_slice.parse_next(&mut probe).is_err() {
@@ -100,10 +102,7 @@ pub(crate) fn parse_leaf_leading_articles_words<'slice, 'word>(
         }
         input = probe;
     }
-    LeafLeadingWordRefs {
-        rest: input,
-        consumed_words: original_len.saturating_sub(input.len()),
-    }
+    LeafLeadingWordRefs { rest: input }
 }
 
 fn parse_leading_articles_lexed<'a>(input: &mut LexStream<'a>) -> WResult<usize> {

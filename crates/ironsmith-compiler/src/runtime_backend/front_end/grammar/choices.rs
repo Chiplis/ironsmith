@@ -36,8 +36,6 @@ pub(crate) enum ChoiceClauseActor {
 pub(crate) enum ChoiceClauseSeparator {
     And,
     Become,
-    On,
-    Onto,
     Then,
 }
 
@@ -348,8 +346,6 @@ fn choice_separator_lexed<'a>(
         ChoiceClauseSeparator::Become => alt((primitives::kw("become"), primitives::kw("becomes")))
             .void()
             .parse_next(input),
-        ChoiceClauseSeparator::On => primitives::kw("on").void().parse_next(input),
-        ChoiceClauseSeparator::Onto => primitives::kw("onto").void().parse_next(input),
         ChoiceClauseSeparator::Then => primitives::kw("then").void().parse_next(input),
     }
 }

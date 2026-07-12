@@ -6,7 +6,7 @@ use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken};
 
 use super::{
     contains_sequence_phrase, contains_sequence_word, matches_complete_content_sequence,
-    seek_sequence_phrase, sequence_any_phrase, sequence_phrase, starts_sequence,
+    seek_sequence_phrase, sequence_any_phrase, starts_sequence,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

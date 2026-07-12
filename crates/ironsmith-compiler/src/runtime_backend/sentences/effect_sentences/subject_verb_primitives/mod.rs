@@ -2,31 +2,18 @@ use super::super::activation_and_restrictions::choice_object_clauses::{
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
 };
 use super::super::grammar::effects::parse_conditional_sentence_with_grammar_entrypoint_lexed;
-use super::super::grammar::primitives::{
-    self as grammar, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_comma,
-    split_lexed_slices_on_period,
-};
+use super::super::grammar::primitives::TokenWordView;
 use super::super::keyword_static::parse_value_binding_clause;
-use super::super::lexer::{
-    LexedClause, OwnedLexToken, complete_word_sequence_choice, complete_word_sequence_surface,
-    locate_word, locate_word_sequence, token_prefix_present, word_prefix_choice_present,
-    word_prefix_present, word_prefix_present_at, word_present, word_sequence_present,
-    word_slice_at_is, word_slice_at_is_any, word_slice_first_is, word_slice_first_is_any,
-    word_slice_last_is, word_slice_matching_value, word_suffix_choice_present, word_suffix_present,
-};
+use super::super::lexer::{LexedClause, OwnedLexToken};
 use super::super::object_filters::parse_object_filter;
 use super::super::rule_engine::{
     LexClauseView, LexRuleDef, LexRuleHeadHint, LexRuleHintIndex, LexRuleIndex,
     build_lex_rule_hint_index,
 };
-use super::super::token_primitives::{
-    find_window_by, items_have, iter_contains, lexed_head_words, locate_index, locate_last_index,
-};
+use super::super::token_primitives::{iter_contains, lexed_head_words};
 use super::super::util::{
-    is_article, is_source_reference_words, mana_pips_from_token, parse_card_type,
-    parse_choice_count_before_target_prefix, parse_choice_count_token_prefix_consumed, parse_color,
-    parse_counter_type_from_tokens, parse_subject, parse_subtype_flexible, token_boundary_for_word,
-    words,
+    parse_card_type, parse_choice_count_before_target_prefix, parse_color,
+    parse_counter_type_from_tokens, parse_subject, parse_subtype_flexible,
 };
 use super::super::util::{parse_target_phrase, parse_value, span_from_tokens};
 use super::dispatch_inner::merge_filters;
@@ -34,48 +21,34 @@ use super::search_library::parse_restriction_duration;
 use super::sentence_helpers::*;
 use super::verb_handlers::parse_half_rounded_down_draw_count_words;
 use super::zone_counter_helpers::parse_convert;
-#[allow(unused_imports)]
 use super::{
-    bind_implicit_player_context, parse_become_clause, parse_cant_effect_sentence,
+    bind_implicit_player_context, parse_cant_effect_sentence,
     parse_compound_damage_fanout_sentence, parse_delayed_until_next_end_step_sentence,
     parse_destroy_or_exile_all_split_sentence,
-    parse_each_player_put_permanent_cards_exiled_with_source_sentence, parse_earthbend_sentence,
-    parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed, parse_effect_clause,
-    parse_effect_sentence_lexed, parse_enchant_sentence,
-    parse_exile_hand_and_graveyard_bundle_sentence, parse_exile_then_return_same_object_sentence,
-    parse_exile_up_to_one_each_target_type_sentence, parse_for_each_counter_removed_sentence,
-    parse_for_each_destroyed_this_way_sentence, parse_for_each_exiled_this_way_sentence,
-    parse_for_each_opponent_doesnt, parse_for_each_player_doesnt,
+    parse_each_player_put_permanent_cards_exiled_with_source_sentence, parse_effect_chain,
+    parse_effect_chain_inner, parse_effect_chain_lexed, parse_effect_clause,
+    parse_effect_sentence_lexed, parse_exile_hand_and_graveyard_bundle_sentence,
+    parse_exile_up_to_one_each_target_type_sentence, parse_for_each_destroyed_this_way_sentence,
+    parse_for_each_exiled_this_way_sentence, parse_for_each_player_doesnt,
     parse_for_each_put_into_graveyard_this_way_sentence, parse_gain_ability_sentence,
-    parse_gain_ability_to_source_sentence, parse_gain_life_equal_to_age_sentence,
-    parse_gain_life_equal_to_power_sentence, parse_gain_x_plus_life_sentence,
-    parse_look_at_hand_sentence, parse_look_at_top_then_exile_one_sentence, parse_mana_symbol,
-    parse_monstrosity_sentence, parse_prevent_damage_sentence,
+    parse_gain_life_equal_to_age_sentence, parse_gain_x_plus_life_sentence,
+    parse_look_at_hand_sentence, parse_look_at_top_then_exile_one_sentence,
     parse_same_name_gets_fanout_sentence, parse_same_name_target_fanout_sentence,
     parse_search_library_sentence, parse_shared_color_target_fanout_sentence,
     parse_shuffle_graveyard_into_library_sentence, parse_shuffle_object_into_library_sentence,
-    parse_subtype_word, parse_take_extra_turn_sentence,
     parse_target_player_exiles_creature_and_graveyard_sentence,
-    parse_you_and_each_opponent_voted_with_you_sentence, trim_commas,
 };
-#[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, ClashOpponentAst, EffectAst, IT_TAG, IfResultPredicate, PlayerAst, PredicateAst,
     ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
+    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
-#[allow(unused_imports)]
 use crate::effect::{ChoiceCount, Until, Value};
-use crate::mana::ManaSymbol;
-#[allow(unused_imports)]
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
-#[allow(unused_imports)]
 use crate::types::{CardType, Subtype};
-#[allow(unused_imports)]
 use crate::zone::Zone;
 use std::cell::OnceCell;
 use std::sync::LazyLock;
-use winnow::Parser as _;
 
 pub(crate) fn parse_sentence_put_multiple_counters_on_target(
     clause: SubjectVerbPrimitiveClause<'_>,

@@ -1,37 +1,21 @@
 use super::super::grammar::effects as search_grammar;
 use super::super::grammar::primitives as grammar;
-use super::super::grammar::values::parse_value_comparison_tokens;
-use super::super::lexer::{
-    OwnedLexToken, find_token_word_sequence_span, token_word_refs, trim_lexed_commas,
-};
+use super::super::lexer::{OwnedLexToken, token_word_refs};
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::util::{
-    helper_tag_for_tokens, parse_number, parse_number_word_u32, parse_subject, parse_target_phrase,
+    helper_tag_for_tokens, parse_number_word_u32, parse_subject, parse_target_phrase,
     span_from_tokens, strip_leading_token_words_any, trim_commas,
 };
+use super::parse_effect_chain;
 use super::sentence_helpers::*;
-use super::{
-    find_verb, parse_effect_chain, parse_effect_chain_with_subject_verb_primitives,
-    parse_effect_clause,
-};
 use crate::cards::builders::{
     CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
     LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
+    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
-use crate::effect::SearchSelectionMode;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
-
-#[allow(dead_code)]
-#[derive(Clone)]
-pub(crate) enum SearchLibraryManaConstraint {
-    Equal(u32),
-    LessThanOrEqual(u32),
-    GreaterThanOrEqual(u32),
-    OneOf(Vec<u32>),
-}
 
 const SEARCH_ENCHANT_WORD: &str = "enchant";
 const SEARCH_EARTHBEND_WORD: &str = "earthbend";
@@ -58,11 +42,6 @@ pub(crate) fn parse_search_library_sentence(
     )
 }
 
-#[allow(dead_code)]
-pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
-    search_grammar::search_library_has_unsupported_top_position_probe(words)
-}
-
 pub(crate) fn parse_restriction_duration_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::effect::Until, Vec<OwnedLexToken>)>, CardTextError> {
@@ -70,120 +49,6 @@ pub(crate) fn parse_restriction_duration_lexed(
         search_grammar::parse_search_restriction_duration_shape_lexed(tokens)?
             .map(|shape| (shape.duration, shape.remainder)),
     )
-}
-
-#[allow(dead_code)]
-pub(crate) fn extract_search_library_mana_constraint(
-    filter_tokens: &[OwnedLexToken],
-) -> Option<(Vec<OwnedLexToken>, SearchLibraryManaConstraint)> {
-    let (clause_token_start, clause_token_end) =
-        find_token_word_sequence_span(filter_tokens, &["with", "mana", "cost"])
-            .or_else(|| find_token_word_sequence_span(filter_tokens, &["with", "mana", "value"]))?;
-    let base_filter_tokens = trim_commas(&filter_tokens[..clause_token_start]);
-    if base_filter_tokens.is_empty() {
-        return None;
-    }
-
-    let clause_tokens = trim_lexed_commas(&filter_tokens[clause_token_end..]);
-    if clause_tokens.is_empty() {
-        return None;
-    }
-
-    let parse_single_u32_clause = |tokens: &[OwnedLexToken]| -> Option<u32> {
-        let (value, used) = parse_number(tokens)?;
-        (used == tokens.len()).then_some(value)
-    };
-    let constraint = if let Some(value) = parse_single_u32_clause(clause_tokens) {
-        SearchLibraryManaConstraint::Equal(value)
-    } else if let Some((operator, value_tokens)) = parse_value_comparison_tokens(clause_tokens) {
-        let value = parse_single_u32_clause(value_tokens)?;
-        match operator {
-            crate::effect::ValueComparisonOperator::LessThanOrEqual => {
-                SearchLibraryManaConstraint::LessThanOrEqual(value)
-            }
-            crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
-                SearchLibraryManaConstraint::GreaterThanOrEqual(value)
-            }
-            _ => return None,
-        }
-    } else {
-        let [left, middle, right] = clause_tokens else {
-            return None;
-        };
-        if !search_grammar::search_library_token_is_or(middle) {
-            return None;
-        }
-        SearchLibraryManaConstraint::OneOf(vec![
-            parse_single_u32_clause(std::slice::from_ref(left))?,
-            parse_single_u32_clause(std::slice::from_ref(right))?,
-        ])
-    };
-
-    Some((base_filter_tokens, constraint))
-}
-
-#[allow(dead_code)]
-pub(crate) fn apply_search_library_mana_constraint(
-    filter: &mut ObjectFilter,
-    constraint: SearchLibraryManaConstraint,
-) {
-    if !filter.any_of.is_empty() {
-        for nested in &mut filter.any_of {
-            apply_search_library_mana_constraint(nested, constraint.clone());
-        }
-        return;
-    }
-
-    let build_branch = |base: &ObjectFilter, mana_value: crate::filter::Comparison| {
-        let mut branch = base.clone();
-        branch.has_mana_cost = true;
-        branch.no_x_in_cost = true;
-        branch.mana_value = Some(mana_value);
-        branch
-    };
-
-    match constraint {
-        SearchLibraryManaConstraint::Equal(value) => {
-            filter.has_mana_cost = true;
-            filter.no_x_in_cost = true;
-            filter.mana_value = Some(crate::filter::Comparison::Equal(value as i32));
-        }
-        SearchLibraryManaConstraint::LessThanOrEqual(value) => {
-            filter.has_mana_cost = true;
-            filter.no_x_in_cost = true;
-            filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(value as i32));
-        }
-        SearchLibraryManaConstraint::GreaterThanOrEqual(value) => {
-            filter.has_mana_cost = true;
-            filter.no_x_in_cost = true;
-            filter.mana_value = Some(crate::filter::Comparison::GreaterThanOrEqual(value as i32));
-        }
-        SearchLibraryManaConstraint::OneOf(values) => {
-            let base = filter.clone();
-            *filter = ObjectFilter::default();
-            filter.any_of = values
-                .into_iter()
-                .map(|value| build_branch(&base, crate::filter::Comparison::Equal(value as i32)))
-                .collect();
-        }
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) fn split_search_same_name_reference_filter(
-    tokens: &[OwnedLexToken],
-) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
-    let (start_token_idx, end_token_idx) =
-        find_token_word_sequence_span(tokens, &["with", "the", "same", "name", "as"])
-            .or_else(|| find_token_word_sequence_span(tokens, &["with", "same", "name", "as"]))?;
-    let base_filter_tokens = trim_commas(&tokens[..start_token_idx]);
-    let reference_tokens = trim_commas(&tokens[end_token_idx..]);
-    Some((base_filter_tokens, reference_tokens))
-}
-
-#[allow(dead_code)]
-pub(crate) fn is_same_name_that_reference_words(words: &[&str]) -> bool {
-    search_grammar::is_same_name_that_reference_words(words)
 }
 
 pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {

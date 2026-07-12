@@ -11,6 +11,7 @@ use super::{
     rewrite_prepare_effects_for_lowering,
 };
 
+#[cfg(test)]
 pub(crate) fn compile_statement_effects(
     effects: &[EffectAst],
 ) -> Result<Vec<Effect>, CardTextError> {

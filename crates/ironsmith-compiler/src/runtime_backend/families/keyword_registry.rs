@@ -13,7 +13,6 @@ pub(super) use super::keyword_payloads::*;
 pub(crate) fn parse_keyword_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<KeywordLineCst>, CardTextError> {
-    let normalized = line.info.normalized.normalized.as_str();
     let tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
     let full_parse_tokens = line.info.source_tokens.clone();
     let Some(hint) = parse_keyword_dispatch_hint(&tokens) else {
@@ -28,7 +27,6 @@ pub(crate) fn parse_keyword_line_cst(
         if let Some(payload) = (rule.parse)(line, &tokens, &full_parse_tokens)? {
             return Ok(Some(KeywordLineCst {
                 info: line.info.clone(),
-                text: normalized.to_string(),
                 parse_tokens: tokens,
                 full_parse_tokens,
                 kind: rule.cst_kind,
@@ -39,20 +37,6 @@ pub(crate) fn parse_keyword_line_cst(
 
     Ok(None)
 }
-#[allow(dead_code)]
-pub(crate) fn lower_keyword_line_cst(
-    keyword: KeywordLineCst,
-) -> Result<RewriteKeywordLine, CardTextError> {
-    Ok(RewriteKeywordLine {
-        info: keyword.info,
-        text: keyword.text,
-        kind: keyword.kind,
-        parse_tokens: keyword.parse_tokens,
-        full_parse_tokens: keyword.full_parse_tokens,
-        payload: keyword.payload,
-    })
-}
-
 pub(crate) fn lower_keyword_line_ast(line: &RewriteKeywordLine) -> Result<LineAst, CardTextError> {
     Ok(line.payload.to_line_ast())
 }

@@ -488,8 +488,37 @@ fn is_cluster_keyword(token: &str) -> bool {
     )
 }
 
+fn cluster_value_placeholder(token: &str) -> Option<&'static str> {
+    if token.starts_with('{') && token.ends_with('}') {
+        return Some("<mana>");
+    }
+    if let Some((power, toughness)) = token.split_once('/') {
+        let is_pt_component = |component: &str| {
+            let component = component.trim_matches(|ch| matches!(ch, '+' | '-'));
+            component == "x" || component == "*" || component.parse::<i32>().is_ok()
+        };
+        if is_pt_component(power) && is_pt_component(toughness) {
+            return Some("<pt>");
+        }
+    }
+    if token == "x" || token.parse::<i64>().is_ok() {
+        return Some("<num>");
+    }
+    None
+}
+
 fn clause_signature(clause: &str) -> String {
-    let tokens = shared_clause_comparison_tokens(clause);
+    let mut tokens = shared_clause_comparison_tokens(clause)
+        .into_iter()
+        .map(|token| {
+            cluster_value_placeholder(&token)
+                .map(str::to_string)
+                .unwrap_or(token)
+        })
+        .collect::<Vec<_>>();
+    tokens.dedup_by(|left, right| {
+        left == right && matches!(left.as_str(), "<num>" | "<pt>" | "<mana>")
+    });
     if tokens.len() <= 3 {
         return if tokens.is_empty() {
             "<empty>".to_string()

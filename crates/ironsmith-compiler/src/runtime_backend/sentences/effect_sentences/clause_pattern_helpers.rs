@@ -5,7 +5,6 @@ use crate::cards::builders::{
     TextSpan, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
-use crate::static_abilities::StaticAbilityId;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 use crate::{ChoiceCount, Supertype};
@@ -16,22 +15,13 @@ use super::super::grammar::effects::clause_pattern_shapes as clause_shapes;
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
-use super::super::lexer::{
-    LexedClause, complete_word_sequence_choice, complete_word_sequence_surface,
-    find_token_word_sequence, locate_word_by, locate_word_sequence, token_prefix_present,
-    token_slice_at_is, token_slice_last_is, word_prefix_present, word_present, word_suffix_present,
-};
+use super::super::lexer::{LexedClause, token_slice_last_is};
 use super::super::object_filters::parse_object_filter;
-use super::super::token_primitives::{find_window_by, locate_index, locate_last_index};
 use super::super::util::{
-    parse_card_type, parse_choice_count_before_target_prefix,
-    parse_choice_count_token_prefix_consumed, parse_color, parse_counter_type_from_tokens,
-    parse_counter_type_word, parse_number, parse_subject, parse_target_phrase, parse_value,
-    span_from_tokens, strip_leading_article_word_refs, token_boundary_for_word, trim_commas,
+    parse_subject, parse_target_phrase, parse_value, span_from_tokens, trim_commas,
     wrap_target_count,
 };
 use super::chain_carry::find_verb;
-use super::parse_subtype_word;
 use super::subject_verb_primitives::{
     SubjectVerbPrimitiveClause, parse_distribute_counters_sentence,
 };

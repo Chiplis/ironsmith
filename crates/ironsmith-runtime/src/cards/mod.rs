@@ -920,45 +920,56 @@ mod tests {
     #[cfg(feature = "generated-registry")]
     #[test]
     fn generated_registry_includes_flavor_name_aliases() {
+        let aliases = CardRegistry::generated_parser_card_aliases();
+        assert!(
+            !aliases.is_empty(),
+            "expected the generated registry snapshot to include flavor/printed-name aliases"
+        );
+
+        for (alias, canonical) in &aliases {
+            assert_eq!(
+                CardRegistry::generated_parser_card_parse_source(alias).map(|(name, _)| name),
+                Some(canonical.clone()),
+                "generated alias {alias:?} should resolve to {canonical:?}"
+            );
+            assert_eq!(
+                CardRegistry::generated_parser_card_parse_source(&alias.to_lowercase())
+                    .map(|(name, _)| name),
+                Some(canonical.clone()),
+                "generated alias lookup should be case-insensitive for {alias:?}"
+            );
+        }
+
+        let (alias, canonical) = aliases
+            .iter()
+            .find(|(_, canonical)| CardRegistry::try_compile_card(canonical).is_ok())
+            .cloned()
+            .expect("expected at least one generated flavor/printed-name alias to compile");
+
         let mut registry = CardRegistry::new();
-        registry.ensure_cards_loaded(["You're Gonna Need a Bigger Boat", "Marauding Mutagen"]);
+        registry.ensure_cards_loaded([alias.as_str()]);
 
-        assert_eq!(
-            CardRegistry::generated_parser_card_parse_source("You're Gonna Need a Bigger Boat")
-                .map(|(name, _)| name),
-            Some("Abrade".to_string())
-        );
-        assert_eq!(
-            CardRegistry::generated_parser_card_parse_source("Marauding Mutagen")
-                .map(|(name, _)| name),
-            Some("Acidic Slime".to_string())
-        );
-
-        assert!(registry.get("You're Gonna Need a Bigger Boat").is_some());
-        assert!(registry.get("you're gonna need a bigger boat").is_some());
-        assert!(registry.get("Marauding Mutagen").is_some());
-        assert!(registry.get("marauding mutagen").is_some());
+        assert!(registry.get(&alias).is_some());
+        assert!(registry.get(&alias.to_lowercase()).is_some());
 
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = PlayerId::from_index(0);
 
         let hand_definition = registry
-            .get("You're Gonna Need a Bigger Boat")
+            .get(&alias)
             .expect("flavor alias should resolve")
             .clone();
         let hand_id = game.create_object_from_definition(&hand_definition, alice, Zone::Hand);
         assert_eq!(
             game.object(hand_id).expect("hand object should exist").name,
-            "Abrade"
+            canonical
         );
 
-        for alias in ["You're Gonna Need a Bigger Boat", "Marauding Mutagen"] {
-            let definition = registry
-                .get(alias)
-                .expect("deck alias should resolve")
-                .clone();
-            game.create_object_from_definition(&definition, alice, Zone::Library);
-        }
+        let definition = registry
+            .get(&alias)
+            .expect("deck alias should resolve")
+            .clone();
+        game.create_object_from_definition(&definition, alice, Zone::Library);
 
         let library_names: Vec<String> = game
             .player(alice)
@@ -968,12 +979,8 @@ mod tests {
             .filter_map(|&id| game.object(id).map(|object| object.name.to_string()))
             .collect();
         assert!(
-            library_names.iter().any(|name| name == "Abrade"),
-            "expected canonical Abrade in library, got {library_names:?}"
-        );
-        assert!(
-            library_names.iter().any(|name| name == "Acidic Slime"),
-            "expected canonical Acidic Slime in library, got {library_names:?}"
+            library_names.iter().any(|name| name == &canonical),
+            "expected canonical {canonical} in library, got {library_names:?}"
         );
     }
 

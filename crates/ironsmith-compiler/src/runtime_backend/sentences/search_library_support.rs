@@ -1,13 +1,11 @@
 use super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
-    OwnedLexToken, TokenKind, contains_token_word, find_token_word_sequence_span,
-    token_prefix_present_at, token_word_refs, trim_lexed_commas, word_prefix_choice_present,
-    word_prefix_present, word_sequence_present,
+    OwnedLexToken, TokenKind, find_token_word_sequence_span, token_word_refs, trim_lexed_commas,
 };
 use super::object_filters::parse_object_filter;
 use super::token_primitives::{
-    find_window_by, items_have, parse_simple_restriction_duration_prefix,
+    find_window_by, parse_simple_restriction_duration_prefix,
     parse_simple_restriction_duration_suffix,
 };
 use super::util::{parse_number, trim_commas};
@@ -15,7 +13,6 @@ use crate::cards::builders::CardTextError;
 use crate::effect::Value;
 use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype};
-use crate::zone::Zone;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SearchLibraryManaConstraint {
@@ -269,10 +266,6 @@ pub(crate) fn split_search_different_name_reference_filter(
     }
 
     None
-}
-
-pub(crate) fn is_same_name_that_reference_words(words: &[&str]) -> bool {
-    super::grammar::effects::is_same_name_that_reference_words(words)
 }
 
 pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {

@@ -1,6 +1,5 @@
 use super::*;
 use winnow::error::{ContextError, ErrMode};
-use winnow::prelude::*;
 
 const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"]];
 const EACH_PLAYER_EXILES_ALL_PREFIXES: &[&[&str]] = &[&["each", "player", "exiles", "all"]];

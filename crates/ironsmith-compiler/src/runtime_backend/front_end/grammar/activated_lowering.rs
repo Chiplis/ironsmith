@@ -4,8 +4,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use super::super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, TokenWordView, lex_line, render_token_slice,
-    split_lexed_sentences,
+    LexStream, OwnedLexToken, TokenKind, TokenWordView, split_lexed_sentences,
 };
 use super::primitives;
 use super::shared_util::reference_shapes;
@@ -268,45 +267,6 @@ fn parse_level_number_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
 
 pub(crate) fn parse_level_number_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     primitives::parse_prefix(tokens, parse_level_number_lexed).map(|(level, _)| level)
-}
-
-fn concat_token_slices(parts: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
-    parts.iter().flatten().cloned().collect()
-}
-
-pub(crate) fn align_activated_parse_sentences(
-    parsed_sentences: &[String],
-    effect_parse_tokens: &[OwnedLexToken],
-) -> Option<Vec<Vec<OwnedLexToken>>> {
-    let token_sentences = split_lexed_sentences(effect_parse_tokens);
-    let mut aligned = Vec::with_capacity(parsed_sentences.len());
-    let mut start_idx = 0usize;
-
-    for parsed_sentence in parsed_sentences {
-        let mut matched = None;
-        let mut candidate_start = start_idx;
-        while candidate_start < token_sentences.len() {
-            let mut grouped = Vec::new();
-            let mut probe = candidate_start;
-            while probe < token_sentences.len() {
-                grouped.push(token_sentences[probe].to_vec());
-                let joined = concat_token_slices(&grouped);
-                if render_token_slice(&joined).trim() == parsed_sentence {
-                    matched = Some((probe + 1, joined));
-                    break;
-                }
-                probe += 1;
-            }
-            if matched.is_some() {
-                break;
-            }
-            candidate_start += 1;
-        }
-        let (next_start, joined_tokens) = matched?;
-        aligned.push(joined_tokens);
-        start_idx = next_start;
-    }
-    Some(aligned)
 }
 
 #[cfg(test)]

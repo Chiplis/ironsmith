@@ -74,6 +74,7 @@ impl LeafTargetHead<'_> {
         self.normalized_tokens.as_ref()
     }
 
+    #[cfg(test)]
     pub(crate) fn rest(&self) -> &[OwnedLexToken] {
         self.tokens()
             .get(self.prefix.consumed..)

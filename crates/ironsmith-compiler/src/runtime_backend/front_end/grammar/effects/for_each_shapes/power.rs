@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, opt};
+use winnow::combinator::alt;
 use winnow::prelude::*;
 
 use crate::cards::builders::CardTextError;

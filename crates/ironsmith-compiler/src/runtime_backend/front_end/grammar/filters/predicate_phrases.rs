@@ -1,6 +1,5 @@
 use super::super::super::lexer::{
-    LexedClause, OwnedLexToken, TokenKind, TokenWordView, complete_token_word_sequence,
-    render_token_slice, token_slice_first_is,
+    LexedClause, OwnedLexToken, TokenKind, TokenWordView, render_token_slice, token_slice_first_is,
 };
 use super::*;
 use crate::cards::TextSpan;
@@ -131,7 +130,6 @@ const COST_PAID_INSTEAD_TAIL_PHRASES: &[&[&str]] =
 const COST_NOT_PAID_INSTEAD_TAIL_PHRASE: &[&str] = &["cost", "was", "not", "paid"];
 const YOU_BOTH_OWN_AND_CONTROL_PHRASE: &[&str] = &["you", "both", "own", "and", "control"];
 const EXILE_THEM_PHRASE: &[&str] = &["exile", "them"];
-const ARTICLE_WORDS: &[&str] = &["a", "an"];
 const DEFINITE_ARTICLE_WORD: &str = "the";
 const MANA_SPENT_TO_CAST_THIS_SPELL_PHRASES: &[&[&str]] = &[
     &["was", "spent", "to", "cast", "this", "spell"],

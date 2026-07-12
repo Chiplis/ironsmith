@@ -1,10 +1,14 @@
-use winnow::error::{ModalResult as WResult, StrContext, StrContextValue};
+use winnow::error::ModalResult as WResult;
+#[cfg(test)]
+use winnow::error::{StrContext, StrContextValue};
 use winnow::prelude::*;
 
+#[cfg(test)]
 use crate::cards::builders::CardTextError;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::primitives;
+#[cfg(test)]
 use super::common::{finish_text_parse, text_phrase_words};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +43,7 @@ pub(crate) struct LeafDurationSuffix<'a, T> {
     pub(crate) duration: T,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LeafDurationWordSpan {
     pub(crate) duration: LeafDurationPhrase,
@@ -128,6 +133,7 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
     ),
 ];
 
+#[cfg(test)]
 pub(crate) fn parse_leaf_duration_phrase(input: &mut &str) -> WResult<LeafDurationPhrase> {
     parse_leaf_duration_phrase_words
         .context(StrContext::Label("duration phrase"))
@@ -195,6 +201,7 @@ pub(crate) fn parse_leaf_restriction_duration_suffix_tokens<'a>(
     parse_leaf_duration_suffix(tokens, parse_leaf_duration_phrase_lexed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_leaf_duration_prefix_words(words: &[&str]) -> Option<LeafDurationWordSpan> {
     let mut input: primitives::WordSliceInput<'_> = words;
     let duration = parse_leaf_duration_phrase_word_slice
@@ -207,6 +214,7 @@ pub(crate) fn parse_leaf_duration_prefix_words(words: &[&str]) -> Option<LeafDur
     })
 }
 
+#[cfg(test)]
 pub(crate) fn find_leaf_duration_words(words: &[&str]) -> Option<LeafDurationWordSpan> {
     for start in 0..words.len() {
         let Some(parsed) = parse_leaf_duration_prefix_words(&words[start..]) else {
@@ -221,6 +229,7 @@ pub(crate) fn find_leaf_duration_words(words: &[&str]) -> Option<LeafDurationWor
     None
 }
 
+#[cfg(test)]
 pub(crate) fn find_leaf_canonical_until_end_of_turn_words(
     words: &[&str],
 ) -> Option<LeafDurationWordSpan> {
@@ -291,6 +300,7 @@ pub(crate) fn strip_leaf_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<Owned
     cleaned
 }
 
+#[cfg(test)]
 pub(crate) fn parse_duration_phrase_complete(
     raw: &str,
 ) -> Result<LeafDurationPhrase, CardTextError> {
@@ -333,6 +343,7 @@ fn parse_leaf_duration_suffix<'a, O>(
     None
 }
 
+#[cfg(test)]
 fn parse_leaf_duration_phrase_words(input: &mut &str) -> WResult<LeafDurationPhrase> {
     for (words, value) in LEAF_DURATION_PHRASE_VALUES {
         let checkpoint = *input;
@@ -348,6 +359,7 @@ fn parse_leaf_duration_phrase_words(input: &mut &str) -> WResult<LeafDurationPhr
     ))
 }
 
+#[cfg(test)]
 fn parse_leaf_duration_phrase_word_slice(
     input: &mut primitives::WordSliceInput<'_>,
 ) -> WResult<LeafDurationPhrase> {

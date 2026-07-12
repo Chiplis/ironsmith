@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::cards::builders::{
     CardTextError, EffectAst, KeywordAction, LineAst, PredicateAst, StaticAbilityAst,
     SubjectVerbActionAst, TargetAst, TriggerSpec,
@@ -17,9 +15,7 @@ use super::activation_and_restrictions::{
 use super::grammar::clause_support::{
     self as clause_grammar, ProtectionTargetKind, SourceTriggerKind, TriggerDelimiterKind,
 };
-use super::grammar::primitives::{
-    TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_commas_or_semicolons,
-};
+use super::grammar::primitives::TokenWordView;
 use super::grammar::structure::{
     find_trigger_effect_list_tail_split_lexed,
     rewrite_attached_controller_trigger_effect_tokens_lexed,
@@ -146,10 +142,6 @@ fn attacked_player_filter_from_words(words: &[&str]) -> Option<PlayerFilter> {
 }
 fn is_and_word(word: &str) -> bool {
     word == "and"
-}
-
-fn is_from_word(word: &str) -> bool {
-    word == "from"
 }
 
 fn is_keyword_with_count_word(word: &str) -> bool {
@@ -293,62 +285,6 @@ fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordActi
 
     color_only_hexproof_filter_words(&words[first_word_idx + 2..])
         .map(|filter| vec![KeywordAction::HexproofFrom(filter)])
-}
-
-pub(crate) fn rewrite_parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
-    if let Some(actions) = parse_flashback_keyword_line(tokens) {
-        return Some(actions);
-    }
-
-    let segments = split_lexed_slices_on_commas_or_semicolons(tokens);
-    let mut actions = Vec::new();
-
-    for segment in segments {
-        if segment.is_empty() {
-            continue;
-        }
-
-        if let Some(protection_actions) = parse_protection_chain(segment) {
-            actions.extend(protection_actions);
-            continue;
-        }
-
-        if let Some(hexproof_actions) = parse_hexproof_from_chain(segment) {
-            actions.extend(hexproof_actions);
-            continue;
-        }
-
-        if let Some(action) = parse_ability_phrase(segment) {
-            actions.push(action);
-        } else {
-            let and_parts = split_lexed_slices_on_and(segment);
-            if and_parts.len() > 1 {
-                let mut all_ok = true;
-                for part in &and_parts {
-                    if part.is_empty() {
-                        continue;
-                    }
-                    if let Some(action) = parse_ability_phrase(part) {
-                        actions.push(action);
-                    } else {
-                        all_ok = false;
-                        break;
-                    }
-                }
-                if !all_ok {
-                    return None;
-                }
-            } else {
-                return None;
-            }
-        }
-    }
-
-    if actions.is_empty() {
-        None
-    } else {
-        Some(actions)
-    }
 }
 
 pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
