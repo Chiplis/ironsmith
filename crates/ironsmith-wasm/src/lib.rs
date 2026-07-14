@@ -138,6 +138,26 @@ struct CachedSnapshot {
 }
 
 #[derive(Debug, Clone)]
+struct ManabrewDistributionState {
+    description: String,
+    target_names: Vec<String>,
+    target_index: usize,
+    remaining: u32,
+    min_per_target: u32,
+    allocations: Vec<u32>,
+}
+
+#[derive(Debug, Clone)]
+struct ManabrewCounterState {
+    target_name: String,
+    counter_names: Vec<String>,
+    available: Vec<u32>,
+    counter_index: usize,
+    remaining: u32,
+    allocations: Vec<u32>,
+}
+
+#[derive(Debug, Clone)]
 enum ManabrewPromptBinding {
     Priority {
         actions: HashMap<String, usize>,
@@ -149,8 +169,25 @@ enum ManabrewPromptBinding {
     },
     Boolean,
     Number,
+    TextNameGroups {
+        description: String,
+        groups: Vec<Vec<String>>,
+    },
+    TextNames {
+        names: Vec<String>,
+    },
     Options {
         indices: Vec<usize>,
+    },
+    DistributionNumber {
+        state: ManabrewDistributionState,
+    },
+    DistributionOptions {
+        state: ManabrewDistributionState,
+        amounts: Vec<u32>,
+    },
+    CounterNumber {
+        state: ManabrewCounterState,
     },
     Objects {
         objects: HashMap<String, ObjectId>,

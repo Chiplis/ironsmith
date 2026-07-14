@@ -1517,8 +1517,8 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "manabrew-protocol"
-version = "0.5.1"
-source = "git+https://github.com/witchesofthehill/manabrew.git?rev=7fe637631e7f95fffb4636a33f144db137ae76cc#7fe637631e7f95fffb4636a33f144db137ae76cc"
+version = "1.0.0"
+source = "git+https://github.com/witchesofthehill/manabrew.git?rev=aef71d5ccea90cb170c5633d027ff70f5415d42f#aef71d5ccea90cb170c5633d027ff70f5415d42f"
 dependencies = [
  "serde",
  "serde_json",

@@ -63,8 +63,14 @@ struct ManabrewViewResult {
 
 enum ManabrewResponseAction {
     Dispatch(UiCommand),
+    Continue {
+        input: PromptInput,
+        binding: ManabrewPromptBinding,
+    },
     Cancel,
 }
+
+const MANABREW_TEXT_OPTIONS_PER_PROMPT: usize = 100;
 
 fn object_value(value: &Value) -> &JsonMap {
     static EMPTY: std::sync::OnceLock<JsonMap> = std::sync::OnceLock::new();
@@ -914,6 +920,191 @@ impl WasmGame {
         }
     }
 
+    fn manabrew_known_card_names(&self) -> Vec<String> {
+        let mut names = BTreeMap::new();
+        for (name, lower) in Self::autocomplete_name_corpus() {
+            names.entry(lower.clone()).or_insert_with(|| name.clone());
+        }
+        for (source_name, _) in self.external_parse_sources.values() {
+            let name = source_name.trim();
+            if !name.is_empty() {
+                names
+                    .entry(name.to_lowercase())
+                    .or_insert_with(|| name.to_string());
+            }
+        }
+        names.into_values().collect()
+    }
+
+    fn manabrew_text_name_prompt(
+        description: String,
+        source_card_id: Option<String>,
+        names: Vec<String>,
+    ) -> (PromptInput, ManabrewPromptBinding) {
+        if names.len() <= MANABREW_TEXT_OPTIONS_PER_PROMPT {
+            return (
+                PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
+                    presentation: presentation(
+                        "Choose a card name",
+                        Some(description),
+                        source_card_id,
+                    ),
+                    options: names.clone(),
+                    min_choices: 1,
+                    max_choices: 1,
+                }),
+                ManabrewPromptBinding::TextNames { names },
+            );
+        }
+
+        let chunk_size = names.len().div_ceil(MANABREW_TEXT_OPTIONS_PER_PROMPT);
+        let groups = names
+            .chunks(chunk_size)
+            .map(|group| group.to_vec())
+            .collect::<Vec<_>>();
+        let options = groups
+            .iter()
+            .map(|group| match (group.first(), group.last()) {
+                (Some(first), Some(last)) if first != last => format!("{first} — {last}"),
+                (Some(first), _) => first.clone(),
+                _ => String::new(),
+            })
+            .collect();
+        (
+            PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
+                presentation: presentation(
+                    "Choose a card-name range",
+                    Some(description.clone()),
+                    source_card_id,
+                ),
+                options,
+                min_choices: 1,
+                max_choices: 1,
+            }),
+            ManabrewPromptBinding::TextNameGroups {
+                description,
+                groups,
+            },
+        )
+    }
+
+    fn manabrew_distribution_prompt(
+        state: ManabrewDistributionState,
+        source_card_id: Option<String>,
+    ) -> Result<(PromptInput, ManabrewPromptBinding), ProtocolError> {
+        let Some(target_name) = state.target_names.get(state.target_index) else {
+            return Err(protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                "Ironsmith distribution has no target to prompt for",
+                None,
+            ));
+        };
+        let targets_left = state.target_names.len() - state.target_index - 1;
+        let legal_amounts = if targets_left == 0 {
+            if state.remaining == 0 || state.remaining >= state.min_per_target {
+                vec![state.remaining]
+            } else {
+                Vec::new()
+            }
+        } else if state.min_per_target <= 1 {
+            Vec::new()
+        } else {
+            (0..=state.remaining)
+                .filter(|amount| {
+                    let remainder = state.remaining - amount;
+                    (*amount == 0 || *amount >= state.min_per_target)
+                        && (remainder == 0 || remainder >= state.min_per_target)
+                })
+                .collect()
+        };
+        if (targets_left == 0 || state.min_per_target > 1) && legal_amounts.is_empty() {
+            return Err(protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                format!(
+                    "remaining distribution amount {} cannot satisfy the per-target minimum {}",
+                    state.remaining, state.min_per_target
+                ),
+                None,
+            ));
+        }
+        let description = Some(format!(
+            "{} Remaining: {}. Target {} of {}.",
+            state.description,
+            state.remaining,
+            state.target_index + 1,
+            state.target_names.len()
+        ));
+        if targets_left > 0 && state.min_per_target > 1 {
+            return Ok((
+                PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
+                    presentation: presentation(
+                        format!("Amount for {target_name}"),
+                        description,
+                        source_card_id,
+                    ),
+                    options: legal_amounts.iter().map(u32::to_string).collect(),
+                    min_choices: 1,
+                    max_choices: 1,
+                }),
+                ManabrewPromptBinding::DistributionOptions {
+                    state,
+                    amounts: legal_amounts,
+                },
+            ));
+        }
+        let (min, max) = if targets_left == 0 {
+            (state.remaining, state.remaining)
+        } else {
+            (0, state.remaining)
+        };
+        Ok((
+            PromptInput::ChooseNumber(ChooseNumberInput {
+                presentation: presentation(
+                    format!("Amount for {target_name}"),
+                    description,
+                    source_card_id,
+                ),
+                min: min.min(i32::MAX as u32) as i32,
+                max: max.min(i32::MAX as u32) as i32,
+            }),
+            ManabrewPromptBinding::DistributionNumber { state },
+        ))
+    }
+
+    fn manabrew_counter_prompt(
+        state: ManabrewCounterState,
+        source_card_id: Option<String>,
+    ) -> Result<(PromptInput, ManabrewPromptBinding), ProtocolError> {
+        let Some(counter_name) = state.counter_names.get(state.counter_index) else {
+            return Err(protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                "Ironsmith counter allocation has no counter type to prompt for",
+                None,
+            ));
+        };
+        let max = state
+            .available
+            .get(state.counter_index)
+            .copied()
+            .unwrap_or(0)
+            .min(state.remaining);
+        Ok((
+            PromptInput::ChooseNumber(ChooseNumberInput {
+                presentation: presentation(
+                    format!("Remove {counter_name} counters"),
+                    Some(format!(
+                        "Choose how many {counter_name} counters to remove from {}. Up to {} total counter(s) remain.",
+                        state.target_name, state.remaining
+                    )),
+                    source_card_id,
+                ),
+                min: 0,
+                max: max.min(i32::MAX as u32) as i32,
+            }),
+            ManabrewPromptBinding::CounterNumber { state },
+        ))
+    }
+
     fn build_manabrew_prompt(
         &self,
         context: &DecisionContext,
@@ -922,7 +1113,7 @@ impl WasmGame {
         let unsupported = |name: &str| {
             protocol_error(
                 ProtocolErrorCode::InvalidShape,
-                format!("Ironsmith decision {name} has no lossless Manabrew v3 prompt mapping"),
+                format!("Ironsmith decision {name} has no lossless Manabrew v1 prompt mapping"),
                 None,
             )
         };
@@ -1413,10 +1604,116 @@ impl WasmGame {
                     ManabrewPromptBinding::Targets { targets },
                 ))
             }
-            DecisionContext::TextInput(_) => Err(unsupported("text input")),
-            DecisionContext::Distribute(_) => Err(unsupported("distribution")),
-            DecisionContext::Counters(_) => Err(unsupported("counter allocation")),
-            DecisionContext::Proliferate(_) => Err(unsupported("proliferate")),
+            DecisionContext::TextInput(ctx) => {
+                if !ctx.require_known_value {
+                    return Err(unsupported("free-form text input"));
+                }
+                let names = self.manabrew_known_card_names();
+                if names.is_empty() {
+                    return Err(unsupported("known card-name input with an empty registry"));
+                }
+                Ok(Self::manabrew_text_name_prompt(
+                    ctx.description.clone(),
+                    source,
+                    names,
+                ))
+            }
+            DecisionContext::Distribute(ctx) if ctx.targets.is_empty() => Ok((
+                PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
+                    presentation: presentation(
+                        "Complete distribution",
+                        Some(ctx.description.clone()),
+                        source,
+                    ),
+                    options: Vec::new(),
+                    min_choices: 0,
+                    max_choices: 0,
+                }),
+                ManabrewPromptBinding::Options {
+                    indices: Vec::new(),
+                },
+            )),
+            DecisionContext::Distribute(ctx) => Self::manabrew_distribution_prompt(
+                ManabrewDistributionState {
+                    description: ctx.description.clone(),
+                    target_names: ctx
+                        .targets
+                        .iter()
+                        .map(|target| target.name.clone())
+                        .collect(),
+                    target_index: 0,
+                    remaining: ctx.total,
+                    min_per_target: ctx.min_per_target,
+                    allocations: Vec::with_capacity(ctx.targets.len()),
+                },
+                source,
+            ),
+            DecisionContext::Counters(ctx) if ctx.available_counters.is_empty() => Ok((
+                PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
+                    presentation: presentation(
+                        "Complete counter removal",
+                        Some(format!(
+                            "There are no counters to remove from {}.",
+                            ctx.target_name
+                        )),
+                        source,
+                    ),
+                    options: Vec::new(),
+                    min_choices: 0,
+                    max_choices: 0,
+                }),
+                ManabrewPromptBinding::Options {
+                    indices: Vec::new(),
+                },
+            )),
+            DecisionContext::Counters(ctx) => Self::manabrew_counter_prompt(
+                ManabrewCounterState {
+                    target_name: ctx.target_name.clone(),
+                    counter_names: ctx
+                        .available_counters
+                        .iter()
+                        .map(|(counter, _)| counter_name(*counter))
+                        .collect(),
+                    available: ctx
+                        .available_counters
+                        .iter()
+                        .map(|(_, available)| *available)
+                        .collect(),
+                    counter_index: 0,
+                    remaining: ctx.max_total,
+                    allocations: Vec::with_capacity(ctx.available_counters.len()),
+                },
+                source,
+            ),
+            DecisionContext::Proliferate(ctx) => {
+                let options = ctx
+                    .eligible_permanents
+                    .iter()
+                    .map(|(_, name)| format!("Permanent: {name}"))
+                    .chain(
+                        ctx.eligible_players
+                            .iter()
+                            .map(|(_, name)| format!("Player: {name}")),
+                    )
+                    .collect::<Vec<_>>();
+                let indices = (0..options.len()).collect();
+                Ok((
+                    PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
+                        presentation: presentation(
+                            "Choose permanents and players to proliferate",
+                            Some(
+                                "Choose any number. Each chosen permanent or player gets one more counter of each kind already there."
+                                    .to_string(),
+                            ),
+                            source,
+                        ),
+                        min_choices: 0,
+                        max_choices: options.len(),
+                        options,
+                    }),
+                    ManabrewPromptBinding::Options { indices },
+                ))
+            }
         }
     }
 
@@ -1553,6 +1850,113 @@ impl WasmGame {
         Ok(open)
     }
 
+    fn manabrew_distribution_response(
+        open: &ManabrewOpenPrompt,
+        state: &ManabrewDistributionState,
+        amount: u32,
+    ) -> Result<ManabrewResponseAction, ProtocolError> {
+        let invalid = |message: String| {
+            protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                message,
+                Some(open.prompt_id),
+            )
+        };
+        let remaining = state.remaining.checked_sub(amount).ok_or_else(|| {
+            invalid(format!(
+                "distribution amount {amount} exceeds the remaining {}",
+                state.remaining
+            ))
+        })?;
+        if amount != 0 && amount < state.min_per_target {
+            return Err(invalid(format!(
+                "distribution amount {amount} is below the per-target minimum {}",
+                state.min_per_target
+            )));
+        }
+        let targets_left = state
+            .target_names
+            .len()
+            .checked_sub(state.target_index + 1)
+            .ok_or_else(|| invalid("distribution target index is out of range".to_string()))?;
+        if remaining != 0 && (targets_left == 0 || remaining < state.min_per_target) {
+            return Err(invalid(format!(
+                "distribution amount {amount} leaves an unassignable remainder of {remaining}"
+            )));
+        }
+
+        let mut next = state.clone();
+        next.allocations.push(amount);
+        next.remaining = remaining;
+        next.target_index += 1;
+        if remaining == 0 {
+            next.allocations.resize(next.target_names.len(), 0);
+        }
+        if next.target_index >= next.target_names.len() || remaining == 0 {
+            if remaining != 0 {
+                return Err(invalid(format!(
+                    "distribution is incomplete; {remaining} remains"
+                )));
+            }
+            let mut option_indices = Vec::new();
+            for (index, count) in next.allocations.iter().copied().enumerate() {
+                option_indices.extend(std::iter::repeat_n(index, count as usize));
+            }
+            return Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
+                option_indices,
+            }));
+        }
+
+        let (input, binding) =
+            Self::manabrew_distribution_prompt(next, open.source_card_id.clone())?;
+        Ok(ManabrewResponseAction::Continue { input, binding })
+    }
+
+    fn manabrew_counter_response(
+        open: &ManabrewOpenPrompt,
+        state: &ManabrewCounterState,
+        amount: u32,
+    ) -> Result<ManabrewResponseAction, ProtocolError> {
+        let invalid = |message: String| {
+            protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                message,
+                Some(open.prompt_id),
+            )
+        };
+        let available = state
+            .available
+            .get(state.counter_index)
+            .copied()
+            .ok_or_else(|| invalid("counter type index is out of range".to_string()))?;
+        if amount > available || amount > state.remaining {
+            return Err(invalid(format!(
+                "cannot remove {amount} counter(s); {available} of this type and {} total are available",
+                state.remaining
+            )));
+        }
+
+        let mut next = state.clone();
+        next.allocations.push(amount);
+        next.remaining -= amount;
+        next.counter_index += 1;
+        if next.remaining == 0 {
+            next.allocations.resize(next.counter_names.len(), 0);
+        }
+        if next.counter_index >= next.counter_names.len() || next.remaining == 0 {
+            let mut option_indices = Vec::new();
+            for (index, count) in next.allocations.iter().copied().enumerate() {
+                option_indices.extend(std::iter::repeat_n(index, count as usize));
+            }
+            return Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
+                option_indices,
+            }));
+        }
+
+        let (input, binding) = Self::manabrew_counter_prompt(next, open.source_card_id.clone())?;
+        Ok(ManabrewResponseAction::Continue { input, binding })
+    }
+
     fn manabrew_response_action(
         &self,
         open: &ManabrewOpenPrompt,
@@ -1617,6 +2021,84 @@ impl WasmGame {
                 Ok(ManabrewResponseAction::Dispatch(UiCommand::NumberChoice {
                     value: value as u32,
                 }))
+            }
+            (
+                ManabrewPromptBinding::TextNameGroups {
+                    description,
+                    groups,
+                },
+                PromptOutput::ChooseFromSelection(ChooseFromSelectionOutput::SelectionDecision {
+                    chosen_indices,
+                }),
+            ) => {
+                let [index] = chosen_indices.as_slice() else {
+                    return Err(invalid(
+                        "exactly one card-name range is required".to_string(),
+                    ));
+                };
+                let names = groups
+                    .get(*index)
+                    .cloned()
+                    .ok_or_else(|| invalid(format!("card-name range {index} is out of range")))?;
+                let (input, binding) = Self::manabrew_text_name_prompt(
+                    description.clone(),
+                    open.source_card_id.clone(),
+                    names,
+                );
+                Ok(ManabrewResponseAction::Continue { input, binding })
+            }
+            (
+                ManabrewPromptBinding::TextNames { names },
+                PromptOutput::ChooseFromSelection(ChooseFromSelectionOutput::SelectionDecision {
+                    chosen_indices,
+                }),
+            ) => {
+                let [index] = chosen_indices.as_slice() else {
+                    return Err(invalid("exactly one card name is required".to_string()));
+                };
+                let value = names
+                    .get(*index)
+                    .cloned()
+                    .ok_or_else(|| invalid(format!("card-name index {index} is out of range")))?;
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::TextChoice {
+                    value,
+                }))
+            }
+            (
+                ManabrewPromptBinding::DistributionNumber { state },
+                PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision { chosen_number }),
+            ) => {
+                let amount = chosen_number
+                    .filter(|value| *value >= 0)
+                    .ok_or_else(|| invalid("a non-negative amount is required".to_string()))?
+                    as u32;
+                Self::manabrew_distribution_response(open, state, amount)
+            }
+            (
+                ManabrewPromptBinding::DistributionOptions { state, amounts },
+                PromptOutput::ChooseFromSelection(ChooseFromSelectionOutput::SelectionDecision {
+                    chosen_indices,
+                }),
+            ) => {
+                let [index] = chosen_indices.as_slice() else {
+                    return Err(invalid(
+                        "exactly one distribution amount is required".to_string(),
+                    ));
+                };
+                let amount = amounts.get(*index).copied().ok_or_else(|| {
+                    invalid(format!("distribution amount index {index} is out of range"))
+                })?;
+                Self::manabrew_distribution_response(open, state, amount)
+            }
+            (
+                ManabrewPromptBinding::CounterNumber { state },
+                PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision { chosen_number }),
+            ) => {
+                let amount = chosen_number
+                    .filter(|value| *value >= 0)
+                    .ok_or_else(|| invalid("a non-negative amount is required".to_string()))?
+                    as u32;
+                Self::manabrew_counter_response(open, state, amount)
             }
             (
                 ManabrewPromptBinding::Options { indices },
@@ -1964,6 +2446,31 @@ impl WasmGame {
                 let command = manabrew_to_js(&command, "Ironsmith command")?;
                 self.dispatch(command)
             }
+            ManabrewResponseAction::Continue { input, binding } => {
+                let next_prompt_id = self.manabrew_next_prompt_id;
+                let Some(after_next_prompt_id) = next_prompt_id.checked_add(1) else {
+                    let result = self.manabrew_result(
+                        Some(player),
+                        Some(protocol_error(
+                            ProtocolErrorCode::InvalidShape,
+                            "Manabrew prompt ID space is exhausted",
+                            Some(prompt_id),
+                        )),
+                    );
+                    return manabrew_to_js(&result, "Manabrew response");
+                };
+                self.manabrew_next_prompt_id = after_next_prompt_id;
+                self.manabrew_open_prompt = Some(ManabrewOpenPrompt {
+                    prompt_id: next_prompt_id,
+                    deciding_player: open.deciding_player,
+                    decision_hash: open.decision_hash,
+                    source_card_id: open.source_card_id,
+                    input,
+                    binding,
+                });
+                let result = self.manabrew_result(Some(player), None);
+                return manabrew_to_js(&result, "Manabrew response");
+            }
             ManabrewResponseAction::Cancel => self.cancel_decision(),
         };
         if let Err(error) = engine_result {
@@ -2042,6 +2549,17 @@ mod manabrew_tests {
         let mut game = WasmGame::new();
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 42);
         game
+    }
+
+    fn open_prompt(input: PromptInput, binding: ManabrewPromptBinding) -> ManabrewOpenPrompt {
+        ManabrewOpenPrompt {
+            prompt_id: 1,
+            deciding_player: PlayerId::from_index(0),
+            decision_hash: 1,
+            source_card_id: None,
+            input,
+            binding,
+        }
     }
 
     #[test]
@@ -2237,5 +2755,204 @@ mod manabrew_tests {
                 .code,
             ProtocolErrorCode::UnknownActionId
         );
+    }
+
+    #[test]
+    fn known_card_name_input_uses_bounded_selection_prompts_and_dispatches_text() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = game();
+        game.external_parse_sources.insert(
+            "protocol test card".to_string(),
+            ("Protocol Test Card".to_string(), String::new()),
+        );
+        let context = DecisionContext::TextInput(
+            ironsmith::decisions::context::TextInputContext::new(
+                PlayerId::from_index(0),
+                None,
+                "Choose a card name",
+            )
+            .require_known_value(true),
+        );
+        assert!(game.build_manabrew_prompt(&context).is_ok());
+
+        let target = "Card 219".to_string();
+        let names = (0..250).map(|index| format!("Card {index:03}")).collect();
+        let (input, binding) =
+            WasmGame::manabrew_text_name_prompt("Choose a card name".to_string(), None, names);
+        let mut open = open_prompt(input, binding);
+        for _ in 0..4 {
+            let PromptInput::ChooseFromSelection(selection) = &open.input else {
+                panic!("card-name navigation should use selection prompts");
+            };
+            assert!(
+                selection.options.len() <= MANABREW_TEXT_OPTIONS_PER_PROMPT,
+                "card-name prompt exceeded its option bound"
+            );
+            let chosen_index = match &open.binding {
+                ManabrewPromptBinding::TextNameGroups { groups, .. } => groups
+                    .iter()
+                    .position(|group| group.contains(&target))
+                    .expect("target range exists"),
+                ManabrewPromptBinding::TextNames { names } => names
+                    .iter()
+                    .position(|name| name == &target)
+                    .expect("target name exists"),
+                _ => panic!("unexpected text-name binding"),
+            };
+            let output =
+                PromptOutput::ChooseFromSelection(ChooseFromSelectionOutput::SelectionDecision {
+                    chosen_indices: vec![chosen_index],
+                });
+            match game
+                .manabrew_response_action(&open, output)
+                .expect("text response maps")
+            {
+                ManabrewResponseAction::Continue { input, binding } => {
+                    open.prompt_id += 1;
+                    open.input = input;
+                    open.binding = binding;
+                }
+                ManabrewResponseAction::Dispatch(UiCommand::TextChoice { value }) => {
+                    assert_eq!(value, target);
+                    return;
+                }
+                _ => panic!("unexpected text-name response action"),
+            }
+        }
+        panic!("card-name selection did not terminate");
+    }
+
+    #[test]
+    fn distribution_uses_number_sequence_and_dispatches_repeated_indices() {
+        let _id_guard = crate::test_id_counter_guard();
+        let game = game();
+        let context =
+            DecisionContext::Distribute(ironsmith::decisions::context::DistributeContext::new(
+                PlayerId::from_index(0),
+                None,
+                "Distribute 3 damage",
+                3,
+                vec![
+                    ironsmith::decisions::context::DistributeTarget {
+                        target: Target::Player(PlayerId::from_index(0)),
+                        name: "Alice".to_string(),
+                    },
+                    ironsmith::decisions::context::DistributeTarget {
+                        target: Target::Player(PlayerId::from_index(1)),
+                        name: "Bob".to_string(),
+                    },
+                ],
+                1,
+            ));
+        let (input, binding) = game.build_manabrew_prompt(&context).expect("prompt maps");
+        let open = open_prompt(input, binding);
+        let first = game
+            .manabrew_response_action(
+                &open,
+                PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision {
+                    chosen_number: Some(2),
+                }),
+            )
+            .expect("first allocation maps");
+        let ManabrewResponseAction::Continue { input, binding } = first else {
+            panic!("first allocation should continue");
+        };
+        let mut open = open_prompt(input, binding);
+        open.prompt_id = 2;
+        match game
+            .manabrew_response_action(
+                &open,
+                PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision {
+                    chosen_number: Some(1),
+                }),
+            )
+            .expect("final allocation maps")
+        {
+            ManabrewResponseAction::Dispatch(UiCommand::SelectOptions { option_indices }) => {
+                assert_eq!(option_indices, vec![0, 0, 1]);
+            }
+            _ => panic!("final allocation should dispatch"),
+        }
+    }
+
+    #[test]
+    fn counter_removal_uses_number_sequence_and_dispatches_repeated_indices() {
+        let _id_guard = crate::test_id_counter_guard();
+        let game = game();
+        let context =
+            DecisionContext::Counters(ironsmith::decisions::context::CountersContext::new(
+                PlayerId::from_index(0),
+                None,
+                ObjectId::from_raw(900_001),
+                "Counter Test Permanent",
+                3,
+                vec![
+                    (ironsmith::object::CounterType::PlusOnePlusOne, 2),
+                    (ironsmith::object::CounterType::Named("charge"), 3),
+                ],
+            ));
+        let (input, binding) = game.build_manabrew_prompt(&context).expect("prompt maps");
+        let open = open_prompt(input, binding);
+        let first = game
+            .manabrew_response_action(
+                &open,
+                PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision {
+                    chosen_number: Some(1),
+                }),
+            )
+            .expect("first counter allocation maps");
+        let ManabrewResponseAction::Continue { input, binding } = first else {
+            panic!("first counter allocation should continue");
+        };
+        let mut open = open_prompt(input, binding);
+        open.prompt_id = 2;
+        match game
+            .manabrew_response_action(
+                &open,
+                PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision {
+                    chosen_number: Some(2),
+                }),
+            )
+            .expect("final counter allocation maps")
+        {
+            ManabrewResponseAction::Dispatch(UiCommand::SelectOptions { option_indices }) => {
+                assert_eq!(option_indices, vec![0, 1, 1]);
+            }
+            _ => panic!("final counter allocation should dispatch"),
+        }
+    }
+
+    #[test]
+    fn proliferate_maps_to_optional_multi_selection() {
+        let _id_guard = crate::test_id_counter_guard();
+        let game = game();
+        let context =
+            DecisionContext::Proliferate(ironsmith::decisions::context::ProliferateContext::new(
+                PlayerId::from_index(0),
+                None,
+                vec![(ObjectId::from_raw(900_002), "Permanent".to_string())],
+                vec![(PlayerId::from_index(1), "Bob".to_string())],
+            ));
+        let (input, binding) = game.build_manabrew_prompt(&context).expect("prompt maps");
+        let PromptInput::ChooseFromSelection(selection) = &input else {
+            panic!("proliferate should use a selection prompt");
+        };
+        assert_eq!(selection.min_choices, 0);
+        assert_eq!(selection.max_choices, 2);
+        let open = open_prompt(input, binding);
+        match game
+            .manabrew_response_action(
+                &open,
+                PromptOutput::ChooseFromSelection(ChooseFromSelectionOutput::SelectionDecision {
+                    chosen_indices: vec![0, 1],
+                }),
+            )
+            .expect("proliferate response maps")
+        {
+            ManabrewResponseAction::Dispatch(UiCommand::SelectOptions { option_indices }) => {
+                assert_eq!(option_indices, vec![0, 1]);
+            }
+            _ => panic!("proliferate should dispatch directly"),
+        }
     }
 }

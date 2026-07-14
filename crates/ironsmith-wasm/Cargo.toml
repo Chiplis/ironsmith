@@ -10,7 +10,7 @@ ironsmith-core = { path = "../ironsmith-core" }
 ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime", features = ["handwritten-parse-support"] }
 ironsmith-compiler = { path = "../ironsmith-compiler" }
 ironsmith-registry = { path = "../ironsmith-registry" }
-manabrew-protocol = { git = "https://github.com/witchesofthehill/manabrew.git", rev = "7fe637631e7f95fffb4636a33f144db137ae76cc" }
+manabrew-protocol = { git = "https://github.com/witchesofthehill/manabrew.git", rev = "aef71d5ccea90cb170c5633d027ff70f5415d42f" }
 rand = "0.10.1"
 rand_chacha = "0.10.0"
 serde = { version = "1.0.228", features = ["derive"] }
