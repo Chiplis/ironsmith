@@ -165,6 +165,22 @@ pub(crate) fn parse_become_clause(
         }
         become_grammar::BecomeCopySourceShape::Source(source_tokens) => {
             let source = parse_target_phrase(source_tokens)?;
+            let granted_abilities = if let Some(ability_tokens) = copy_exception
+                .as_ref()
+                .and_then(|exception| exception.granted_ability_tokens.as_deref())
+            {
+                let (abilities, is_choice) =
+                    parse_granted_abilities_for_gain_clause(ability_tokens, become_words, false)?;
+                if is_choice || abilities.is_empty() {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported copy-exception ability (clause: '{}')",
+                        render_lower_words(ability_tokens)
+                    )));
+                }
+                abilities
+            } else {
+                Vec::new()
+            };
             return Ok(EffectAst::subject_verb_become_copy(
                 target,
                 source,
@@ -182,6 +198,15 @@ pub(crate) fn parse_become_clause(
                     .as_ref()
                     .map(|exception| exception.add_supertypes.clone())
                     .unwrap_or_default(),
+                copy_exception
+                    .as_ref()
+                    .map(|exception| exception.remove_supertypes.clone())
+                    .unwrap_or_default(),
+                granted_abilities,
+                copy_exception
+                    .as_ref()
+                    .and_then(|exception| exception.set_base_power_toughness)
+                    .map(|(power, toughness)| (Value::Fixed(power), Value::Fixed(toughness))),
             ));
         }
         become_grammar::BecomeCopySourceShape::NotCopy => {}

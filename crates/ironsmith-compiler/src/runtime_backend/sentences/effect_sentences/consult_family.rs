@@ -78,7 +78,9 @@ pub(crate) fn parse_consult_traversal_sentence(
         crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(Value::X)
     ) && let Some(value) = where_x
     {
-        stop_rule = crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value);
+        stop_rule = crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(
+            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs),
+        );
     }
     let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
         filter

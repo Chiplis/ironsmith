@@ -2890,6 +2890,34 @@ pub(super) fn parse_oracle_shuffle_trigger_regressions() {
             .contains("Whenever a spell or ability causes its controller to shuffle their library"),
         "expected Widespread Panic compiled text to preserve its shuffle-trigger wording, got {rendered}"
     );
+    assert!(
+        rendered.contains("that player puts a card from their hand on top of their library"),
+        "expected Widespread Panic to use a pronoun for the shuffling player's hand, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn parse_oracle_cyber_controller_milled_collection_regression() {
+    let def = parse_oracle_card_definition("The Cyber-Controller");
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("ReturnAllToBattlefieldEffect")
+            && raw.contains("zone: Some(\n                                    Graveyard")
+            && raw.contains("face_down: true"),
+        "expected The Cyber-Controller to return its tagged milled cards from the graveyard face down, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Each opponent mills X cards. Put all creature cards milled this way onto the battlefield face down under your control. They're 2/2 Cyberman artifact creatures"
+        ),
+        "expected The Cyber-Controller to preserve its linked mill/return/animation sequence, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Other artifact creatures you control get +1/+1"),
+        "expected The Cyber-Controller's anthem subject to pluralize creature, got {rendered}"
+    );
 }
 
 #[test]

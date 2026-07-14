@@ -57,12 +57,16 @@ fn first_word_when_or_whenever(sentences: &[SentenceInput], sentence_idx: usize)
     sentence_head_word_in(sentences, sentence_idx, &["when", "whenever"])
 }
 
-fn first_word_you(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
-    sentence_head_word_is(sentences, sentence_idx, "you")
+fn first_word_you_or_untap(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["you", "untap"])
 }
 
 fn first_word_if(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "if")
+}
+
+fn first_word_you(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "you")
 }
 
 fn first_word_look(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
@@ -227,6 +231,14 @@ fn for_each_tagged_copy_window(sentences: &[SentenceInput], sentence_idx: usize)
 
 const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
     SequenceRuleDef {
+        name: "exile-each-player-put-return-exiled-exile-source",
+        feature_tag: Some("exiled-collection-return-after-player-actions"),
+        priority: 446,
+        consumed_sentences: 4,
+        predicate: first_word_exile,
+        parser: generic_subject_verb_sequences::exiled_collections::parse_exile_each_player_put_return_exiled_then_exile_source,
+    },
+    SequenceRuleDef {
         name: "exile-top-play-event-followup",
         feature_tag: Some("exile-play-event-followup"),
         priority: 445,
@@ -271,7 +283,7 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         feature_tag: Some("reciprocal-creature-control"),
         priority: 439,
         consumed_sentences: 3,
-        predicate: first_word_you,
+        predicate: first_word_you_or_untap,
         parser: generic_subject_verb_sequences::pairs::parse_reciprocal_creature_control_sequence,
     },
     SequenceRuleDef {

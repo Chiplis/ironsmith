@@ -1428,6 +1428,7 @@ pub(super) fn resolve_stack_entry_full(
                             x_value: entry.x_value,
                             not_before_turn: None,
                             expires_at_turn: None,
+                            expires_at_end_of_combat: false,
                             target_objects: vec![exiled_id],
                             ability_source: None,
                             ability_source_stable_id: None,

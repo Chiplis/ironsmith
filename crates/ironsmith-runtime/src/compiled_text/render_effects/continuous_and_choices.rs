@@ -1998,14 +1998,13 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
     remainder: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
 ) -> Option<String> {
     if reveal_tagged.is_some_and(|reveal| reveal.tag != look_at_top.tag)
-        || look_at_top.player != PlayerFilter::You
         || choose.chooser != PlayerFilter::You
         || choose.is_search
         || choose.count.is_any_number()
         || !choose_references_tag(choose, &look_at_top.tag)
         || remainder.tag != look_at_top.tag
         || remainder.keep_tagged.as_ref() != Some(&choose.tag)
-        || remainder.player != look_at_top.player
+        || !player_filters_refer_to_same_player(&remainder.player, &look_at_top.player)
     {
         return None;
     }
@@ -2048,7 +2047,11 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
     if singular_count {
         return None;
     }
-    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let owner = if look_at_top.player == PlayerFilter::You {
+        "your".to_string()
+    } else {
+        "their".to_string()
+    };
     let mut selection = describe_looked_battlefield_selection(choose)?;
     let put_prefix = if choose.count.min == 0
         && choose.count.max == Some(1)
@@ -2059,14 +2062,32 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
     } else {
         "Put"
     };
+    let control_suffix = match move_to_zone.battlefield_controller {
+        crate::effects::BattlefieldController::Preserve => "",
+        crate::effects::BattlefieldController::Owner => " under its owner's control",
+        crate::effects::BattlefieldController::You => " under your control",
+    };
     let battlefield_suffix = format!(
-        "{}{entry_counter_suffix}",
+        "{}{control_suffix}{entry_counter_suffix}",
         describe_battlefield_entry_state_for_looked_move(move_to_zone)
     );
     let opener = if look_at_top.reveal || reveal_tagged.is_some() {
-        "Reveal"
+        if look_at_top.player == PlayerFilter::You {
+            "Reveal".to_string()
+        } else {
+            let player = capitalize_first(&describe_player_filter(&look_at_top.player));
+            format!("{player} reveals")
+        }
+    } else if look_at_top.player == PlayerFilter::You {
+        "Look at".to_string()
     } else {
-        "Look at"
+        let player = capitalize_first(&describe_player_filter(&look_at_top.player));
+        format!("{player} looks at")
+    };
+    let remainder_opener = if look_at_top.player == PlayerFilter::You {
+        "Put"
+    } else {
+        "That player puts"
     };
     let order_text = match remainder.order {
         crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
@@ -2074,7 +2095,7 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
     };
 
     Some(format!(
-        "{opener} the top {count_text} {noun} of {owner} library{where_clause}. {put_prefix} {selection} from among them onto the battlefield{battlefield_suffix}. Put the rest on the bottom of {owner} library{order_text}"
+        "{opener} the top {count_text} {noun} of {owner} library{where_clause}. {put_prefix} {selection} from among them onto the battlefield{battlefield_suffix}. {remainder_opener} the rest on the bottom of {owner} library{order_text}"
     ))
 }
 

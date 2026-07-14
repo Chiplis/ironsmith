@@ -3386,6 +3386,12 @@ fn is_delayed_when_that_dies_this_turn_followup_sentence(tokens: &[OwnedLexToken
     document_grammar::parse_delayed_prior_object_dies_surface(tokens).is_some()
 }
 
+fn is_attack_group_combat_damage_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    grammar::has_phrase(tokens, &["either", "of", "those", "creatures"])
+        && grammar::has_phrase(tokens, &["deals", "combat", "damage"])
+        && grammar::has_phrase(tokens, &["this", "combat"])
+}
+
 fn split_trigger_sentence_chunks_rewrite_lexed(
     tokens: &[OwnedLexToken],
 ) -> Vec<Vec<OwnedLexToken>> {
@@ -3408,8 +3414,10 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
         let sentence_starts_with_trigger = line_starts_with_trigger_intro_tokens(sentence_tokens);
         let sentence_is_delayed_followup =
             is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens);
+        let sentence_is_attack_group_followup =
+            is_attack_group_combat_damage_followup_sentence(sentence_tokens);
         if !current.is_empty() && current_starts_with_trigger && sentence_starts_with_trigger {
-            if !sentence_is_delayed_followup {
+            if !sentence_is_delayed_followup && !sentence_is_attack_group_followup {
                 if let Some(chunk) = clone_sentence_chunk_tokens(tokens, &current) {
                     chunks.push(chunk);
                 }

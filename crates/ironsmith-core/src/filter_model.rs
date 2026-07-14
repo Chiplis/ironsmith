@@ -1405,6 +1405,9 @@ impl ObjectFilter {
     pub fn description(&self) -> String {
         let any_of_keyword_clause =
             describe_simple_any_of_keyword_clause(&self.any_of, self.union_connective());
+        if let Some(description) = describe_branch_scoped_card_type_union(self) {
+            return description;
+        }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let mut description = describe_filter_union_list(
                 self.any_of.iter().map(ObjectFilter::description).collect(),
@@ -2688,6 +2691,95 @@ fn source_reference_surface_text(surface: &SourceReferenceSurface) -> String {
     surface.display_text()
 }
 
+fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() < 2 {
+        return None;
+    }
+
+    let mut selectors = Vec::new();
+    for branch in &filter.any_of {
+        if !branch_scoped_union_arm_is_card_type_selector(branch) {
+            return None;
+        }
+        selectors.push(branch.description());
+    }
+
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    if !outer.card_types.is_empty()
+        || !outer.all_card_types.is_empty()
+        || !outer.excluded_card_types.is_empty()
+        || !outer.subtypes.is_empty()
+        || outer.type_or_subtype_union
+        || !outer.excluded_subtypes.is_empty()
+        || !outer.supertypes.is_empty()
+        || !outer.excluded_supertypes.is_empty()
+        || outer.colors.is_some()
+        || outer.required_colors.is_some()
+        || !outer.excluded_colors.is_empty()
+        || outer.colorless
+        || outer.multicolored
+        || outer.monocolored
+    {
+        return None;
+    }
+
+    let selector = describe_filter_union_list(selectors, filter.union_connective(), false);
+    let placeholder = if outer.has_explicit_card_noun()
+        || matches!(
+            outer.zone,
+            Some(
+                Zone::Graveyard
+                    | Zone::Hand
+                    | Zone::Library
+                    | Zone::Exile
+                    | Zone::Command
+                    | Zone::OutsideGame
+            )
+        ) {
+        "card"
+    } else if outer.zone == Some(Zone::Stack) {
+        "spell"
+    } else {
+        "permanent"
+    };
+    let replacement = if placeholder == "permanent" {
+        selector
+    } else {
+        format!("{selector} {placeholder}")
+    };
+    replace_first_description_word(&outer.description(), placeholder, &replacement)
+}
+
+fn branch_scoped_union_arm_is_card_type_selector(filter: &ObjectFilter) -> bool {
+    if !filter.any_of.is_empty()
+        || filter.card_types.len() != 1
+        || !filter.all_card_types.is_empty()
+    {
+        return false;
+    }
+
+    let mut remainder = filter.clone();
+    remainder.card_types.clear();
+    remainder.excluded_card_types.clear();
+    remainder.excluded_subtypes.clear();
+    remainder.excluded_supertypes.clear();
+    remainder.excluded_colors = ColorSet::new();
+    remainder == ObjectFilter::default()
+}
+
+fn replace_first_description_word(text: &str, word: &str, replacement: &str) -> Option<String> {
+    let start = text.match_indices(word).find_map(|(start, matched)| {
+        let before_is_boundary =
+            start == 0 || !text.as_bytes()[start.saturating_sub(1)].is_ascii_alphanumeric();
+        let end = start + matched.len();
+        let after_is_boundary = end == text.len() || !text.as_bytes()[end].is_ascii_alphanumeric();
+        (before_is_boundary && after_is_boundary).then_some(start)
+    })?;
+    let end = start + word.len();
+    Some(format!("{}{}{}", &text[..start], replacement, &text[end..]))
+}
+
 fn describe_simple_any_of_keyword_clause(
     any_of: &[ObjectFilter],
     connective: ObjectFilterUnionConnective,
@@ -3370,7 +3462,7 @@ mod tests {
         PlayerFilter, PtReference, StackObjectKind, TaggedObjectConstraint, TaggedOpbjectRelation,
         describe_comparison, describe_mana_value_comparison,
     };
-    use crate::{CardType, ObjectId, Subtype, TagKey, Value, ValueSurfaceHint};
+    use crate::{CardType, ObjectId, Subtype, TagKey, Value, ValueSurfaceHint, Zone};
 
     #[test]
     fn object_ref_helpers_preserve_payloads() {
@@ -3512,6 +3604,51 @@ mod tests {
         assert_eq!(
             surfaced_filter.union_connective(),
             ObjectFilterUnionConnective::AndOr
+        );
+    }
+
+    #[test]
+    fn branch_scoped_type_union_factors_shared_card_domain() {
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Graveyard),
+            owner: Some(PlayerFilter::You),
+            any_of: vec![
+                ObjectFilter::default().with_type(CardType::Artifact),
+                ObjectFilter {
+                    card_types: vec![CardType::Enchantment],
+                    excluded_subtypes: vec![Subtype::Aura],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        filter.set_explicit_card_noun(true);
+
+        assert_eq!(
+            filter.description(),
+            "artifact or non-aura enchantment card in your graveyard"
+        );
+    }
+
+    #[test]
+    fn branch_scoped_type_union_factors_shared_battlefield_domain() {
+        let filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            any_of: vec![
+                ObjectFilter::default().with_type(CardType::Artifact),
+                ObjectFilter {
+                    card_types: vec![CardType::Enchantment],
+                    excluded_subtypes: vec![Subtype::Aura],
+                    ..Default::default()
+                },
+                ObjectFilter::default().with_type(CardType::Land),
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            filter.description(),
+            "artifact or non-aura enchantment or land"
         );
     }
 

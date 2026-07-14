@@ -2089,6 +2089,17 @@ pub(super) fn test_each_player_tagged_followups_collapse_into_single_for_players
         debug.contains("MoveToZoneEffect") && debug.contains("zone: Hand"),
         "expected move-to-hand effect in per-player wrapper, got {debug}"
     );
+    assert!(
+        debug.contains("target: Tagged") && !debug.contains("target: Source"),
+        "expected the final 'it' to retain the revealed-card tag, got {debug}"
+    );
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "each player reveals the top card of their library, loses life equal to that card's mana value, then puts it into their hand"
+        ) && !rendered.contains("puts this creature into each player's hand"),
+        "expected the per-player reveal/life/move bundle to render the revealed card, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

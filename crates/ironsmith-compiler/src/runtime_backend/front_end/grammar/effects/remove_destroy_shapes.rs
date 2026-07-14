@@ -499,7 +499,21 @@ fn parse_destroy_all_shape(tokens: &[OwnedLexToken]) -> DestroyAllShape<'_> {
     if let Some((base_tokens, ())) =
         primitives::split_lexed_once_before_suffix(tokens, 0, || chosen_this_way_suffix)
     {
-        let base_tokens = trim_lexed_commas(base_tokens);
+        let mut base_tokens = trim_lexed_commas(base_tokens);
+        // "not chosen this way" is the complement of the accumulated chosen
+        // set. Keep the negation out of the object filter and preserve it as
+        // the typed tagged-set relation.
+        if base_tokens
+            .last()
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|word| word == "not")
+        {
+            base_tokens = trim_lexed_commas(&base_tokens[..base_tokens.len() - 1]);
+            return DestroyAllShape::ChosenThisWay {
+                filter_tokens: base_tokens,
+                relation: TaggedDestroyRelation::ExceptMatching,
+            };
+        }
         if let Some((except_idx, (), _)) =
             primitives::find_prefix(base_tokens, || primitives::kw("except").void())
             && except_idx > 0

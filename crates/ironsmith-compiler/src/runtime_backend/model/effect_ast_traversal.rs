@@ -5,6 +5,7 @@ use crate::cards::builders::EffectAst;
 macro_rules! nested_effects_variants {
     ($effects:ident) => {
         EffectAst::Sequence { effects: $effects }
+            | EffectAst::SourceSentence { effects: $effects }
             | EffectAst::Coordinated {
                 effects: $effects,
                 ..
@@ -133,7 +134,9 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
     match effect {
         EffectAst::SubjectVerb(_) => {}
         EffectAst::SolveCase => {}
+        EffectAst::RestartGame { .. } => {}
         EffectAst::Sequence { .. } => {}
+        EffectAst::SourceSentence { .. } => {}
         EffectAst::Coordinated { .. } => {}
         EffectAst::UnlessPays { .. } => {}
         EffectAst::UnlessAction { .. } => {}
@@ -152,6 +155,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ChooseObjects { .. } => {}
         EffectAst::ChooseObjectsWithAggregateConstraint { .. } => {}
         EffectAst::ChooseObjectsBottomOfLibrary { .. } => {}
+        EffectAst::ChooseObjectsTopOfLibrary { .. } => {}
         EffectAst::ChooseTaggedObjectsInZone { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
         EffectAst::ChooseOneOf { .. } => {}

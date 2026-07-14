@@ -169,7 +169,35 @@ pub(super) fn rewrite_apply_pending_mechanic_linkages(
     mut builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
 ) -> CardDefinitionBuilder {
-    let Some((haunt_effects, haunt_choices)) = state.haunt_linkage.take() else {
+    fn contains_haunted_creature_dies(trigger: &crate::triggers::Trigger) -> bool {
+        match &trigger.kind {
+            crate::triggers::TriggerKind::Custom { id, .. } => id == "haunted_creature_dies",
+            crate::triggers::TriggerKind::Either { left, right } => {
+                contains_haunted_creature_dies(left) || contains_haunted_creature_dies(right)
+            }
+            _ => false,
+        }
+    }
+
+    let linkage = state.haunt_linkage.take().or_else(|| {
+        builder.abilities.iter().find_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            contains_haunted_creature_dies(&triggered.trigger).then(|| {
+                (
+                    triggered
+                        .effects
+                        .segments
+                        .iter()
+                        .flat_map(|segment| segment.default_effects.iter().cloned())
+                        .collect(),
+                    triggered.choices.clone(),
+                )
+            })
+        })
+    });
+    let Some((haunt_effects, haunt_choices)) = linkage else {
         return builder;
     };
 
@@ -250,10 +278,12 @@ fn is_haunt_placeholder_ability(ability: &Ability) -> bool {
     let AbilityKind::Triggered(triggered) = &ability.kind else {
         return false;
     };
-    triggered.effects.to_vec().iter().any(|effect| {
-        effect
-            .downcast_ref::<crate::effects::ExileEffect>()
-            .is_some_and(|exile| exile.spec == ChooseSpec::Source)
+    triggered.effects.segments.iter().any(|segment| {
+        segment.default_effects.iter().any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ExileEffect>()
+                .is_some_and(|exile| exile.spec == ChooseSpec::Source)
+        })
     })
 }
 

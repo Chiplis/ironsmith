@@ -90,6 +90,19 @@ fn captures_where_x_value_and_inline_followup() {
 }
 
 #[test]
+fn auspicious_starrix_captures_source_mutation_count() {
+    let parsed = parse_consult_traversal_shape(&lex(
+        "Exile cards from the top of your library until you exile X permanent cards, where X is the number of times this creature has mutated",
+    ))
+    .unwrap();
+    assert_eq!(parsed.where_x, Some(Value::SourceMutationCount));
+    assert_eq!(
+        parsed.stop.stop_rule,
+        LibraryConsultStopRuleAst::MatchCount(Value::X)
+    );
+}
+
+#[test]
 fn captures_first_match_or_exposed_count_stop() {
     let parsed = parse_consult_traversal_shape(&lex(
         "Target opponent reveals cards from the top of their library until an artifact card or X cards are revealed, whichever comes first",

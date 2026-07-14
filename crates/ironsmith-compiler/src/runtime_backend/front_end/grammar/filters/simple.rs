@@ -122,11 +122,257 @@ pub(crate) fn parse_simple_object_filter_lexed(
 ) -> Option<ObjectFilter> {
     let word_view = TokenWordView::new(tokens);
     let saw_type_list_separator = tokens.iter().any(|token| token.kind == TokenKind::Comma);
-    parse_simple_object_filter_words_with_list_marker(
+    let mut filter = parse_simple_object_filter_words_with_list_marker(
         &word_view.to_word_refs(),
         other,
         saw_type_list_separator,
-    )
+    )?;
+    preserve_branch_scoped_card_type_union(&mut filter, tokens, other);
+    Some(filter)
+}
+
+/// Preserve exclusions that grammatically belong to only one arm of a card-type union.
+///
+/// A flattened filter cannot represent `artifact or non-Aura enchantment`: storing
+/// `Artifact` and `Enchantment` alongside a global `Aura` exclusion also rejects Aura
+/// artifacts. `ObjectFilter::any_of` already carries the required inclusive-union
+/// semantics, so keep the shared domain on the outer filter and put each type arm (and
+/// its local exclusions) in a nested selector.
+pub(super) fn preserve_branch_scoped_card_type_union(
+    filter: &mut ObjectFilter,
+    tokens: &[OwnedLexToken],
+    other: bool,
+) {
+    if other || !filter.any_of.is_empty() || tokens_contain_other_than(tokens) {
+        return;
+    }
+
+    let segments = split_card_type_union_segments(tokens);
+    if segments.len() < 2 {
+        return;
+    }
+
+    let branches = segments
+        .iter()
+        .copied()
+        .into_iter()
+        .map(parse_card_type_union_branch)
+        .collect::<Option<Vec<_>>>()
+        .or_else(|| infer_card_type_union_branches(filter, &segments));
+    let Some(branches) = branches else { return };
+
+    let has_local_exclusion = branches.iter().any(card_type_branch_has_exclusion);
+    let has_unexcluded_branch = branches
+        .iter()
+        .any(|branch| !card_type_branch_has_exclusion(branch));
+    if !has_local_exclusion || !has_unexcluded_branch {
+        return;
+    }
+
+    let mut branch_types = Vec::new();
+    for branch in &branches {
+        let card_type = branch.card_types[0];
+        if branch_types.contains(&card_type) {
+            return;
+        }
+        branch_types.push(card_type);
+    }
+    if branch_types.len() != filter.card_types.len()
+        || branch_types
+            .iter()
+            .any(|card_type| !filter.card_types.contains(card_type))
+    {
+        return;
+    }
+
+    filter.card_types.clear();
+    filter.all_card_types.clear();
+    filter.excluded_card_types.clear();
+    filter.subtypes.clear();
+    filter.type_or_subtype_union = false;
+    filter.excluded_subtypes.clear();
+    filter.supertypes.clear();
+    filter.excluded_supertypes.clear();
+    filter.colors = None;
+    filter.required_colors = None;
+    filter.excluded_colors = ColorSet::new();
+    filter.colorless = false;
+    filter.multicolored = false;
+    filter.monocolored = false;
+    filter.any_of = branches;
+}
+
+fn infer_card_type_union_branches(
+    filter: &ObjectFilter,
+    segments: &[&[OwnedLexToken]],
+) -> Option<Vec<ObjectFilter>> {
+    if filter.card_types.len() < 2 || !filter.all_card_types.is_empty() {
+        return None;
+    }
+
+    let mut branches = Vec::new();
+    for segment in segments {
+        let word_view = TokenWordView::new(segment);
+        let words = word_view.to_word_refs();
+        let segment_types = words
+            .iter()
+            .filter_map(|word| parse_card_type(word))
+            .filter(|card_type| filter.card_types.contains(card_type))
+            .collect::<Vec<_>>();
+        if segment_types.len() != 1
+            || branches
+                .iter()
+                .any(|branch: &ObjectFilter| branch.card_types.as_slice() == [segment_types[0]])
+        {
+            return None;
+        }
+
+        let mut branch = ObjectFilter::default().with_type(segment_types[0]);
+        for word in &words {
+            if let Some(card_type) = parse_non_type(word)
+                && filter.excluded_card_types.contains(&card_type)
+            {
+                push_unique(&mut branch.excluded_card_types, card_type);
+            }
+            if let Some(subtype) = parse_non_subtype(word)
+                && filter.excluded_subtypes.contains(&subtype)
+            {
+                push_unique(&mut branch.excluded_subtypes, subtype);
+            }
+            if let Some(supertype) = parse_non_supertype(word)
+                && filter.excluded_supertypes.contains(&supertype)
+            {
+                push_unique(&mut branch.excluded_supertypes, supertype);
+            }
+            if let Some(color) = parse_non_color(word) {
+                branch.excluded_colors = branch.excluded_colors.union(color);
+            }
+        }
+        for pair in words.windows(2) {
+            if pair[0] != "non" {
+                continue;
+            }
+            if let Some(card_type) = parse_card_type(pair[1])
+                && filter.excluded_card_types.contains(&card_type)
+            {
+                push_unique(&mut branch.excluded_card_types, card_type);
+            }
+            if let Some(subtype) = parse_subtype_flexible(pair[1])
+                && filter.excluded_subtypes.contains(&subtype)
+            {
+                push_unique(&mut branch.excluded_subtypes, subtype);
+            }
+            if let Some(supertype) = parse_supertype_word(pair[1])
+                && filter.excluded_supertypes.contains(&supertype)
+            {
+                push_unique(&mut branch.excluded_supertypes, supertype);
+            }
+            if let Some(color) = parse_color(pair[1]) {
+                branch.excluded_colors = branch.excluded_colors.union(color);
+            }
+        }
+        branches.push(branch);
+    }
+
+    let assigned_card_types = branches
+        .iter()
+        .flat_map(|branch| branch.excluded_card_types.iter())
+        .collect::<Vec<_>>();
+    let assigned_subtypes = branches
+        .iter()
+        .flat_map(|branch| branch.excluded_subtypes.iter())
+        .collect::<Vec<_>>();
+    let assigned_supertypes = branches
+        .iter()
+        .flat_map(|branch| branch.excluded_supertypes.iter())
+        .collect::<Vec<_>>();
+    if branches.len() != filter.card_types.len()
+        || filter
+            .excluded_card_types
+            .iter()
+            .any(|value| !assigned_card_types.contains(&value))
+        || filter
+            .excluded_subtypes
+            .iter()
+            .any(|value| !assigned_subtypes.contains(&value))
+        || filter
+            .excluded_supertypes
+            .iter()
+            .any(|value| !assigned_supertypes.contains(&value))
+        || branches.iter().fold(ColorSet::new(), |colors, branch| {
+            colors.union(branch.excluded_colors)
+        }) != filter.excluded_colors
+    {
+        return None;
+    }
+    Some(branches)
+}
+
+fn split_card_type_union_segments(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+    if !tokens.iter().any(|token| token.is_word("and/or")) {
+        return primitives::split_lexed_slices_on_or(tokens);
+    }
+
+    let mut segments = Vec::new();
+    let mut start = 0usize;
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.kind != TokenKind::Comma && !token.is_word("and/or") {
+            continue;
+        }
+        if start < idx {
+            segments.push(&tokens[start..idx]);
+        }
+        start = idx + 1;
+    }
+    if start < tokens.len() {
+        segments.push(&tokens[start..]);
+    }
+    segments
+}
+
+fn parse_card_type_union_branch(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let word_view = TokenWordView::new(tokens);
+    let mut branch =
+        parse_simple_object_filter_words_with_list_marker(&word_view.to_word_refs(), false, false)?;
+
+    // The final arm owns the shared noun/domain suffix in Oracle syntax. Those
+    // facts stay on the outer filter; nested arms carry only their selectors.
+    branch.zone = None;
+    branch.controller = None;
+    branch.owner = None;
+    branch.single_graveyard = false;
+    branch.stack_kind = None;
+    branch.has_mana_cost = false;
+    branch.union_surface = Default::default();
+
+    if branch.card_types.len() != 1 || !branch.all_card_types.is_empty() {
+        return None;
+    }
+
+    let mut selector_remainder = branch.clone();
+    selector_remainder.card_types.clear();
+    selector_remainder.excluded_card_types.clear();
+    selector_remainder.excluded_subtypes.clear();
+    selector_remainder.excluded_supertypes.clear();
+    selector_remainder.excluded_colors = ColorSet::new();
+    if selector_remainder != ObjectFilter::default() {
+        return None;
+    }
+
+    Some(branch)
+}
+
+fn card_type_branch_has_exclusion(branch: &ObjectFilter) -> bool {
+    !branch.excluded_card_types.is_empty()
+        || !branch.excluded_subtypes.is_empty()
+        || !branch.excluded_supertypes.is_empty()
+        || !branch.excluded_colors.is_empty()
+}
+
+fn tokens_contain_other_than(tokens: &[OwnedLexToken]) -> bool {
+    tokens
+        .windows(2)
+        .any(|window| window[0].is_word("other") && window[1].is_word("than"))
 }
 
 fn parse_simple_object_filter_words_with_list_marker(

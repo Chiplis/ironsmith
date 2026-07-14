@@ -371,6 +371,8 @@ pub struct DelayedTrigger {
     pub not_before_turn: Option<u32>,
     /// Optional turn number after which this delayed trigger expires.
     pub expires_at_turn: Option<u32>,
+    /// Whether this delayed trigger expires as the current combat ends.
+    pub expires_at_end_of_combat: bool,
     /// Specific objects this trigger targets.
     pub target_objects: Vec<ObjectId>,
     /// Optional source object to use for the triggered ability when it fires.
@@ -458,6 +460,7 @@ pub fn compute_delayed_trigger_identity(delayed: &DelayedTrigger) -> TriggerIden
     delayed.one_shot.hash(&mut hasher);
     delayed.not_before_turn.hash(&mut hasher);
     delayed.expires_at_turn.hash(&mut hasher);
+    delayed.expires_at_end_of_combat.hash(&mut hasher);
     delayed.controller.hash(&mut hasher);
     for effect in delayed.effects.all_effects() {
         let _ = crate::trigger_identity::hash_debug(&mut hasher, effect);
@@ -1275,11 +1278,36 @@ fn tagged_objects_for_matched_trigger(
     trigger_event: &TriggerEvent,
     trigger: &Trigger,
 ) -> HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>> {
-    tagged_objects_for_trigger_event_impl(
+    let mut tagged = tagged_objects_for_trigger_event_impl(
         game,
         trigger_event,
         trigger_requires_other_attacker_tag(trigger),
-    )
+    );
+    if trigger
+        .downcast_ref::<crate::triggers::AttacksTrigger>()
+        .is_some_and(|attacks| attacks.one_or_more && attacks.max_total_attackers.is_some())
+        && trigger_event
+            .downcast::<crate::events::combat::CreatureAttackedEvent>()
+            .is_some()
+    {
+        let attackers = game
+            .combat
+            .as_ref()
+            .into_iter()
+            .flat_map(|combat| combat.attackers.iter())
+            .filter_map(|attacker| {
+                game.object(attacker.creature)
+                    .map(|object| ObjectSnapshot::from_object(object, game))
+            })
+            .collect::<Vec<_>>();
+        if !attackers.is_empty() {
+            tagged.insert(
+                crate::tag::TagKey::from(ironsmith_core::ATTACKING_GROUP_TAG),
+                attackers,
+            );
+        }
+    }
+    tagged
 }
 
 fn tagged_objects_for_trigger_event(
@@ -2440,6 +2468,12 @@ pub fn check_delayed_triggers(
         if delayed
             .expires_at_turn
             .is_some_and(|max_turn| game.turn.turn_number > max_turn)
+        {
+            to_remove.push(idx);
+            continue;
+        }
+        if delayed.expires_at_end_of_combat
+            && trigger_event.kind() == crate::events::EventKind::EndOfCombat
         {
             to_remove.push(idx);
             continue;

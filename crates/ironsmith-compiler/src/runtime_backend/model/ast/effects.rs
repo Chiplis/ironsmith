@@ -12,7 +12,18 @@ pub(crate) struct ChooseOneModeAst {
 pub(crate) enum EffectAst {
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
+    RestartGame {
+        cards_left_in_exile: Option<ChooseSpec>,
+        source_surface: Option<SourceReferenceSurface>,
+    },
     Sequence {
+        effects: Vec<EffectAst>,
+    },
+    /// Effects authored as one Oracle sentence inside a multi-sentence
+    /// resolution. This is compiler-only grouping metadata: preparation
+    /// lowers each top-level source sentence into its own resolution segment
+    /// while preserving ordinary reference flow between the segments.
+    SourceSentence {
         effects: Vec<EffectAst>,
     },
     /// Effects printed as one coordinated Oracle clause (for example,
@@ -60,6 +71,7 @@ pub(crate) enum EffectAst {
         trigger: TriggerSpec,
         effects: Vec<EffectAst>,
         one_shot: bool,
+        until_end_of_combat: bool,
         attach_to_previous_ability: bool,
     },
     DelayedWhenLastObjectDiesThisTurn {
@@ -105,6 +117,18 @@ pub(crate) enum EffectAst {
         constraint: crate::effect::ChoiceAggregateConstraint,
     },
     ChooseObjectsBottomOfLibrary {
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        count_value: Option<Value>,
+        player: PlayerAst,
+        tag: TagKey,
+    },
+    /// Choose from the top boundary of a library while retaining an explicit
+    /// chooser. This composes the existing runtime `ChooseObjectsEffect`
+    /// `top_only` capability with later tagged zone moves, which is required
+    /// for face-down exile procedures where `ExileTopOfLibraryEffect` (always
+    /// public) is not the correct primitive.
+    ChooseObjectsTopOfLibrary {
         filter: ObjectFilter,
         count: ChoiceCount,
         count_value: Option<Value>,
@@ -1800,6 +1824,9 @@ impl EffectAst {
         name_override: Option<String>,
         name_override_surface: Option<SourceReferenceSurface>,
         add_supertypes: Vec<Supertype>,
+        remove_supertypes: Vec<Supertype>,
+        granted_abilities: Vec<GrantedAbilityAst>,
+        set_base_power_toughness: Option<(Value, Value)>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -1812,6 +1839,9 @@ impl EffectAst {
                 name_override,
                 name_override_surface,
                 add_supertypes,
+                remove_supertypes,
+                granted_abilities,
+                set_base_power_toughness,
             },
         )
     }
@@ -2046,6 +2076,7 @@ impl EffectAst {
         count: ChoiceCount,
         count_value: Option<Value>,
         library_position_from_top: Option<Value>,
+        result_reference_surface: crate::effect::SearchResultReferenceSurface,
         tapped: bool,
     ) -> Self {
         Self::subject_verb(
@@ -2062,6 +2093,7 @@ impl EffectAst {
                 count,
                 count_value,
                 library_position_from_top,
+                result_reference_surface,
                 tapped,
             },
         )

@@ -446,6 +446,40 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         let (value, used) = parse_value_expr_term_words(&words[1..])?;
         return Some((Value::Scaled(Box::new(value), 2), used + 1));
     }
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &[
+                "the", "number", "of", "times", "this", "creature", "has", "mutated",
+            ],
+            &[
+                "the",
+                "number",
+                "of",
+                "times",
+                "this",
+                "permanent",
+                "has",
+                "mutated",
+            ],
+            &[
+                "number", "of", "times", "this", "creature", "has", "mutated",
+            ],
+            &[
+                "number",
+                "of",
+                "times",
+                "this",
+                "permanent",
+                "has",
+                "mutated",
+            ],
+            &["times", "this", "creature", "has", "mutated"],
+            &["times", "this", "permanent", "has", "mutated"],
+        ],
+    ) {
+        return Some((Value::SourceMutationCount, used));
+    }
     if permission_shapes::prefix_words(words, &["x"]) {
         return Some((Value::X, 1));
     }

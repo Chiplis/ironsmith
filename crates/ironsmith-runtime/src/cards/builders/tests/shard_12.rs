@@ -553,8 +553,10 @@ pub(super) fn parse_where_x_prior_effect_first_power_binds_to_affected_object_me
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("that creature's power +1/+1 counters"),
-        "expected rendered prior-effect first-power counter count, got {rendered}"
+        rendered.contains(
+            "exile target creature. put x +1/+1 counters on a commander creature you control, where x is the power of the creature exiled this way"
+        ),
+        "expected the typed sentence boundary and affected-creature reference, got {rendered}"
     );
     let debug = format!("{:?}", def.spell_effect);
     assert!(
@@ -563,6 +565,42 @@ pub(super) fn parse_where_x_prior_effect_first_power_binds_to_affected_object_me
             && !debug.contains("PendingEffectMetric"),
         "expected X to bind to resolved affected-object first-power metric, got {debug}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn parse_real_card_counter_followup_sentence_boundaries_survive_lowering() {
+    let cases = [
+        (
+            "Aggressive Negotiations",
+            "Target opponent reveals their hand. You choose a nonland card from it and exile that card. Put a +1/+1 counter on up to one target creature you control.",
+            "exile that card. put a +1/+1 counter on up to one target creature you control",
+        ),
+        (
+            "Applied Geometry",
+            "Create a token that's a copy of target non-Aura permanent you control, except it's a 0/0 Fractal creature in addition to its other types. Put six +1/+1 counters on it.",
+            "other types. put six +1/+1 counters on it",
+        ),
+        (
+            "Miraculous Recovery",
+            "Return target creature card from your graveyard to the battlefield. Put a +1/+1 counter on it.",
+            "return target creature card from your graveyard to the battlefield. put a +1/+1 counter on it",
+        ),
+    ];
+
+    for (name, text, expected) in cases {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), name)
+            .card_types(vec![CardType::Instant])
+            .parse_text(text)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error}"));
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains(expected),
+            "{name} should preserve its typed counter-followup sentence boundary: {rendered}"
+        );
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

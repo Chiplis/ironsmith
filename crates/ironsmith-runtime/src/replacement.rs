@@ -171,6 +171,7 @@ pub enum ReplacementAction {
     EnterAsCopy {
         source: ObjectId,
         enters_tapped: bool,
+        copy_duration: Option<crate::effect::Until>,
         linked_exile_objects: Vec<ObjectId>,
         additional_counters: Vec<(CounterType, u32)>,
         name_override: Option<String>,

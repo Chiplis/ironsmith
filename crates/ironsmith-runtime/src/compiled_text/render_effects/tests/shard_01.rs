@@ -337,7 +337,36 @@ pub(super) fn describe_effect_list_compacts_put_counters_then_grant_same_filter(
 
     assert_eq!(
         describe_effect_list(&[put, Effect::new(grant)]),
-        "Put a +1/+1 counter on each creature token you control. They gain trample until end of turn"
+        "Put a +1/+1 counter on each creature token you control. Those creatures gain trample until end of turn"
+    );
+}
+
+#[test]
+pub(super) fn describe_effect_list_preserves_distinct_power_choice_complement() {
+    let chosen_tag = TagKey::from("chosen_power_classes");
+    let filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    let choose = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            filter.clone(),
+            ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            chosen_tag.clone(),
+        )
+        .in_zone(Zone::Battlefield),
+    );
+    let repeat = Effect::repeat_effects(Value::DistinctPowers(filter.clone()), vec![choose]);
+    let mut destroy_filter = filter;
+    destroy_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: chosen_tag,
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+    let destroy = Effect::destroy_all(destroy_filter).tag("destroyed_power_complement");
+
+    assert_eq!(
+        describe_effect_list(&[repeat, destroy]),
+        "For each different power among creatures on the battlefield, choose a creature with that power. Destroy each creature not chosen this way"
     );
 }
 
@@ -989,6 +1018,64 @@ pub(super) fn describe_effect_list_compacts_counted_looked_battlefield_rest_bott
     assert_eq!(
         describe_effect_clause_list(&effects).as_deref(),
         Some(expected)
+    );
+}
+
+#[test]
+pub(super) fn target_opponent_reveal_choice_and_remainder_stay_one_collection_clause() {
+    let revealed = TagKey::from("revealed");
+    let chosen = TagKey::from("chosen");
+    let target = Effect::new(crate::effects::TargetOnlyEffect::new(
+        ChooseSpec::target_opponent(),
+    ));
+    let reveal = Effect::new(crate::effects::LookAtTopCardsEffect::revealing(
+        PlayerFilter::target_opponent(),
+        Value::X,
+        revealed.clone(),
+    ));
+
+    let mut filter = ObjectFilter::permanent_card().in_zone(Zone::Library);
+    filter.excluded_card_types.push(CardType::Land);
+    filter.union_surface.explicit_card_noun = true;
+    filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+        Value::X,
+    )));
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: revealed.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let choose = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::up_to(1),
+            PlayerFilter::You,
+            chosen.clone(),
+        )
+        .in_zone(Zone::Library),
+    );
+    let move_chosen = Effect::new(crate::effects::ForEachTaggedEffect::new(
+        chosen.clone(),
+        vec![Effect::new(
+            crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Battlefield, false)
+                .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put)
+                .under_you_control(),
+        )],
+    ));
+    let remainder = Effect::new(
+        crate::effects::PutTaggedRemainderOnLibraryBottomEffect::new(
+            revealed,
+            Some(chosen),
+            crate::effects::consult_helpers::LibraryBottomOrder::Random,
+            PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent)),
+        ),
+    );
+    let effects = vec![target, reveal, choose, move_chosen, remainder];
+
+    assert_eq!(
+        describe_effect_clause_list(&effects).as_deref(),
+        Some(
+            "target opponent reveals the top X cards of their library. You may put a nonland permanent card with mana value X or less from among them onto the battlefield under your control. That player puts the rest on the bottom of their library in a random order"
+        )
     );
 }
 

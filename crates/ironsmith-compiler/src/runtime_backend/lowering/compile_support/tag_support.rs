@@ -1027,6 +1027,10 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
             count_value: Some(count_value),
             ..
         }
+        | EffectAst::ChooseObjectsTopOfLibrary {
+            count_value: Some(count_value),
+            ..
+        }
         | EffectAst::ChooseObjectsAcrossZones {
             count_value: Some(count_value),
             ..

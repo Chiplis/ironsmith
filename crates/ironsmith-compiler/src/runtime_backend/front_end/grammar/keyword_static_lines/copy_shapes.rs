@@ -36,6 +36,7 @@ pub(crate) enum EnterAsCopyShape<'a> {
     May {
         named_subject_tokens: Option<&'a [OwnedLexToken]>,
         enters_tapped: bool,
+        until_end_of_turn: bool,
         filter_tokens: &'a [OwnedLexToken],
         exception_display_split: Option<CopyExceptionDisplaySplit<'a>>,
         exception_tokens: Option<&'a [OwnedLexToken]>,
@@ -77,6 +78,15 @@ pub(crate) fn parse_enter_as_copy_tokens(tokens: &[OwnedLexToken]) -> Option<Ent
     if primitives::parse_prefix(tokens, primitives::phrase(&["you", "may", "have"])).is_some() {
         return primitives::parse_all(tokens, parse_may_enter_as_copy_lexed, "may enter-as-copy")
             .ok();
+    }
+    if primitives::parse_prefix(tokens, primitives::kw("as")).is_some()
+        && let Ok(shape) = primitives::parse_all(
+            tokens,
+            parse_as_enters_become_copy_lexed,
+            "temporary as-enters copy",
+        )
+    {
+        return Some(shape);
     }
     primitives::parse_all(
         tokens,
@@ -192,8 +202,69 @@ fn parse_may_enter_as_copy_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Enter
     Ok(EnterAsCopyShape::May {
         named_subject_tokens,
         enters_tapped,
+        until_end_of_turn: false,
         filter_tokens: trim_lexed_commas(filter_tokens),
         exception_display_split,
+        exception_tokens: exception_tokens.map(trim_lexed_commas),
+    })
+}
+
+/// Parse the replacement-effect wording used by temporary copy permanents:
+/// "As this artifact enters, you may have it become a copy of ... until end
+/// of turn, except ...". This is still an as-enters copy choice; the duration
+/// changes only whether the entering object's underlying copiable values are
+/// replaced permanently.
+fn parse_as_enters_become_copy_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<EnterAsCopyShape<'a>> {
+    primitives::kw("as").parse_next(input)?;
+    let subject_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(alt((primitives::kw("enter"), primitives::kw("enters")))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    alt((primitives::kw("enter"), primitives::kw("enters"))).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["you", "may", "have", "it", "become", "a", "copy", "of"])
+        .parse_next(input)?;
+    let filter_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(primitives::phrase(&["until", "end", "of", "turn"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["until", "end", "of", "turn"]).parse_next(input)?;
+
+    let exception_tokens = if peek((opt(primitives::comma()), primitives::kw("except")))
+        .parse_next(input)
+        .is_ok()
+    {
+        opt(primitives::comma()).parse_next(input)?;
+        primitives::kw("except").parse_next(input)?;
+        Some(take_sentence_body(input)?)
+    } else {
+        primitives::sentence_end().parse_next(input)?;
+        None
+    };
+
+    let subject_tokens = trim_lexed_commas(subject_tokens);
+    let named_subject_tokens =
+        if primitives::parse_prefix(subject_tokens, primitives::kw("this")).is_some() {
+            None
+        } else {
+            Some(subject_tokens)
+        };
+    Ok(EnterAsCopyShape::May {
+        named_subject_tokens,
+        enters_tapped: false,
+        until_end_of_turn: true,
+        filter_tokens: trim_lexed_commas(filter_tokens),
+        exception_display_split: None,
         exception_tokens: exception_tokens.map(trim_lexed_commas),
     })
 }

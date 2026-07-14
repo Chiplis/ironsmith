@@ -593,6 +593,86 @@ pub(crate) fn parse_put_into_hand(
         ));
     }
 
+    if let Some(shape) = cca_shapes::parse_tagged_battlefield_partition_shape(tokens) {
+        let collection_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            tokens,
+            "partition_pool",
+        );
+        let chosen_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            tokens,
+            "partition_chosen",
+        );
+        let owner = crate::runtime_backend::families::activation_and_restrictions::controller_filter_for_token_player(player)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "battlefield collection partition has no resolvable player (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+
+        let mut collection_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        collection_filter.zone = Some(Zone::Library);
+        collection_filter.owner = Some(owner.clone());
+        let capture_collection = EffectAst::subject_verb_tag_matching_objects(
+            collection_filter,
+            vec![Zone::Library],
+            collection_tag.clone(),
+        );
+
+        let mut choose_filter = ObjectFilter::tagged(collection_tag.clone());
+        choose_filter.zone = Some(Zone::Library);
+        choose_filter.owner = Some(owner.clone());
+        let choose = EffectAst::ChooseTaggedObjectsInZone {
+            filter: choose_filter,
+            count: shape.count,
+            player,
+            tag: chosen_tag.clone(),
+            zone: Zone::Library,
+        };
+
+        let mut chosen_filter = ObjectFilter::tagged(chosen_tag.clone());
+        chosen_filter.zone = Some(Zone::Library);
+        chosen_filter.owner = Some(owner.clone());
+        let chosen_controller = match shape.chosen_controller {
+            cca_shapes::PartitionBattlefieldControllerShape::You => ReturnControllerAst::You,
+            cca_shapes::PartitionBattlefieldControllerShape::SubjectPlayer => {
+                ReturnControllerAst::Owner
+            }
+        };
+        let move_chosen = EffectAst::subject_verb_put_all_onto_battlefield(
+            chosen_filter,
+            shape.chosen_tapped,
+            false,
+            chosen_controller,
+        );
+
+        let mut remainder_filter = ObjectFilter::tagged(collection_tag);
+        remainder_filter.zone = Some(Zone::Library);
+        remainder_filter.owner = Some(owner);
+        remainder_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: chosen_tag,
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+        let remainder_controller = match shape.remainder_controller {
+            cca_shapes::PartitionBattlefieldControllerShape::You => ReturnControllerAst::You,
+            cca_shapes::PartitionBattlefieldControllerShape::SubjectPlayer => {
+                ReturnControllerAst::Owner
+            }
+        };
+        let move_remainder = EffectAst::subject_verb_put_all_onto_battlefield(
+            remainder_filter,
+            shape.remainder_tapped,
+            false,
+            remainder_controller,
+        );
+
+        return Ok(EffectAst::Sequence {
+            effects: vec![capture_collection, choose, move_chosen, move_remainder],
+        });
+    }
+
     let from_among_shape = cca_shapes::parse_from_among_them_shape(tokens);
     if let Some(shape) = from_among_shape
         && shape.destination == cca_shapes::FromAmongDestinationShape::Battlefield
@@ -755,9 +835,7 @@ pub(crate) fn parse_put_into_hand(
             ObjectRefAst::Tagged(TagKey::from(IT_TAG)),
         )
         .with_move_to_zone_actor_surface(player)
-        .with_move_to_zone_plural_surface_if(
-            cca_shapes::is_plural_tagged_object_reference(tokens),
-        );
+        .with_move_to_zone_plural_surface_if(cca_shapes::is_plural_tagged_object_reference(tokens));
         return Ok(wrap_return_with_delayed_timing(
             effect,
             parse_put_into_hand_delayed_timing(tokens),
@@ -887,9 +965,9 @@ pub(crate) fn parse_put_into_hand(
                 cca_shapes::parse_destination_player_reference_surface(shape.destination_tokens),
             )
             .with_move_to_zone_actor_surface(player)
-            .with_move_to_zone_plural_surface_if(
-                cca_shapes::is_plural_tagged_object_reference(shape.target_tokens),
-            ));
+            .with_move_to_zone_plural_surface_if(cca_shapes::is_plural_tagged_object_reference(
+                shape.target_tokens,
+            )));
     }
 
     if let Some(shape) = cca_shapes::parse_into_destination_shape(tokens) {
@@ -957,6 +1035,24 @@ pub(crate) fn parse_put_into_hand(
                 }
 
                 if cca_shapes::is_tagged_object_reference(shape.target_tokens) {
+                    if cca_shapes::explicitly_names_object_owner(shape.destination_tokens) {
+                        let effect = EffectAst::subject_verb_move_to_zone(
+                            TargetAst::Tagged(
+                                TagKey::from(IT_TAG),
+                                span_from_tokens(shape.target_tokens),
+                            ),
+                            Zone::Hand,
+                            false,
+                            ReturnControllerAst::Preserve,
+                            false,
+                            None,
+                        )
+                        .with_move_to_zone_actor_surface(player)
+                        .with_move_to_zone_plural_surface_if(
+                            cca_shapes::is_plural_tagged_object_reference(shape.target_tokens),
+                        );
+                        return Ok(wrap_return_with_delayed_timing(effect, delayed_hand_timing));
+                    }
                     let destination_player = destination_player_surface.unwrap_or(player);
                     let effect = EffectAst::subject_verb_put_into_hand(
                         destination_player,

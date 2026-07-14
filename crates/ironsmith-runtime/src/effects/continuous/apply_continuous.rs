@@ -268,12 +268,13 @@ fn resolve_runtime_modification(
             name_override_surface,
             add_supertypes,
         } => {
-            let sacrificed_snapshot = source
-                .sacrificed_object_kind()
-                .and_then(|_| match source.base() {
-                    ChooseSpec::Tagged(tag) => ctx.get_tagged(tag.as_str()).cloned(),
-                    _ => None,
-                });
+            let sacrificed_snapshot =
+                source
+                    .sacrificed_object_kind()
+                    .and_then(|_| match source.base() {
+                        ChooseSpec::Tagged(tag) => ctx.get_tagged(tag.as_str()).cloned(),
+                        _ => None,
+                    });
             let source_id = if let Some(snapshot) = sacrificed_snapshot.as_ref() {
                 snapshot.object_id
             } else {

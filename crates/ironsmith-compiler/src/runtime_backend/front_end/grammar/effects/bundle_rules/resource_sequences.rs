@@ -24,6 +24,96 @@ pub(crate) struct EnergyPayAnyDestroyShape {
     pub(crate) minimum_payment: u32,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DiscardRedrawManaValueLadderShape {
+    pub(crate) filter: ObjectFilter,
+    pub(crate) mana_values: [u32; 3],
+}
+
+pub(crate) fn parse_discard_redraw_mana_value_ladder_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<DiscardRedrawManaValueLadderShape> {
+    primitives::parse_all(
+        tokens,
+        parse_discard_redraw_mana_value_ladder,
+        "discard redraw mana-value ladder",
+    )
+    .ok()
+}
+
+fn parse_discard_redraw_mana_value_ladder(
+    input: &mut LexStream<'_>,
+) -> WResult<DiscardRedrawManaValueLadderShape> {
+    fn clear_implicit_zones(filter: &mut ObjectFilter) {
+        filter.zone = None;
+        for branch in &mut filter.any_of {
+            clear_implicit_zones(branch);
+        }
+    }
+
+    primitives::phrase(&["discard", "all", "the", "cards", "in", "your", "hand"])
+        .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["then", "draw", "that", "many", "cards"]).parse_next(input)?;
+    primitives::end_of_sentence().parse_next(input)?;
+
+    primitives::phrase(&["you", "may", "choose"]).parse_next(input)?;
+    let first_filter_tokens = repeat_till(
+        1..,
+        any.void(),
+        peek(primitives::phrase(&["with", "mana", "value"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["with", "mana", "value"]).parse_next(input)?;
+    let first_value = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["you", "discarded", "this", "way"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["then", "do", "the", "same", "for"]).parse_next(input)?;
+    let repeated_filter_tokens = repeat_till(
+        1..,
+        any.void(),
+        peek(primitives::phrase(&["with", "mana", "values"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["with", "mana", "values"]).parse_next(input)?;
+    let second_value = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    let third_value = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::end_of_sentence().parse_next(input)?;
+
+    primitives::phrase(&["return", "those", "cards", "to", "the", "battlefield"])
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+
+    let mut filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
+        trim_lexed_commas(first_filter_tokens),
+        false,
+    )
+    .map_err(|_| primitives::backtrack_err("mana-value ladder", "object filter"))?;
+    let mut repeated_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
+        trim_lexed_commas(repeated_filter_tokens),
+        false,
+    )
+    .map_err(|_| primitives::backtrack_err("mana-value ladder", "repeated object filter"))?;
+    clear_implicit_zones(&mut filter);
+    clear_implicit_zones(&mut repeated_filter);
+    if repeated_filter != filter {
+        return Err(primitives::backtrack_err(
+            "mana-value ladder",
+            "matching repeated object filters",
+        ));
+    }
+
+    Ok(DiscardRedrawManaValueLadderShape {
+        filter,
+        mana_values: [first_value, second_value, third_value],
+    })
+}
+
 pub(crate) fn parse_energy_pay_any_destroy_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EnergyPayAnyDestroyShape> {
@@ -148,6 +238,27 @@ mod tests {
     use super::*;
     use crate::runtime_backend::front_end::lexer::lex_line;
     use crate::types::CardType;
+
+    #[test]
+    fn parses_discard_redraw_three_step_mana_value_ladder() {
+        let tokens = lex_line(
+            "Discard all the cards in your hand, then draw that many cards. You may choose an artifact or creature card with mana value 1 you discarded this way, then do the same for artifact or creature cards with mana values 2 and 3. Return those cards to the battlefield.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_discard_redraw_mana_value_ladder_tokens(&tokens).unwrap();
+        assert_eq!(shape.mana_values, [1, 2, 3]);
+        let has_type = |card_type| {
+            shape.filter.card_types.contains(&card_type)
+                || shape
+                    .filter
+                    .any_of
+                    .iter()
+                    .any(|branch| branch.card_types.contains(&card_type))
+        };
+        assert!(has_type(CardType::Artifact), "{:?}", shape.filter);
+        assert!(has_type(CardType::Creature), "{:?}", shape.filter);
+    }
 
     #[test]
     fn parses_arbitrary_controlled_object_filter_before_emptying_mana() {

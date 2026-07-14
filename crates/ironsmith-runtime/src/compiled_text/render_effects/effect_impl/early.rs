@@ -85,6 +85,27 @@
         );
     }
     if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>() {
+        // Some plural copy statements lower through a ForEach wrapper even
+        // though the contained continuous effect already targets the same
+        // complete filter. Rendering both levels produces the redundant
+        // "For each ..., each ..." surface.
+        if let [inner] = for_each.effects.as_slice() {
+            let inner = unwrap_tag_wrapped_effect(inner);
+            if let Some(apply) = inner.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                && apply.runtime_modifications.iter().any(|modification| {
+                    matches!(
+                        modification,
+                        crate::effects::continuous::RuntimeModification::CopyOf { .. }
+                    )
+                })
+                && matches!(
+                    &apply.target,
+                    crate::continuous::EffectTarget::Filter(filter) if filter == &for_each.filter
+                )
+            {
+                return describe_effect(inner);
+            }
+        }
         if let Some(compact) = describe_for_each_double_stat(for_each) {
             return compact;
         }
@@ -422,6 +443,14 @@
             return compact;
         }
         if let Some(compact) = describe_each_player_may_discard_card_then_draw(for_players) {
+            return compact;
+        }
+        // Preserve the explicit searched-card partition before the generic
+        // correlated-loop renderers flatten the per-player collection into
+        // independent choose and move sentences.
+        if let Some(compact) =
+            describe_for_players_optional_search_battlefield_partition(for_players)
+        {
             return compact;
         }
         if let Some(compact) = describe_for_players_correlated_result_loop(for_players) {
@@ -986,7 +1015,15 @@
                 } else {
                     describe_player_filter(actor)
                 };
-                let action = lowercase_first(&rendered);
+                let action = if subject == "that player"
+                    && move_to_zone.destination_player_reference_surface
+                        == Some(ironsmith_core::DestinationPlayerReferenceSurface::Pronoun)
+                {
+                    rendered.replacen("that player's", "their", 1)
+                } else {
+                    rendered
+                };
+                let action = lowercase_first(&action);
                 let action = if subject == "you" {
                     normalize_you_verb_phrase(&action)
                 } else {
@@ -1345,6 +1382,14 @@
                 "Exile {} graveyard{face_down_suffix}",
                 describe_possessive_graveyard_owner_filter(owner)
             );
+        }
+        if let ChooseSpec::All(filter) = &exile.spec
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.owner.is_none()
+            && !filter.single_graveyard
+            && is_whole_graveyard_exile_filter(filter)
+        {
+            return format!("Exile all graveyards{face_down_suffix}");
         }
         let target = describe_choose_spec(&exile.spec);
         if let ChooseSpec::All(filter) = &exile.spec
@@ -1872,6 +1917,17 @@
             );
         }
         if let Some(where_x) = describe_where_x_basis(&distributed.amount) {
+            if matches!(distributed.amount.unhinted(), Value::SourcePower)
+                || matches!(
+                    distributed.amount.unhinted(),
+                    Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Source)
+                )
+            {
+                return format!(
+                    "Deal damage equal to its power divided as you choose among {}",
+                    describe_distributed_damage_target(&distributed.target)
+                );
+            }
             return format!(
                 "Deal X damage divided as you choose among {}, where X is {where_x}",
                 describe_distributed_damage_target(&distributed.target)
@@ -3626,7 +3682,8 @@
                 "then shuffle and put"
             };
             return format!(
-                "{search_prefix} for {filter_desc}{reveal_clause}, {finish} that card {}",
+                "{search_prefix} for {filter_desc}{reveal_clause}, {finish} {} {}",
+                search_library.result_reference_surface.as_str(),
                 library_position()
             );
         }
@@ -4442,11 +4499,11 @@
             let false_branch = false_branch
                 .replace(
                     "Put it into its owner's hand",
-                    "put that card into your hand",
+                    "put that card into its owner's hand",
                 )
                 .replace(
                     "put it into its owner's hand",
-                    "put that card into your hand",
+                    "put that card into its owner's hand",
                 )
                 .replace("Put it into your hand", "put that card into your hand")
                 .replace("put it into your hand", "put that card into your hand");

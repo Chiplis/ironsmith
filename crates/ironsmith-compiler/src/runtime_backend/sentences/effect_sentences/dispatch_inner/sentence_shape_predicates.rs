@@ -816,7 +816,11 @@ pub(crate) fn parse_effect_sentence_lexed(
     if let Some(surface) = parse_return_set_reference_surface(tokens) {
         set_first_return_set_reference_surface(&mut effects, &surface);
     }
-    Ok(effects)
+    Ok(
+        crate::runtime_backend::effect_sentences::preserve_coordinated_effect_chain_surface(
+            tokens, effects,
+        ),
+    )
 }
 
 fn has_unrecognized_leading_effect_label(tokens: &[OwnedLexToken]) -> bool {
@@ -904,8 +908,34 @@ fn parse_effect_sentence_lexed_inner(
         return Ok(effects);
     }
 
+    if let Some(shape) = effect_grammar::parse_spell_cast_this_way_tax_tokens(tokens) {
+        let mut spell_filter = ObjectFilter::spell().without_type(crate::types::CardType::Land);
+        spell_filter.zone = None;
+        if let Some(caster) = shape.taxed_caster {
+            spell_filter.cast_by = Some(caster);
+        }
+        return Ok(vec![EffectAst::subject_verb_grant_to_target(
+            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+            crate::grant::Grantable::Ability(crate::static_abilities::StaticAbility::new(
+                crate::static_abilities::CostIncreaseManaCost::new(
+                    spell_filter,
+                    shape.additional_cost,
+                ),
+            )),
+            crate::grant::GrantDuration::Forever,
+        )]);
+    }
+
     if let Some(effects) =
         super::optional_companion_fanout::parse_optional_companion_fanout_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+
+    if let Some(effects) =
+        super::player_subject_sequences::parse_controller_and_defending_player_discard_or_sacrifice(
+            tokens,
+        )
     {
         return Ok(effects);
     }

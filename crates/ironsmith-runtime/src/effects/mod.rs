@@ -169,11 +169,10 @@ pub use permanents::{
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,
-    BecomeMonarchEffect,
-    CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
-    ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect, ChooseNamedOptionEffect,
-    ChoosePlayerEffect, ControlCombatChoicesThisTurnEffect, ControlPlayerEffect,
-    CreateEmblemEffect, DiscoverEffect, EndTurnEffect, EnergyCountersEffect,
+    BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
+    ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
+    ChooseNamedOptionEffect, ChoosePlayerEffect, ControlCombatChoicesThisTurnEffect,
+    ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect, EndTurnEffect, EnergyCountersEffect,
     ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect, ExileUntilMatchCastEffect,
     ExileUntilMatchGrantPlayEffect, ExperienceCountersEffect, ExtraTurnAfterNextTurnEffect,
     ExtraTurnEffect, FlipCoinEffect, GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
@@ -181,10 +180,11 @@ pub use player::{
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
     IncreaseSpeedEffect, LoseTheGameEffect, MayCastMatchingSpellWithoutPayingManaCostEffect,
     PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect, PlayerCountersEffect,
-    PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect, RollDiceChooseResultEffect,
-    RollDieEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect,
-    SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
-    TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
+    PoisonCountersEffect, ReduceSpeedEffect, RestartGameEffect, RingTemptsYouEffect,
+    RollDiceChooseResultEffect, RollDieEffect, SkipCombatPhasesEffect,
+    SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
+    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect,
+    VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,

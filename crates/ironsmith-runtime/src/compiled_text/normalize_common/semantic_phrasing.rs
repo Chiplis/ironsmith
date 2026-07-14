@@ -5,8 +5,26 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized
         .replace("creatures that shares ", "creatures that share ")
         .replace("Creatures that shares ", "Creatures that share ")
+        // In an exhaustive damage fanout, the participial creature filter is
+        // the printed noun modifier ("each creature dealt damage"), not a
+        // targeted relative clause ("target creature that was dealt").
+        .replace(
+            "to each creature that was dealt damage this turn",
+            "to each creature dealt damage this turn",
+        )
         // A spell's own X value does not need a tautological renderer tail.
         .replace(", where X is X", "");
+    if normalized.contains("When you next ") {
+        normalized = normalized
+            .replace(
+                "copy that spell. You may choose new targets for the copy",
+                "copy it and you may choose new targets for the copy",
+            )
+            .replace(
+                "copy that spell or ability. You may choose new targets for the copy",
+                "copy it and you may choose new targets for the copy",
+            );
+    }
     if let Some(compact) = compact_same_subject_pt_then_gain_surface(&normalized) {
         normalized = compact;
     }

@@ -5,7 +5,8 @@ use crate::effects::{
 pub use ironsmith_core::{
     ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, Comparison, Condition,
     DelayedTriggerSpec, EffectId, EffectMode as CoreEffectMode, EffectPredicate, EventValueSpec,
-    ManaSpendPermission, Restriction, SearchSelectionMode, Until, Value, ValueComparisonOperator,
+    ManaSpendPermission, Restriction, SearchResultReferenceSurface, SearchSelectionMode, Until,
+    Value, ValueComparisonOperator,
 };
 use std::any::Any;
 use std::fmt::Debug;
@@ -507,6 +508,9 @@ impl Effect {
         }
         if let Some(payload) = self.as_target_only() {
             return Some(&payload.target);
+        }
+        if let Some(payload) = self.downcast_ref::<crate::effects::RestartGameEffect>() {
+            return payload.cards_left_in_exile.as_ref();
         }
         if let Some(payload) = self.as_deal_damage() {
             return Some(&payload.target);

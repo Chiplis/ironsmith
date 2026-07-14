@@ -587,6 +587,9 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub affected_filter: Option<ObjectFilter>,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    /// If present, the copied characteristics expire at this duration instead
+    /// of replacing the entering object's copiable values permanently.
+    pub copy_duration: Option<Until>,
     pub linked_exile_pair: Option<EnterAsCopyLinkedExilePairSpec>,
     pub copy_source_self: bool,
     pub copy_source_enchanted: bool,

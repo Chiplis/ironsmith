@@ -1431,6 +1431,14 @@ pub trait CompilerTriggerMatcher {
     fn into_trigger(self) -> Trigger;
 }
 
+/// Additional provenance required for a zone-change trigger to match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZoneChangeOriginCondition {
+    /// The object either moved directly from this zone or was cast from this
+    /// zone before entering the destination zone from the stack.
+    MovedFromOrCastFrom(Zone),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZoneChangeTrigger {
     pub from: Option<Zone>,
@@ -1442,6 +1450,7 @@ pub struct ZoneChangeTrigger {
     pub count: CountMode,
     pub cause_filter: Option<CauseFilter>,
     pub during_turn: Option<PlayerFilter>,
+    pub origin_condition: Option<ZoneChangeOriginCondition>,
 }
 
 impl ZoneChangeTrigger {
@@ -1456,6 +1465,7 @@ impl ZoneChangeTrigger {
             count: CountMode::One,
             cause_filter: None,
             during_turn: None,
+            origin_condition: None,
         }
     }
 
@@ -1508,6 +1518,11 @@ impl ZoneChangeTrigger {
 
     pub fn during_turn(mut self, player: PlayerFilter) -> Self {
         self.during_turn = Some(player);
+        self
+    }
+
+    pub fn origin_condition(mut self, condition: ZoneChangeOriginCondition) -> Self {
+        self.origin_condition = Some(condition);
         self
     }
 }

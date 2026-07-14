@@ -5,9 +5,10 @@ use crate::effect::{Condition, Effect, EffectPredicate};
 use crate::target::{ChooseSpec, ObjectFilter};
 
 use super::{
-    EffectPreludeTag, LoweredEffects, PreparedEffectsForLowering, PreparedPredicateForLowering,
-    PreparedTriggeredEffectsForLowering, ReferenceEnv, ReferenceExports, ReferenceImports,
-    compile_annotated_effects_with_context, compile_condition_from_predicate_ast, push_choice,
+    AnnotatedEffectSequence, EffectPreludeTag, LoweredEffects, PreparedEffectsForLowering,
+    PreparedPredicateForLowering, PreparedTriggeredEffectsForLowering, ReferenceEnv,
+    ReferenceExports, ReferenceImports, compile_annotated_effects_with_context,
+    compile_condition_from_predicate_ast, merge_compiled_choices, push_choice,
     rewrite_prepare_effects_for_lowering,
 };
 
@@ -45,11 +46,7 @@ pub(crate) fn materialize_prepared_statement_effects(
     ctx.force_auto_tag_object_targets = prepared.force_auto_tag_object_targets;
     ctx.apply_reference_env(&prepared.initial_env);
     let (compiled, _) = compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
-    let compiled = normalize_targeted_conditional_action_then_fight(compiled);
-    let compiled = normalize_two_target_conditional_then_fight(compiled);
-    let compiled = normalize_two_target_counter_then_fight(compiled);
-    let compiled = normalize_random_destroy_across_target_groups(compiled);
-    let compiled = fold_local_zone_rewrite_self_replacements(compiled);
+    let compiled = normalize_compiled_effects(compiled);
     let final_env = ctx.reference_env();
     Ok(LoweredEffects {
         effects: crate::resolution::ResolutionProgram::from_effects(prepend_effect_prelude(
@@ -71,13 +68,17 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
     let mut ctx = EffectLoweringContext::new();
     ctx.force_auto_tag_object_targets = prepared.force_auto_tag_object_targets;
     ctx.apply_reference_env(&prepared.initial_env);
+    if let Some((effects, choices)) = materialize_source_sentence_segments(prepared, &mut ctx)? {
+        let final_env = ctx.reference_env();
+        return Ok(LoweredEffects {
+            effects,
+            choices,
+            exports: ReferenceExports::from_env(&final_env),
+        });
+    }
     let (compiled, choices) =
         compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
-    let compiled = normalize_targeted_conditional_action_then_fight(compiled);
-    let compiled = normalize_two_target_conditional_then_fight(compiled);
-    let compiled = normalize_two_target_counter_then_fight(compiled);
-    let compiled = normalize_random_destroy_across_target_groups(compiled);
-    let compiled = fold_local_zone_rewrite_self_replacements(compiled);
+    let compiled = normalize_compiled_effects(compiled);
     let final_env = ctx.reference_env();
     Ok(LoweredEffects {
         effects: crate::resolution::ResolutionProgram::from_effects(prepend_effect_prelude(
@@ -87,6 +88,73 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
         choices,
         exports: ReferenceExports::from_env(&final_env),
     })
+}
+
+fn normalize_compiled_effects(compiled: Vec<Effect>) -> Vec<Effect> {
+    let compiled = normalize_targeted_conditional_action_then_fight(compiled);
+    let compiled = normalize_two_target_conditional_then_fight(compiled);
+    let compiled = normalize_two_target_counter_then_fight(compiled);
+    let compiled = normalize_random_destroy_across_target_groups(compiled);
+    fold_local_zone_rewrite_self_replacements(compiled)
+}
+
+fn materialize_source_sentence_segments(
+    prepared: &PreparedEffectsForLowering,
+    ctx: &mut EffectLoweringContext,
+) -> Result<Option<(crate::resolution::ResolutionProgram, Vec<ChooseSpec>)>, CardTextError> {
+    if prepared.source_sentence_effect_counts.is_empty() {
+        return Ok(None);
+    }
+    let expected_effect_count = prepared
+        .source_sentence_effect_counts
+        .iter()
+        .copied()
+        .sum::<usize>();
+    if expected_effect_count != prepared.annotated.effects.len() {
+        return Err(CardTextError::InvariantViolation(format!(
+            "source-sentence effect counts cover {expected_effect_count} effects, but preparation annotated {}",
+            prepared.annotated.effects.len()
+        )));
+    }
+
+    let mut segments = Vec::with_capacity(prepared.source_sentence_effect_counts.len());
+    let mut choices = Vec::new();
+    let mut start = 0;
+    for count in &prepared.source_sentence_effect_counts {
+        let end = start + count;
+        let annotated_effects = prepared.annotated.effects[start..end].to_vec();
+        let final_env = annotated_effects
+            .last()
+            .map(|effect| effect.out_env.clone())
+            .unwrap_or_else(|| prepared.initial_env.clone());
+        let annotated = AnnotatedEffectSequence {
+            effects: annotated_effects,
+            final_env,
+        };
+        // The compiler derives its effective auto-tag policy once per call.
+        // Do not let the prior sentence's final effect become the next
+        // sentence's global policy merely because these groups compile in
+        // separate calls.
+        ctx.auto_tag_object_targets = false;
+        let (compiled, sentence_choices) = compile_annotated_effects_with_context(&annotated, ctx)?;
+        let compiled = normalize_compiled_effects(compiled);
+        merge_compiled_choices(&mut choices, &compiled, sentence_choices);
+        if !compiled.is_empty() {
+            segments.push(crate::resolution::ResolutionSegment::from_effects(compiled));
+        }
+        start = end;
+    }
+
+    if let Some(first) = segments.first_mut() {
+        first.default_effects = prepend_effect_prelude(
+            std::mem::take(&mut first.default_effects),
+            compile_effect_prelude_tags(&prepared.prelude),
+        );
+    }
+    Ok(Some((
+        crate::resolution::ResolutionProgram::new(segments),
+        choices,
+    )))
 }
 
 fn materialize_trailing_self_replacement(

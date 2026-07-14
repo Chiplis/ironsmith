@@ -1,4 +1,6 @@
-use crate::{CardType, ChooseSpec, ColorSet, ObjectFilter, Subtype, SubtypeFamily, Value};
+use crate::{
+    CardType, ChooseSpec, ColorSet, ObjectFilter, Subtype, SubtypeFamily, Supertype, Value,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CompiledContinuousEffectTarget {
@@ -28,6 +30,7 @@ pub enum CompiledContinuousModification<StaticAbility, Ability> {
     RemoveAbility(Ability),
     AddCardTypes(Vec<CardType>),
     RemoveCardTypes(Vec<CardType>),
+    RemoveSupertypes(Vec<Supertype>),
     SetCardTypes(Vec<CardType>),
     AddSubtypes(Vec<Subtype>),
     AddAllSubtypesOfFamily(SubtypeFamily),

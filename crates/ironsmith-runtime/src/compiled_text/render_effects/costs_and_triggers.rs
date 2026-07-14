@@ -296,6 +296,14 @@ pub(crate) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
         {
             return text;
         }
+        if let Some(remove) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()
+            && matches!(remove.target.base(), ChooseSpec::Source)
+        {
+            return format!(
+                "Remove {} from this source",
+                describe_put_counter_phrase(&remove.count, remove.counter_type)
+            );
+        }
         if let Some(cost_text) = effect.0.cost_description() {
             return normalize_cost_phrase(&cost_text);
         }
@@ -2826,9 +2834,14 @@ pub(super) fn describe_for_players_may_choose_then_move_to_battlefield(
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let move_to_zone = unwrap_tag_wrapped_effect(move_effect)
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let any_number = choose.count.min == 0
+        && choose.count.max.is_none()
+        && !choose.count.dynamic_x
+        && !choose.count.up_to_x
+        && !choose.count.random;
     if choose.is_search
         || choose.chooser != PlayerFilter::IteratedPlayer
-        || !choose.count.is_single()
+        || (!choose.count.is_single() && !any_number)
         || choose_primary_zone(choose) != Some(Zone::Hand)
         || !move_to_battlefield_uses_chosen_tag(move_to_zone, choose.tag.as_str())
     {
@@ -2844,7 +2857,14 @@ pub(super) fn describe_for_players_may_choose_then_move_to_battlefield(
     ] {
         choice = choice.replace(location, "");
     }
-    let choice = with_indefinite_article(strip_leading_article(&choice).trim());
+    let choice = if any_number {
+        format!(
+            "any number of {}",
+            pluralize_noun_phrase(strip_leading_article(&choice).trim())
+        )
+    } else {
+        with_indefinite_article(strip_leading_article(&choice).trim())
+    };
     let tapped = if move_to_zone.enters_tapped {
         " tapped"
     } else {
@@ -3826,6 +3846,17 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
 
     let description = base_filter.description();
     let mut base = strip_indefinite_article(&description).to_string();
+    if filter.was_dealt_damage_this_turn {
+        base = base
+            .replace(
+                " that was dealt damage this turn",
+                " dealt damage this turn",
+            )
+            .replace(
+                " that were dealt damage this turn",
+                " dealt damage this turn",
+            );
+    }
     let has_sacrificed_tag = filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
             && matches!(

@@ -1567,7 +1567,7 @@ fn compile_oracle_text_strictly_compiles_mindleecher_from_workspace_cards() {
     assert!(stdout.contains("Name: Mindleecher"), "{stdout}");
     assert!(stdout.contains("Similarity:"), "{stdout}");
     assert!(
-        stdout.contains("Compiled oracle text:\nMutate {4}{B}."),
+        stdout.contains("Compiled oracle text:\nMutate {4}{B}\nFlying\n"),
         "{stdout}"
     );
     assert!(

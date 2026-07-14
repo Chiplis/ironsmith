@@ -371,8 +371,7 @@ mod tests {
         let originals = [first, second];
         let mut ctx = ExecutionContext::new_default(source, alice);
         let effect = CopySpellEffect::single(ChooseSpec::All(
-            crate::filter::ObjectFilter::spell()
-                .controlled_by(crate::target::PlayerFilter::You),
+            crate::filter::ObjectFilter::spell().controlled_by(crate::target::PlayerFilter::You),
         ));
 
         let result = effect.execute(&mut game, &mut ctx).unwrap();

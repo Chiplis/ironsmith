@@ -101,6 +101,14 @@ pub(super) fn linked_set_followups_refer_to_the_union_of_target_and_fanout() {
 }
 
 #[test]
+pub(super) fn optional_opponent_search_partitions_each_searchers_cards() {
+    assert_compiled_line(
+        "Rootweaver Druid",
+        "When this creature enters, each opponent may search their library for up to three basic land cards. They each put one of those cards onto the battlefield tapped under your control and the rest onto the battlefield tapped under their control. Then each player who searched their library this way shuffles.",
+    );
+}
+
+#[test]
 pub(super) fn prefixed_d20_tables_preserve_their_numeric_rows() {
     for (card, expected) in [
         (
@@ -211,10 +219,7 @@ pub(super) fn dynamic_filter_comparisons_preserve_explicit_oracle_surface() {
             "Fiendish Panda",
             "mana value less than or equal to this creature's power",
         ),
-        (
-            "Glamdring",
-            "mana value less than or equal to that damage",
-        ),
+        ("Glamdring", "mana value less than or equal to that damage"),
         (
             "Hammerhead Tyrant",
             "mana value less than or equal to that spell's mana value",

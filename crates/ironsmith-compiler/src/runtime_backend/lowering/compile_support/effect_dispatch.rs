@@ -395,6 +395,23 @@ fn compile_effect_inner(
             Vec::new(),
         ));
     }
+    if let EffectAst::RestartGame {
+        cards_left_in_exile,
+        source_surface,
+    } = effect
+    {
+        let mut payload = crate::effects::RestartGameEffect::new(cards_left_in_exile.clone());
+        if let Some(surface) = source_surface {
+            payload = payload.with_source_surface(surface.clone());
+        }
+        let mut runtime_effect = Effect::new(payload);
+        if ctx.auto_tag_object_targets && cards_left_in_exile.is_some() {
+            let tag = ctx.next_tag("restarted");
+            runtime_effect = runtime_effect.tag(tag.clone());
+            ctx.last_object_tag = Some(tag);
+        }
+        return Ok((vec![runtime_effect], Vec::new()));
+    }
     if let EffectAst::Sequence { effects } = effect {
         return compile_effects(effects, ctx);
     }
@@ -403,13 +420,10 @@ fn compile_effect_inner(
         leading_duration,
     } = effect
     {
-        // Multiple explicit target phrases in a coordinated clause introduce
-        // independent target slots. Force target tagging while annotating
-        // those children so equal-looking phrases remain distinguishable.
-        // Without this production-path setting, the lowerer deduplicates two
-        // identical specs (for example Blue Dragon's two separate "up to one
-        // other target creature" clauses) before the preservation pass below
-        // can see their distinct tags.
+        // A coordinated clause establishes its own target-reference scope.
+        // Always tag object targets here so a later member of the same clause
+        // binds to the newly introduced target rather than an antecedent from
+        // an activated cost or an earlier instruction.
         let saved_force_auto_tag_object_targets = ctx.force_auto_tag_object_targets;
         let saved_auto_tag_object_targets = ctx.auto_tag_object_targets;
         ctx.force_auto_tag_object_targets = true;
@@ -501,6 +515,7 @@ fn compile_effect_inner(
                 "tag-affected nested effect must lower to a single effect".to_string(),
             ));
         }
+        ctx.last_object_tag = Some(tag.as_str().to_string());
         return Ok((vec![inner.tag_all(tag.clone())], choices));
     }
     if let EffectAst::ManaRestricted {

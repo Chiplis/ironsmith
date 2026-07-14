@@ -412,6 +412,7 @@ pub(crate) struct SearchLibraryEffectRouting {
     pub(crate) split_battlefield_and_hand: bool,
     pub(crate) has_tapped_modifier: bool,
     pub(crate) library_position_from_top: Option<Value>,
+    pub(crate) result_reference_surface: crate::effect::SearchResultReferenceSurface,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1029,6 +1030,14 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
         library_position_from_top: put_clause_words
             .as_ref()
             .and_then(|words| search_library_put_position_from_top_words(words)),
+        result_reference_surface: if words_all
+            .windows(3)
+            .any(|words| words == ["put", "the", "card"])
+        {
+            crate::effect::SearchResultReferenceSurface::TheCard
+        } else {
+            crate::effect::SearchResultReferenceSurface::ThatCard
+        },
     }
 }
 

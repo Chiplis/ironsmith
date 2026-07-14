@@ -557,9 +557,143 @@ fn parse_effect_sentences_or_single_sentence_lexed(
     })
 }
 
+/// Parse a combat-scoped trigger sentence that refers back to a previously
+/// captured group, such as "Whenever either of those creatures deals combat
+/// damage to a player this combat, ...".
+///
+/// `this combat` is the lifetime of the delayed trigger, not part of the
+/// damage recipient. Keep that lifetime decision with the caller while this
+/// rule returns the typed recipient and the effects following the comma.
+pub(crate) fn parse_linked_combat_damage_clause_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(PlayerFilter, Vec<EffectAst>)>, CardTextError> {
+    let intro = clause_grammar::parse_trigger_intro_tokens(tokens);
+    let Some(split_idx) = clause_grammar::parse_trigger_delimiters_tokens(tokens).first_comma
+    else {
+        return Ok(None);
+    };
+    if intro.body_first == 0 || intro.body_first >= split_idx {
+        return Ok(None);
+    }
+
+    let trigger_tokens = trim_commas(&tokens[intro.body_first..split_idx]);
+    let Some(trigger_tokens) =
+        super::grammar::primitives::strip_lexed_suffix_phrase(&trigger_tokens, &["this", "combat"])
+    else {
+        return Ok(None);
+    };
+    let trigger_words = TokenWordView::new(trigger_tokens).word_refs();
+    let Some(deal_idx) = trigger_words
+        .iter()
+        .position(|word| matches!(*word, "deal" | "deals"))
+    else {
+        return Ok(None);
+    };
+    let subject_words = &trigger_words[..deal_idx];
+    if !subject_words.contains(&"those")
+        || trigger_words.get(deal_idx + 1..deal_idx + 4) != Some(&["combat", "damage", "to"][..])
+    {
+        return Ok(None);
+    }
+
+    let recipient_words = &trigger_words[deal_idx + 4..];
+    let player =
+        super::activation_and_restrictions::parse_trigger_subject_player_filter(recipient_words)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported linked combat damage player recipient (clause: '{}')",
+                    trigger_words.join(" ")
+                ))
+            })?;
+    let effect_tokens = trim_commas(&tokens[split_idx + 1..]);
+    let effects = parse_effect_sentences_or_single_sentence_lexed(&effect_tokens)?;
+
+    Ok(Some((player, effects)))
+}
+
+fn trigger_without_intro(trigger: &TriggerSpec) -> &TriggerSpec {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_without_intro(trigger),
+        trigger => trigger,
+    }
+}
+
+/// Parse a pair of linked triggered sentences whose first trigger captures an
+/// exact attacking group and whose second sentence watches that same group for
+/// the rest of combat.
+///
+/// This must run in the shared triggered-line parser, rather than only during
+/// semantic rewriting, because the CST classifier probes the complete physical
+/// line before it prepares a triggered rewrite item.
+pub(crate) fn parse_linked_attack_group_combat_triggered_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<LineAst>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() != 2
+        || !super::grammar::primitives::has_phrase(
+            sentences[1],
+            &["either", "of", "those", "creatures"],
+        )
+        || !super::grammar::primitives::has_phrase(sentences[1], &["deals", "combat", "damage"])
+        || !super::grammar::primitives::has_phrase(sentences[1], &["this", "combat"])
+    {
+        return Ok(None);
+    }
+
+    let Ok(LineAst::Triggered {
+        trigger,
+        mut effects,
+        max_triggers_per_turn,
+    }) = parse_triggered_line_lexed(sentences[0])
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        trigger_without_intro(&trigger),
+        TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
+    ) {
+        return Ok(None);
+    }
+
+    let Some((player, damage_effects)) = parse_linked_combat_damage_clause_lexed(sentences[1])?
+    else {
+        return Ok(None);
+    };
+
+    let group_tag = crate::TagKey::from(ironsmith_core::ATTACKING_GROUP_TAG);
+    effects.insert(
+        0,
+        EffectAst::subject_verb_tag_matching_objects(
+            ObjectFilter::tagged(group_tag.clone()),
+            vec![Zone::Battlefield],
+            group_tag.clone(),
+        ),
+    );
+    effects.push(EffectAst::DelayedTriggerThisTurn {
+        trigger: TriggerSpec::DealsCombatDamageToPlayer {
+            source: ObjectFilter::tagged(group_tag),
+            player,
+        },
+        effects: damage_effects,
+        one_shot: false,
+        until_end_of_combat: true,
+        attach_to_previous_ability: false,
+    });
+
+    Ok(Some(LineAst::Triggered {
+        trigger,
+        effects,
+        max_triggers_per_turn,
+    }))
+}
+
 pub(crate) fn parse_triggered_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    if let Some(linked) = parse_linked_attack_group_combat_triggered_line_lexed(tokens)? {
+        return Ok(linked);
+    }
+
     if clause_grammar::parse_monstrous_damage_hand_trigger_tokens(tokens) {
         return Ok(LineAst::Triggered {
             trigger: TriggerSpec::ThisBecomesMonstrous,

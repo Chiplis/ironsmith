@@ -340,7 +340,15 @@ fn spell_filter(
                 super::super::super::lexer::render_token_slice(subject_tokens)
             ))
         })?;
-    filter.zone = Some(Zone::Stack);
+    // A subject such as "an instant or sorcery spell from your hand" carries
+    // two pieces of information: it will be a spell when the one-shot grant
+    // is consumed, and its cast origin is the hand.  Keep an explicit origin
+    // zone from the parsed subject; the runtime's temporary-spell matcher
+    // compares such filters against the authoritative cast-origin snapshot.
+    // Subjects with no origin clause still match the spell on the stack.
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Stack);
+    }
     filter.stack_kind = Some(StackObjectKind::Spell);
     filter.has_mana_cost = true;
     filter.cast_by = Some(cast_by);

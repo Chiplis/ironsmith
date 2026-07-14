@@ -50,6 +50,21 @@ pub(crate) struct RevealedRemainderShape {
     pub(crate) exclude_current_reference: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PartitionBattlefieldControllerShape {
+    You,
+    SubjectPlayer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TaggedBattlefieldPartitionShape {
+    pub(crate) count: ChoiceCount,
+    pub(crate) chosen_tapped: bool,
+    pub(crate) chosen_controller: PartitionBattlefieldControllerShape,
+    pub(crate) remainder_tapped: bool,
+    pub(crate) remainder_controller: PartitionBattlefieldControllerShape,
+}
+
 fn rest_head(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     for phrase in [
         &["and", "the", "rest"][..],
@@ -106,6 +121,67 @@ fn parse_count_and_reference(tokens: &[OwnedLexToken]) -> Option<ChoiceCount> {
     let parsed = leaf::parse_leaf_choice_count_prefix_tokens(tokens)?;
     let reference = tokens.get(parsed.consumed..)?;
     exact_looked_reference(reference).then_some(parsed.count)
+}
+
+fn parse_partition_battlefield_destination(
+    tokens: &[OwnedLexToken],
+) -> Option<(bool, PartitionBattlefieldControllerShape)> {
+    let tokens = trim_lexed_commas(tokens);
+    let (_, tokens) = primitives::parse_prefix(tokens, opt(primitives::kw("the")).void())?;
+    let (_, tokens) = primitives::parse_prefix(tokens, primitives::kw("battlefield").void())?;
+    let (tapped, tokens) = if let Some((_, rest)) =
+        primitives::parse_prefix(tokens, primitives::kw("tapped").void())
+    {
+        (true, rest)
+    } else {
+        (false, tokens)
+    };
+    let (_, tokens) = primitives::parse_prefix(tokens, primitives::kw("under").void())?;
+    let (controller, tokens) = if let Some((_, rest)) =
+        primitives::parse_prefix(tokens, primitives::phrase(&["your", "control"]).void())
+    {
+        (PartitionBattlefieldControllerShape::You, rest)
+    } else {
+        let (_, rest) =
+            primitives::parse_prefix(tokens, primitives::phrase(&["their", "control"]).void())?;
+        (PartitionBattlefieldControllerShape::SubjectPlayer, rest)
+    };
+    trim_lexed_commas(tokens)
+        .is_empty()
+        .then_some((tapped, controller))
+}
+
+/// Parse a tagged collection split between two battlefield controllers, such
+/// as "put one of those cards ... under your control and the rest ... under
+/// their control". This is a reusable collection-partition shape; the parser
+/// deliberately requires both destinations to be explicit so an unrelated
+/// conjunction cannot be swallowed as a remainder move.
+pub(crate) fn parse_tagged_battlefield_partition_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<TaggedBattlefieldPartitionShape> {
+    let body = strip_optional_put(tokens);
+    let (rest_index, _, remainder_destination) =
+        primitives::find_prefix(body, || primitives::phrase(&["and", "the", "rest"]).void())?;
+    let chosen_clause = trim_lexed_commas(body.get(..rest_index)?);
+    let (onto_index, _, chosen_destination) =
+        primitives::find_prefix(chosen_clause, || primitives::kw("onto"))?;
+    let count = parse_count_and_reference(trim_lexed_commas(chosen_clause.get(..onto_index)?))?;
+    let (chosen_tapped, chosen_controller) =
+        parse_partition_battlefield_destination(chosen_destination)?;
+    let (_, remainder_destination) = primitives::parse_prefix(
+        trim_lexed_commas(remainder_destination),
+        primitives::kw("onto").void(),
+    )?;
+    let (remainder_tapped, remainder_controller) =
+        parse_partition_battlefield_destination(remainder_destination)?;
+
+    Some(TaggedBattlefieldPartitionShape {
+        count,
+        chosen_tapped,
+        chosen_controller,
+        remainder_tapped,
+        remainder_controller,
+    })
 }
 
 pub(crate) fn parse_tagged_into_hand_shape(tokens: &[OwnedLexToken]) -> Option<TaggedPutShape> {
@@ -326,6 +402,24 @@ mod tests {
         assert!(is_reorder_tagged_cards(
             &lex_line("put them back in any order", 0).unwrap()
         ));
+
+        let battlefield_partition = lex_line(
+            "put one of those cards onto the battlefield tapped under your control and the rest onto the battlefield tapped under their control",
+            0,
+        )
+        .unwrap();
+        let shape = parse_tagged_battlefield_partition_shape(&battlefield_partition)
+            .expect("tagged battlefield partition");
+        assert_eq!(shape.count, ChoiceCount::exactly(1));
+        assert!(shape.chosen_tapped && shape.remainder_tapped);
+        assert_eq!(
+            shape.chosen_controller,
+            PartitionBattlefieldControllerShape::You
+        );
+        assert_eq!(
+            shape.remainder_controller,
+            PartitionBattlefieldControllerShape::SubjectPlayer
+        );
     }
 
     #[test]

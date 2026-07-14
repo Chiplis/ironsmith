@@ -255,6 +255,9 @@ fn source_is_tagged(tokens: &[OwnedLexToken]) -> bool {
         || exact_phrase(tokens, &["that", "card"])
         || TokenWordView::new(tokens)
             .to_word_refs()
+            .starts_with(&["each", "of", "those"])
+        || TokenWordView::new(tokens)
+            .to_word_refs()
             .ends_with(&["tapped", "this", "way"])
 }
 

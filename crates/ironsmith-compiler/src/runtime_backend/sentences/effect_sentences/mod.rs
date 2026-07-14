@@ -75,6 +75,7 @@ mod zone_handlers;
 
 pub(crate) use super::grammar::effects::parse_cant_effect_sentence;
 pub(crate) use super::grammar::effects::parse_cant_effect_sentence_with_grammar_entrypoint_lexed as parse_cant_effect_sentence_lexed;
+pub(crate) use bundle_rules::parse_typed_effect_bundle_lexed;
 pub(crate) use chain_carry::parse_effect_chain_with_subject_verb_primitives_lexed;
 pub(crate) use chain_carry::*;
 pub(crate) use chain_carry::{

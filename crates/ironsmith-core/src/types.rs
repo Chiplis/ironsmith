@@ -385,6 +385,7 @@ pub enum Subtype {
     Zubera,
 
     // Artifact subtypes
+    Attraction,
     Bobblehead,
     Book,
     Clue,
@@ -691,6 +692,7 @@ impl Subtype {
 
     pub const fn all_artifact_types() -> &'static [Subtype] {
         &[
+            Subtype::Attraction,
             Subtype::Bobblehead,
             Subtype::Book,
             Subtype::Clue,
@@ -1037,7 +1039,8 @@ impl Subtype {
     pub fn is_artifact_subtype(&self) -> bool {
         matches!(
             self,
-            Subtype::Clue
+            Subtype::Attraction
+                | Subtype::Clue
                 | Subtype::Bobblehead
                 | Subtype::Book
                 | Subtype::Contraption

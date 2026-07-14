@@ -579,55 +579,135 @@ impl GameState {
             self.set_current_controller(new_id, controller);
         }
 
-        // Apply "enters as copy" before tapped/counter modifications.
+        // Apply "enters as copy" before tapped/counter modifications. Ordinary
+        // enter-as-copy effects replace the object's copiable values. A copy
+        // with an explicit duration instead becomes a locked layer-1 effect,
+        // preserving the underlying permanent so it can revert when it expires.
+        let temporary_copy_duration = result.copy_duration.clone();
         if let Some(copy_source_id) = result.enters_as_copy_of {
-            let copy_source = self.object(copy_source_id).cloned();
-            if let (Some(source_obj), Some(new_obj)) = (copy_source, self.object_mut(new_id)) {
-                new_obj.copy_copiable_values_from(&source_obj);
-                if let Some(name) = &result.copy_name_override {
-                    new_obj.name = name.clone().into();
+            if let Some(duration) = temporary_copy_duration.clone() {
+                let effects = self.all_continuous_effects();
+                let copiable_values = crate::continuous::copiable_values_with_effects(
+                    copy_source_id,
+                    self.objects_map(),
+                    &effects,
+                    &self.battlefield,
+                    self.commander_objects(),
+                    self,
+                );
+                if let Some(mut copiable_values) = copiable_values {
+                    let controller = self.current_controller(new_id)?;
+                    if let Some(name) = &result.copy_name_override {
+                        copiable_values.name = name.clone();
+                    }
+                    for card_type in &result.added_card_types {
+                        if !copiable_values.card_types.contains(card_type) {
+                            copiable_values.card_types.push(*card_type);
+                        }
+                    }
+                    copiable_values
+                        .supertypes
+                        .retain(|supertype| !result.removed_supertypes.contains(supertype));
+                    for subtype in &result.added_subtypes {
+                        if !copiable_values.subtypes.contains(subtype) {
+                            copiable_values.subtypes.push(*subtype);
+                        }
+                    }
+                    for ability in &result.added_abilities {
+                        let abilities = std::sync::Arc::make_mut(&mut copiable_values.abilities);
+                        if !abilities.contains(ability) {
+                            abilities.push(ability.clone());
+                        }
+                    }
+                    if let Some((power, toughness)) = result.set_base_power_toughness {
+                        copiable_values.power = Some(power);
+                        copiable_values.toughness = Some(toughness);
+                    }
+
+                    let modification = crate::continuous::Modification::CopyOf {
+                        target_id: copy_source_id,
+                        copiable_values: Box::new(copiable_values),
+                        preserve_source_abilities: false,
+                        name_override: None,
+                        name_override_surface: None,
+                        add_supertypes: Vec::new(),
+                    };
+                    let expires_end_of_turn = matches!(
+                        &duration,
+                        crate::effect::Until::EndOfTurn
+                            | crate::effect::Until::YourNextTurn
+                            | crate::effect::Until::YourNextUpkeep
+                            | crate::effect::Until::ControllersNextUntapStep
+                    )
+                    .then_some(self.turn.turn_number)
+                    .unwrap_or(u32::MAX);
+                    let effect = crate::continuous::ContinuousEffect::new(
+                        new_id,
+                        controller,
+                        crate::continuous::EffectTarget::Specific(new_id),
+                        modification,
+                    )
+                    .until(duration)
+                    .with_expires_end_of_turn(expires_end_of_turn)
+                    .with_source_type(
+                        crate::continuous::EffectSourceType::Resolution {
+                            locked_targets: vec![new_id],
+                        },
+                    );
+                    self.effect_store.continuous_effects.add_effect(effect);
+                    self.refresh_continuous_state();
+                }
+            } else {
+                let copy_source = self.object(copy_source_id).cloned();
+                if let (Some(source_obj), Some(new_obj)) = (copy_source, self.object_mut(new_id)) {
+                    new_obj.copy_copiable_values_from(&source_obj);
+                    if let Some(name) = &result.copy_name_override {
+                        new_obj.name = name.clone().into();
+                    }
                 }
             }
         }
-        if !result.added_card_types.is_empty()
-            && let Some(new_obj) = self.object_mut(new_id)
-        {
-            for card_type in &result.added_card_types {
-                if !new_obj.card_types.contains(card_type) {
-                    new_obj.card_types.push(*card_type);
+        if temporary_copy_duration.is_none() {
+            if !result.added_card_types.is_empty()
+                && let Some(new_obj) = self.object_mut(new_id)
+            {
+                for card_type in &result.added_card_types {
+                    if !new_obj.card_types.contains(card_type) {
+                        new_obj.card_types.push(*card_type);
+                    }
                 }
             }
-        }
-        if !result.removed_supertypes.is_empty()
-            && let Some(new_obj) = self.object_mut(new_id)
-        {
-            new_obj
-                .supertypes
-                .retain(|supertype| !result.removed_supertypes.contains(supertype));
-        }
-        if !result.added_subtypes.is_empty()
-            && let Some(new_obj) = self.object_mut(new_id)
-        {
-            for subtype in &result.added_subtypes {
-                if !new_obj.subtypes.contains(subtype) {
-                    new_obj.subtypes.push(*subtype);
+            if !result.removed_supertypes.is_empty()
+                && let Some(new_obj) = self.object_mut(new_id)
+            {
+                new_obj
+                    .supertypes
+                    .retain(|supertype| !result.removed_supertypes.contains(supertype));
+            }
+            if !result.added_subtypes.is_empty()
+                && let Some(new_obj) = self.object_mut(new_id)
+            {
+                for subtype in &result.added_subtypes {
+                    if !new_obj.subtypes.contains(subtype) {
+                        new_obj.subtypes.push(*subtype);
+                    }
                 }
             }
-        }
-        if !result.added_abilities.is_empty()
-            && let Some(new_obj) = self.object_mut(new_id)
-        {
-            for ability in &result.added_abilities {
-                if !new_obj.abilities.contains(ability) {
-                    new_obj.abilities_mut().push(ability.clone());
+            if !result.added_abilities.is_empty()
+                && let Some(new_obj) = self.object_mut(new_id)
+            {
+                for ability in &result.added_abilities {
+                    if !new_obj.abilities.contains(ability) {
+                        new_obj.abilities_mut().push(ability.clone());
+                    }
                 }
             }
-        }
-        if let Some((power, toughness)) = result.set_base_power_toughness
-            && let Some(new_obj) = self.object_mut(new_id)
-        {
-            new_obj.base_power = Some(crate::card::PtValue::Fixed(power));
-            new_obj.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+            if let Some((power, toughness)) = result.set_base_power_toughness
+                && let Some(new_obj) = self.object_mut(new_id)
+            {
+                new_obj.base_power = Some(crate::card::PtValue::Fixed(power));
+                new_obj.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+            }
         }
 
         // Apply enters tapped

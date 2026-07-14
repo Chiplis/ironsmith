@@ -45,16 +45,63 @@ pub(super) fn demonic_bargain_search_followup_hides_internal_tag_reference() {
 #[test]
 pub(super) fn ruin_in_their_wake_conditional_search_followup_hides_internal_tag_reference() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ruin in Their Wake Variant")
+        .card_types(vec![CardType::Sorcery])
         .parse_text(
             "Devoid\nSearch your library for a basic land card and reveal it. You may put that card onto the battlefield tapped if you control a land named Wastes. Otherwise, put that card into your hand. Then shuffle.",
         )
         .expect("Ruin in Their Wake text should parse");
 
-    let rendered = compiled_text_lines(&def).join(" ");
-    assert!(
-        !rendered.to_ascii_lowercase().contains("tagged '"),
-        "conditional search followup leaked an internal tag reference: {rendered}; unprocessed: {}",
-        unprocessed_compiled_lines(&def).join(" ")
+    assert_eq!(
+        compiled_text_lines(&def),
+        vec![
+            "Devoid".to_string(),
+            "Search your library for a basic land card and reveal it. You may put that card onto the battlefield tapped if you control a land named Wastes. Otherwise, put that card into your hand. Then shuffle.".to_string(),
+        ],
+        "conditional search followup lost its searched-card branch structure; unprocessed: {}",
+        unprocessed_compiled_lines(&def).join(" "),
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn auspicious_starrix_keeps_variable_consult_collection_reference() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Auspicious Starrix Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Mutate {5}{G}\nWhenever this creature mutates, exile cards from the top of your library until you exile X permanent cards, where X is the number of times this creature has mutated. Put those permanent cards onto the battlefield.",
+        )
+        .expect("Auspicious Starrix text should parse");
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        vec![
+            "Mutate {5}{G}".to_string(),
+            "Whenever this creature mutates, exile cards from the top of your library until you exile X permanent cards, where X is the number of times this creature has mutated. Put those permanent cards onto the battlefield.".to_string(),
+        ],
+        "variable consult lost its typed matched collection; unprocessed: {}",
+        unprocessed_compiled_lines(&def).join(" "),
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn mindleecher_keeps_costed_mutate_and_flying_on_separate_lines() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mindleecher Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Mutate {4}{B}\nFlying\nWhenever this creature mutates, exile the top card of each opponent's library face down. You may look at and play those cards for as long as they remain exiled.",
+        )
+        .expect("Mindleecher text should parse");
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        vec![
+            "Mutate {4}{B}".to_string(),
+            "Flying".to_string(),
+            "Whenever this creature mutates, exile the top card of each opponent's library face down. You may look at and play those cards for as long as they remain exiled.".to_string(),
+        ],
+        "costed Mutate merged with the following intrinsic keyword; unprocessed: {}",
+        unprocessed_compiled_lines(&def).join(" "),
     );
 }
 

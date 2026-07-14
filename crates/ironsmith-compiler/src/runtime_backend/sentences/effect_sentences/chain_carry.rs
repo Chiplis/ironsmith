@@ -280,6 +280,62 @@ pub(crate) fn parse_reveal_source_exiled_permanents_sentence_lexed(
 pub(crate) fn parse_effect_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    let effects = parse_effect_chain_uncoordinated_lexed(tokens)?;
+    Ok(preserve_coordinated_effect_chain_surface(tokens, effects))
+}
+
+pub(crate) fn preserve_coordinated_effect_chain_surface(
+    tokens: &[OwnedLexToken],
+    effects: Vec<EffectAst>,
+) -> Vec<EffectAst> {
+    let Some(leading_duration) = chain_grammar::coordinated_effect_chain_leading_duration(tokens)
+    else {
+        return effects;
+    };
+
+    // Specialist parsers already emit the same typed boundary for shapes
+    // that need additional semantic validation. Do not nest it.
+    if effects
+        .iter()
+        .any(|effect| matches!(effect, EffectAst::Coordinated { .. }))
+    {
+        return effects;
+    }
+
+    // Generic promotion is intentionally limited to the one independently
+    // verified local-player action family. Other conjunctions have specialist
+    // renderers or carry choice, iteration, or result-flow semantics that are
+    // lost when a display boundary is inferred solely from punctuation.
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GainLife { .. },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Suspect { .. },
+            ..
+        }),
+    ] = effects.as_slice()
+    else {
+        return effects;
+    };
+
+    // Pronouns and tagged filters/values in a later action consume an earlier
+    // result. Keep that action chain flat so ordinary lowering can transport
+    // the antecedent instead of forcing a display boundary around it.
+    if effects_reference_it_tag(&effects[1..]) {
+        return effects;
+    }
+
+    vec![EffectAst::Coordinated {
+        effects,
+        leading_duration,
+    }]
+}
+
+fn parse_effect_chain_uncoordinated_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
     fn immediate_tagged_permission_spec(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
         Ok(matches!(
             parse_permission_clause_spec_lexed(tokens)?,
@@ -1664,11 +1720,62 @@ pub(crate) fn parse_effect_clause_with_trailing_if_lexed(
         }
     };
 
+    let predicate = bind_trailing_it_predicate_to_explicit_effect_target(predicate, &base_effect);
     Ok(EffectAst::Conditional {
         predicate,
         if_true: vec![base_effect],
         if_false: Vec::new(),
     })
+}
+
+fn explicit_tagged_target(target: &TargetAst) -> Option<TagKey> {
+    match target {
+        TargetAst::Tagged(tag, _) if tag.as_str() != IT_TAG => Some(tag.clone()),
+        TargetAst::Object(filter, _, _) => filter
+            .tagged_constraints
+            .iter()
+            .find(|constraint| {
+                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str() != IT_TAG
+            })
+            .map(|constraint| constraint.tag.clone()),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            explicit_tagged_target(inner)
+        }
+        _ => None,
+    }
+}
+
+fn explicit_effect_object_tag(effect: &EffectAst) -> Option<TagKey> {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
+            SubjectVerbActionAst::MoveToZone { target, .. }
+            | SubjectVerbActionAst::MayMoveToZone { target, .. }
+            | SubjectVerbActionAst::TurnFaceUp { target }
+            | SubjectVerbActionAst::ReturnToHand { target, .. } => explicit_tagged_target(target),
+            _ => None,
+        },
+        EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. }
+            if effects.len() == 1 =>
+        {
+            explicit_effect_object_tag(&effects[0])
+        }
+        EffectAst::TagAffected { tag, .. } if tag.as_str() != IT_TAG => Some(tag.clone()),
+        _ => None,
+    }
+}
+
+fn bind_trailing_it_predicate_to_explicit_effect_target(
+    predicate: PredicateAst,
+    effect: &EffectAst,
+) -> PredicateAst {
+    let Some(tag) = explicit_effect_object_tag(effect) else {
+        return predicate;
+    };
+    match predicate {
+        PredicateAst::ItMatches(filter) => PredicateAst::TaggedMatches(tag, filter),
+        other => other,
+    }
 }
 
 fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {

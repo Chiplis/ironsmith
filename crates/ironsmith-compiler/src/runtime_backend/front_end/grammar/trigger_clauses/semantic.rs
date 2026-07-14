@@ -1558,6 +1558,31 @@ pub(crate) fn parse_leading_exactly_quantifier(
     Some((count, &tokens[1 + used..]))
 }
 
+fn parse_moved_or_cast_origin_condition(
+    words: &[&str],
+) -> Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition> {
+    const PREFIX: &[&str] = &["if", "one", "or", "more", "of", "them", "entered"];
+    if words.get(..PREFIX.len())? != PREFIX {
+        return None;
+    }
+    let origin_words = &words[PREFIX.len()..];
+    let separator = origin_words.iter().position(|word| *word == "or")?;
+    let moved_origin =
+        trigger_grammar::parse_enters_origin_clause_words(origin_words.get(..separator)?)?;
+    let cast_words = origin_words.get(separator + 1..)?;
+    if cast_words.get(..2) != Some(&["was", "cast"][..])
+        && cast_words.get(..2) != Some(&["were", "cast"][..])
+    {
+        return None;
+    }
+    let cast_origin = trigger_grammar::parse_enters_origin_clause_words(cast_words.get(2..)?)?;
+    (moved_origin.zone == cast_origin.zone).then_some(
+        ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom(
+            moved_origin.zone,
+        ),
+    )
+}
+
 pub(crate) fn parse_trigger_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
@@ -2375,6 +2400,7 @@ pub(crate) fn parse_trigger_clause_lexed(
     if let Some(enters_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Enter) {
         let enters_token_idx =
             trigger_word_token_start(tokens, enters_word_idx).unwrap_or(tokens.len());
+        let origin_condition = parse_moved_or_cast_origin_condition(&words[enters_word_idx + 1..]);
         if trigger_pattern_accepts(&words, ENTERS_OR_LEAVES_BATTLEFIELD_SUFFIX_PATTERN) {
             let subject_tokens = &tokens[..enters_token_idx];
             if let Some(surface) = source_reference_surface_for_trigger_subject(
@@ -2606,6 +2632,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 TriggerSpec::EntersBattlefieldOneOrMore {
                     filter,
                     cause_filter,
+                    origin_condition,
                 }
             } else {
                 TriggerSpec::EntersBattlefield {

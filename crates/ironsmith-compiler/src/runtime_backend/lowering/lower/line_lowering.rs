@@ -2223,7 +2223,15 @@ fn lower_triggered_chunk(
         retarget_source_move_to_damaged_death_card(triggered);
     }
     if contains_haunted_creature_dies && let AbilityKind::Triggered(triggered) = parsed.kind() {
-        state.haunt_linkage = Some((triggered.effects.to_vec(), triggered.choices.clone()));
+        state.haunt_linkage = Some((
+            triggered
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| segment.default_effects.iter().cloned())
+                .collect(),
+            triggered.choices.clone(),
+        ));
     }
     Ok(builder.with_ability(parsed.into_runtime()))
 }

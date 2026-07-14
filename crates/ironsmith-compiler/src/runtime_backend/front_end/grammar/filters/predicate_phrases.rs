@@ -1149,7 +1149,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     let counter_clause =
         matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)?;
     let (comparison, used) = predicate_quantity_prefix_tokens(counter_clause.tokens())?;
-    let count = comparison_to_at_least_threshold(&comparison)?;
+    let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
     let counter_tail = counter_clause.tokens().get(used..)?;
     let counter_type = parse_terminal_counter_phrase(counter_tail)??;
     if surface::exact(relation.subject_clause, &["it"]) {
@@ -1158,15 +1158,124 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
                 Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
                 Some(counter_type),
             ),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            operator,
             right: Value::Fixed(count as i32),
         });
     }
-    Some(PredicateAst::SourceHasCounterAtLeast {
-        counter_type,
-        count,
-        surface: crate::SourceCounterThresholdSurface::SourceHas,
+    if operator == crate::effect::ValueComparisonOperator::GreaterThanOrEqual {
+        return Some(PredicateAst::SourceHasCounterAtLeast {
+            counter_type,
+            count: count.try_into().ok()?,
+            surface: crate::SourceCounterThresholdSurface::SourceHas,
+        });
+    }
+    Some(PredicateAst::ValueComparison {
+        left: Value::CountersOn(
+            Box::new(crate::target::ChooseSpec::Source),
+            Some(counter_type),
+        ),
+        operator,
+        right: Value::Fixed(count),
     })
+}
+
+/// Parses comparisons between the object that caused a trigger and the source.
+///
+/// Oracle uses two closely related surfaces for evolve-style gates:
+/// `that creature's power is greater than this creature's` and
+/// `that creature has greater power or toughness than this creature`.  Both
+/// lower through the existing dynamic object-filter comparisons, so the
+/// predicate remains executable and can be promoted to an intervening-if gate.
+fn parse_triggering_object_source_stat_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = LexedClause::new(tokens).word_refs();
+    let words = words.as_slice();
+
+    let triggering_stat_filter = |power: bool| {
+        let mut filter = ObjectFilter::default();
+        let source_value = if power {
+            Value::SourcePower
+        } else {
+            Value::SourceToughness
+        };
+        let comparison = crate::filter::Comparison::GreaterThanExpr(Box::new(source_value));
+        if power {
+            filter.power = Some(comparison);
+        } else {
+            filter.toughness = Some(comparison);
+        }
+        PredicateAst::ItMatches(filter)
+    };
+
+    let single_stat = matches!(
+        words,
+        [
+            "that",
+            "creatures",
+            "power",
+            "is",
+            "greater",
+            "than",
+            "this",
+            "creatures"
+        ] | ["its", "power", "is", "greater", "than", "this", "creatures"]
+    );
+    if single_stat {
+        return Some(triggering_stat_filter(true));
+    }
+
+    let Some(has_idx) = words.iter().position(|word| *word == "has") else {
+        return None;
+    };
+    let comparison_tail = &words[has_idx..];
+    let explicit_source_reference = surface::exact_words(
+        comparison_tail,
+        &[
+            "has",
+            "greater",
+            "power",
+            "or",
+            "toughness",
+            "than",
+            "this",
+            "creature",
+        ],
+    ) || surface::exact_words(
+        comparison_tail,
+        &[
+            "has",
+            "greater",
+            "power",
+            "or",
+            "toughness",
+            "than",
+            "this",
+            "creatures",
+        ],
+    );
+    // A lone proper-name token after `than` is the Oracle source's own name
+    // (for example, `... than Hulkling`).  Reserved reference words remain in
+    // the ordinary object predicate grammar rather than being reinterpreted.
+    let named_source_reference = comparison_tail.len() == 7
+        && surface::exact_words(
+            &comparison_tail[..6],
+            &["has", "greater", "power", "or", "toughness", "than"],
+        )
+        && !matches!(
+            comparison_tail[6],
+            "a" | "an" | "another" | "enchanted" | "equipped" | "target" | "that" | "the" | "this"
+        );
+    if !explicit_source_reference && !named_source_reference {
+        return None;
+    }
+    let subject = &words[..has_idx];
+    if !matches!(subject, ["it"] | ["that", "creature"]) {
+        return None;
+    }
+
+    Some(PredicateAst::Or(
+        Box::new(triggering_stat_filter(true)),
+        Box::new(triggering_stat_filter(false)),
+    ))
 }
 
 fn is_counter_on_source_pronoun_tail_clause(clause: LexedClause<'_>) -> bool {

@@ -783,7 +783,9 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         bare.owner = None;
     }
 
-    let mut subject = strip_indefinite_article(&bare.description()).to_string();
+    let mut subject =
+        strip_indefinite_article(&describe_object_filter_with_fixed_pt_shorthand(&bare))
+            .to_string();
     if !keep_owner_in_subject {
         subject = subject.replace("target player's ", "");
         subject = subject.replace("that player's ", "");
@@ -1107,6 +1109,86 @@ pub(crate) fn describe_demonstrative_tagged_object_spec(spec: &ChooseSpec) -> Op
     describe_demonstrative_tagged_object_filter(filter)
 }
 
+fn describe_shared_creature_battlefield_or_graveyard_filter(
+    filter: &ObjectFilter,
+) -> Option<String> {
+    if filter.card_types.as_slice() != [CardType::Creature] || filter.any_of.len() != 2 {
+        return None;
+    }
+
+    let mut outer = filter.clone();
+    outer.card_types.clear();
+    outer.other = false;
+    outer.any_of.clear();
+    outer.union_surface = Default::default();
+    if outer != ObjectFilter::default() {
+        return None;
+    }
+
+    let mut has_battlefield = false;
+    let mut has_graveyard = false;
+    for branch in &filter.any_of {
+        let mut bare = branch.clone();
+        let zone = bare.zone.take()?;
+        bare.union_surface = Default::default();
+        if bare != ObjectFilter::default() {
+            return None;
+        }
+        match zone {
+            Zone::Battlefield if !has_battlefield => has_battlefield = true,
+            Zone::Graveyard if !has_graveyard => has_graveyard = true,
+            _ => return None,
+        }
+    }
+    if !has_battlefield || !has_graveyard {
+        return None;
+    }
+
+    Some(format!(
+        "{}creature from the battlefield or creature card from a graveyard",
+        if filter.other { "another " } else { "a " }
+    ))
+}
+
+fn describe_object_filter_with_fixed_pt_shorthand(filter: &ObjectFilter) -> String {
+    let fixed_pt = match (&filter.power, &filter.toughness) {
+        (
+            Some(ironsmith_core::FilterComparison::Equal(power)),
+            Some(ironsmith_core::FilterComparison::Equal(toughness)),
+        ) if filter.card_types.as_slice() == [CardType::Creature]
+            && filter.all_card_types.is_empty()
+            && matches!(filter.zone, None | Some(Zone::Battlefield))
+            && filter.power_reference == ironsmith_core::PtReference::Effective
+            && filter.toughness_reference == ironsmith_core::PtReference::Effective
+            && filter.power_parity.is_none()
+            && filter.power_relative_to_source.is_none()
+            && !filter.power_greater_than_base_power
+            && filter.power_toughness_relation.is_none()
+            && filter.total_power_toughness.is_none() =>
+        {
+            Some((*power, *toughness))
+        }
+        _ => None,
+    };
+    let Some((power, toughness)) = fixed_pt else {
+        return filter.description();
+    };
+
+    let mut without_pt = filter.clone();
+    without_pt.power = None;
+    without_pt.toughness = None;
+    let description = without_pt.description();
+    let shorthand = format!("{power}/{toughness}");
+    for determiner in [
+        "a ", "an ", "another ", "other ", "target ", "this ", "that ", "those ",
+    ] {
+        if let Some(rest) = description.strip_prefix(determiner) {
+            return format!("{determiner}{shorthand} {rest}");
+        }
+    }
+    format!("{shorthand} {description}")
+}
+
 pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
     match spec {
         ChooseSpec::SurfaceHinted { spec, hints } => {
@@ -1139,7 +1221,10 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 && !filter.source
             {
                 let target_text = if filter.owner.is_some() {
-                    strip_indefinite_article(&filter.description()).to_string()
+                    strip_indefinite_article(&describe_object_filter_with_fixed_pt_shorthand(
+                        filter,
+                    ))
+                    .to_string()
                 } else {
                     describe_for_each_count_filter(filter)
                 };
@@ -1184,14 +1269,18 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             other => format!("target {} or planeswalker", describe_player_filter(other)),
         },
         ChooseSpec::Object(filter) => {
-            if let Some(exiled_card) = describe_simple_exiled_card_filter(filter) {
+            if let Some(zone_union) =
+                describe_shared_creature_battlefield_or_graveyard_filter(filter)
+            {
+                zone_union
+            } else if let Some(exiled_card) = describe_simple_exiled_card_filter(filter) {
                 ensure_indefinite_article(&exiled_card)
             } else if filter.source && filter.source_surface.is_some() {
-                filter.description()
+                describe_object_filter_with_fixed_pt_shorthand(filter)
             } else if let Some(tagged_text) = describe_demonstrative_tagged_object_filter(filter) {
                 tagged_text
             } else {
-                ensure_indefinite_article(&filter.description())
+                ensure_indefinite_article(&describe_object_filter_with_fixed_pt_shorthand(filter))
             }
         }
         ChooseSpec::Player(filter) => describe_player_filter(filter),
@@ -1235,7 +1324,7 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                     return format!("those {}", pluralize_noun_phrase(rest));
                 }
             }
-            let desc = filter.description();
+            let desc = describe_object_filter_with_fixed_pt_shorthand(filter);
             let stripped = strip_leading_article(&desc);
             format!("all {}", pluralize_relative_object_phrase(stripped))
         }
@@ -1293,7 +1382,18 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                         }
                         (0, Some(max)) => {
                             if max == 1 {
-                                format!("up to one target {base}{controller_suffix}{random_suffix}")
+                                if let Some(rest) = inner_text
+                                    .strip_prefix("another target ")
+                                    .or_else(|| inner_text.strip_prefix("other target "))
+                                {
+                                    format!(
+                                        "up to one other target {rest}{controller_suffix}{random_suffix}"
+                                    )
+                                } else {
+                                    format!(
+                                        "up to one target {base}{controller_suffix}{random_suffix}"
+                                    )
+                                }
                             } else {
                                 format!(
                                     "up to {} target {plural}{controller_suffix}{random_suffix}",
@@ -1678,7 +1778,7 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                 return tagged_text;
             }
             if filter.zone == Some(Zone::Graveyard) {
-                let text = filter.description();
+                let text = describe_object_filter_with_fixed_pt_shorthand(filter);
                 let suffix = match &filter.owner {
                     Some(owner) => {
                         format!(
@@ -1708,7 +1808,7 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
             }
             ensure_indefinite_article(&render_artifact_non_aura_enchantment_text(
                 filter,
-                &filter.description(),
+                &describe_object_filter_with_fixed_pt_shorthand(filter),
             ))
         }
         ChooseSpec::PlayerOrPlaneswalker(filter) => match filter {
@@ -1721,7 +1821,7 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
         }
         ChooseSpec::All(filter) => {
             if filter.zone == Some(Zone::Graveyard) {
-                let text = filter.description();
+                let text = describe_object_filter_with_fixed_pt_shorthand(filter);
                 let suffix = match &filter.owner {
                     Some(owner) => {
                         format!(
@@ -1747,7 +1847,7 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                 let text = strip_leading_article(&text);
                 return format!("all {}", pluralize_relative_object_phrase(text));
             }
-            let desc = filter.description();
+            let desc = describe_object_filter_with_fixed_pt_shorthand(filter);
             let stripped = strip_leading_article(&desc);
             format!("all {}", pluralize_relative_object_phrase(stripped))
         }
@@ -3655,6 +3755,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::SourceRegeneratedThisTurnCount => {
             "the number of times this permanent regenerated this turn".to_string()
+        }
+        Value::SourceMutationCount => {
+            "the number of times this creature has mutated".to_string()
         }
         Value::SpellsCastThisTurnMatching {
             player,

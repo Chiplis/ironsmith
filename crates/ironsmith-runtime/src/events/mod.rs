@@ -326,6 +326,7 @@ impl Event {
                 enters_with_counters,
                 linked_exile_with_entering: Vec::new(),
                 enters_as_copy_of: None,
+                copy_duration: None,
                 copy_name_override: None,
                 added_card_types: Vec::new(),
                 removed_supertypes: Vec::new(),

@@ -415,7 +415,21 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::EntersBattlefieldOneOrMore {
             filter,
             cause_filter,
-        } => Trigger::enters_battlefield_one_or_more(filter, cause_filter),
+            origin_condition,
+        } => {
+            if let Some(origin_condition) = origin_condition {
+                Trigger::new(
+                    crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                        .to(crate::zone::Zone::Battlefield)
+                        .filter(filter)
+                        .count(crate::triggers::CountMode::OneOrMore)
+                        .cause_filter(cause_filter)
+                        .origin_condition(origin_condition),
+                )
+            } else {
+                Trigger::enters_battlefield_one_or_more(filter, cause_filter)
+            }
+        }
         TriggerSpec::EntersBattlefieldFromZone {
             mut filter,
             from,

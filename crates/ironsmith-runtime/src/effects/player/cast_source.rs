@@ -68,9 +68,8 @@ impl EffectExecutor for CastSourceEffect {
             }
         }
 
-        let mana_sources_tag = crate::tag::TagKey::from(
-            ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG,
-        );
+        let mana_sources_tag =
+            crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
         let spent_mana_sources = game
             .object(source_id)
             .and_then(|object| object.cast_tagged_objects.get(&mana_sources_tag))

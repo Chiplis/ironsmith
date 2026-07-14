@@ -1,8 +1,10 @@
+use crate::ability::AbilityKind;
 use crate::cards::builders::{
     CardDefinitionBuilder, EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
 };
 use crate::effect::Value;
 use crate::ids::CardId;
+use crate::types::CardType;
 use crate::zone::Zone;
 
 use super::super::super::lexer::lex_line;
@@ -10,6 +12,196 @@ use super::{
     parse_effect_chain_lexed, parse_effect_clause_with_trailing_if_lexed,
     parse_effect_sentence_lexed, parse_leading_player_may_lexed, starts_like_create_fragment_lexed,
 };
+
+#[test]
+fn absolving_lammasu_one_clause_actions_keep_coordinated_surface() {
+    let tokens = lex_line(
+        "You gain 3 life and suspect up to one target creature an opponent controls.",
+        0,
+    )
+    .expect("Absolving Lammasu effect should lex");
+
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("Absolving Lammasu effect should parse");
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated,
+            leading_duration: false,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one coordinated Lammasu clause, got {effects:#?}");
+    };
+    assert_eq!(coordinated.len(), 2, "{coordinated:#?}");
+    assert!(
+        coordinated.iter().any(|effect| matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GainLife { .. },
+                ..
+            })
+        )),
+        "{coordinated:#?}"
+    );
+    assert!(
+        coordinated.iter().any(|effect| matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Suspect { .. },
+                ..
+            })
+        )),
+        "{coordinated:#?}"
+    );
+}
+
+#[test]
+fn aatchik_separate_sentence_actions_do_not_become_coordinated() {
+    let tokens = lex_line(
+        "Put a +1/+1 counter on this. Each opponent loses 1 life.",
+        0,
+    )
+    .expect("Aatchik effect sentences should lex");
+
+    let effects = super::super::parse_effect_sentences_lexed(&tokens)
+        .expect("Aatchik effect sentences should parse");
+    assert_eq!(effects.len(), 2, "{effects:#?}");
+    assert!(
+        effects
+            .iter()
+            .all(|effect| !matches!(effect, EffectAst::Coordinated { .. })),
+        "separate Oracle sentences must remain ordinary siblings: {effects:#?}"
+    );
+}
+
+#[test]
+fn peregrination_search_partition_stays_a_specialist_bundle() {
+    let tokens = lex_line(
+        "Search your library for up to two basic land cards, reveal those cards, and put one onto the battlefield tapped and the other into your hand.",
+        0,
+    )
+    .expect("Peregrination search sentence should lex");
+
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("Peregrination search sentence should parse");
+    assert!(
+        effects
+            .iter()
+            .all(|effect| !matches!(effect, EffectAst::Coordinated { .. })),
+        "search partition program must not become display coordination: {effects:#?}"
+    );
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("ChooseObjectsAcrossZones"), "{debug}");
+    assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
+}
+
+#[test]
+fn extortion_hand_choice_stays_a_specialist_bundle() {
+    let tokens = lex_line(
+        "Look at target player's hand and choose up to two cards from it.",
+        0,
+    )
+    .expect("Extortion hand-choice sentence should lex");
+
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("Extortion hand-choice sentence should parse");
+    assert!(
+        effects
+            .iter()
+            .all(|effect| !matches!(effect, EffectAst::Coordinated { .. })),
+        "look/choose program must remain available to its discard follow-up: {effects:#?}"
+    );
+    assert!(format!("{effects:#?}").contains("ChooseObjects"));
+}
+
+#[test]
+fn vraskas_fall_choice_and_consequences_do_not_become_coordinated() {
+    let tokens = lex_line(
+        "Each opponent sacrifices a creature or planeswalker of their choice and gets a poison counter.",
+        0,
+    )
+    .expect("Vraska's Fall sentence should lex");
+
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("Vraska's Fall sentence should parse");
+    assert!(
+        effects
+            .iter()
+            .all(|effect| !matches!(effect, EffectAst::Coordinated { .. })),
+        "choice and its consequences must remain on the specialist path: {effects:#?}"
+    );
+}
+
+#[test]
+fn malboro_three_action_opponent_chain_does_not_become_coordinated() {
+    let tokens = lex_line(
+        "Each opponent discards a card, loses 2 life, and exiles the top three cards of their library.",
+        0,
+    )
+    .expect("Malboro sentence should lex");
+
+    let effects = parse_effect_sentence_lexed(&tokens).expect("Malboro sentence should parse");
+    assert!(
+        effects
+            .iter()
+            .all(|effect| !matches!(effect, EffectAst::Coordinated { .. })),
+        "multi-action opponent chains must retain their existing specialist rendering: {effects:#?}"
+    );
+}
+
+#[test]
+fn triggered_lowering_keeps_sentences_separate_and_one_clause_coordinated() {
+    let aatchik = CardDefinitionBuilder::new(CardId::from_raw(1), "Aatchik Boundary Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever another Insect you control dies, put a +1/+1 counter on this creature. Each opponent loses 1 life.",
+        )
+        .expect("Aatchik-style trigger should lower");
+    let aatchik_triggered = aatchik
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Aatchik-style fixture should produce a triggered ability");
+    assert_eq!(
+        aatchik_triggered.effects.segments.len(),
+        2,
+        "separate Oracle sentences must lower as separate resolution segments: {aatchik_triggered:#?}"
+    );
+
+    let lammasu = CardDefinitionBuilder::new(CardId::from_raw(2), "Lammasu Boundary Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature dies, you gain 3 life and suspect up to one target creature an opponent controls.",
+        )
+        .expect("Lammasu-style trigger should lower");
+    let lammasu_triggered = lammasu
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Lammasu-style fixture should produce a triggered ability");
+    assert_eq!(
+        lammasu_triggered.effects.segments.len(),
+        1,
+        "one coordinated Oracle clause must stay in one resolution segment: {lammasu_triggered:#?}"
+    );
+    let [coordinated] = lammasu_triggered.effects.flattened_default_effects() else {
+        panic!("expected one typed coordinated effect: {lammasu_triggered:#?}");
+    };
+    let sequence = coordinated
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("Lammasu actions should retain a typed sequence");
+    assert_eq!(
+        sequence.surface,
+        ironsmith_core::SequenceSurface::Coordinated,
+        "Lammasu's single-clause conjunction must not become a sentence break"
+    );
+}
 
 #[test]
 fn leading_may_land_play_permission_does_not_lower_to_may_effect() {

@@ -1314,6 +1314,35 @@ impl EndTurnEffect {
     }
 }
 
+/// Restarts the game, optionally exempting a set of cards from the restart.
+///
+/// The exempt set remains in exile while every other physical card involved
+/// in the game is returned to its appropriate new-game starting zone. The
+/// effect reports the exempt cards as its affected objects so a following
+/// tagged instruction can continue to act on them after the restart.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RestartGameEffect {
+    pub cards_left_in_exile: Option<ChooseSpec>,
+    /// Oracle-facing source wording for an "exiled with ..." exemption.
+    /// Runtime identity is carried by the tagged constraint in the choose
+    /// spec; this field is presentation metadata only.
+    pub source_surface: Option<SourceReferenceSurface>,
+}
+
+impl RestartGameEffect {
+    pub fn new(cards_left_in_exile: Option<ChooseSpec>) -> Self {
+        Self {
+            cards_left_in_exile,
+            source_surface: None,
+        }
+    }
+
+    pub fn with_source_surface(mut self, source_surface: SourceReferenceSurface) -> Self {
+        self.source_surface = Some(source_surface);
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SkipTurnEffect {
     pub player: PlayerFilter,

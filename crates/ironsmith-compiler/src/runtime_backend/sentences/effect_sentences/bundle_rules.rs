@@ -7,14 +7,14 @@ use super::super::activation_and_restrictions::choice_object_clauses::{
 use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
 use super::super::object_filters::parse_object_filter_lexed;
 use super::super::permission_helpers::{
-    parse_until_end_of_turn_may_play_tagged_clause,
+    parse_cast_or_play_tagged_clause, parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause,
 };
 use super::super::util::{
     helper_tag_for_tokens, parse_subject, parse_target_phrase, span_from_tokens, trim_commas, words,
 };
 use super::dispatch_entry::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard;
-use super::zone_handlers::parse_exile_top_library_clause;
+use super::zone_handlers::{parse_exile_top_library_clause, split_exile_face_down_suffix};
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
@@ -25,7 +25,7 @@ use crate::filter::AlternativeCastKind;
 use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::front_end::grammar::effects as bundle_grammar;
-use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
+use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
@@ -78,8 +78,59 @@ fn parse_exile_top_library_then_play_bundle(
         Some(parse_subject(&trim_commas(&first_sentence[..verb_idx])))
     };
     let exile_tokens = trim_commas(&first_sentence[verb_idx + 1..]);
-    let Some(exile_effect) = parse_exile_top_library_clause(&exile_tokens, exile_subject) else {
-        return Ok(None);
+    let (exile_core, face_down) = split_exile_face_down_suffix(&exile_tokens);
+    let exile_effect = if face_down {
+        let default_player = exile_subject
+            .and_then(|subject| match subject {
+                crate::cards::builders::SubjectAst::Player(player) => Some(player),
+                _ => None,
+            })
+            .unwrap_or(PlayerAst::Implicit);
+        let Some(shape) = bundle_grammar::parse_exile_top_library_shape(exile_core, default_player)
+        else {
+            return Ok(None);
+        };
+        let bundle_grammar::ExileLibraryPlayerShape::EachOpponent = shape.player else {
+            return Ok(None);
+        };
+        let Value::Fixed(count) = shape.count.unhinted() else {
+            return Ok(None);
+        };
+        let Ok(count) = usize::try_from(*count) else {
+            return Ok(None);
+        };
+        let chosen_tag = helper_tag_for_tokens(exile_core, "top_exiled_choice");
+        let collection_tag = helper_tag_for_tokens(exile_core, "exiled");
+        let mut filter = ObjectFilter::default().in_zone(Zone::Library);
+        filter.owner = Some(PlayerFilter::IteratedPlayer);
+        EffectAst::ForEachOpponent {
+            effects: vec![
+                EffectAst::ChooseObjectsTopOfLibrary {
+                    filter,
+                    count: ChoiceCount::exactly(count),
+                    count_value: None,
+                    // The effect controller receives the printed permission
+                    // to inspect the face-down cards. Choosing the sole top
+                    // card also records that viewer for the subsequent exile.
+                    player: PlayerAst::You,
+                    tag: chosen_tag.clone(),
+                },
+                EffectAst::TagAffected {
+                    effect: Box::new(EffectAst::subject_verb_exile(
+                        TargetAst::Tagged(chosen_tag, None),
+                        true,
+                    )),
+                    // Accumulate all cards across the opponent loop so one
+                    // trailing permission covers the complete collection.
+                    tag: collection_tag,
+                },
+            ],
+        }
+    } else {
+        let Some(effect) = parse_exile_top_library_clause(&exile_tokens, exile_subject) else {
+            return Ok(None);
+        };
+        effect
     };
     let permission_effect = if let Some(effect) =
         parse_until_end_of_turn_may_play_tagged_clause(second_sentence)?
@@ -88,13 +139,76 @@ fn parse_exile_top_library_then_play_bundle(
     } else if let Some(effect) = parse_until_your_next_turn_may_play_tagged_clause(second_sentence)?
     {
         effect
+    } else if let Some(effect) = parse_cast_or_play_tagged_clause(second_sentence)? {
+        effect
     } else {
-        return Ok(None);
+        let effects = effect_sentences::parse_effect_sentence_lexed(second_sentence)?;
+        let [effect] = effects.as_slice() else {
+            return Ok(None);
+        };
+        effect.clone()
+    };
+
+    // Face-down collection permissions can spell out that the controller may
+    // "look at and play" the cards. Some generic surfaces preserve the look as
+    // an explicit action before the persistent grant. Here the top-library
+    // chooser is already `You`, which both identifies the cards and records
+    // their face-down viewer, so retain the durable grant and bind it to the
+    // accumulated collection produced by the opponent loop.
+    let permission_effect = match permission_effect {
+        EffectAst::Sequence { effects } if face_down => {
+            let [look, permission] = effects.as_slice() else {
+                return Ok(None);
+            };
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject,
+                action: SubjectVerbActionAst::LookAtObjects { filter },
+            }) = look
+            else {
+                return Ok(None);
+            };
+            if subject.player != PlayerAst::You
+                || filter.zone != Some(Zone::Exile)
+                || !filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == IT_TAG
+                        && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                })
+            {
+                return Ok(None);
+            }
+            permission.clone()
+        }
+        EffectAst::MayByPlayer {
+            player: PlayerAst::You,
+            effects,
+        }
+        | EffectAst::May { effects }
+            if face_down && effects.len() == 1 =>
+        {
+            effects.into_iter().next().expect("checked one effect")
+        }
+        permission => permission,
     };
 
     let Some(tag) = (match &exile_effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::ExileTopOfLibrary { tags, .. } => tags.first().cloned(),
+            _ => None,
+        },
+        EffectAst::ForEachOpponent { effects } => match effects.as_slice() {
+            [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::ExileTopOfLibrary {
+                            accumulated_tags, ..
+                        },
+                    ..
+                }),
+            ] => accumulated_tags.first().cloned(),
+            [
+                EffectAst::ChooseObjectsTopOfLibrary { .. },
+                EffectAst::TagAffected { tag, .. },
+            ] => Some(tag.clone()),
             _ => None,
         },
         _ => None,
@@ -163,6 +277,85 @@ fn parse_exile_top_library_then_play_bundle(
     };
 
     Ok(Some(vec![exile_effect, permission_effect]))
+}
+
+fn parse_hidden_exile_partition_permission_bundle(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    let [look_sentence, partition_sentence, permission_sentence] = sentences.as_slice() else {
+        return Ok(None);
+    };
+
+    let mut partition_tokens = look_sentence.to_vec();
+    partition_tokens.extend_from_slice(partition_sentence);
+    let Some(mut effects) =
+        super::dispatch_inner::parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
+            &partition_tokens,
+        )
+    else {
+        return Ok(None);
+    };
+
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::LookAtTopCards { .. },
+            ..
+        }),
+        EffectAst::ChooseObjects {
+            tag: selected_tag, ..
+        },
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Exile {
+                    target: TargetAst::Tagged(exile_tag, None),
+                    face_down: true,
+                },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    keep_tagged: Some(kept_tag),
+                    ..
+                },
+            ..
+        }),
+    ] = effects.as_mut_slice()
+    else {
+        return Ok(None);
+    };
+    if selected_tag != exile_tag || selected_tag != kept_tag {
+        return Ok(None);
+    }
+
+    let linked_tag = helper_tag_for_tokens(partition_sentence, "exiled");
+    *selected_tag = linked_tag.clone();
+    *exile_tag = linked_tag.clone();
+    *kept_tag = linked_tag.clone();
+
+    let Some(mut permission) = parse_cast_or_play_tagged_clause(permission_sentence)? else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                tag,
+                player: PlayerAst::You,
+                allow_land: true,
+                without_paying_mana_cost: false,
+                filter: None,
+                ..
+            },
+        ..
+    }) = &mut permission
+    else {
+        return Ok(None);
+    };
+    *tag = linked_tag;
+    effects.push(permission);
+
+    Ok(Some(effects))
 }
 
 fn parse_may_cast_spell_for_alternative_cost_bundle(
@@ -859,6 +1052,211 @@ fn parse_persistent_exile_play_tax_bundle(tokens: &[OwnedLexToken]) -> Option<Ve
     ])
 }
 
+fn parse_look_hand_optional_exile_play_tax_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    fn object_filter_mut(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
+        match target {
+            TargetAst::Object(filter, ..) => Some(filter),
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+                object_filter_mut(inner)
+            }
+            _ => None,
+        }
+    }
+
+    let sentences = split_lexed_sentences(tokens);
+    let [
+        look_sentence,
+        exile_sentence,
+        permission_sentence,
+        tax_sentence,
+    ] = sentences.as_slice()
+    else {
+        return None;
+    };
+
+    let mut look_effects = effect_sentences::parse_effect_sentence_lexed(look_sentence).ok()?;
+    let [look_effect] = look_effects.as_mut_slice() else {
+        return None;
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::LookAtHand {
+            target: hand_target,
+        },
+        ..
+    }) = look_effect
+    else {
+        return None;
+    };
+    let TargetAst::Player(hand_owner, _) = hand_target else {
+        return None;
+    };
+    let hand_owner = hand_owner.clone();
+
+    let mut optional_exile = effect_sentences::parse_effect_sentence_lexed(exile_sentence).ok()?;
+    let [optional] = optional_exile.as_mut_slice() else {
+        return None;
+    };
+    let exile_effects = match optional {
+        EffectAst::May { effects } => effects,
+        EffectAst::MayByPlayer {
+            player: PlayerAst::You,
+            effects,
+        } => effects,
+        _ => return None,
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Exile {
+                    target,
+                    face_down: false,
+                },
+            ..
+        }),
+    ] = exile_effects.as_mut_slice()
+    else {
+        return None;
+    };
+    let exile_filter = object_filter_mut(target)?;
+    if !exile_filter.excluded_card_types.contains(&CardType::Land) {
+        return None;
+    }
+    // "from it" refers to the hand established by the first sentence. Make
+    // that provenance executable instead of leaving an unscoped nonland-card
+    // choice that could select from another zone or player.
+    exile_filter.zone = Some(Zone::Hand);
+    exile_filter.owner = Some(hand_owner);
+    let exile_filter = exile_filter.clone();
+    let exiled_tag = helper_tag_for_tokens(exile_sentence, "exiled");
+
+    let permission_effects =
+        effect_sentences::parse_effect_sentence_lexed(permission_sentence).ok()?;
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    tag,
+                    player: PlayerAst::ItsOwner,
+                    allow_land: true,
+                    without_paying_mana_cost: false,
+                    allow_any_color_for_cast,
+                    filter: None,
+                },
+            ..
+        }),
+    ] = permission_effects.as_slice()
+    else {
+        return None;
+    };
+    if tag.as_str() != IT_TAG
+        || *allow_any_color_for_cast != ironsmith_core::value_model::ManaSpendMode::Normal
+    {
+        return None;
+    }
+
+    let tax = bundle_grammar::parse_spell_cast_this_way_tax_tokens(tax_sentence)?;
+    let mut spell_filter = ObjectFilter::spell().without_type(CardType::Land);
+    if let Some(caster) = tax.taxed_caster {
+        spell_filter = spell_filter.cast_by(caster);
+    }
+    spell_filter.zone = None;
+
+    Some(vec![
+        look_effect.clone(),
+        EffectAst::MayByPlayer {
+            player: PlayerAst::You,
+            effects: vec![
+                EffectAst::ChooseObjects {
+                    filter: exile_filter,
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: PlayerAst::You,
+                    tag: exiled_tag.clone(),
+                },
+                EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), false),
+            ],
+        },
+        EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+            exiled_tag.clone(),
+            PlayerAst::ItsOwner,
+            true,
+            false,
+            false,
+            None,
+        ),
+        EffectAst::subject_verb_grant_to_target(
+            TargetAst::Tagged(exiled_tag, None),
+            crate::grant::Grantable::Ability(crate::static_abilities::StaticAbility::new(
+                crate::static_abilities::CostIncreaseManaCost::new(
+                    spell_filter,
+                    tax.additional_cost,
+                ),
+            )),
+            crate::grant::GrantDuration::Forever,
+        ),
+    ])
+}
+
+fn parse_discard_redraw_mana_value_ladder_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let shape = bundle_grammar::parse_discard_redraw_mana_value_ladder_tokens(tokens)?;
+    let discarded_tag = helper_tag_for_tokens(tokens, "discarded_mana_ladder");
+    let selected_tag = helper_tag_for_tokens(tokens, "selected_mana_ladder");
+
+    let mut effects = vec![
+        EffectAst::subject_verb_discard(
+            PlayerAst::You,
+            Value::CardsInHand(PlayerFilter::You)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::AllCardsInHand),
+            false,
+            false,
+            None,
+            Some(discarded_tag.clone()),
+        ),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw {
+                count: Value::PendingEffectMetric {
+                    source: ironsmith_core::EffectMetricSource::Outcome,
+                    metric: ironsmith_core::EffectMetric::Count,
+                },
+            },
+        ),
+    ];
+
+    for mana_value in shape.mana_values {
+        let mut filter = shape.filter.clone();
+        filter.zone = Some(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+        filter.mana_value = Some(crate::filter::Comparison::Equal(mana_value as i32));
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: discarded_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        effects.push(EffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: selected_tag.clone(),
+        });
+    }
+
+    effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(selected_tag, None),
+        Zone::Battlefield,
+        false,
+        ReturnControllerAst::Preserve,
+        false,
+        None,
+    ));
+    Some(effects)
+}
+
 fn parse_controller_sacrifice_consult_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let shape = bundle_grammar::parse_controller_sacrifice_consult_tokens(tokens)?;
     let revealed_tag = TagKey::from("controller_consult_revealed");
@@ -1064,6 +1462,12 @@ fn parse_regenerate_then_gain_control_if_regenerates_bundle(
 }
 
 pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    if let Ok(Some(effects)) = parse_hidden_exile_partition_permission_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_discard_redraw_mana_value_ladder_bundle(tokens) {
+        return Some(effects);
+    }
     if let Some(effects) = parse_energy_pay_any_destroy_bundle(tokens) {
         return Some(effects);
     }
@@ -1074,6 +1478,9 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
         return Some(effects);
     }
     if let Ok(Some(effects)) = parse_reveal_from_outside_game_to_hand(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_look_hand_optional_exile_play_tax_bundle(tokens) {
         return Some(effects);
     }
     if let Some(effects) = parse_persistent_exile_play_tax_bundle(tokens) {
@@ -1364,5 +1771,159 @@ mod tests {
                     && &constraint.tag == first_tag
             }));
         }
+    }
+
+    #[test]
+    fn each_opponent_top_card_permission_preserves_the_accumulated_collection() {
+        let tokens = lex_line(
+            "Exile the top card of each opponent's library face down. You may look at and play those cards for as long as they remain exiled.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens).expect("exile/permission bundle");
+        let [
+            EffectAst::ForEachOpponent {
+                effects: exile_each,
+            },
+            permission,
+        ] = effects.as_slice()
+        else {
+            panic!("expected each-opponent exile plus shared permission, got {effects:#?}");
+        };
+        let [
+            EffectAst::ChooseObjectsTopOfLibrary {
+                player: PlayerAst::You,
+                ..
+            },
+            EffectAst::TagAffected {
+                tag: collection_tag,
+                ..
+            },
+        ] = exile_each.as_slice()
+        else {
+            panic!("expected typed top-library exile, got {exile_each:#?}");
+        };
+        assert!(matches!(
+            permission,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. },
+                ..
+            }) if tag == collection_tag
+        ));
+    }
+
+    #[test]
+    fn hidden_exile_partition_uses_one_tag_for_choice_remainder_and_permission() {
+        let tokens = lex_line(
+            "Look at the top two cards of target opponent's library. Exile one of them face down and put the other on the bottom of that library. You may play the exiled card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens).expect("hidden-exile bundle");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::LookAtTopCards { .. },
+                ..
+            }),
+            EffectAst::ChooseObjects {
+                tag: selected_tag, ..
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Exile {
+                        target: TargetAst::Tagged(exile_tag, None),
+                        face_down: true,
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                        keep_tagged: Some(kept_tag),
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                        tag: permission_tag,
+                        allow_any_color_for_cast:
+                            ironsmith_core::value_model::ManaSpendMode::AnyColor,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected linked hidden-exile partition, got {effects:#?}");
+        };
+
+        assert_eq!(selected_tag, exile_tag);
+        assert_eq!(selected_tag, kept_tag);
+        assert_eq!(selected_tag, permission_tag);
+    }
+
+    #[test]
+    fn looked_hand_exile_permission_tax_stays_in_one_linked_program() {
+        let tokens = lex_line(
+            "Look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it. A spell cast this way costs {2} more to cast.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens).expect("linked hand-exile bundle");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::LookAtHand { .. },
+                ..
+            }),
+            EffectAst::MayByPlayer {
+                player: PlayerAst::You,
+                effects: optional_exile,
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                        tag: permission_tag,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantToTarget {
+                        target: TargetAst::Tagged(tax_tag, None),
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected one linked hand-exile program, got {effects:#?}");
+        };
+        let [
+            EffectAst::ChooseObjects {
+                filter,
+                player: PlayerAst::You,
+                tag: choice_tag,
+                ..
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Exile {
+                        target: TargetAst::Tagged(exile_tag, None),
+                        face_down: false,
+                    },
+                ..
+            }),
+        ] = optional_exile.as_slice()
+        else {
+            panic!("expected an optional typed choose/exile pair, got {optional_exile:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert!(matches!(&filter.owner, Some(PlayerFilter::Target(_))));
+        assert_eq!(choice_tag, exile_tag);
+        assert_eq!(choice_tag, permission_tag);
+        assert_eq!(choice_tag, tax_tag);
     }
 }

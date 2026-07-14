@@ -1509,6 +1509,7 @@ pub(super) fn test_drain_pending_events_checks_delayed_zone_change_triggers() {
             x_value: None,
             not_before_turn: None,
             expires_at_turn: None,
+            expires_at_end_of_combat: false,
             target_objects: vec![stangg_id],
             ability_source: None,
             ability_source_stable_id: None,

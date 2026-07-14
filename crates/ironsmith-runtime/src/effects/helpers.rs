@@ -1612,6 +1612,8 @@ pub fn resolve_value(
             Ok(game.regenerated_this_turn_count(ctx.source) as i32)
         }
 
+        Value::SourceMutationCount => Ok(game.mutation_count(ctx.source) as i32),
+
         Value::DamageDealtThisTurnByTaggedSpellCast(tag) => {
             let snapshot = ctx.get_tagged(tag.as_str()).ok_or_else(|| {
                 ExecutionError::UnresolvableValue(format!(
@@ -2234,6 +2236,43 @@ fn value_tagged_snapshots_for_filter<'a>(
         }
     }
     Some(snapshots)
+}
+
+/// Returns the sorted effective power values represented by a filter.
+///
+/// This is the value-domain counterpart to `Value::DistinctPowers`: callers
+/// that must perform one operation for each distinct value need the values,
+/// not just their count.
+pub(crate) fn distinct_power_values_for_filter(
+    game: &GameState,
+    filter: &crate::filter::ObjectFilter,
+    ctx: &ExecutionContext,
+) -> Vec<i32> {
+    let filter_ctx = ctx.filter_context(game);
+    let mut powers = HashSet::new();
+    if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+        for snapshot in snapshots
+            .into_iter()
+            .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+        {
+            if let Some(power) = snapshot.power {
+                powers.insert(power);
+            }
+        }
+    } else {
+        for object in value_candidate_ids_for_filter(game, filter, ctx)
+            .into_iter()
+            .filter_map(|id| game.object(id))
+            .filter(|object| filter.matches(object, &filter_ctx, game))
+        {
+            if let Some(power) = game.calculated_power(object.id).or_else(|| object.power()) {
+                powers.insert(power);
+            }
+        }
+    }
+    let mut powers = powers.into_iter().collect::<Vec<_>>();
+    powers.sort_unstable();
+    powers
 }
 
 // ============================================================================

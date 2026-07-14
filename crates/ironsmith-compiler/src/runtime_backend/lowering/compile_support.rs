@@ -60,9 +60,10 @@ use super::reference_resolution::{
     preserves_existing_it_for_power_self_damage_followup,
 };
 use super::static_ability_helpers::{
-    decayed_triggered_ability, exalted_triggered_ability, lower_granted_abilities_ast,
-    lower_granted_abilities_ast_to_object_abilities, persist_triggered_ability,
-    suspend_exile_triggered_abilities, undying_triggered_ability,
+    afflict_triggered_ability, decayed_triggered_ability, exalted_triggered_ability,
+    lower_granted_abilities_ast, lower_granted_abilities_ast_to_object_abilities,
+    myriad_triggered_ability, persist_triggered_ability, suspend_exile_triggered_abilities,
+    undying_triggered_ability,
 };
 use super::util::map_span_to_original;
 
@@ -1706,6 +1707,24 @@ pub(crate) fn lower_may_imprint_from_hand_effect(
     if !count.is_single() || zones.len() != 1 || zones.first().copied() != Some(Zone::Hand) {
         return Ok(None);
     }
+    let is_effect_controller = |player: &PlayerFilter| {
+        matches!(player, PlayerFilter::You | PlayerFilter::EffectController)
+    };
+    if filter
+        .owner
+        .as_ref()
+        .is_some_and(|owner| !is_effect_controller(owner))
+        || filter
+            .controller
+            .as_ref()
+            .is_some_and(|controller| !is_effect_controller(controller))
+    {
+        // ImprintFromHandEffect deliberately selects from the effect
+        // controller's hand. Preserve the generic choose/exile lowering when
+        // Oracle points at another player's hand (for example, a hand that was
+        // just looked at), otherwise the filter's provenance is silently lost.
+        return Ok(None);
+    }
 
     Ok(Some((
         vec![Effect::new(
@@ -2033,6 +2052,16 @@ fn lower_granted_ability_grant_modifications(
             GrantedAbilityAst::KeywordAction(crate::KeywordAction::Exalted) => {
                 modifications.push(crate::continuous::Modification::AddAbilityGeneric(
                     exalted_triggered_ability(),
+                ));
+            }
+            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Myriad) => {
+                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
+                    myriad_triggered_ability(),
+                ));
+            }
+            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Afflict(amount)) => {
+                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
+                    afflict_triggered_ability(*amount),
                 ));
             }
             GrantedAbilityAst::KeywordAction(crate::KeywordAction::Marker("suspend")) => {

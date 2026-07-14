@@ -2053,11 +2053,9 @@ pub(super) fn render_scheming_symmetry_keeps_targeted_players_and_search_text() 
         "expected chosen target players to remain visible, got {joined}; debug={debug}"
     );
     assert!(
-        (joined.contains("each of those players searches their library for a card")
-            || joined.contains("for each target player, search that player's library for a card"))
-            && (joined.contains("then shuffles and puts that card on top")
-                || joined.contains("then that player shuffles and put it on top")
-                || joined.contains("then shuffle and put that card on top")),
+        joined.contains(
+            "choose two target players. each of them searches their library for a card, then shuffles and puts that card on top"
+        ) && !joined.contains("for each target player, that player"),
         "expected unambiguous per-target-player search rendering, got {joined}"
     );
     assert!(
@@ -2067,6 +2065,20 @@ pub(super) fn render_scheming_symmetry_keeps_targeted_players_and_search_text() 
     assert!(
         !joined.contains("in any order"),
         "expected single-card top placement to avoid in-any-order fallback, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_varragoth_search_uses_the_searched_card_antecedent() {
+    let def = parse_oracle_card_definition("Varragoth, Bloodsky Sire");
+    let joined = compiled_text_lines(&def).join("\n").to_ascii_lowercase();
+
+    assert!(
+        joined.contains(
+            "target player searches their library for a card, then shuffles and puts that card on top"
+        ) && !joined.contains("puts the card on top"),
+        "expected the searched-card antecedent to remain explicit, got {joined}"
     );
 }
 

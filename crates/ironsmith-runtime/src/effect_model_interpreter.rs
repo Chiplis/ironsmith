@@ -319,6 +319,9 @@ where
         if payload.suppress_aura_attachment_choice {
             converted = converted.suppress_aura_attachment_choice();
         }
+        if let Some(presentation) = payload.ability_presentation {
+            converted = converted.with_ability_presentation(presentation);
+        }
         if payload.exile_at_end_of_combat {
             converted = converted.exile_at_end_of_combat();
         }
@@ -406,6 +409,9 @@ where
         }
         if payload.until_end_of_turn {
             converted = converted.until_end_of_turn();
+        }
+        if payload.until_end_of_combat {
+            converted = converted.until_end_of_combat();
         }
         return Ok(Effect::new(converted));
     }
@@ -618,6 +624,9 @@ where
         return Ok(converted);
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::SolveCaseEffect>(&effect) {
+        return Ok(converted);
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::RestartGameEffect>(&effect) {
         return Ok(converted);
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::BolsterEffect>(&effect) {

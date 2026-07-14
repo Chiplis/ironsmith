@@ -9,7 +9,12 @@ use winnow::prelude::*;
 
 use super::super::super::{leaf, permission_shapes, primitives};
 
-const COPY_NAME_PREFIXES: &[&[&str]] = &[&["its", "name", "is"], &["it", "s", "name", "is"]];
+const COPY_NAME_PREFIXES: &[&[&str]] = &[
+    &["its", "name", "is"],
+    &["it", "s", "name", "is"],
+    &["his", "name", "is"],
+    &["her", "name", "is"],
+];
 const COPY_PRESERVE_TAILS: &[&[&str]] = &[
     &["and", "it", "has", "this", "ability"],
     &["and", "this", "ability"],
@@ -68,6 +73,9 @@ pub(crate) struct BecomeCopyExceptionShape {
     pub(crate) name_override: Option<String>,
     pub(crate) name_override_surface: Option<SourceReferenceSurface>,
     pub(crate) add_supertypes: Vec<Supertype>,
+    pub(crate) remove_supertypes: Vec<Supertype>,
+    pub(crate) granted_ability_tokens: Option<Vec<OwnedLexToken>>,
+    pub(crate) set_base_power_toughness: Option<(i32, i32)>,
 }
 
 #[derive(Debug, Clone)]
@@ -133,15 +141,101 @@ pub(crate) fn parse_become_copy_exception_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BecomeCopyExceptionShape> {
     let tokens = trim_lexed_commas(tokens);
+    if permission_shapes::exact_tokens(tokens, &["it", "isn't", "legendary"])
+        || permission_shapes::exact_tokens(tokens, &["it", "isnt", "legendary"])
+        || permission_shapes::exact_tokens(tokens, &["it", "is", "not", "legendary"])
+    {
+        return Some(BecomeCopyExceptionShape {
+            remove_supertypes: vec![Supertype::Legendary],
+            ..Default::default()
+        });
+    }
     if permission_shapes::exact_tokens(tokens, &["it", "has", "this", "ability"]) {
         return Some(BecomeCopyExceptionShape {
             preserve_source_abilities: true,
             ..Default::default()
         });
     }
+    if let Some((_, ability_tokens)) = primitives::strip_lexed_prefix_phrases(
+        tokens,
+        &[&["it", "has"], &["he", "has"], &["she", "has"]],
+    ) {
+        let ability_tokens = trim_lexed_commas(ability_tokens);
+        if !ability_tokens.is_empty() {
+            return Some(BecomeCopyExceptionShape {
+                granted_ability_tokens: Some(ability_tokens.to_vec()),
+                ..Default::default()
+            });
+        }
+    }
 
     let (_, mut name_tokens) = primitives::strip_lexed_prefix_phrases(tokens, COPY_NAME_PREFIXES)?;
     let mut parsed = BecomeCopyExceptionShape::default();
+
+    // Copy exceptions may preserve several printed characteristics at once,
+    // for example "except his name is ..., he's 4/4, and he has flying and
+    // this ability." Keep those as typed copy-layer/characteristic-layer
+    // adjustments instead of discarding the whole exception tail.
+    if let Some((pt_index, power, toughness)) =
+        name_tokens.iter().enumerate().find_map(|(idx, token)| {
+            let raw = token.parser_text();
+            let (power, toughness) = raw.split_once('/')?;
+            Some((
+                idx,
+                power.parse::<i32>().ok()?,
+                toughness.parse::<i32>().ok()?,
+            ))
+        })
+    {
+        let intro_index = (0..pt_index).rev().find(|idx| {
+            matches!(
+                name_tokens[*idx].parser_text(),
+                "hes" | "he's" | "shes" | "she's" | "its" | "it's"
+            ) || (*idx + 1 < pt_index
+                && matches!(name_tokens[*idx].parser_text(), "he" | "she" | "it")
+                && name_tokens[*idx + 1].parser_text() == "s")
+        })?;
+        let rendered_name = render_token_slice(trim_lexed_commas(&name_tokens[..intro_index]))
+            .trim()
+            .to_string();
+        if rendered_name.is_empty() {
+            return None;
+        }
+        parsed.name_override_surface =
+            crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(
+                &parser_token_word_refs(trim_lexed_commas(&name_tokens[..intro_index])),
+            );
+        parsed.name_override = Some(rendered_name);
+        parsed.set_base_power_toughness = Some((power, toughness));
+
+        let after_pt = trim_lexed_commas(&name_tokens[pt_index + 1..]);
+        let (_, ability_tokens) = primitives::strip_lexed_prefix_phrases(
+            after_pt,
+            &[
+                &["and", "he", "has"],
+                &["and", "she", "has"],
+                &["and", "it", "has"],
+                &["he", "has"],
+                &["she", "has"],
+                &["it", "has"],
+            ],
+        )?;
+        let (ability_tokens, preserves_this_ability) = if let Some((_, head)) =
+            primitives::strip_lexed_suffix_phrases(
+                ability_tokens,
+                &[&["and", "this", "ability"], &["this", "ability"]],
+            ) {
+            (trim_lexed_commas(head), true)
+        } else {
+            (trim_lexed_commas(ability_tokens), false)
+        };
+        parsed.preserve_source_abilities = preserves_this_ability;
+        if !ability_tokens.is_empty() {
+            parsed.granted_ability_tokens = Some(ability_tokens.to_vec());
+        }
+        return Some(parsed);
+    }
+
     if let Some((_, head)) =
         primitives::strip_lexed_suffix_phrases(name_tokens, COPY_PRESERVE_TAILS)
     {
@@ -188,11 +282,14 @@ pub(crate) fn parse_become_rest_shape(tokens: &[OwnedLexToken]) -> BecomeRestSha
     .map(|(_, rest)| trim_lexed_commas(rest))
     .unwrap_or(tokens)
     .to_vec();
-    let (body_tokens, copy_exception) = split_last_except(&rest_tokens)
-        .and_then(|(body, exception)| {
-            parse_become_copy_exception_shape(exception).map(|parsed| (body.to_vec(), parsed))
-        })
-        .map(|(body, exception)| (body, Some(exception)))
+    // A copy exception is never part of the object being copied. Keep it out
+    // of the copy-source tokens even when the exception itself is not yet
+    // representable. In particular, this leaves a preceding duration at the
+    // end of `body_tokens`, where the shared duration parser can preserve it.
+    let copy_split = split_last_except(&rest_tokens)
+        .filter(|(body, _)| permission_shapes::contains_tokens(body, &["copy", "of"]));
+    let (body_tokens, copy_exception) = copy_split
+        .map(|(body, exception)| (body.to_vec(), parse_become_copy_exception_shape(exception)))
         .unwrap_or_else(|| (rest_tokens.clone(), None));
     BecomeRestShape {
         rest_tokens,
@@ -336,6 +433,52 @@ mod tests {
         assert_eq!(
             parser_token_word_refs(&shape.body_tokens),
             ["a", "copy", "of", "target", "creature"]
+        );
+    }
+
+    #[test]
+    fn rest_shape_separates_copy_exception_from_duration() {
+        let shape = parse_become_rest_shape(&lex(
+            "becomes a copy of target creature until end of turn, except it has flying",
+        ));
+        let exception = shape.copy_exception.expect("copy exception");
+        assert_eq!(
+            parser_token_word_refs(
+                exception
+                    .granted_ability_tokens
+                    .as_deref()
+                    .expect("granted ability tokens")
+            ),
+            ["flying"]
+        );
+        assert_eq!(
+            parser_token_word_refs(&shape.body_tokens),
+            [
+                "a", "copy", "of", "target", "creature", "until", "end", "of", "turn"
+            ]
+        );
+    }
+
+    #[test]
+    fn copy_exception_preserves_name_pt_keyword_and_source_ability() {
+        let shape = parse_become_rest_shape(&lex(
+            "becomes a copy of up to one other target creature until end of turn, except his name is Hulkling, Young Avenger, he's 4/4, and he has flying and this ability",
+        ));
+        let exception = shape.copy_exception.expect("copy exception");
+        assert_eq!(
+            exception.name_override.as_deref(),
+            Some("Hulkling, Young Avenger")
+        );
+        assert_eq!(exception.set_base_power_toughness, Some((4, 4)));
+        assert!(exception.preserve_source_abilities);
+        assert_eq!(
+            parser_token_word_refs(
+                exception
+                    .granted_ability_tokens
+                    .as_deref()
+                    .expect("granted ability tokens")
+            ),
+            ["flying"]
         );
     }
 

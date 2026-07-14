@@ -77,11 +77,13 @@ pub(crate) fn parse_reciprocal_creature_control_sequence_tokens(
 fn parse_reciprocal_creature_control_head_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<Until, ErrMode<ContextError>> {
+    primitives::phrase(&["you", "and"]).parse_next(input)?;
+    alt((
+        primitives::phrase(&["target", "opponent"]),
+        primitives::phrase(&["that", "opponent"]),
+    ))
+    .parse_next(input)?;
     primitives::phrase(&[
-        "you",
-        "and",
-        "target",
-        "opponent",
         "each",
         "gain",
         "control",

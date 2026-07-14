@@ -45,7 +45,8 @@ pub(crate) fn parse_attached_object_exile_shape(
         })?;
     if target.is_empty()
         || attachment_filter.is_empty()
-        || !permission_shapes::exact_tokens(attachment_target, &["it"])
+        || !(permission_shapes::exact_tokens(attachment_target, &["it"])
+            || permission_shapes::exact_tokens(attachment_target, &["them"]))
     {
         return None;
     }
@@ -171,6 +172,15 @@ mod tests {
                 .unwrap();
         assert!(permission_shapes::exact_tokens(
             &attached.attachment_filter,
+            &["auras"]
+        ));
+
+        let plural = parse_attached_object_exile_shape(&lex(
+            "any number of target creatures and all Auras attached to them",
+        ))
+        .unwrap();
+        assert!(permission_shapes::exact_tokens(
+            &plural.attachment_filter,
             &["auras"]
         ));
 

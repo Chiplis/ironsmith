@@ -151,6 +151,34 @@ fn grouped_opponent_life_loss_reaches_the_typed_trigger_ast() {
 }
 
 #[test]
+fn extraordinary_journey_keeps_exile_entry_or_cast_provenance() {
+    let tokens = tokenize_line(
+        "one or more nontoken creatures enter, if one or more of them entered from exile or was cast from exile",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .unwrap();
+    assert!(matches!(
+        &parsed,
+        crate::runtime_backend::ast::TriggerSpec::EntersBattlefieldOneOrMore {
+            origin_condition: Some(
+                ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom(
+                    Zone::Exile
+                )
+            ),
+            ..
+        }
+    ));
+    assert_eq!(
+        crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+        "Whenever one or more nontoken creatures enter the battlefield, if one or more of them entered from exile or was cast from exile"
+    );
+}
+
+#[test]
 fn parses_and_or_player_object_damage_recipients_as_both_trigger_branches() {
     let tokens = tokenize_line(
         "a red source you control deals damage to one or more permanents and/or players",

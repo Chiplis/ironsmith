@@ -70,7 +70,6 @@ fn apply_trigger_intro_surface(
         {
             trigger
         }
-        TriggerSpec::ThisMutates if intro == TriggerIntroSurfaceAst::Whenever => trigger,
         TriggerSpec::KeywordAction { .. }
         | TriggerSpec::KeywordActionTaggedObject { .. }
         | TriggerSpec::KeywordActionFromSource { .. }

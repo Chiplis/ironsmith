@@ -30,19 +30,16 @@ fn typed_move_surface_preserves_put_return_and_actor_agreement() {
 #[test]
 fn typed_move_surface_preserves_plural_tagged_sets_and_contextual_actor() {
     let tag = TagKey::from("exiled_set");
-    let move_set = crate::effects::MoveToZoneEffect::new(
-        ChooseSpec::Tagged(tag),
-        Zone::Battlefield,
-        false,
-    )
-    .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put)
-    .with_target_plural_surface()
-    .with_actor_surface(PlayerFilter::Active)
-    .with_destination_player_surface(PlayerFilter::Active)
-    .with_destination_player_reference_surface(
-        ironsmith_core::DestinationPlayerReferenceSurface::Pronoun,
-    )
-    .under_owner_control();
+    let move_set =
+        crate::effects::MoveToZoneEffect::new(ChooseSpec::Tagged(tag), Zone::Battlefield, false)
+            .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put)
+            .with_target_plural_surface()
+            .with_actor_surface(PlayerFilter::Active)
+            .with_destination_player_surface(PlayerFilter::Active)
+            .with_destination_player_reference_surface(
+                ironsmith_core::DestinationPlayerReferenceSurface::Pronoun,
+            )
+            .under_owner_control();
 
     let text = describe_effect(&Effect::new(move_set));
     assert!(text.starts_with("That player puts "), "{text}");

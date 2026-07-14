@@ -41,6 +41,7 @@ use crate::zone::Zone;
 
 mod mana_and_permissions;
 mod object_state_and_events;
+mod restart;
 mod turns_and_tracking;
 mod zones_and_characteristics;
 
@@ -251,6 +252,8 @@ struct BattlefieldFlags {
     fully_unlocked_rooms: HashSet<ObjectId>,
     /// Number of times each battlefield permanent has transformed.
     transform_count: HashMap<ObjectId, u64>,
+    /// Number of times each battlefield permanent has mutated.
+    mutation_count: HashMap<ObjectId, u32>,
     /// Phased-out permanents.
     phased_out: HashSet<ObjectId>,
 }
@@ -3883,7 +3886,12 @@ impl GameState {
             .filter(|effect| {
                 effect.player == player
                     && !effect.is_expired(current_turn)
-                    && effect.filter.matches(&spell_obj, &ctx, self)
+                    && self.temporary_spell_filter_matches(
+                        &effect.filter,
+                        spell_id,
+                        &spell_obj,
+                        &ctx,
+                    )
             })
             .map(|effect| effect.ability.clone())
             .collect()
@@ -3918,7 +3926,12 @@ impl GameState {
             .filter_map(|(idx, effect)| {
                 (effect.player == player
                     && !effect.is_expired(current_turn)
-                    && effect.filter.matches(&spell_obj, &ctx, self))
+                    && self.temporary_spell_filter_matches(
+                        &effect.filter,
+                        spell_id,
+                        &spell_obj,
+                        &ctx,
+                    ))
                 .then_some(idx)
             })
             .collect::<Vec<_>>();
@@ -3957,6 +3970,24 @@ impl GameState {
                 effect.remaining_uses -= 1;
             }
         }
+    }
+
+    /// Match a temporary next-spell filter against either the stack object or
+    /// its immutable cast-origin snapshot.  Origin clauses ("from your hand",
+    /// "from exile", and so on) are facts about the pre-cast card, not the
+    /// current stack object's zone, and must not be approximated by ownership.
+    fn temporary_spell_filter_matches(
+        &self,
+        filter: &crate::target::ObjectFilter,
+        spell_id: ObjectId,
+        spell: &crate::object::Object,
+        ctx: &crate::filter::FilterContext,
+    ) -> bool {
+        filter.matches(spell, ctx, self)
+            || (spell.zone == Zone::Stack
+                && self
+                    .cast_origin_snapshot(spell_id)
+                    .is_some_and(|snapshot| filter.matches_snapshot(snapshot, ctx, self)))
     }
 
     pub fn active_goaders_for(&self, creature: ObjectId) -> HashSet<PlayerId> {

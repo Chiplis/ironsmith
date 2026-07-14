@@ -1570,6 +1570,12 @@ fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
+        if let Some(restart) = parse_restart_game_sentence(sentences[sentence_idx].lexed())? {
+            effects.push(restart);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
         let sentence_text = crate::runtime_backend::token_word_refs(sentence).join(" ");
         let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
 
@@ -1982,6 +1988,7 @@ pub(crate) fn parse_effect_sentences_lexed(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         let mut effects = parse_effect_sentences_lexed_inner(tokens)?;
+        transport_optional_search_partition_followup(&mut effects);
         transport_coin_flip_outcomes_into_owner(&mut effects);
         preserve_linked_target_fanout_group(tokens, &mut effects);
         preserve_tapped_this_way_group_for_later_distribution(tokens, &mut effects);
@@ -2001,6 +2008,92 @@ pub(crate) fn parse_effect_sentences_lexed(
         }
         Ok(effects)
     })
+}
+
+fn contains_tagged_battlefield_partition(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::TagMatchingObjects { tag, .. },
+            ..
+        }) => tag.as_str().starts_with("partition_pool"),
+        EffectAst::Sequence { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. } => {
+            effects.iter().any(contains_tagged_battlefield_partition)
+        }
+        _ => false,
+    }
+}
+
+fn append_effects_to_optional_search(
+    effects: &mut [EffectAst],
+    mut followups: Vec<EffectAst>,
+) -> bool {
+    let [optional] = effects else {
+        return false;
+    };
+    let body = match optional {
+        EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. } => effects,
+        _ => return false,
+    };
+    body.append(&mut followups);
+    true
+}
+
+/// Keep an optional per-player search, a later partition of the searched
+/// collection, and the corresponding "player who searched" shuffle in the
+/// same iteration. Lowering them as sibling effects loses both the searcher's
+/// identity and the optional-choice scope, and can make the shuffle depend on
+/// whether a later move changed the game state rather than whether the player
+/// chose to search.
+fn transport_optional_search_partition_followup(effects: &mut Vec<EffectAst>) {
+    let mut index = 0;
+    while index + 2 < effects.len() {
+        let mut partition_effects = match effects.get(index + 1) {
+            Some(EffectAst::ForEachOpponent { effects })
+                if effects.iter().any(contains_tagged_battlefield_partition) =>
+            {
+                effects.clone()
+            }
+            _ => {
+                index += 1;
+                continue;
+            }
+        };
+        if let [EffectAst::Sequence { effects: nested }] = partition_effects.as_slice() {
+            partition_effects = nested.clone();
+        }
+        let shuffle_effects = match effects.get(index + 2) {
+            Some(EffectAst::ForEachPlayerDid {
+                effects,
+                predicate: None,
+                result_predicate: IfResultPredicate::SearchedLibrary,
+            }) => effects.clone(),
+            _ => {
+                index += 1;
+                continue;
+            }
+        };
+        let Some(EffectAst::ForEachOpponent {
+            effects: search_effects,
+        }) = effects.get_mut(index)
+        else {
+            index += 1;
+            continue;
+        };
+
+        let mut followups = partition_effects;
+        followups.extend(shuffle_effects);
+        if !append_effects_to_optional_search(search_effects, followups) {
+            index += 1;
+            continue;
+        }
+        effects.drain(index + 1..=index + 2);
+        index += 1;
+    }
 }
 
 fn is_direct_coin_flip(effect: &EffectAst) -> bool {
@@ -2176,7 +2269,24 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
             continue;
         }
 
+        let primary_alias = TagKey::from(format!("linked_fanout_primary_{first_idx}"));
         let group_alias = TagKey::from(format!("linked_fanout_group_{first_idx}"));
+
+        // Give the explicit target a real runtime tag before the linked
+        // fanout is lowered. A lowering-only snapshot cannot safely back
+        // player references or later filters because no runtime effect binds
+        // that alias. `TagAffected` both preserves the affected target set at
+        // resolution and makes the alias the current object reference for the
+        // fanout that follows.
+        let primary = effects.remove(first_idx);
+        effects.insert(
+            first_idx,
+            EffectAst::TagAffected {
+                effect: Box::new(primary),
+                tag: primary_alias.clone(),
+            },
+        );
+
         let mut related_filter = direct_all_object_filter(&effects[second_idx])
             .expect("linked fanout filter was just matched")
             .clone();
@@ -2185,6 +2295,11 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
             .tagged_constraints
             .retain(|constraint| constraint.relation != TaggedOpbjectRelation::IsNotTaggedObject);
         related_filter.other = false;
+        for constraint in &mut related_filter.tagged_constraints {
+            if constraint.tag.as_str() == IT_TAG {
+                constraint.tag = primary_alias.clone();
+            }
+        }
 
         // The later demonstrative refers to the union of the explicit target
         // and the linked fanout, not merely to objects satisfying the fanout
@@ -2195,7 +2310,7 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
         primary_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: primary_alias,
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         let mut group_filter = related_filter.clone();
@@ -2206,12 +2321,8 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
         group_filter.any_of.push(related_filter);
         let group_zones = group_filter.zone.into_iter().collect::<Vec<_>>();
 
-        // Keep the target and fanout's direct `it` references intact until
-        // reference resolution. The fanout deliberately preserves the prior
-        // target tag, so the group snapshot can resolve `it` to that same
-        // concrete runtime tag. A lowering-only SnapshotLastObjectTag alias is
-        // insufficient here: later player references would retain the alias
-        // even though no runtime effect ever binds it.
+        // The follow-up demonstrative is the union tag; the primary and
+        // fanout actions themselves keep their direct target relationship.
         for effect in &mut effects[second_idx + 1..] {
             if let Some(filter) = direct_all_object_filter_mut(effect) {
                 for constraint in &mut filter.tagged_constraints {
@@ -2408,6 +2519,101 @@ fn parse_effect_sentences_lexed_inner(
     apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
     Ok(effects)
+}
+
+fn parse_restart_game_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let word_tokens = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| !token.parser_word_pieces().is_empty())
+        .collect::<Vec<_>>();
+    if word_tokens.len() < 3
+        || word_tokens[0].1.parser_text() != "restart"
+        || word_tokens[1].1.parser_text() != "the"
+        || word_tokens[2].1.parser_text() != "game"
+    {
+        return Ok(None);
+    }
+
+    if word_tokens.len() == 3 {
+        return Ok(Some(EffectAst::RestartGame {
+            cards_left_in_exile: None,
+            source_surface: None,
+        }));
+    }
+
+    if word_tokens.len() < 9
+        || word_tokens[3].1.parser_text() != "leaving"
+        || word_tokens[4].1.parser_text() != "in"
+        || word_tokens[5].1.parser_text() != "exile"
+    {
+        return Err(CardTextError::ParseError(
+            "unsupported restart-game continuation".to_string(),
+        ));
+    }
+
+    let Some(exiled_word_idx) = word_tokens[6..]
+        .windows(2)
+        .position(|window| {
+            window[0].1.parser_text() == "exiled" && window[1].1.parser_text() == "with"
+        })
+        .map(|idx| idx + 6)
+    else {
+        return Err(CardTextError::ParseError(
+            "restart-game exile exemption is missing `exiled with`".to_string(),
+        ));
+    };
+
+    let object_start = word_tokens[5].0 + 1;
+    let object_end = word_tokens[exiled_word_idx].0;
+    let mut object_tokens = trim_edge_punctuation(&tokens[object_start..object_end]);
+    if object_tokens
+        .first()
+        .is_some_and(|token| token.parser_text() == "all")
+    {
+        object_tokens.remove(0);
+    }
+    if object_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "restart-game exile exemption is missing a card description".to_string(),
+        ));
+    }
+
+    let mut filter = super::parse_object_filter(&object_tokens, false)?;
+    filter.zone = Some(Zone::Exile);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    let source_start = word_tokens[exiled_word_idx + 1].0 + 1;
+    let source_tokens = trim_edge_punctuation(&tokens[source_start..]);
+    let source_words = source_tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>();
+    if source_words.is_empty() {
+        return Err(CardTextError::ParseError(
+            "restart-game exile exemption is missing its source".to_string(),
+        ));
+    }
+    let source_text = source_words.join(" ");
+    let source_surface = if source_words[0].eq_ignore_ascii_case("this")
+        || source_words[0].eq_ignore_ascii_case("it")
+    {
+        SourceReferenceSurface::ThisPermanentType(source_text)
+    } else if source_words.len() == 1 {
+        SourceReferenceSurface::ShortName(source_text)
+    } else {
+        SourceReferenceSurface::FullName(source_text)
+    };
+
+    Ok(Some(EffectAst::RestartGame {
+        cards_left_in_exile: Some(ChooseSpec::All(filter)),
+        source_surface: Some(source_surface),
+    }))
 }
 
 fn split_leading_amass_comma_then_sentences<'a>(
@@ -2616,6 +2822,59 @@ mod tests {
         parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
         parse_top_cards_view_sentence, parse_typed_effect_bundle_lexed,
     };
+
+    #[test]
+    fn restart_game_keeps_exiled_non_aura_permanent_cards_as_a_typed_exemption() {
+        let tokens = lex_line(
+            "Restart the game, leaving in exile all non-Aura permanent cards exiled with Karn.",
+            0,
+        )
+        .expect("lex restart instruction");
+        let effect = super::parse_restart_game_sentence(&tokens)
+            .expect("parse restart instruction")
+            .expect("restart shape matched");
+        let crate::cards::builders::EffectAst::RestartGame {
+            cards_left_in_exile: Some(crate::target::ChooseSpec::All(filter)),
+            source_surface: Some(crate::target::SourceReferenceSurface::ShortName(source_surface)),
+        } = effect
+        else {
+            panic!("expected typed restart-game exemption");
+        };
+
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Exile));
+        assert!(
+            filter
+                .card_types
+                .contains(&crate::types::CardType::Planeswalker)
+        );
+        assert!(
+            filter
+                .excluded_subtypes
+                .contains(&crate::types::Subtype::Aura)
+        );
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert_eq!(source_surface, "Karn");
+
+        let full_tokens = lex_line(
+            "Restart the game, leaving in exile all non-Aura permanent cards exiled with Karn. Then put those cards onto the battlefield under your control.",
+            0,
+        )
+        .expect("lex full restart instruction");
+        let effects = super::parse_effect_sentences_lexed(&full_tokens)
+            .expect("parse restart and its follow-up");
+        assert_eq!(
+            effects.len(),
+            2,
+            "the post-restart instruction must survive"
+        );
+        assert!(matches!(
+            effects.first(),
+            Some(crate::cards::builders::EffectAst::RestartGame { .. })
+        ));
+    }
 
     fn contains_still_land_animation(effects: &[crate::cards::builders::EffectAst]) -> bool {
         effects.iter().any(|effect| {
@@ -3831,6 +4090,12 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             ..
         }
         | EffectAst::ChooseObjectsBottomOfLibrary {
+            filter,
+            count,
+            count_value,
+            ..
+        }
+        | EffectAst::ChooseObjectsTopOfLibrary {
             filter,
             count,
             count_value,

@@ -4209,6 +4209,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     let demonstrative_reference = demonstrative_reference_kind(predicate_tokens);
     let is_it = demonstrative_reference == Some(DemonstrativeReferenceKind::It);
 
+    if let Some(predicate) = parse_triggering_object_source_stat_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_value_reference_comparison_predicate(predicate_tokens) {
         return Ok(predicate);
     }

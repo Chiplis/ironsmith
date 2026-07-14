@@ -8,6 +8,34 @@ use super::shard_06::*;
 use super::*;
 
 #[test]
+fn ajani_goldmane_keeps_separate_token_ability_presentation_before_runtime_conversion() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Ajani Goldmane")
+        .card_types(vec![CardType::Planeswalker])
+        .parse_text(
+            "+1: You gain 2 life.\n−6: Create a white Avatar creature token. It has \"This token's power and toughness are each equal to your life total.\"",
+        )
+        .expect("Ajani Goldmane should parse");
+    let create = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| &segment.default_effects)
+                .find_map(|effect| effect.as_create_token()),
+            _ => None,
+        })
+        .expect("Ajani's ultimate must create its Avatar token");
+
+    assert_eq!(
+        create.ability_presentation,
+        Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence)
+    );
+}
+
+#[test]
 pub(super) fn rewrite_lexed_conditional_parser_routes_commaless_clause_through_structure_splitter()
 {
     let text = "If at least three blue mana was spent to cast this spell create a Food token.";
@@ -425,6 +453,66 @@ pub(super) fn registry_sentence_inputs(
         .into_iter()
         .map(super::super::effect_sentences::SentenceInput::from_lexed)
         .collect()
+}
+
+#[test]
+pub(super) fn rewrite_sequence_registry_keeps_initial_exile_collection_across_player_actions() {
+    let sentences = registry_sentence_inputs(
+        "Exile all creatures. Each player may put any number of creature cards from their hand onto the battlefield. Then put all cards exiled this way into their owners' hands. Exile this spell.",
+    );
+
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("registry should match exiled-collection return bundle");
+    assert_eq!(
+        matched.name,
+        "exile-each-player-put-return-exiled-exile-source"
+    );
+    assert_eq!(matched.consumed_sentences, 4);
+
+    let [
+        crate::cards::builders::EffectAst::TagAffected { tag, .. },
+        _,
+        return_exiled,
+        _,
+    ] = matched.effects.as_slice()
+    else {
+        panic!(
+            "expected tagged exile collection and return: {:#?}",
+            matched.effects
+        );
+    };
+    assert!(matches!(
+        return_exiled,
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::MoveToZone {
+                    target: crate::cards::builders::TargetAst::Tagged(return_tag, _),
+                    zone: crate::zone::Zone::Hand,
+                    ..
+                },
+                ..
+            }
+        ) if return_tag == tag
+    ));
+}
+
+#[test]
+pub(super) fn rewrite_sequence_registry_matches_reciprocal_control_after_initial_untap() {
+    let sentences = registry_sentence_inputs(
+        "Untap all creatures you control and all creatures target opponent controls. You and that opponent each gain control of all creatures the other controls until end of turn. Those creatures gain haste until end of turn.",
+    );
+
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("registry should match initial-untap reciprocal control bundle");
+    assert_eq!(matched.name, "reciprocal-creature-control");
+    assert_eq!(matched.consumed_sentences, 3);
+    let debug = format!("{:#?}", matched.effects);
+    assert!(debug.contains("TagMatchingObjects"), "{debug}");
+    assert!(debug.contains("GainControl"), "{debug}");
 }
 
 #[test]

@@ -51,6 +51,9 @@ fn convert_zone_change_trigger(
     }
     out = out.count(convert_count_mode(trigger.count));
     out = out.cause_filter(trigger.cause_filter);
+    if let Some(origin_condition) = trigger.origin_condition {
+        out = out.origin_condition(origin_condition);
+    }
     if let Some(during_turn) = trigger.during_turn {
         out = out.during_turn(during_turn);
     }

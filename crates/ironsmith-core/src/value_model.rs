@@ -271,6 +271,8 @@ pub enum Value {
     CommanderCastCount(PlayerFilter),
     ThisAbilityResolvedThisTurnCount,
     SourceRegeneratedThisTurnCount,
+    /// Number of times the source permanent has mutated since it entered the battlefield.
+    SourceMutationCount,
     DamageDealtThisTurnByTaggedSpellCast(TagKey),
     CardTypesInGraveyard(PlayerFilter),
     Devotion {

@@ -283,6 +283,21 @@ fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
 }
 
 fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceFrame) {
+    let preserves_existing_non_you = infer_player_filter_from_object_filter(filter)
+        .as_ref()
+        .is_some_and(is_you_player_filter)
+        && frame
+            .last_player_filter
+            .as_ref()
+            .is_some_and(|existing| !is_you_player_filter(existing));
+    if preserves_existing_non_you {
+        // A coordinated instruction about an object you own or control does
+        // not replace a previously introduced player antecedent. For example,
+        // after "Choose an opponent," the first half of "untap all nonland
+        // permanents you control and ... that player controls" must leave the
+        // chosen opponent available to the second half.
+        return;
+    }
     if let Some(tag) = frame.last_object_tag.as_deref() {
         if filter.owner.is_some() {
             frame.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag)));
@@ -460,8 +475,18 @@ fn advance_reference_frame_for_effect(
     frame: &mut ReferenceFrame,
 ) -> Result<(), CardTextError> {
     match effect {
-        EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. } => {
+        EffectAst::Sequence { effects }
+        | EffectAst::SourceSentence { effects }
+        | EffectAst::Coordinated { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
+        }
+        EffectAst::RestartGame {
+            cards_left_in_exile,
+            ..
+        } => {
+            if frame.auto_tag_object_targets && cards_left_in_exile.is_some() {
+                frame.last_object_tag = Some(next_reference_tag(id_gen, "restarted"));
+            }
         }
         EffectAst::SubjectVerb(subject_verb) => {
             track_effect_player(subject_verb.subject.player, frame, true, true)?;
@@ -579,6 +604,13 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::Transform { target } => {
                     maybe_tag_target(target, frame, id_gen, "transformed")?;
+                }
+                SubjectVerbActionAst::TurnFaceUp { target } => {
+                    // Turning an object face up does not change its identity.
+                    // Keep an explicit tagged antecedent (notably a card
+                    // exiled with the source) available to an immediately
+                    // following "if it's ..." clause.
+                    maybe_tag_target(target, frame, id_gen, "turned_face_up")?;
                 }
                 SubjectVerbActionAst::Convert { target } => {
                     maybe_tag_target(target, frame, id_gen, "converted")?;
@@ -1154,6 +1186,12 @@ fn advance_reference_frame_for_effect(
             tag,
             player,
             ..
+        }
+        | EffectAst::ChooseObjectsTopOfLibrary {
+            filter,
+            tag,
+            player,
+            ..
         } => {
             let references_revealed_hand = filter.zone == Some(crate::zone::Zone::Hand)
                 && filter.owner.is_none()
@@ -1420,8 +1458,13 @@ fn advance_reference_frame_for_effect(
             advance_reference_frame_for_effect(effect, id_gen, frame)?;
             advance_reference_frames(otherwise, id_gen, frame)?;
         }
-        EffectAst::TagAffected { effect, .. } => {
+        EffectAst::TagAffected { effect, tag } => {
             advance_reference_frame_for_effect(effect, id_gen, frame)?;
+            // The explicit tag is a real runtime alias for exactly the set
+            // affected by the nested effect. Subsequent demonstratives must
+            // bind to that stable alias rather than to an implementation tag
+            // introduced while lowering the nested action.
+            frame.last_object_tag = Some(tag.as_str().to_string());
         }
         EffectAst::RepeatThisProcess
         | EffectAst::SolveCase
@@ -1477,11 +1520,57 @@ fn annotate_effect_sequence_with_env_internal(
 
     for (idx, effect) in effects.iter().enumerate() {
         let in_env = current_env.clone();
-        let effect = resolve_effect_references_in_effect(
+        // In a trailing condition such as "put the exiled card ... if it's a
+        // creature card", `it` names the explicit action subject, not the
+        // ambient triggering object. Preserve that typed source-exiled
+        // antecedent through both condition resolution and the following
+        // fallback sentence ("If you don't put it ...").
+        let mut source_exiled_condition_subject = matches!(
+            effect,
+            EffectAst::Conditional {
+                predicate: PredicateAst::ItMatches(_) | PredicateAst::ItMatchedLastKnown(_),
+                if_true,
+                ..
+            } if effects_reference_tag_in_object_position(
+                if_true,
+                crate::tag::SOURCE_EXILED_TAG,
+            )
+        );
+        let mut resolution_env = in_env.clone();
+        if source_exiled_condition_subject {
+            resolution_env.last_object_tag =
+                RefState::Known(crate::TagKey::from(crate::tag::SOURCE_EXILED_TAG));
+        }
+        let mut effect = resolve_effect_references_in_effect(
             effect.clone(),
             id_gen,
-            effect_reference_resolution_state(&in_env),
+            effect_reference_resolution_state(&resolution_env),
         )?;
+        // Some surface parsers initially spell "the exiled card" as the
+        // ordinary `it` target and only resolve it to the source-linked exile
+        // tag while resolving the action. If the trailing `it` predicate was
+        // resolved first, it may have inherited the ambient triggering object
+        // instead. Rebind only that object predicate to the action's now-
+        // explicit source-exiled subject.
+        if let EffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(tag, _),
+            if_true,
+            ..
+        } = &mut effect
+            && tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+            && effects_reference_tag_in_object_position(if_true, crate::tag::SOURCE_EXILED_TAG)
+        {
+            *tag = crate::TagKey::from(crate::tag::SOURCE_EXILED_TAG);
+            source_exiled_condition_subject = true;
+        }
+        if source_exiled_condition_subject {
+            // Object-pronoun lowering consults the annotation's input
+            // environment, not the effect-result-only resolution state above.
+            // Give this conditional its explicit action subject as that local
+            // input so the predicate does not inherit an ambient trigger.
+            resolution_env.last_object_tag =
+                RefState::Known(crate::TagKey::from(crate::tag::SOURCE_EXILED_TAG));
+        }
         let remaining = if idx + 1 < effects.len() {
             &effects[idx + 1..]
         } else {
@@ -1511,12 +1600,16 @@ fn annotate_effect_sequence_with_env_internal(
 
         let mut out_env = advance_reference_env_for_effect(
             &effect,
-            &in_env,
+            &resolution_env,
             config,
             id_gen,
             auto_tag_object_targets_for_env,
             suppress_force_auto_tag_object_targets,
         )?;
+        if source_exiled_condition_subject {
+            out_env.last_object_tag =
+                RefState::Known(crate::TagKey::from(crate::tag::SOURCE_EXILED_TAG));
+        }
         let preserves_sacrifice_cost_reference = in_env
             .known_last_object_tag()
             .is_some_and(|tag| is_sacrificed_object_reference_tag(tag.as_str()))
@@ -1558,7 +1651,7 @@ fn annotate_effect_sequence_with_env_internal(
         current_env = out_env.clone();
         annotated.push(AnnotatedEffect {
             effect,
-            in_env,
+            in_env: resolution_env,
             out_env,
             assigned_effect_id,
             auto_tag_object_targets: auto_tag_object_targets_for_env,
@@ -1796,7 +1889,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 || otherwise.iter().any(effect_can_supply_prior_effect_memory)
         }
         EffectAst::TagAffected { effect, .. } => effect_can_supply_prior_effect_memory(effect),
-        EffectAst::MoveTaggedGroupToZone { .. } => true,
+        EffectAst::MoveTaggedGroupToZone { .. } | EffectAst::RestartGame { .. } => true,
         _ => false,
     }
 }
@@ -1887,6 +1980,7 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
         }
         EffectAst::ChooseObjects { count_value, .. }
         | EffectAst::ChooseObjectsBottomOfLibrary { count_value, .. }
+        | EffectAst::ChooseObjectsTopOfLibrary { count_value, .. }
         | EffectAst::ChooseObjectsAcrossZones { count_value, .. } => {
             if let Some(count_value) = count_value {
                 visit(count_value);
@@ -2012,6 +2106,13 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         }
         | SubjectVerbActionAst::PumpAll {
             power, toughness, ..
+        } => {
+            visit(power);
+            visit(toughness);
+        }
+        SubjectVerbActionAst::BecomeCopy {
+            set_base_power_toughness: Some((power, toughness)),
+            ..
         } => {
             visit(power);
             visit(toughness);
@@ -2699,6 +2800,7 @@ fn resolve_effect_result_values_in_fields(
         },
         EffectAst::ChooseObjects { count_value, .. }
         | EffectAst::ChooseObjectsBottomOfLibrary { count_value, .. }
+        | EffectAst::ChooseObjectsTopOfLibrary { count_value, .. }
         | EffectAst::ChooseObjectsAcrossZones { count_value, .. } => {
             if let Some(count_value) = count_value.as_mut() {
                 resolve_effect_result_value(count_value, state)?;
@@ -4540,6 +4642,7 @@ mod tests {
             ChoiceCount::up_to_dynamic_x(),
             Some(Value::EventValue(EventValueSpec::Amount)),
             None,
+            crate::effect::SearchResultReferenceSurface::ThatCard,
             false,
         )
     }

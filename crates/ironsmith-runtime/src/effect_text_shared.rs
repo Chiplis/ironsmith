@@ -48,6 +48,7 @@ pub fn is_implicit_reference_tag(tag: &str) -> bool {
             | "triggering_source"
             | "damaged"
             | "__it__"
+            | crate::tag::SOURCE_EXILED_TAG
             | "other_attacker"
             | "blocking"
             | "searched_face_down"

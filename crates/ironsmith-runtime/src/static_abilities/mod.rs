@@ -1110,6 +1110,7 @@ pub struct EnterAsCopyAsEntersSpec {
     pub affected_filter: Option<crate::target::ObjectFilter>,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    pub copy_duration: Option<crate::effect::Until>,
     pub linked_exile_pair: Option<EnterAsCopyLinkedExilePairSpec>,
     pub copy_source_self: bool,
     pub copy_source_enchanted: bool,

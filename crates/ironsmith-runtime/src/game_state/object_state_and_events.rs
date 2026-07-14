@@ -396,6 +396,21 @@ impl GameState {
         }
     }
 
+    /// Return how many times a permanent has mutated since it entered the battlefield.
+    pub fn mutation_count(&self, id: ObjectId) -> u32 {
+        self.battlefield_flags
+            .mutation_count
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Record that a permanent mutated.
+    pub fn mark_mutated(&mut self, id: ObjectId) {
+        let next = self.mutation_count(id).saturating_add(1);
+        self.battlefield_flags_mut().mutation_count.insert(id, next);
+    }
+
     /// Transform a transform-like permanent in place.
     pub fn transform_permanent(&mut self, id: ObjectId) -> bool {
         self.refresh_continuous_state();
@@ -729,6 +744,7 @@ impl GameState {
             flags.manifested.remove(&id);
             flags.fully_unlocked_rooms.remove(&id);
             flags.transform_count.remove(&id);
+            flags.mutation_count.remove(&id);
             flags.phased_out.remove(&id);
         }
         self.exile_tracking_mut().imprinted_cards.remove(&id);
@@ -1401,6 +1417,9 @@ impl GameState {
     }
 
     pub(crate) fn record_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
+        if let Some(mutated) = event.downcast::<crate::events::other::MutatedEvent>() {
+            self.mark_mutated(mutated.permanent);
+        }
         if let Some(spell_cast) = event.downcast::<crate::events::spells::SpellCastEvent>()
             && let Some(player) = self.player_mut(spell_cast.caster)
         {

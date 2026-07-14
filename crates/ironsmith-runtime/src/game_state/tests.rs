@@ -522,6 +522,23 @@ fn cloned_state_cows_extended_battlefield_flags() {
 }
 
 #[test]
+fn auspicious_starrix_mutation_count_tracks_recorded_mutate_events() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = crate::ids::PlayerId::from_index(0);
+    let starrix = ObjectId::from_raw(10_008);
+
+    for _ in 0..2 {
+        game.record_turn_history_event(&crate::triggers::TriggerEvent::new(
+            crate::events::other::MutatedEvent::new(starrix, alice),
+        ));
+    }
+    assert_eq!(game.mutation_count(starrix), 2);
+
+    game.clear_battlefield_state(starrix);
+    assert_eq!(game.mutation_count(starrix), 0);
+}
+
+#[test]
 fn cloned_state_cows_cast_permission_flags() {
     let mut game = GameState::new(vec!["Alice".to_string()], 20);
     let madness = ObjectId::from_raw(10_008);

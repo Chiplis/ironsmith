@@ -148,10 +148,20 @@ impl TriggerMatcher for DiesDamagedByThisTurnTrigger {
             DamagerSource::EquippedCreature => "equipped creature",
             DamagerSource::EnchantedCreature => "enchanted creature",
         };
+        let victim = self.victim.description();
+        let victim = if victim.starts_with("a ")
+            || victim.starts_with("an ")
+            || victim.starts_with("the ")
+            || victim.starts_with("this ")
+            || victim.starts_with("that ")
+        {
+            victim
+        } else {
+            format!("a {victim}")
+        };
         format!(
             "Whenever {} dealt damage by {} this turn dies",
-            self.victim.description(),
-            source_text
+            victim, source_text
         )
     }
 }

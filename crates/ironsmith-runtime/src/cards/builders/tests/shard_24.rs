@@ -83,3 +83,93 @@ pub(super) fn chancellor_annex_uses_game_scoped_first_spell_trigger() {
     assert_eq!(trigger.caster, PlayerFilter::Opponent);
     assert!(!schedule.one_shot, "Annex must watch every opponent");
 }
+
+#[test]
+pub(super) fn eumidian_wastewaker_preserves_both_players_choice_and_shared_graveyard_count() {
+    let definition = parse_oracle_card_definition("Eumidian Wastewaker");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Eumidian Wastewaker attack trigger");
+    let effects = triggered.effects.flattened_default_effects();
+    let [tagged_choices, draw] = effects else {
+        panic!("expected joint choice followed by a draw, got {effects:#?}");
+    };
+
+    let (choices_tag, choices_effect) =
+        if let Some(tagged) = tagged_choices.downcast_ref::<crate::effects::TaggedEffect>() {
+            (&tagged.tag, tagged.effect.as_ref())
+        } else if let Some(tagged) = tagged_choices.downcast_ref::<crate::effects::TagAllEffect>() {
+            (&tagged.tag, tagged.effect.as_ref())
+        } else {
+            panic!("joint choices should share an affected-object tag: {tagged_choices:#?}");
+        };
+    assert_eq!(choices_tag.as_str(), "joint_discard_or_sacrifice");
+    let choices = choices_effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("the two printed player choices should remain coordinated");
+    assert_eq!(choices.effects.len(), 2, "{choices:#?}");
+    let choice_players = choices
+        .effects
+        .iter()
+        .map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::UnlessActionEffect>()
+                .expect("each player should choose discard or sacrifice")
+                .player
+                .clone()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        choice_players,
+        vec![PlayerFilter::You, PlayerFilter::Defending]
+    );
+
+    let draw = draw
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .expect("land cards moved this way should determine the draw count");
+    let crate::effect::Value::Count(filter) = draw.count.unhinted() else {
+        panic!("expected a typed tagged-land count, got {draw:#?}");
+    };
+    assert_eq!(filter.zone, Some(Zone::Graveyard));
+    assert_eq!(filter.card_types, [crate::types::CardType::Land]);
+    assert!(filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == "joint_discard_or_sacrifice"
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }));
+
+    let rendered = canonical_compiled_lines(&definition).join("\n");
+    assert!(
+        rendered.contains(
+            "Whenever this creature attacks, you and defending player each discard a card or sacrifice a permanent. You draw a card for each land card put into a graveyard this way."
+        ),
+        "{rendered}"
+    );
+}
+
+#[test]
+pub(super) fn creation_of_avacyn_keeps_source_exiled_card_through_all_chapters() {
+    let definition = parse_oracle_card_definition("The Creation of Avacyn");
+    let debug = format!("{definition:#?}");
+
+    assert_eq!(definition.abilities.len(), 3, "{debug}");
+    assert!(debug.contains("searched_face_down"), "{debug}");
+    assert!(debug.contains("TurnFaceUpEffect"), "{debug}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+    assert!(debug.contains("zone: Battlefield"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert!(debug.contains("Declined"), "{debug}");
+    assert!(
+        !debug.contains("TagTriggeringObjectEffect"),
+        "the saga chapter trigger must not replace the exiled-card antecedent: {debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&definition).join("\n");
+    assert!(rendered.contains("the exiled card"), "{rendered}");
+    assert!(rendered.contains("its owner's hand"), "{rendered}");
+}

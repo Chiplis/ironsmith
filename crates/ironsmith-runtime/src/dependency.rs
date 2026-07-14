@@ -1555,6 +1555,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::CommanderCastCount(_)
         | Value::ThisAbilityResolvedThisTurnCount
         | Value::SourceRegeneratedThisTurnCount
+        | Value::SourceMutationCount
         | Value::SpellsCastThisTurnMatching { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
@@ -2249,9 +2250,9 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
 
         let starts_group = effect.group.is_some_and(|_| {
             objects.iter().any(|(id, object)| {
-                current_baseline.get(id).is_some_and(|chars| {
-                    effect_applies_with_chars(effect, object, chars, game)
-                })
+                current_baseline
+                    .get(id)
+                    .is_some_and(|chars| effect_applies_with_chars(effect, object, chars, game))
             })
         });
         current_baseline = apply_effect_to_baseline(effect, &current_baseline, objects, game);
@@ -3026,11 +3027,8 @@ mod tests {
         )]);
         let game = GameState::new(vec!["Alice".to_string()], 20);
 
-        let mut artifact_to_creature = create_test_effect(
-            1,
-            1,
-            Modification::AddCardTypes(vec![CardType::Creature]),
-        );
+        let mut artifact_to_creature =
+            create_test_effect(1, 1, Modification::AddCardTypes(vec![CardType::Creature]));
         artifact_to_creature.applies_to = EffectTarget::Filter(ObjectFilter::artifact());
         let mut land_to_enchantment = create_test_effect(
             2,

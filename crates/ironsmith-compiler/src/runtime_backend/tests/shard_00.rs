@@ -2610,6 +2610,44 @@ pub(super) fn rewrite_triggered_lowering_uses_parse_tokens_when_text_fields_are_
 }
 
 #[test]
+pub(super) fn rewrite_triggered_keeps_linked_exile_permission_tax_in_resolution()
+-> Result<(), CardTextError> {
+    let full_text = "When this creature enters, look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it. A spell cast this way costs {2} more to cast.";
+    let trigger_text = "When this creature enters";
+    let effect_text = "look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it. A spell cast this way costs {2} more to cast.";
+    let full_tokens = lex_line(full_text, 0).expect("linked exile-tax trigger should lex");
+    let trigger_tokens = lex_line(trigger_text, 0).expect("enter trigger should lex");
+    let effect_tokens = lex_line(effect_text, 0).expect("linked exile-tax effects should lex");
+
+    let parsed = super::super::parse_triggered_line(
+        rewrite_line_info(full_text),
+        full_text,
+        &full_tokens,
+        &trigger_tokens,
+        &effect_tokens,
+        None,
+        None,
+        None,
+        None,
+    )?;
+
+    let crate::cards::builders::LineAst::Triggered { effects, .. } = parsed else {
+        panic!("linked exile-tax program must remain one triggered ability, got {parsed:#?}");
+    };
+    let debug = format!("{effects:#?}");
+    assert_eq!(effects.len(), 4, "{debug}");
+    assert!(debug.contains("LookAtHand"), "{debug}");
+    assert!(
+        debug.contains("GrantPlayTaggedForAsLongAsExiled"),
+        "{debug}"
+    );
+    assert!(debug.contains("GrantToTarget"), "{debug}");
+    assert!(debug.contains("CostIncreaseManaCost"), "{debug}");
+
+    Ok(())
+}
+
+#[test]
 pub(super) fn rewrite_combat_death_blocked_damage_special_case_uses_parse_tokens()
 -> Result<(), CardTextError> {
     let full_text = "when this creature dies during combat, it deals 2 damage to each creature it blocked this combat.";

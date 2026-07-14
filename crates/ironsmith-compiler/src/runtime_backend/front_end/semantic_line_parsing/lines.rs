@@ -2,6 +2,10 @@ use super::*;
 use crate::ZoneReplacementDurationAst;
 use crate::runtime_backend::GrantedAbilityAst;
 use crate::runtime_backend::ast::{ChooseOneModeAst, SubjectVerbEffectAst, SubjectVerbSubjectAst};
+use crate::runtime_backend::compile_support::{
+    effect_references_event_derived_amount, effects_reference_it_tag,
+    effects_reference_its_controller,
+};
 use crate::runtime_backend::grammar::abilities::{
     is_minimum_spell_total_mana_three_line_lexed, is_players_cant_pay_life_or_sacrifice_line_lexed,
 };
@@ -872,6 +876,17 @@ fn parse_triggered_ability_line_impl(
     let effect_text_facts =
         semantic_grammar::parse_triggered_text_facts_tokens(effect_parse_tokens);
 
+    if let Some(chunk) = parse_linked_attack_group_combat_triggered_line_lexed(full_parse_tokens)? {
+        return apply_chosen_option_to_triggered_chunk(
+            apply_explicit_intervening_if_to_triggered_chunk(chunk, line.intervening_if.clone())?,
+            trigger_surface_text,
+            trigger_facts,
+            inferred_max_triggers_per_turn,
+            chosen_option,
+            presentation_label,
+        );
+    }
+
     if let Some(chunk) = parse_special_triggered_line(
         line,
         full_parse_tokens,
@@ -1027,11 +1042,22 @@ fn parse_triggered_ability_line_impl(
         sentences_have_temporary_static_followup_after_first(&effect_sentences);
     let effect_has_bound_characteristic_followup_after_first =
         sentences_have_bound_characteristic_followup_after_first(&effect_sentences);
+    let effect_is_linked_typed_bundle =
+        crate::runtime_backend::effect_sentences::parse_typed_effect_bundle_lexed(
+            effect_parse_tokens,
+        )
+        .is_some();
     if effect_sentences.len() > 1
         && !effect_has_token_creation_followup_after_first
         && !effect_has_temporary_static_followup_after_first
         && !effect_has_bound_characteristic_followup_after_first
         && !selected_effect_has_counter_linked_land_subtype_followup_after_first
+        // A sentence that looks static in isolation may modify the exact
+        // exiled card established by the preceding resolution instructions.
+        // Keep any complete typed bundle together so its linked target and
+        // duration survive into the triggered ability instead of becoming a
+        // top-level battlefield static ability.
+        && !effect_is_linked_typed_bundle
         && let Some(first_static_idx) =
             effect_sentences
                 .iter()
@@ -1094,8 +1120,9 @@ fn parse_triggered_ability_line_impl(
         && !effect_text_facts.starts_with_if
     {
         let direct_trigger = parse_trigger_clause_lexed(trigger_parse_tokens);
-        let direct_effects = parse_effect_sentences_lexed(effect_parse_tokens)
-            .map(|effects| wrap_future_draw_replacement_effects(full_parse_tokens, effects));
+        let direct_effects =
+            parse_trigger_effect_sentences_preserving_boundaries(effect_parse_tokens)
+                .map(|effects| wrap_future_draw_replacement_effects(full_parse_tokens, effects));
         if let (Ok(trigger), Ok(effects)) = (direct_trigger, direct_effects)
             && !effects.is_empty()
         {
@@ -1129,6 +1156,117 @@ fn parse_triggered_ability_line_impl(
         chosen_option,
         presentation_label,
     )
+}
+
+/// Preserve authored sentence boundaries only when every sentence proves to
+/// be one independent direct action. Semantic AST equality alone is not
+/// enough: whole-body lowering also carries result tags, player antecedents,
+/// and structural bundles across sentence boundaries.
+fn parse_trigger_effect_sentences_preserving_boundaries(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let parsed_together = parse_effect_sentences_lexed(tokens)?;
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() < 2 {
+        return Ok(parsed_together);
+    }
+
+    let mut sentence_groups = Vec::with_capacity(sentences.len());
+    let mut parsed_individually = Vec::new();
+    for (index, sentence) in sentences.into_iter().enumerate() {
+        let Ok(effects) = parse_effect_sentences_lexed(sentence) else {
+            return Ok(parsed_together);
+        };
+        if !effects_are_one_independent_direct_sentence(&effects)
+            || (index > 0
+                && (effects_need_prior_sentence_context(&effects)
+                    || sentence_has_anaphoric_reference(sentence)))
+        {
+            return Ok(parsed_together);
+        }
+        parsed_individually.extend(effects.iter().cloned());
+        sentence_groups.push(EffectAst::SourceSentence { effects });
+    }
+
+    if parsed_individually == parsed_together {
+        Ok(sentence_groups)
+    } else {
+        Ok(parsed_together)
+    }
+}
+
+fn effects_are_one_independent_direct_sentence(effects: &[EffectAst]) -> bool {
+    let [effect] = effects else {
+        return false;
+    };
+    match effect {
+        EffectAst::SubjectVerb(_) => true,
+        EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. } => {
+            matches!(effects.as_slice(), [EffectAst::SubjectVerb(_)])
+        }
+        _ => false,
+    }
+}
+
+fn effects_need_prior_sentence_context(effects: &[EffectAst]) -> bool {
+    effects_reference_it_tag(effects)
+        || effects_reference_its_controller(effects)
+        || effects.iter().any(effect_references_event_derived_amount)
+}
+
+fn sentence_has_anaphoric_reference(tokens: &[OwnedLexToken]) -> bool {
+    token_word_refs(tokens).iter().any(|word| {
+        matches!(
+            *word,
+            "it" | "its"
+                | "that"
+                | "those"
+                | "them"
+                | "they"
+                | "their"
+                | "rest"
+                | "such"
+                | "former"
+                | "latter"
+                | "x"
+        )
+    })
+}
+
+#[test]
+fn source_sentence_boundaries_require_independent_direct_actions() {
+    let independent = lex_line(
+        "Put a +1/+1 counter on this creature. Each opponent loses 1 life.",
+        0,
+    )
+    .expect("Aatchik-style effects should lex");
+    let independent = parse_trigger_effect_sentences_preserving_boundaries(&independent)
+        .expect("Aatchik-style effects should parse");
+    assert_eq!(independent.len(), 2, "{independent:#?}");
+    assert!(
+        independent
+            .iter()
+            .all(|effect| matches!(effect, EffectAst::SourceSentence { .. })),
+        "independent direct sentences should retain their authored boundary: {independent:#?}"
+    );
+
+    for linked in [
+        "Reveal the top card of your library and put that card into your hand. You lose life equal to its mana value.",
+        "It becomes an Aura with enchant creature. Manifest the top card of your library and attach this enchantment to it.",
+        "Each opponent may search their library for up to three basic land cards. They each put one of those cards onto the battlefield tapped under your control and the rest onto the battlefield tapped under their control. Then each player who searched their library this way shuffles.",
+    ] {
+        let tokens = lex_line(linked, 0).expect("linked trigger effects should lex");
+        let effects = parse_trigger_effect_sentences_preserving_boundaries(&tokens)
+            .expect("linked trigger effects should keep the whole-body parse");
+        assert!(
+            effects
+                .iter()
+                .all(|effect| !matches!(effect, EffectAst::SourceSentence { .. })),
+            "cross-sentence result/reference flow must stay in one lowering program: {linked}: {effects:#?}"
+        );
+    }
 }
 
 fn lower_spell_or_activated_ability_x_cost_trigger(
@@ -2452,6 +2590,7 @@ fn try_lower_partner_with_tokens(
                     ChoiceCount::up_to(1),
                     None,
                     None,
+                    crate::effect::SearchResultReferenceSurface::ThatCard,
                     false,
                 )],
             }],

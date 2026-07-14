@@ -104,6 +104,7 @@ pub(crate) fn parse_exile_top_play_then_event_followup(
                 trigger,
                 effects: followup_effects,
                 one_shot: true,
+                until_end_of_combat: false,
                 attach_to_previous_ability: false,
             });
         }

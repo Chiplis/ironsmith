@@ -2718,6 +2718,7 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
         "basic landcycling ",
         "madness ",
         "morph ",
+        "mutate ",
         "suspend ",
         "prototype ",
         "bestow ",

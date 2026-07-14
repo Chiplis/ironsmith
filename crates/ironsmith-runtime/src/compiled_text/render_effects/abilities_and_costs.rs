@@ -110,6 +110,89 @@ pub(super) fn describe_annihilator_keyword(
     Some(format!("Annihilator {amount}"))
 }
 
+/// Recognize the canonical runtime expansion of myriad. Keeping this typed
+/// means copied or granted abilities can render the keyword without relying on
+/// the incidental wording produced by the nested-effect renderer.
+pub(super) fn describe_myriad_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered.presentation_label.is_some()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::combat::ThisAttacksTrigger>()
+            .is_none()
+    {
+        return None;
+    }
+
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [for_players_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if for_players.filter
+        != PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending)
+        || for_players.starting_with_controller
+        || for_players.stop_after_first_happened
+    {
+        return None;
+    }
+
+    let [may_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider.is_some() || !matches!(&may.fallback, crate::decision::FallbackStrategy::Decline)
+    {
+        return None;
+    }
+    let [create_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let create = create_effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    if !matches!(create.target, ChooseSpec::Source)
+        || !matches!(create.count.unhinted(), Value::Fixed(1))
+        || create.controller != PlayerFilter::You
+        || !create.enters_tapped
+        || create.has_haste
+        || !create.enters_attacking
+        || !matches!(
+            &create.attack_target_mode,
+            Some(
+                crate::effects::CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
+                    PlayerFilter::IteratedPlayer
+                )
+            )
+        )
+        || !create.exile_at_end_of_combat
+        || create.sacrifice_at_next_end_step
+        || create.sacrifice_at_next_end_step_ability_text.is_some()
+        || create.exile_at_next_end_step
+        || create.next_end_step_player != PlayerFilter::Any
+        || create.pt_adjustment.is_some()
+        || create.clear_mana_cost
+        || !create.added_card_types.is_empty()
+        || !create.added_subtypes.is_empty()
+        || !create.removed_supertypes.is_empty()
+        || create.set_base_power_toughness.is_some()
+        || create.set_colors.is_some()
+        || create.set_card_types.is_some()
+        || create.set_subtypes.is_some()
+        || !create.granted_static_abilities.is_empty()
+    {
+        return None;
+    }
+
+    Some("Myriad".to_string())
+}
+
 pub(super) fn describe_champion_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {

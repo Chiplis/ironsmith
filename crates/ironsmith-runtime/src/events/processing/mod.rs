@@ -328,6 +328,7 @@ fn push_enter_as_copy_effects_for_spec(
                         ReplacementAction::EnterAsCopy {
                             source: copy_candidate,
                             enters_tapped: spec.enters_tapped_if_chosen,
+                            copy_duration: spec.copy_duration.clone(),
                             linked_exile_objects: vec![copy_candidate, counter_candidate],
                             additional_counters: vec![(linked_pair.counter_type, counter_count)],
                             name_override: spec.name_override.clone(),
@@ -366,6 +367,7 @@ fn push_enter_as_copy_effects_for_spec(
                 ReplacementAction::EnterAsCopy {
                     source: candidate,
                     enters_tapped: spec.enters_tapped_if_chosen,
+                    copy_duration: spec.copy_duration.clone(),
                     linked_exile_objects: Vec::new(),
                     additional_counters: Vec::new(),
                     name_override: spec.name_override.clone(),
@@ -2341,6 +2343,8 @@ pub struct EtbEventResult {
     pub new_destination: Option<Zone>,
     /// If set, the object enters as a copy of this source object.
     pub enters_as_copy_of: Option<crate::ids::ObjectId>,
+    /// Duration of a temporary as-enters copy effect, if any.
+    pub copy_duration: Option<crate::effect::Until>,
     pub copy_name_override: Option<String>,
     /// Additional card types granted by an ETB copy choice.
     pub added_card_types: Vec<crate::types::CardType>,
@@ -3159,6 +3163,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             enters_with_counters,
             linked_exile_with_entering: Vec::new(),
             enters_as_copy_of: None,
+            copy_duration: None,
             copy_name_override: None,
             added_card_types: Vec::new(),
             removed_supertypes: Vec::new(),
@@ -3237,6 +3242,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         prevented: false,
                         new_destination: None,
                         enters_as_copy_of: etb.enters_as_copy_of,
+                        copy_duration: etb.copy_duration.clone(),
                         copy_name_override: etb.copy_name_override.clone(),
                         added_card_types: etb.added_card_types.clone(),
                         removed_supertypes: etb.removed_supertypes.clone(),
@@ -3964,6 +3970,7 @@ mod tests {
                 affected_filter: Some(crate::target::ObjectFilter::creature()),
                 may: false,
                 enters_tapped_if_chosen: false,
+                copy_duration: None,
                 linked_exile_pair: None,
                 copy_source_self: true,
                 copy_source_enchanted: false,

@@ -1035,6 +1035,7 @@ fn append_token_granted_ability_to_effect(
             let crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenWithMods {
                 definition,
                 granted_abilities,
+                ability_presentation,
                 ..
             } = &mut subject_verb.action
             else {
@@ -1060,6 +1061,8 @@ fn append_token_granted_ability_to_effect(
                     granted_abilities.push(ability);
                 }
             }
+            *ability_presentation =
+                Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence);
             Ok(true)
         }
         _ => {

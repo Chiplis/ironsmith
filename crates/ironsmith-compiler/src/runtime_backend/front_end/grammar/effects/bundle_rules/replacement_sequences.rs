@@ -30,6 +30,12 @@ pub(crate) struct PersistentExilePlayTaxShape {
     pub(crate) additional_cost: ManaCost,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SpellCastThisWayTaxShape {
+    pub(crate) taxed_caster: Option<PlayerFilter>,
+    pub(crate) additional_cost: ManaCost,
+}
+
 fn commas<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     repeat::<_, _, (), _, _>(0.., primitives::comma().void()).parse_next(input)
 }
@@ -196,6 +202,48 @@ fn taxed_player(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
     }
 }
 
+pub(crate) fn parse_spell_cast_this_way_tax_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<SpellCastThisWayTaxShape> {
+    let sentences = split_lexed_sentences(tokens);
+    let tokens = match sentences.as_slice() {
+        [sentence] => *sentence,
+        _ => tokens,
+    };
+    let (_, tax_tail) = primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
+        primitives::phrase(&["a", "spell", "cast"])
+            .void()
+            .parse_next(input)
+    })?;
+    let (caster_tokens, cost_tokens) = primitives::split_lexed_once_on_separator(tax_tail, || {
+        primitives::phrase(&["this", "way", "costs"]).void()
+    })?;
+    let caster_tokens = trim_lexed_commas(caster_tokens);
+    let taxed_caster = if caster_tokens.is_empty() {
+        None
+    } else {
+        let (_, player_tokens) =
+            primitives::parse_prefix(caster_tokens, primitives::kw("by").void())?;
+        Some(taxed_player(trim_lexed_commas(player_tokens))?)
+    };
+    let (cost_prefix, rest) = primitives::parse_prefix(
+        trim_lexed_commas(cost_tokens),
+        leaf::parse_leaf_fixed_mana_cost_prefix_lexed,
+    )?;
+    primitives::parse_all_or_none(
+        trim_lexed_commas(rest),
+        primitives::phrase(&["more", "to", "cast"]).void(),
+        "spell tax suffix",
+    )
+    .ok()
+    .flatten()?;
+
+    Some(SpellCastThisWayTaxShape {
+        taxed_caster,
+        additional_cost: cost_prefix.cost,
+    })
+}
+
 pub(crate) fn parse_persistent_exile_play_tax_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PersistentExilePlayTaxShape> {
@@ -222,32 +270,14 @@ pub(crate) fn parse_persistent_exile_play_tax_tokens(
     .ok()
     .flatten()?;
 
-    let (_, tax_tail) = primitives::parse_prefix(tax, |input: &mut LexStream<'_>| {
-        primitives::phrase(&["a", "spell", "cast", "by"])
-            .void()
-            .parse_next(input)
-    })?;
-    let (caster_tokens, cost_tokens) = primitives::split_lexed_once_on_separator(tax_tail, || {
-        primitives::phrase(&["this", "way", "costs"]).void()
-    })?;
-    let taxed_caster = taxed_player(trim_lexed_commas(caster_tokens))?;
-    let (cost_prefix, rest) = primitives::parse_prefix(
-        trim_lexed_commas(cost_tokens),
-        leaf::parse_leaf_fixed_mana_cost_prefix_lexed,
-    )?;
-    primitives::parse_all_or_none(
-        trim_lexed_commas(rest),
-        primitives::phrase(&["more", "to", "cast"]).void(),
-        "spell tax suffix",
-    )
-    .ok()
-    .flatten()?;
+    let tax = parse_spell_cast_this_way_tax_tokens(tax)?;
+    let taxed_caster = tax.taxed_caster?;
 
     Some(PersistentExilePlayTaxShape {
         target_filter,
         permission_player,
         taxed_caster,
-        additional_cost: cost_prefix.cost,
+        additional_cost: tax.additional_cost,
     })
 }
 
@@ -288,5 +318,15 @@ mod tests {
         );
         assert_eq!(shape.permission_player, PlayerAst::ItsOwner);
         assert_eq!(shape.taxed_caster, PlayerFilter::Opponent);
+    }
+
+    #[test]
+    fn parses_spell_cast_this_way_tax_without_explicit_caster() {
+        let shape = parse_spell_cast_this_way_tax_tokens(&lex(
+            "A spell cast this way costs {2} more to cast.",
+        ))
+        .unwrap();
+        assert_eq!(shape.taxed_caster, None);
+        assert_eq!(shape.additional_cost.to_oracle(), "{2}");
     }
 }

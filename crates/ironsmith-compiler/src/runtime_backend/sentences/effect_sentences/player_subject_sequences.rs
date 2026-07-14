@@ -1,5 +1,70 @@
 use super::super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
 use super::lex_chain_helpers::find_verb_lexed;
+use crate::cards::builders::{EffectAst, PlayerAst, TagKey};
+use crate::effect::Value;
+use crate::target::ObjectFilter;
+
+/// Parse a coordinated instruction in which the controller and defending
+/// player each choose between discarding and sacrificing.
+///
+/// The outer `TagAffected` is intentionally shared by both players and both
+/// branches.  Follow-ups such as "for each land card put into a graveyard this
+/// way" can therefore count the objects that actually moved, regardless of
+/// which action each player chose.
+pub(super) fn parse_controller_and_defending_player_discard_or_sacrifice(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    if token_word_refs(tokens)
+        != [
+            "you",
+            "and",
+            "defending",
+            "player",
+            "each",
+            "discard",
+            "a",
+            "card",
+            "or",
+            "sacrifice",
+            "a",
+            "permanent",
+        ]
+    {
+        return None;
+    }
+
+    fn player_choice(player: PlayerAst) -> EffectAst {
+        EffectAst::UnlessAction {
+            effects: vec![EffectAst::subject_verb_discard(
+                player,
+                Value::Fixed(1),
+                false,
+                false,
+                None,
+                None,
+            )],
+            alternative: vec![EffectAst::subject_verb_sacrifice(
+                player,
+                ObjectFilter::permanent(),
+                1,
+                None,
+            )],
+            player,
+        }
+    }
+
+    let moved_tag = TagKey::from("joint_discard_or_sacrifice");
+    Some(vec![EffectAst::TagAffected {
+        effect: Box::new(EffectAst::Coordinated {
+            effects: vec![
+                player_choice(PlayerAst::You),
+                player_choice(PlayerAst::Defending),
+            ],
+            leading_duration: false,
+        }),
+        tag: moved_tag,
+    }])
+}
 
 /// Split a coordinated sequence whose quantified-opponent action is followed
 /// by one or more explicitly controller-scoped actions.

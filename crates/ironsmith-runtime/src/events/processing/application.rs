@@ -251,6 +251,7 @@ pub(super) fn apply_trait_replacement(
         ReplacementAction::EnterAsCopy {
             source,
             enters_tapped,
+            copy_duration,
             linked_exile_objects,
             additional_counters,
             name_override,
@@ -264,6 +265,7 @@ pub(super) fn apply_trait_replacement(
                 &event,
                 *source,
                 *enters_tapped,
+                copy_duration.clone(),
                 linked_exile_objects,
                 additional_counters,
                 name_override.clone(),
@@ -874,6 +876,7 @@ fn apply_trait_enter_as_copy(
     event: &Event,
     source_id: crate::ids::ObjectId,
     enters_tapped: bool,
+    copy_duration: Option<crate::effect::Until>,
     linked_exile_objects: &[crate::ids::ObjectId],
     additional_counters: &[(CounterType, u32)],
     name_override: Option<String>,
@@ -888,6 +891,7 @@ fn apply_trait_enter_as_copy(
     let apply_copy_modifiers = |mut etb: EnterBattlefieldEvent| {
         etb = etb
             .with_copy_of(source_id)
+            .with_copy_duration(copy_duration.clone())
             .with_linked_exile_objects(linked_exile_objects)
             .with_copy_name_override(name_override.clone())
             .with_added_card_types(added_card_types)

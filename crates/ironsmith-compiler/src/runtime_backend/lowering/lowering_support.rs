@@ -125,7 +125,111 @@ fn object_filter_has_single_tag_reference(filter: &ObjectFilter, tag: &crate::ta
         })
 }
 
+fn rewrite_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) -> bool {
+    let Some(segment) = lowered.effects.segments.first_mut() else {
+        return false;
+    };
+    if segment.default_effects.len() < 4 {
+        return false;
+    }
+
+    let Some(triggering) =
+        segment.default_effects[0].downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+    else {
+        return false;
+    };
+    let triggering_tag = triggering.tag.clone();
+    let Some(end_step_schedule) =
+        segment.default_effects[1].downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+    else {
+        return false;
+    };
+    if !matches!(
+        end_step_schedule.trigger,
+        ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(_)
+    ) || !end_step_schedule.one_shot
+        || end_step_schedule.effects.len() != 1
+    {
+        return false;
+    }
+    let Some(returned) =
+        end_step_schedule.effects[0].downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return false;
+    };
+    if returned.zone != Zone::Battlefield
+        || returned.battlefield_controller != crate::effects::BattlefieldController::You
+        || !matches!(returned.target.base(), ChooseSpec::Tagged(tag) if tag == &triggering_tag)
+    {
+        return false;
+    }
+
+    let Some(choose) =
+        segment.default_effects[2].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+    else {
+        return false;
+    };
+    let mut plain_creature = choose.filter.clone();
+    let creature_zone = choose.zone.or(plain_creature.zone);
+    plain_creature.zone = None;
+    plain_creature.controller = None;
+    plain_creature.card_types.clear();
+    if creature_zone != Some(Zone::Battlefield)
+        || choose.chooser != PlayerFilter::You
+        || !choose.count.is_single()
+        || choose.filter.controller != Some(PlayerFilter::You)
+        || choose.filter.card_types.as_slice() != [crate::types::CardType::Creature]
+        || plain_creature != ObjectFilter::default()
+    {
+        return false;
+    }
+    let sacrificed_tag = choose.tag.clone();
+
+    let Some(sacrifice) =
+        segment.default_effects[3].downcast_ref::<crate::effects::SacrificePlayerEffect>()
+    else {
+        return false;
+    };
+    if sacrifice.player != PlayerFilter::You
+        || !matches!(sacrifice.count, Value::Fixed(1))
+        || !object_filter_has_single_tag_reference(&sacrifice.filter, &sacrificed_tag)
+    {
+        return false;
+    }
+
+    let returned_tag = crate::tag::TagKey::from("returned_control_loss");
+    let tagged_return = Effect::new(crate::effects::TaggedEffect::new(
+        returned_tag.clone(),
+        Effect::new(returned.clone()),
+    ));
+    let delayed_sacrifice = Effect::sacrifice_player(
+        ObjectFilter::tagged(returned_tag.clone()),
+        Value::Fixed(1),
+        PlayerFilter::You,
+    );
+    let control_loss_schedule = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+        returned_tag,
+        ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {
+            source_description: "this creature".to_string(),
+        },
+        vec![delayed_sacrifice],
+        true,
+        Vec::new(),
+        PlayerFilter::You,
+    )
+    .watch_ability_source();
+
+    let mut rewritten_end_step = end_step_schedule.clone();
+    rewritten_end_step.effects = vec![tagged_return, Effect::new(control_loss_schedule)];
+    segment.default_effects[1] = Effect::new(rewritten_end_step);
+    segment.default_effects.drain(2..4);
+    true
+}
+
 fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) {
+    if rewrite_delayed_return_control_loss_sacrifice_followup(lowered) {
+        return;
+    }
     let Some(segment) = lowered.effects.segments.first_mut() else {
         return;
     };
@@ -694,6 +798,9 @@ fn rewrite_prepare_effects_from_normalized(
     default_last_object_prelude: Option<EffectPreludeTag>,
     include_trigger_prelude: bool,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
+    let (flattened_effects, source_sentence_effect_counts) =
+        flatten_top_level_source_sentences(semantic_effects);
+    semantic_effects = flattened_effects;
     rebind_aggregate_source_exiled_returns(&mut semantic_effects);
     let mut prelude = Vec::new();
     for tag in ["equipped", "enchanted"] {
@@ -779,6 +886,7 @@ fn rewrite_prepare_effects_from_normalized(
 
     Ok(PreparedEffectsForLowering {
         effects: semantic_effects,
+        source_sentence_effect_counts,
         imports,
         initial_env,
         annotated,
@@ -786,6 +894,36 @@ fn rewrite_prepare_effects_from_normalized(
         prelude,
         force_auto_tag_object_targets: config.force_auto_tag_object_targets,
     })
+}
+
+fn flatten_top_level_source_sentences(effects: Vec<EffectAst>) -> (Vec<EffectAst>, Vec<usize>) {
+    let has_source_sentence = effects
+        .iter()
+        .any(|effect| matches!(effect, EffectAst::SourceSentence { .. }));
+    if !has_source_sentence {
+        return (effects, Vec::new());
+    }
+
+    let all_source_sentences = effects
+        .iter()
+        .all(|effect| matches!(effect, EffectAst::SourceSentence { .. }));
+    let mut flattened = Vec::new();
+    let mut counts = Vec::new();
+    for effect in effects {
+        match effect {
+            EffectAst::SourceSentence { effects } => {
+                counts.push(effects.len());
+                flattened.extend(effects);
+            }
+            effect => flattened.push(effect),
+        }
+    }
+
+    if all_source_sentences && counts.len() > 1 && counts.iter().all(|count| *count > 0) {
+        (flattened, counts)
+    } else {
+        (flattened, Vec::new())
+    }
 }
 
 pub(crate) fn rewrite_prepare_effects_for_lowering(

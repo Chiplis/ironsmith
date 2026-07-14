@@ -2848,6 +2848,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     affected_filter: None,
                     may: shape.may,
                     enters_tapped_if_chosen: false,
+                    copy_duration: None,
                     linked_exile_pair: Some(
                         crate::static_abilities::EnterAsCopyLinkedExilePairSpec {
                             counter_type: shape.counter_type,
@@ -2891,6 +2892,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     affected_filter: Some(affected_filter),
                     may: false,
                     enters_tapped_if_chosen: false,
+                    copy_duration: None,
                     linked_exile_pair: None,
                     copy_source_self,
                     copy_source_enchanted,
@@ -2908,6 +2910,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
         keyword_static_lines::EnterAsCopyShape::May {
             named_subject_tokens,
             enters_tapped,
+            until_end_of_turn,
             filter_tokens,
             exception_display_split,
             exception_tokens,
@@ -3053,6 +3056,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     affected_filter: None,
                     may: true,
                     enters_tapped_if_chosen: enters_tapped,
+                    copy_duration: until_end_of_turn.then_some(crate::effect::Until::EndOfTurn),
                     linked_exile_pair: None,
                     copy_source_self: false,
                     copy_source_enchanted: false,

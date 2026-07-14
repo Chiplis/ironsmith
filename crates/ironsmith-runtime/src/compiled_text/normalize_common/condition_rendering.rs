@@ -2395,6 +2395,22 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
             if let (
                 Value::CountersOn(spec, Some(counter_type)),
+                crate::effect::ValueComparisonOperator::LessThan,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+                && *count >= 0
+            {
+                let count_text =
+                    small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+                return format!(
+                    "{} has fewer than {} {} counters on it",
+                    describe_choose_spec(spec),
+                    count_text,
+                    counter_type.description()
+                );
+            }
+            if let (
+                Value::CountersOn(spec, Some(counter_type)),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),
             ) = (left, operator, right)
@@ -3237,6 +3253,7 @@ pub(crate) fn tagged_condition_is_known_card_reference(tag: &crate::TagKey) -> b
     let tag = tag.as_str();
     tag.starts_with("exiled_")
         || tag.starts_with("revealed_")
+        || tag == crate::tag::SOURCE_EXILED_TAG
         || crate::cards::is_sentence_helper_tag(tag, "exiled")
         || crate::cards::is_sentence_helper_tag(tag, "revealed")
 }

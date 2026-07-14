@@ -30,8 +30,11 @@ impl EffectExecutor for GrantNextSpellAbilityEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ids::PlayerId;
+    use crate::card::CardBuilder;
+    use crate::ids::{CardId, PlayerId};
     use crate::test_prelude::*;
+    use crate::types::CardType;
+    use crate::zone::Zone;
 
     #[test]
     fn execute_registers_next_spell_ability_grant() {
@@ -55,6 +58,43 @@ mod tests {
         assert_eq!(
             grant.ability.id(),
             crate::static_abilities::StaticAbilityId::Cascade
+        );
+    }
+
+    #[test]
+    fn next_spell_grant_can_match_the_authoritative_cast_origin() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(9010), "Origin-Test Instant")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let hand_id = game.create_object_from_card(&card, alice, Zone::Hand);
+        let origin = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(hand_id).expect("card in hand"),
+            &game,
+        );
+        let spell_id = game
+            .move_object_by_effect(hand_id, Zone::Stack)
+            .expect("card should move to the stack");
+        game.set_cast_origin_snapshot(spell_id, origin);
+
+        let filter = ObjectFilter::instant_or_sorcery()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You)
+            .cast_by(PlayerFilter::You);
+        game.add_temporary_spell_ability_grant(
+            alice,
+            spell_id,
+            filter,
+            StaticAbility::rebound(),
+            1,
+        );
+
+        assert!(
+            game.temporary_granted_spell_abilities(spell_id, alice)
+                .iter()
+                .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Rebound),
+            "the stack spell should match its hand-origin snapshot"
         );
     }
 }

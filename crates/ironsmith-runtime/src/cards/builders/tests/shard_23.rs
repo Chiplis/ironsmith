@@ -1882,6 +1882,144 @@ pub(super) fn stargaze_style_choose_dynamic_cards_and_rest_graveyard_compacts() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn curse_of_unbinding_reveal_partition_keeps_actor_and_true_remainder() {
+    let def = parse_oracle_card_definition("Curse of Unbinding");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "that player reveals cards from the top of their library until they reveal a creature card. Put that card onto the battlefield under your control. That player puts the rest of the revealed cards into their graveyard"
+        ) && !rendered.contains("for each of those objects")
+            && !rendered.contains("Unless it's a permanent"),
+        "expected the reveal-until partition to preserve the matched card and complementary remainder, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn divergent_transformations_keeps_exiled_creature_iteration_bundle() {
+    let def = parse_oracle_card_definition("Divergent Transformations");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Exile two target creatures. For each of those creatures, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles the rest into their library"
+        ) && !rendered.contains("for each card exiled this way"),
+        "expected the two-creature exile/consult bundle to retain its controller and remainder, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn demonic_bargain_keeps_search_and_move_sentence_boundaries() {
+    let def = parse_oracle_card_definition("Demonic Bargain");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Exile the top thirteen cards of your library, then search your library for a card. Put that card into your hand, then shuffle"
+        ),
+        "expected exile/search and searched-card movement to remain linked without flattening, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn lonis_target_opponent_partition_keeps_chooser_control_and_remainder_actor() {
+    let def = parse_oracle_card_definition("Lonis, Cryptozoologist");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Target opponent reveals the top X cards of their library. You may put a nonland permanent card with mana value X or less from among them onto the battlefield under your control. That player puts the rest on the bottom of their library in a random order"
+        ) && !rendered.contains("for each card chosen this way"),
+        "expected the looked-card partition to retain its chooser, controller, and target-player remainder, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn gisa_bulk_return_compacts_decayed_without_inventing_source_type() {
+    let def = parse_oracle_card_definition("Gisa, Glorious Resurrector");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "put all creature cards exiled with this card onto the battlefield under your control. They gain decayed"
+        ) && !rendered.contains("this enchantment")
+            && !rendered.contains("can't block"),
+        "expected the source-linked bulk return to retain the keyword without expanding or inventing a source type, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn underworld_sentinel_implicit_battlefield_controller_is_you_without_surface_suffix() {
+    let def = parse_oracle_card_definition("Underworld Sentinel");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        rendered.contains(
+            "When this creature dies, put all cards exiled with this creature onto the battlefield"
+        ) && !rendered.contains("under their owners' control")
+            && !rendered.contains("under your control")
+            && debug.contains("ReturnAllToBattlefieldEffect")
+            && debug.contains("battlefield_controller: You")
+            && debug.contains("controller_surface_explicit: false"),
+        "expected the implicit battlefield controller to execute as you without adding a controller phrase, got {rendered}; abilities were {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn infernal_offering_preserves_both_correlated_opponent_choices() {
+    let def = parse_oracle_card_definition("Infernal Offering");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Choose an opponent. You and that player each sacrifice a creature. Each player who sacrificed a creature this way draws two cards"
+        ) && rendered.contains(
+            "Choose an opponent. Return a creature card from your graveyard to the battlefield, then that player returns a creature card from their graveyard to the battlefield"
+        ),
+        "expected each offering mode to retain its chosen-opponent correlation, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn intellectual_offering_preserves_joint_draw_and_untap_subjects() {
+    let def = parse_oracle_card_definition("Intellectual Offering");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Choose an opponent. You and that player each draw three cards")
+            && rendered.contains(
+                "Choose an opponent. Untap all nonland permanents you control and all nonland permanents that player controls"
+            ),
+        "expected each offering mode to retain both coordinated subjects, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn reins_of_power_keeps_reciprocal_control_after_initial_untap() {
+    let def = parse_oracle_card_definition("Reins of Power");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Untap all creatures you control and all creatures target opponent controls. You and that opponent each gain control of all creatures the other controls until end of turn. Those creatures gain haste until end of turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn cabal_therapist_discards_the_complete_chosen_name_subset() {
+    let def = parse_oracle_card_definition("Cabal Therapist");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "When you do, choose a nonland card name. Target player reveals their hand and discards all cards with that name"
+        ) && !rendered.contains("discards X cards"),
+        "expected the chosen-name count to render as the whole matching subset, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn sticker_sheet_ticket_marker_rows_preserve_ticket_prefixes() {
     let info = oracle_card_info_by_name()
         .get("Happy Dead Squirrel")

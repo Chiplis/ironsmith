@@ -476,6 +476,9 @@ pub(crate) fn describe_return_all_face_down_then_become(effects: &[&Effect]) -> 
             crate::continuous::Modification::AddSubtypes(found) => {
                 subtypes = found.clone();
             }
+            crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                crate::types::SubtypeFamily::Creature,
+            ) => {}
             _ => return None,
         }
     }

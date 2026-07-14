@@ -713,6 +713,41 @@ fn describe_target_face_up_exiled_card_uses_exiled_surface() {
 }
 
 #[test]
+fn describe_target_fixed_effective_pt_uses_creature_shorthand() {
+    let mut filter = ObjectFilter::creature().you_control();
+    filter.power = Some(ironsmith_core::FilterComparison::Equal(1));
+    filter.toughness = Some(ironsmith_core::FilterComparison::Equal(1));
+    let spec = ChooseSpec::target(ChooseSpec::Object(filter));
+
+    assert_eq!(
+        describe_choose_spec(&spec),
+        "target 1/1 creature you control"
+    );
+}
+
+#[test]
+fn describe_target_fixed_pt_preserves_comparisons_and_base_reference() {
+    let mut power_limited = ObjectFilter::creature();
+    power_limited.power = Some(ironsmith_core::FilterComparison::LessThanOrEqual(2));
+    let power_limited = ChooseSpec::target(ChooseSpec::Object(power_limited));
+    assert_eq!(
+        describe_choose_spec(&power_limited),
+        "target creature with power 2 or less"
+    );
+
+    let mut base_pt = ObjectFilter::creature();
+    base_pt.power = Some(ironsmith_core::FilterComparison::Equal(1));
+    base_pt.toughness = Some(ironsmith_core::FilterComparison::Equal(1));
+    base_pt.power_reference = ironsmith_core::PtReference::Base;
+    base_pt.toughness_reference = ironsmith_core::PtReference::Base;
+    let base_pt = ChooseSpec::target(ChooseSpec::Object(base_pt));
+    assert_eq!(
+        describe_choose_spec(&base_pt),
+        "target creature with base power and toughness 1/1"
+    );
+}
+
+#[test]
 fn describe_colors_among_sacrificed_creature_uses_was_surface() {
     let filter = ObjectFilter::creature()
         .match_tagged("sacrificed_0", TaggedOpbjectRelation::IsTaggedObject);

@@ -84,3 +84,142 @@ pub(super) fn scattering_stroke_schedules_the_clash_reward_for_the_next_main_pha
         "Scattering Stroke must preserve its delayed next-main-phase surface: {compiled}"
     );
 }
+
+#[test]
+pub(super) fn evolving_adaptive_keeps_both_relative_stat_gates() {
+    assert_oracle_card_parses_strict("Evolving Adaptive");
+    let definition = parse_oracle_card_definition("Evolving Adaptive");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Evolving Adaptive must have its creature-entry trigger");
+    let condition = format!("{:#?}", triggered.intervening_if);
+    assert!(
+        condition.contains("Or(")
+            && condition.matches("GreaterThanExpr").count() == 2
+            && condition.contains("SourcePower")
+            && condition.contains("SourceToughness"),
+        "Evolving Adaptive must compare both triggering stats with the source: {condition}"
+    );
+
+    let compiled = compiled_text_lines(&definition)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        compiled.contains("if")
+            && compiled.contains("power")
+            && compiled.contains("toughness")
+            && compiled.contains("greater"),
+        "Evolving Adaptive must surface its relative-stat gate: {compiled}"
+    );
+}
+
+#[test]
+pub(super) fn runaway_steam_kin_keeps_the_upper_counter_bound() {
+    assert_oracle_card_parses_strict("Runaway Steam-Kin");
+    let definition = parse_oracle_card_definition("Runaway Steam-Kin");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Runaway Steam-Kin must have its spell-cast trigger");
+    let condition = format!("{:#?}", triggered.intervening_if);
+    assert!(
+        condition.contains("ValueComparison")
+            && condition.contains("CountersOn")
+            && condition.contains("LessThan")
+            && condition.contains("Fixed(")
+            && condition.contains("3,"),
+        "Runaway Steam-Kin must keep the fewer-than-three condition: {condition}"
+    );
+
+    let compiled = compiled_text_lines(&definition)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        compiled.contains("if this creature has fewer than three +1/+1 counters on it"),
+        "Runaway Steam-Kin must surface its counter gate: {compiled}"
+    );
+}
+
+#[test]
+pub(super) fn adaptive_training_post_preserves_counter_gate_cost_and_copy_coordination() {
+    assert_oracle_card_parses_strict("Adaptive Training Post");
+    let definition = parse_oracle_card_definition("Adaptive Training Post");
+    let compiled = compiled_text_lines(&definition).join("\n");
+
+    assert!(
+        compiled.contains(
+            "if this artifact has fewer than three charge counters on it, put a charge counter on it"
+        ),
+        "Adaptive Training Post must surface its typed counter gate: {compiled}"
+    );
+    assert!(
+        compiled.contains(
+            "Remove three charge counters from this artifact: When you next cast an instant or sorcery spell this turn, copy it and you may choose new targets for the copy"
+        ),
+        "Adaptive Training Post must preserve its cost and coordinated delayed-copy surface: {compiled}"
+    );
+}
+
+#[test]
+pub(super) fn hall_of_mirrors_preserves_visit_and_nonlegendary_copy_surface() {
+    assert_oracle_card_parses_strict("Hall of Mirrors");
+    let definition = parse_oracle_card_definition("Hall of Mirrors");
+    assert!(definition.card.subtypes.contains(&Subtype::Attraction));
+
+    let compiled = compiled_text_lines(&definition).join("\n");
+    assert!(
+        compiled.starts_with("Visit — Choose target creature you control."),
+        "Attractions must retain their Visit ability word: {compiled}"
+    );
+    assert!(
+        compiled.contains(
+            "Each other creature you control becomes a copy of that creature until end of turn, except it isn't legendary"
+        ) && !compiled.contains("For each"),
+        "Hall of Mirrors must render one plural copy clause with its exception: {compiled}"
+    );
+}
+
+#[test]
+pub(super) fn muddle_copy_exception_grants_functional_myriad() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Muddle, the Ever-Changing")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever you cast an instant or sorcery spell, this creature becomes a copy of up to one target nonlegendary creature you control until end of turn, except it has myriad.",
+        )
+        .expect("Muddle's myriad copy exception should parse");
+    let debug = format!("{definition:#?}");
+    let compiled = compiled_text_lines(&definition).join("\n");
+
+    assert!(debug.contains("CreateTokenCopyEffect"), "{debug}");
+    assert!(
+        compiled.contains("until end of turn, except it has myriad"),
+        "{compiled}"
+    );
+}
+
+#[test]
+pub(super) fn ajani_goldmane_preserves_separate_token_ability_presentation() {
+    assert_oracle_card_parses_strict("Ajani Goldmane");
+    let definition = parse_oracle_card_definition("Ajani Goldmane");
+    let debug = format!("{definition:#?}");
+    let compiled = compiled_text_lines(&definition).join("\n");
+
+    assert!(
+        debug.contains("ability_presentation: Some(SeparateSentence)"),
+        "Ajani Goldmane must retain the parser's token-ability presentation through runtime conversion: {debug}"
+    );
+    assert!(
+        compiled.contains("Create a 2/2 white Cat creature token named Avatar. It has")
+            && !compiled.contains("named Avatar with"),
+        "Ajani Goldmane must keep the granted token ability as a separate sentence: {compiled}"
+    );
+}

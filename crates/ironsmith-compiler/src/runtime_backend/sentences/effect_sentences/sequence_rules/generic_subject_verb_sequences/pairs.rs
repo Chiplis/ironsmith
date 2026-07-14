@@ -640,6 +640,29 @@ pub(crate) fn parse_look_at_top_then_partition_selected_and_remainder(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // The counted face-down exile parser owns the same two-sentence looked
+    // pool, but its selected destination is exile rather than one of the
+    // ordinary partition destinations below. Route the complete pair through
+    // it before the narrower hand/graveyard/library partition grammar.
+    let first = sentences[sentence_idx].lowered();
+    if super::super::super::dispatch_inner::parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(first)
+        .is_some()
+    {
+        // The first sentence already owns the complete looked-card partition.
+        // Do not let this two-sentence partition rule consume an unrelated
+        // provenance-linked followup such as a cast permission; the dedicated
+        // look/exile/permission rule must see that second sentence so it can
+        // preserve the permission's duration and mana-spend mode.
+        return Ok(None);
+    }
+
+    let mut combined = first.to_vec();
+    combined.extend_from_slice(sentences[sentence_idx + 1].lowered());
+    if let Some(effects) = super::super::super::dispatch_inner::parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(&combined)
+    {
+        return Ok(Some(effects));
+    }
+
     let Some((library_owner, count, false)) =
         parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
     else {
@@ -1778,6 +1801,7 @@ fn parse_put_from_milled_cards_followup(
         filter,
         aggregate_constraint,
         zone,
+        controller,
         tapped,
         attacking,
         attack_target_player,
@@ -1839,7 +1863,7 @@ fn parse_put_from_milled_cards_followup(
             TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
             zone,
             false,
-            ReturnControllerAst::Preserve,
+            controller,
             tapped,
             attacking,
             attack_target_player,
@@ -1880,6 +1904,7 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_same_sentence(
         filter,
         aggregate_constraint,
         zone,
+        controller,
         tapped,
         attacking,
         attack_target_player,
@@ -1949,7 +1974,7 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_same_sentence(
             TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
             zone,
             false,
-            ReturnControllerAst::Preserve,
+            controller,
             tapped,
             attacking,
             attack_target_player,
@@ -2403,6 +2428,27 @@ pub(crate) fn parse_consult_match_move_and_bottom_remainder(
     }
 
     let second_tokens = trim_commas(second);
+    if let Some(matched) = effect_grammar::parse_consult_matched_move_shape(&second_tokens)
+        && matched.selection == effect_grammar::ConsultMoveSelectionShape::AllMatched
+    {
+        let mut effects = parts.effects;
+        effects.push(
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(parts.match_tag, None),
+                matched.zone,
+                false,
+                if matched.controller_you {
+                    ReturnControllerAst::You
+                } else {
+                    ReturnControllerAst::Preserve
+                },
+                false,
+                None,
+            )
+            .with_move_to_zone_plural_surface_if(matched.target_plural_surface),
+        );
+        return Ok(Some(effects));
+    }
     let Some(shape) = effect_grammar::parse_consult_move_bottom_shape(&second_tokens) else {
         return Ok(None);
     };
@@ -3068,5 +3114,61 @@ mod looked_partition_tests {
             panic!("expected tagged cast permission: {:?}", effects[4]);
         };
         assert_eq!(permission_tag, exiled_tag);
+    }
+
+    #[test]
+    fn complete_face_down_partition_does_not_steal_cast_permission_followup() {
+        let first = lex_line(
+            "Look at the top four cards of target opponent's library, exile one of them face down, then put the rest on the bottom of that library in a random order",
+            0,
+        )
+        .expect("first sentence should lex");
+        let second = lex_line(
+            "You may cast that card for as long as it remains exiled, and mana of any type can be spent to cast that spell",
+            1,
+        )
+        .expect("second sentence should lex");
+        let sentences = [
+            SentenceInput::from_lexed(&first),
+            SentenceInput::from_lexed(&second),
+        ];
+
+        let matched = crate::runtime_backend::sentences::effect_sentences::sequence_rules::try_parse_subject_verb_sequence_rule(
+            &sentences,
+            0,
+        )
+        .expect("sequence registry should not error")
+        .expect("look/exile/permission sequence should match");
+
+        assert_eq!(
+            matched.name,
+            "look-at-top-exile-face-down-play-while-exiled"
+        );
+        assert_eq!(matched.effects.len(), 5);
+        let EffectAst::ChooseTaggedObjectsInZone {
+            tag: selected_tag, ..
+        } = &matched.effects[1]
+        else {
+            panic!("expected selected looked card: {:#?}", matched.effects[1]);
+        };
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    tag: permission_tag,
+                    player: PlayerAst::You,
+                    allow_land: false,
+                    without_paying_mana_cost: false,
+                    allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode::AnyType,
+                    filter: None,
+                },
+            ..
+        }) = &matched.effects[4]
+        else {
+            panic!(
+                "expected exact tagged cast permission: {:#?}",
+                matched.effects[4]
+            );
+        };
+        assert_eq!(permission_tag, selected_tag);
     }
 }

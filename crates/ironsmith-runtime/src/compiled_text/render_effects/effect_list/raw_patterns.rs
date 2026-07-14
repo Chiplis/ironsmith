@@ -1,5 +1,15 @@
 {
 
+    if let Some(compact) = describe_search_reveal_conditional_battlefield_or_hand(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_turn_source_exiled_face_up_then_lose_mana_value(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_source_exiled_creature_may_battlefield_else_hand(effects) {
+        return compact;
+    }
+
     if let Some(compact) = describe_targeted_card_set_total_mana_value_then_return(effects) {
         return compact;
     }
@@ -489,6 +499,14 @@
     }
     if let Some(compact) = describe_return_all_face_down_then_become(&raw_effects) {
         return compact;
+    }
+    if let [first, rest @ ..] = raw_effects.as_slice()
+        && let Some(compact) = describe_return_all_face_down_then_become(rest)
+    {
+        return format!(
+            "{}. {compact}",
+            describe_effect(first).trim_end_matches('.')
+        );
     }
     if let Some(compact) = describe_return_then_conditional_animation(effects) {
         return compact;

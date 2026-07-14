@@ -552,6 +552,31 @@ pub(crate) fn describe_apply_continuous_target(
     if targets_source && let Some(surface) = effect.source_reference_surface.as_ref() {
         return (describe_source_reference_surface_text(surface), false);
     }
+    if let crate::continuous::EffectTarget::Filter(filter) = &effect.target
+        && effect.runtime_modifications.iter().any(|modification| {
+            matches!(
+                modification,
+                crate::effects::continuous::RuntimeModification::CopyOf { .. }
+            )
+        })
+        && let Some(chosen) = filter
+            .source_surface
+            .as_ref()
+            .map(crate::target::SourceReferenceSurface::display_text)
+            .filter(|surface| surface.starts_with("the chosen "))
+        && filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject)
+    {
+        let mut base_filter = filter.clone();
+        base_filter
+            .tagged_constraints
+            .retain(|constraint| constraint.relation != TaggedOpbjectRelation::IsNotTaggedObject);
+        base_filter.source_surface = None;
+        let base = strip_leading_article(&base_filter.description()).to_string();
+        return (format!("Each {base} other than {chosen}"), false);
+    }
     if effect.target_spec.is_none()
         && let crate::continuous::EffectTarget::Filter(filter) = &effect.target
         && let Some(subject) = describe_attached_and_related_creatures_filter(filter)
@@ -594,9 +619,15 @@ pub(crate) fn describe_apply_continuous_target(
         Some(ironsmith_core::SetQuantifierSurface::Each) => {
             if let crate::continuous::EffectTarget::Filter(filter) = &effect.target {
                 let description = filter.description();
-                let description = strip_indefinite_article(&description)
-                    .strip_prefix("another ")
-                    .unwrap_or(strip_indefinite_article(&description));
+                let description = strip_indefinite_article(&description);
+                let description = if filter.other {
+                    description
+                        .strip_prefix("another ")
+                        .map(|rest| format!("other {rest}"))
+                        .unwrap_or_else(|| description.to_string())
+                } else {
+                    description.to_string()
+                };
                 target = format!("Each {description}");
                 plural = false;
             }
@@ -735,6 +766,12 @@ pub(crate) fn describe_apply_continuous_clauses(
         gains
     };
     let self_subject = granted_ability_self_subject_for_apply_continuous(effect);
+    let has_copy_runtime = effect.runtime_modifications.iter().any(|runtime| {
+        matches!(
+            runtime,
+            crate::effects::continuous::RuntimeModification::CopyOf { .. }
+        )
+    });
 
     let mut clauses = Vec::new();
 
@@ -1013,16 +1050,25 @@ pub(crate) fn describe_apply_continuous_clauses(
             push_modification(modification);
         }
         for modification in &effect.additional_modifications {
+            if has_copy_runtime
+                && matches!(
+                    modification,
+                    crate::continuous::Modification::RemoveSupertypes(_)
+                        | crate::continuous::Modification::SetPowerToughness { .. }
+                        | crate::continuous::Modification::AddAbility(_)
+                        | crate::continuous::Modification::AddAbilityGeneric(_)
+                )
+            {
+                continue;
+            }
             push_modification(modification);
         }
     }
     for runtime in &effect.runtime_modifications {
         match runtime {
             crate::effects::continuous::RuntimeModification::CopyOf { source, .. } => {
-                clauses.push(format!(
-                    "becomes a copy of {}",
-                    describe_choose_spec(source)
-                ));
+                let verb = if plural_target { "become" } else { "becomes" };
+                clauses.push(format!("{verb} a copy of {}", describe_choose_spec(source)));
             }
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
                 power,
@@ -1151,8 +1197,10 @@ pub(crate) fn describe_copy_exception_tail(
     name_override_surface: &Option<crate::target::SourceReferenceSurface>,
     add_supertypes: &[crate::types::Supertype],
     preserve_source_abilities: bool,
+    additional_modifications: &[crate::continuous::Modification],
 ) -> Option<String> {
     let mut parts = Vec::new();
+    let mut granted_abilities = Vec::new();
     if let Some(name) = name_override_surface
         .as_ref()
         .map(crate::target::SourceReferenceSurface::display_text)
@@ -1163,8 +1211,39 @@ pub(crate) fn describe_copy_exception_tail(
     for supertype in add_supertypes {
         parts.push(format!("it's {} in addition to its other types", supertype));
     }
+    for modification in additional_modifications {
+        match modification {
+            crate::continuous::Modification::RemoveSupertypes(supertypes) => {
+                for supertype in supertypes {
+                    parts.push(format!("it isn't {}", supertype));
+                }
+            }
+            crate::continuous::Modification::SetPowerToughness {
+                power,
+                toughness,
+                sublayer: crate::continuous::PtSublayer::Setting,
+            } => parts.push(format!(
+                "it's {}/{}",
+                describe_value(power),
+                describe_value(toughness)
+            )),
+            crate::continuous::Modification::AddAbility(ability) => {
+                granted_abilities.push(lowercase_first(&ability.display()));
+            }
+            crate::continuous::Modification::AddAbilityGeneric(ability) => {
+                let rendered = describe_inline_ability_with_self_subject(ability, "this creature");
+                granted_abilities.push(lowercase_first(&normalize_common_semantic_phrasing(
+                    &rendered,
+                )));
+            }
+            _ => {}
+        }
+    }
     if preserve_source_abilities {
-        parts.push("it has this ability".to_string());
+        granted_abilities.push("this ability".to_string());
+    }
+    if !granted_abilities.is_empty() {
+        parts.push(format!("it has {}", join_with_and(&granted_abilities)));
     }
 
     match parts.len() {
@@ -1212,6 +1291,7 @@ pub(crate) fn describe_apply_continuous_tail(
                 name_override_surface,
                 add_supertypes,
                 *preserve_source_abilities,
+                &effect.additional_modifications,
             )
         {
             tail_parts.push(format!("except {exception_tail}"));
@@ -1424,6 +1504,10 @@ pub(crate) fn describe_apply_continuous_animation_effect(
             effect.target_spec.as_ref(),
             Some(ChooseSpec::Tagged(tag)) if tag.as_str().starts_with("returned_")
         );
+    let returned_artifact_creature_animation = returned_permanent_animation
+        && !replaces_other_types
+        && effect.type_retention_surface.is_none()
+        && card_types.contains(&CardType::Artifact);
     let explicitly_still_a_land = matches!(
         effect.type_retention_surface,
         Some(ironsmith_core::TypeRetentionSurface::StillALand)
@@ -1443,6 +1527,8 @@ pub(crate) fn describe_apply_continuous_animation_effect(
     let (target_text, plural_target) =
         if let Some(target_text) = plural_non_target_land_animation_target(effect) {
             (target_text, true)
+        } else if returned_artifact_creature_animation {
+            ("they".to_string(), true)
         } else if returned_permanent_animation {
             ("those permanents".to_string(), true)
         } else {
@@ -1458,7 +1544,14 @@ pub(crate) fn describe_apply_continuous_animation_effect(
         descriptor.push(
             subtypes
                 .iter()
-                .map(|subtype| subtype.to_string().to_ascii_lowercase())
+                .map(|subtype| {
+                    let subtype = subtype.to_string();
+                    if returned_artifact_creature_animation {
+                        subtype
+                    } else {
+                        subtype.to_ascii_lowercase()
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join(" "),
         );
@@ -1529,6 +1622,8 @@ pub(crate) fn describe_apply_continuous_animation_effect(
             };
             let pt_noun_phrase = if dynamic_equal_pt {
                 format!("{pt} {noun_phrase}")
+            } else if returned_artifact_creature_animation {
+                format!("{pt} {noun_phrase}")
             } else {
                 format!("{noun_phrase} with base power and toughness {pt}")
             };
@@ -1582,6 +1677,7 @@ pub(crate) fn describe_apply_continuous_animation_effect(
         });
     let render_as_addition_to_other_types = !replaces_other_types
         && !explicitly_still_a_land
+        && !returned_artifact_creature_animation
         && (explicitly_in_addition
             || returned_permanent_animation
             || (!preserves_land_types && !ability_text.is_empty() && !has_quoted_generic_ability)
@@ -1609,7 +1705,12 @@ pub(crate) fn describe_apply_continuous_animation_effect(
             text.push_str(". It's still a land");
         }
     }
-    Some(capitalize_first(&text))
+    let text = capitalize_first(&text);
+    Some(if returned_artifact_creature_animation {
+        text.replacen("They are ", "They're ", 1)
+    } else {
+        text
+    })
 }
 
 pub(crate) fn describe_apply_continuous_effect(
@@ -1813,7 +1914,12 @@ pub(crate) fn describe_apply_continuous_effect(
     {
         text.push_str(&where_clause);
     }
-    let text = normalize_each_other_continuous_subject(text);
+    let text = if effect.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::Each)
+    {
+        text
+    } else {
+        normalize_each_other_continuous_subject(text)
+    };
     if let Some(condition) = &effect.condition
         && !matches!(effect.until, Until::ThisLeavesTheBattlefield)
         && !(effect.condition == Some(Condition::SourceIsTapped)

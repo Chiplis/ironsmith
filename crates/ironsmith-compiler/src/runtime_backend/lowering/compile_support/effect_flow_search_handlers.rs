@@ -195,6 +195,9 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
                     name_override,
                     name_override_surface,
                     add_supertypes,
+                    remove_supertypes,
+                    granted_abilities,
+                    set_base_power_toughness,
                 },
             ..
         }),
@@ -237,6 +240,9 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
         name_override.clone(),
         name_override_surface.clone(),
         add_supertypes.clone(),
+        remove_supertypes.clone(),
+        granted_abilities.clone(),
+        set_base_power_toughness.clone(),
     );
     Ok(Some(compile_effect(&rewritten, ctx)?))
 }

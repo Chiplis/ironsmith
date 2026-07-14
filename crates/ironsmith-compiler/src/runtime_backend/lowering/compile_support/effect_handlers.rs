@@ -337,6 +337,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             trigger,
             effects,
             one_shot,
+            until_end_of_combat,
             attach_to_previous_ability: _,
         } => {
             let (delayed_effects, _delayed_choices) =
@@ -388,25 +389,29 @@ pub(super) fn try_compile_timing_and_control_effect(
                             Vec::new(),
                             PlayerFilter::You,
                         );
-                        let delayed = delayed
+                        let mut delayed = delayed
                             .with_target_filter(resolved_filter)
                             .until_end_of_turn();
+                        if *until_end_of_combat {
+                            delayed = delayed.until_end_of_combat();
+                        }
                         (vec![Effect::new(delayed)], choices)
                     } else {
-                        let effect = Effect::new(
-                            crate::effects::ScheduleDelayedTriggerEffect::new(
-                                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
-                                    source: resolved_filter,
-                                    player: player.clone(),
-                                },
-                                delayed_effects,
-                                *one_shot,
-                                Vec::new(),
-                                PlayerFilter::You,
-                            )
-                            .until_end_of_turn(),
-                        );
-                        (vec![effect], choices)
+                        let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
+                            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
+                                source: resolved_filter,
+                                player: player.clone(),
+                            },
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .until_end_of_turn();
+                        if *until_end_of_combat {
+                            delayed = delayed.until_end_of_combat();
+                        }
+                        (vec![Effect::new(delayed)], choices)
                     }
                 }
                 TriggerSpec::PutIntoGraveyard(filter)

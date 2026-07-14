@@ -380,6 +380,7 @@ pub(crate) enum TriggerSpec {
     EntersBattlefieldOneOrMore {
         filter: ObjectFilter,
         cause_filter: Option<crate::events::cause::CauseFilter>,
+        origin_condition: Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition>,
     },
     EntersBattlefieldFromZone {
         filter: ObjectFilter,
@@ -1524,6 +1525,9 @@ pub(crate) enum SubjectVerbActionAst {
         name_override: Option<String>,
         name_override_surface: Option<SourceReferenceSurface>,
         add_supertypes: Vec<Supertype>,
+        remove_supertypes: Vec<Supertype>,
+        granted_abilities: Vec<GrantedAbilityAst>,
+        set_base_power_toughness: Option<(Value, Value)>,
     },
     GrantAbilitiesAll {
         filter: ObjectFilter,
@@ -1590,6 +1594,7 @@ pub(crate) enum SubjectVerbActionAst {
         count: ChoiceCount,
         count_value: Option<Value>,
         library_position_from_top: Option<Value>,
+        result_reference_surface: crate::effect::SearchResultReferenceSurface,
         tapped: bool,
     },
     Cant {
@@ -3091,6 +3096,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 name_override,
                 name_override_surface,
                 add_supertypes,
+                remove_supertypes,
+                granted_abilities,
+                set_base_power_toughness,
             } => f
                 .debug_struct("BecomeCopy")
                 .field("target", target)
@@ -3100,6 +3108,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("name_override", name_override)
                 .field("name_override_surface", name_override_surface)
                 .field("add_supertypes", add_supertypes)
+                .field("remove_supertypes", remove_supertypes)
+                .field("granted_abilities", granted_abilities)
+                .field("set_base_power_toughness", set_base_power_toughness)
                 .finish(),
             Self::GrantAbilitiesAll {
                 filter,
@@ -3220,6 +3231,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 count,
                 count_value,
                 library_position_from_top,
+                result_reference_surface,
                 tapped,
             } => f
                 .debug_struct("SearchLibrary")
@@ -3233,6 +3245,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("count", count)
                 .field("count_value", count_value)
                 .field("library_position_from_top", library_position_from_top)
+                .field("result_reference_surface", result_reference_surface)
                 .field("tapped", tapped)
                 .finish(),
             Self::Cant {

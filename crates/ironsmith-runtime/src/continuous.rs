@@ -506,6 +506,9 @@ impl Modification {
             ironsmith_core::CompiledContinuousModification::RemoveCardTypes(card_types) => {
                 Self::RemoveCardTypes(card_types)
             }
+            ironsmith_core::CompiledContinuousModification::RemoveSupertypes(supertypes) => {
+                Self::RemoveSupertypes(supertypes)
+            }
             ironsmith_core::CompiledContinuousModification::SetCardTypes(card_types) => {
                 Self::SetCardTypes(card_types)
             }
@@ -867,13 +870,13 @@ impl ContinuousEffectManager {
             .iter()
             .map(|(key, ts)| (*key, *ts))
             .collect();
-        entries.sort_by(|((left_id, left_counter), _), ((right_id, right_counter), _)| {
-            left_id.cmp(right_id).then_with(|| {
-                left_counter
-                    .description()
-                    .cmp(&right_counter.description())
-            })
-        });
+        entries.sort_by(
+            |((left_id, left_counter), _), ((right_id, right_counter), _)| {
+                left_id
+                    .cmp(right_id)
+                    .then_with(|| left_counter.description().cmp(&right_counter.description()))
+            },
+        );
         entries
     }
 
@@ -1362,14 +1365,7 @@ fn apply_face_down_layer(object: &Object, chars: &mut CalculatedCharacteristics)
         return;
     }
     let values = CopiableValues::from_object(object);
-    copy_characteristics_from_copiable_values(
-        &values,
-        chars,
-        false,
-        &None,
-        &None,
-        &[],
-    );
+    copy_characteristics_from_copiable_values(&values, chars, false, &None, &None, &[]);
 }
 
 fn object_has_reconfigure_ability(object: &Object) -> bool {
@@ -1648,10 +1644,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 (
                     *id,
                     (
-                        ability_counter_timestamps(
-                            object,
-                            &game.effect_store.continuous_effects,
-                        ),
+                        ability_counter_timestamps(object, &game.effect_store.continuous_effects),
                         0,
                     ),
                 )
@@ -1701,13 +1694,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                     ) else {
                         continue;
                     };
-                    apply_ability_counters_through(
-                        object,
-                        chars,
-                        counters,
-                        next_counter,
-                        None,
-                    );
+                    apply_ability_counters_through(object, chars, counters, next_counter, None);
                     guards[idx].update(chars);
                 }
             }
@@ -1856,13 +1843,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 ) else {
                     continue;
                 };
-                apply_ability_counters_through(
-                    object,
-                    chars,
-                    counters,
-                    next_counter,
-                    None,
-                );
+                apply_ability_counters_through(object, chars, counters, next_counter, None);
                 guards[idx].update(chars);
             }
         }
@@ -2086,17 +2067,18 @@ pub(crate) fn copiable_values_with_effects(
     if !layer_effects.is_empty() {
         let needs_source_tracking =
             layer_needs_source_activity_tracking(&layer_effects, effects.iter(), Layer::Copy);
-        let baseline = crate::dependency::needs_baseline_dependency_sort(&layer_effects).then(|| {
-            build_layer_baseline(
-                objects,
-                effects,
-                battlefield,
-                commanders,
-                game,
-                Layer::Copy,
-                None,
-            )
-        });
+        let baseline =
+            crate::dependency::needs_baseline_dependency_sort(&layer_effects).then(|| {
+                build_layer_baseline(
+                    objects,
+                    effects,
+                    battlefield,
+                    commanders,
+                    game,
+                    Layer::Copy,
+                    None,
+                )
+            });
         let tracked_source_ids =
             needs_source_tracking.then(|| tracked_source_ids_for_layer(&layer_effects));
         let mut source_state = if needs_source_tracking {
@@ -2512,7 +2494,6 @@ fn calculate_with_layers_direct_internal(
             );
             calc_guard.update(&chars);
         }
-
 
         if layer == Layer::Copy {
             apply_face_down_layer(object, &mut chars);

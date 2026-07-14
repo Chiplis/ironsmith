@@ -17,6 +17,7 @@ pub struct DelayedTriggerConfig {
     pub one_shot: bool,
     pub not_before_turn: Option<u32>,
     pub expires_at_turn: Option<u32>,
+    pub expires_at_end_of_combat: bool,
     pub target_objects: Vec<ObjectId>,
     pub ability_source: Option<ObjectId>,
     pub controller: PlayerId,
@@ -39,6 +40,7 @@ impl DelayedTriggerConfig {
             one_shot,
             not_before_turn: None,
             expires_at_turn: None,
+            expires_at_end_of_combat: false,
             target_objects,
             ability_source: None,
             controller,
@@ -55,6 +57,11 @@ impl DelayedTriggerConfig {
 
     pub fn with_expires_at_turn(mut self, expires_at_turn: Option<u32>) -> Self {
         self.expires_at_turn = expires_at_turn;
+        self
+    }
+
+    pub fn with_expires_at_end_of_combat(mut self, expires: bool) -> Self {
+        self.expires_at_end_of_combat = expires;
         self
     }
 
@@ -109,6 +116,7 @@ pub(crate) struct DelayedTriggerTemplate {
     pub one_shot: bool,
     pub not_before_turn: Option<u32>,
     pub expires_at_turn: Option<u32>,
+    pub expires_at_end_of_combat: bool,
     pub ability_source: Option<ObjectId>,
     pub controller: PlayerId,
     pub x_value: Option<u32>,
@@ -129,6 +137,7 @@ impl DelayedTriggerTemplate {
             one_shot,
             not_before_turn: None,
             expires_at_turn: None,
+            expires_at_end_of_combat: false,
             ability_source: None,
             controller,
             x_value: None,
@@ -144,6 +153,11 @@ impl DelayedTriggerTemplate {
 
     pub fn with_expires_at_turn(mut self, expires_at_turn: Option<u32>) -> Self {
         self.expires_at_turn = expires_at_turn;
+        self
+    }
+
+    pub fn with_expires_at_end_of_combat(mut self, expires: bool) -> Self {
+        self.expires_at_end_of_combat = expires;
         self
     }
 
@@ -196,6 +210,7 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         x_value: config.x_value,
         not_before_turn: config.not_before_turn,
         expires_at_turn: config.expires_at_turn,
+        expires_at_end_of_combat: config.expires_at_end_of_combat,
         target_objects: config.target_objects,
         ability_source: config.ability_source,
         ability_source_stable_id,
@@ -228,6 +243,7 @@ pub(crate) fn queue_delayed_from_template(
                 )
                 .with_not_before_turn(template.not_before_turn)
                 .with_expires_at_turn(template.expires_at_turn)
+                .with_expires_at_end_of_combat(template.expires_at_end_of_combat)
                 .with_ability_source(template.ability_source)
                 .with_x_value(template.x_value)
                 .with_choices(template.choices)
@@ -249,6 +265,7 @@ pub(crate) fn queue_delayed_from_template(
                     )
                     .with_not_before_turn(template.not_before_turn)
                     .with_expires_at_turn(template.expires_at_turn)
+                    .with_expires_at_end_of_combat(template.expires_at_end_of_combat)
                     .with_ability_source(template.ability_source)
                     .with_x_value(template.x_value)
                     .with_choices(template.choices.clone())

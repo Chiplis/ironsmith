@@ -57,7 +57,8 @@ use super::activation_and_restrictions::{
     is_any_player_may_activate_sentence_lexed, parse_activation_cost,
 };
 use super::clause_support::{
-    parse_ability_line_lexed, parse_effect_sentences_lexed, parse_static_ability_ast_line_lexed,
+    parse_ability_line_lexed, parse_effect_sentences_lexed,
+    parse_linked_attack_group_combat_triggered_line_lexed, parse_static_ability_ast_line_lexed,
     parse_trigger_clause_lexed, parse_triggered_line_lexed,
 };
 use super::compile_support::{

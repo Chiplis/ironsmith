@@ -6,7 +6,7 @@ use crate::{
     ChoiceCount, Color, ColorSet, Condition, CostComponent, CounterType, DamagedBySource,
     DerivedAlternativeCast, GrantSpec, Grantable, KeywordActionKind, ManaCost, ManaSpendPermission,
     ObjectFilter, PlayerFilter, ProtectionFrom, Restriction, StaticAbilityId, Subtype,
-    SubtypeFamily, Supertype, TotalCost, TriggeredAbility, Value, Zone,
+    SubtypeFamily, Supertype, TotalCost, TriggeredAbility, Until, Value, Zone,
 };
 
 mod grants;
@@ -1421,6 +1421,7 @@ where
                         affected_filter: spec.affected_filter,
                         may: spec.may,
                         enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                        copy_duration: spec.copy_duration,
                         linked_exile_pair: spec.linked_exile_pair,
                         copy_source_self: spec.copy_source_self,
                         copy_source_enchanted: spec.copy_source_enchanted,

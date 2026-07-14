@@ -237,6 +237,21 @@ impl TurnHistory {
             .any(|record| record.event.downcast::<SpellCastEvent>().is_some())
     }
 
+    /// Whether the object with this stable identity was cast from `zone` this turn.
+    pub fn object_was_cast_from_zone(&self, stable_id: StableId, zone: Zone) -> bool {
+        self.projected_records().any(|record| {
+            let Some(cast) = record.event.downcast::<SpellCastEvent>() else {
+                return false;
+            };
+            cast.from_zone == zone
+                && cast
+                    .snapshot
+                    .as_ref()
+                    .or(record.object_snapshot.as_ref())
+                    .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+        })
+    }
+
     pub fn total_life_gained_for_players(&self, players: &[PlayerId]) -> u32 {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<LifeGainEvent>())

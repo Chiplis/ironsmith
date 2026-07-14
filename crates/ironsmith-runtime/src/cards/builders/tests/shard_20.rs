@@ -2939,6 +2939,66 @@ pub(super) fn parse_oracle_mass_polymorph_shuffle_remainder() {
 }
 
 #[test]
+pub(super) fn parse_oracle_synthetic_destiny_delays_full_shuffle_remainder_bundle() {
+    let def = parse_oracle_card_definition("Synthetic Destiny");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(
+        rendered,
+        "Exile all creatures you control. At the beginning of the next end step, reveal cards from the top of your library until you reveal that many creature cards, put all creature cards revealed this way onto the battlefield, then shuffle the rest of the revealed cards into your library.",
+        "Synthetic Destiny should preserve the delayed reveal, battlefield partition, and shuffled remainder as one provenance-linked bundle"
+    );
+}
+
+#[test]
+pub(super) fn parse_oracle_fathom_trawl_moves_the_matched_collection_without_loop_scaffolding() {
+    let def = parse_oracle_card_definition("Fathom Trawl");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(
+        rendered,
+        "Reveal cards from the top of your library until you reveal three nonland cards. Put the nonland cards revealed this way into your hand, then put the rest of the revealed cards on the bottom of your library in any order.",
+        "Fathom Trawl should render its tagged hits and tagged remainder as collections"
+    );
+}
+
+#[test]
+pub(super) fn parse_oracle_kethek_keeps_revealed_hit_and_remainder_in_one_clause() {
+    let def = parse_oracle_card_definition("Kethek, Crucible Goliath");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(
+        rendered,
+        "At the beginning of your end step, you may sacrifice another creature. If you do, reveal cards from the top of your library until you reveal a nonlegendary creature card with lesser mana value, put it onto the battlefield, then put the rest on the bottom of your library in a random order.",
+        "Kethek should render the consult match and remainder without exposing the per-object loop"
+    );
+}
+
+#[test]
+pub(super) fn parse_oracle_spinner_keeps_optional_singular_consult_surface() {
+    let def = parse_oracle_card_definition("Spinner of Souls");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(
+        rendered,
+        "Reach Whenever another nontoken creature you control dies, you may reveal cards from the top of your library until you reveal a creature card. Put that card into your hand and the rest on the bottom of your library in a random order.",
+        "a direct singular consult move should retain its established optional surface and sentence boundary"
+    );
+}
+
+#[test]
+pub(super) fn parse_oracle_gonti_preserves_looked_partition_and_cast_permission() {
+    let def = parse_oracle_card_definition("Gonti, Lord of Luxury");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(
+        rendered,
+        "Deathtouch When Gonti enters, look at the top four cards of target opponent's library, exile one of them face down, then put the rest on the bottom of that library in a random order. You may cast that card for as long as it remains exiled, and mana of any type can be spent to cast that spell.",
+        "Gonti's complete target/look/partition/permission program should reach the exact singular renderer"
+    );
+}
+
+#[test]
 pub(super) fn debug_surface_keeps_complex_source_text_regressions() {
     let cases = [
         (

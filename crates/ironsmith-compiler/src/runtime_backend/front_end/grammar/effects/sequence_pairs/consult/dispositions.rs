@@ -8,8 +8,9 @@ use crate::runtime_backend::front_end::lexer::{
 use crate::zone::Zone;
 
 use super::super::super::{
-    ends_content_sequence, finish_sequence_words, matches_complete_content_sequence,
-    seek_sequence_phrase, sequence_any_phrase, sequence_phrase, starts_content_sequence,
+    contains_content_sequence, ends_content_sequence, finish_sequence_words,
+    matches_complete_content_sequence, seek_sequence_phrase, sequence_any_phrase, sequence_phrase,
+    starts_content_sequence,
 };
 use super::parse_consult_traversal_shape;
 
@@ -24,6 +25,7 @@ pub(crate) struct ConsultMatchedMoveShape {
     pub(crate) selection: ConsultMoveSelectionShape,
     pub(crate) zone: Zone,
     pub(crate) controller_you: bool,
+    pub(crate) target_plural_surface: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,7 +67,9 @@ fn trimmed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     LexedClause::new(tokens).trimmed().tokens()
 }
 
-fn parse_matched_move_shape(tokens: &[OwnedLexToken]) -> Option<ConsultMatchedMoveShape> {
+pub(crate) fn parse_consult_matched_move_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<ConsultMatchedMoveShape> {
     let tokens = trimmed(tokens);
     let ((), after_put) = crate::runtime_backend::front_end::grammar::primitives::parse_prefix(
         tokens,
@@ -103,12 +107,17 @@ fn parse_matched_move_shape(tokens: &[OwnedLexToken]) -> Option<ConsultMatchedMo
     } else if matches_complete_content_sequence(
         reference,
         &[&["that", "card"], &["it"], &["those", "cards"]],
-    ) || ends_content_sequence(reference, &[&["revealed", "this", "way"]])
+    ) || (starts_content_sequence(reference, &[&["those"]])
+        && !starts_content_sequence(reference, &[&["those", "other"]])
+        && ends_content_sequence(reference, &[&["cards"]]))
+        || ends_content_sequence(reference, &[&["revealed", "this", "way"]])
     {
         ConsultMoveSelectionShape::AllMatched
     } else {
         return None;
     };
+    let target_plural_surface = selection == ConsultMoveSelectionShape::AnyNumberOfMatched
+        || contains_content_sequence(reference, &[&["cards"]]);
 
     let zone = alt((
         sequence_any_phrase(&[&["into", "your", "hand"], &["into", "hand"]]).value(Zone::Hand),
@@ -126,6 +135,7 @@ fn parse_matched_move_shape(tokens: &[OwnedLexToken]) -> Option<ConsultMatchedMo
         selection,
         zone,
         controller_you,
+        target_plural_surface,
     })
 }
 
@@ -317,7 +327,7 @@ pub(crate) fn parse_consult_disposition_sequence_shape(
     let middle = if middle.len() == 1 {
         if let Some(repeated) = parse_repeated_move_shape(&middle[0]) {
             ConsultMiddleShape::RepeatedMove(repeated)
-        } else if let Some(matched) = parse_matched_move_shape(&middle[0]) {
+        } else if let Some(matched) = parse_consult_matched_move_shape(&middle[0]) {
             ConsultMiddleShape::MatchedMove(matched)
         } else {
             ConsultMiddleShape::Generic(middle)
@@ -384,6 +394,7 @@ mod tests {
                 selection: ConsultMoveSelectionShape::AllMatched,
                 zone: Zone::Battlefield,
                 controller_you: false,
+                target_plural_surface: false,
             })
         ));
         assert_eq!(
@@ -439,6 +450,7 @@ mod tests {
                 selection: ConsultMoveSelectionShape::AllMatched,
                 zone: Zone::Battlefield,
                 controller_you: false,
+                target_plural_surface: false,
             })
         ));
         assert_eq!(
@@ -476,5 +488,16 @@ mod tests {
             thought.remainder,
             ConsultRemainderDispositionShape::Graveyard
         );
+    }
+
+    #[test]
+    fn auspicious_starrix_matches_filtered_plural_consult_reference() {
+        let matched = parse_consult_matched_move_shape(
+            &lex_line("Put those permanent cards onto the battlefield", 0).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(matched.selection, ConsultMoveSelectionShape::AllMatched);
+        assert_eq!(matched.zone, Zone::Battlefield);
+        assert!(matched.target_plural_surface);
     }
 }

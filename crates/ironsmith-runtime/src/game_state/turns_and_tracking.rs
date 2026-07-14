@@ -1432,9 +1432,7 @@ impl GameState {
     }
 
     pub(super) fn mark_face_down_state_changed(&mut self, id: ObjectId) {
-        self.effect_store
-            .continuous_effects
-            .record_face_change(id);
+        self.effect_store.continuous_effects.record_face_change(id);
         if self.face_down_state_change_can_stay_local(id) {
             self.mark_object_characteristics_dirty(id);
         } else {

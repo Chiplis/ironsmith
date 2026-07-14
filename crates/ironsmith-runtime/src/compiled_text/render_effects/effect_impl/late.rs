@@ -1424,6 +1424,9 @@
             player_verb(&player, "lose", "loses")
         );
     }
+    if let Some(restart_game) = effect.downcast_ref::<crate::effects::RestartGameEffect>() {
+        return describe_restart_game(restart_game);
+    }
     if let Some(skip_draw) = effect.downcast_ref::<crate::effects::SkipDrawStepEffect>() {
         let player = describe_player_filter(&skip_draw.player);
         return format!(
@@ -2553,7 +2556,7 @@
             // turn is exactly "the next combat phase this turn".
             trigger_text = "At the beginning of the next combat phase this turn".to_string();
         }
-        if schedule.until_end_of_turn {
+        if schedule.until_end_of_turn && !schedule.until_end_of_combat {
             let trigger_lower = trigger_text.to_ascii_lowercase();
             if !trigger_lower.contains(" this turn") {
                 trigger_text.push_str(" this turn");
@@ -2628,19 +2631,30 @@
         if schedule.target_tag.is_some()
             && let Some((_, recipient)) = trigger_text.split_once(" deals combat damage to ")
         {
-            let subject = schedule
-                .target_filter
-                .as_ref()
-                .map(|filter| {
-                    if filter.card_types.contains(&CardType::Creature) {
-                        "that creature"
-                    } else {
-                        "that permanent"
-                    }
-                })
-                .unwrap_or("that creature");
+            let subject = if schedule.target_tag.as_ref().is_some_and(|tag| {
+                tag.as_str() == ironsmith_core::ATTACKING_GROUP_TAG
+            }) {
+                "either of those creatures"
+            } else {
+                schedule
+                    .target_filter
+                    .as_ref()
+                    .map(|filter| {
+                        if filter.card_types.contains(&CardType::Creature) {
+                            "that creature"
+                        } else {
+                            "that permanent"
+                        }
+                    })
+                    .unwrap_or("that creature")
+            };
+            let duration = if schedule.until_end_of_combat {
+                " this combat"
+            } else {
+                ""
+            };
             return format!(
-                "Whenever {subject} deals combat damage to {recipient}, {delayed_text}"
+                "Whenever {subject} deals combat damage to {recipient}{duration}, {delayed_text}"
             );
         }
         if schedule.target_tag.is_some()
@@ -3318,12 +3332,26 @@
             && let crate::grant::Grantable::Ability(ability) = &grant.grantable
             && let Some(cost_increase) = ability.cost_increase_mana_cost()
             && cost_increase.filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
-            && cost_increase.filter.cast_by == Some(crate::filter::PlayerFilter::Opponent)
         {
-            return format!(
-                "A spell cast by an opponent this way costs {} more to cast",
-                cost_increase.increase.to_oracle()
-            );
+            let subject = match cost_increase.filter.cast_by {
+                None => Some("A spell cast this way"),
+                Some(crate::filter::PlayerFilter::Opponent) => {
+                    Some("A spell cast by an opponent this way")
+                }
+                Some(crate::filter::PlayerFilter::You) => {
+                    Some("A spell cast by you this way")
+                }
+                Some(crate::filter::PlayerFilter::IteratedPlayer) => {
+                    Some("A spell cast by that player this way")
+                }
+                _ => None,
+            };
+            if let Some(subject) = subject {
+                return format!(
+                    "{subject} costs {} more to cast",
+                    cost_increase.increase.to_oracle()
+                );
+            }
         }
         let duration = match grant.duration {
             crate::grant::GrantDuration::UntilEndOfTurn => " until end of turn",

@@ -33,6 +33,7 @@ use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::types::CardType;
 use crate::zone::Zone;
+pub use ironsmith_core::trigger_model::ZoneChangeOriginCondition;
 use std::fmt;
 
 /// Pattern for matching zones in zone change events.
@@ -122,6 +123,8 @@ pub struct ZoneChangeTrigger {
     pub cause_filter: Option<CauseFilter>,
     /// Optional active-turn qualifier.
     pub during_turn: Option<PlayerFilter>,
+    /// Optional provenance qualifier on how the destination object originated.
+    pub origin_condition: Option<ZoneChangeOriginCondition>,
     /// How many times to fire for batch events.
     pub count_mode: CountMode,
     /// If true, only trigger for the source object ("When ~ dies").
@@ -139,6 +142,7 @@ impl Default for ZoneChangeTrigger {
             player: PlayerRelation::Any,
             cause_filter: None,
             during_turn: None,
+            origin_condition: None,
             count_mode: CountMode::Each,
             this_object: false,
             this_object_surface: None,
@@ -191,6 +195,12 @@ impl ZoneChangeTrigger {
     /// Set the active-turn qualifier.
     pub fn during_turn(mut self, player: PlayerFilter) -> Self {
         self.during_turn = Some(player);
+        self
+    }
+
+    /// Require additional provenance for the object entering the destination zone.
+    pub fn origin_condition(mut self, condition: ZoneChangeOriginCondition) -> Self {
+        self.origin_condition = Some(condition);
         self
     }
 
@@ -931,7 +941,29 @@ impl ZoneChangeTrigger {
             }
         }
 
-        parts.join(" ")
+        let mut display = parts.join(" ");
+        if let Some(ZoneChangeOriginCondition::MovedFromOrCastFrom(zone)) = self.origin_condition {
+            let zone = match zone {
+                Zone::Library => "a library",
+                Zone::Hand => "a hand",
+                Zone::Battlefield => "the battlefield",
+                Zone::Graveyard => "a graveyard",
+                Zone::Stack => "the stack",
+                Zone::Exile => "exile",
+                Zone::Command => "the command zone",
+                Zone::OutsideGame => "outside the game",
+            };
+            if self.count_mode == CountMode::OneOrMore {
+                display.push_str(&format!(
+                    ", if one or more of them entered from {zone} or was cast from {zone}"
+                ));
+            } else {
+                display.push_str(&format!(
+                    ", if it entered from {zone} or was cast from {zone}"
+                ));
+            }
+        }
+        display
     }
 
     fn this_subject(&self, fallback: &'static str) -> &'static str {
@@ -1106,6 +1138,27 @@ impl TriggerMatcher for ZoneChangeTrigger {
                 affected,
                 ctx.controller,
             ) {
+                return false;
+            }
+        }
+
+        if let Some(ZoneChangeOriginCondition::MovedFromOrCastFrom(zone)) = self.origin_condition
+            && zc.from != zone
+        {
+            let cast_from_zone = zc.destination_objects().iter().any(|id| {
+                ctx.game.object(*id).is_some_and(|object| {
+                    ctx.game
+                        .turn_store
+                        .turn_history
+                        .object_was_cast_from_zone(object.stable_id, zone)
+                })
+            }) || zc.snapshots().iter().any(|snapshot| {
+                ctx.game
+                    .turn_store
+                    .turn_history
+                    .object_was_cast_from_zone(snapshot.stable_id, zone)
+            });
+            if !cast_from_zone {
                 return false;
             }
         }
@@ -1315,6 +1368,60 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(!trigger.matches(&exile_event, &ctx));
+    }
+
+    #[test]
+    fn extraordinary_journey_matches_direct_or_cast_from_exile_entry() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_id = create_creature_in_zone(&mut game, alice, Zone::Battlefield);
+        let entering_id = create_creature_in_zone(&mut game, alice, Zone::Battlefield);
+        let trigger = ZoneChangeTrigger::enters_battlefield(ObjectFilter::creature().nontoken())
+            .count(CountMode::OneOrMore)
+            .origin_condition(ZoneChangeOriginCondition::MovedFromOrCastFrom(Zone::Exile));
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more nontoken creatures enter the battlefield, if one or more of them entered from exile or was cast from exile"
+        );
+
+        let direct_from_exile = TriggerEvent::new(ZoneChangeEvent::with_cause(
+            entering_id,
+            Zone::Exile,
+            Zone::Battlefield,
+            EventCause::from_game_rule(),
+            None,
+        ));
+        assert!(trigger.matches(
+            &direct_from_exile,
+            &TriggerContext::for_source(source_id, alice, &game)
+        ));
+
+        let from_stack = TriggerEvent::new(ZoneChangeEvent::with_cause(
+            entering_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            EventCause::from_game_rule(),
+            None,
+        ));
+        assert!(!trigger.matches(
+            &from_stack,
+            &TriggerContext::for_source(source_id, alice, &game)
+        ));
+
+        let snapshot = ObjectSnapshot::from_object(game.object(entering_id).unwrap(), &game);
+        game.record_turn_history_event(&TriggerEvent::new(
+            crate::events::spells::SpellCastEvent::new_with_snapshot(
+                entering_id,
+                alice,
+                Zone::Exile,
+                snapshot,
+            ),
+        ));
+        assert!(trigger.matches(
+            &from_stack,
+            &TriggerContext::for_source(source_id, alice, &game)
+        ));
     }
 
     #[test]

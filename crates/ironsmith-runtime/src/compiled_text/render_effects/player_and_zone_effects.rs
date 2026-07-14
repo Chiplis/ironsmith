@@ -248,7 +248,8 @@ pub(crate) fn describe_for_players_reveal_top_mana_value_life_then_put_into_hand
     let reveal = for_players.effects[0].downcast_ref::<crate::effects::RevealTopEffect>()?;
     let reveal_tag = reveal.tag.as_ref()?;
     if reveal.player != PlayerFilter::IteratedPlayer
-        || !reveal_tag.as_str().starts_with("revealed_")
+        || !(reveal_tag.as_str().starts_with("revealed_")
+            || crate::cards::is_sentence_helper_tag(reveal_tag.as_str(), "revealed"))
     {
         return None;
     }
@@ -256,7 +257,7 @@ pub(crate) fn describe_for_players_reveal_top_mana_value_life_then_put_into_hand
     if lose.player != ChooseSpec::Player(PlayerFilter::IteratedPlayer) {
         return None;
     }
-    let Value::ManaValueOf(spec) = &lose.amount else {
+    let Value::ManaValueOf(spec) = lose.amount.unhinted() else {
         return None;
     };
     if !matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == reveal_tag) {
@@ -1254,6 +1255,13 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             }
         }
         return "the top card".to_string();
+    }
+
+    // Source-object choices are an implementation detail used to make costs
+    // executable. Oracle refers to that object demonstratively ("this"), not
+    // as an ordinary filtered selection such as "a this you control".
+    if choose.count.is_single() && choose.filter.source {
+        return "this".to_string();
     }
 
     if let Some(selection) = describe_source_exiled_choose_selection(choose) {
@@ -3094,11 +3102,19 @@ pub(super) fn describe_look_at_top_choose_exile_face_down_rest_bottom_then_play_
         || !exile.face_down
         || rest.tag != look_at_top.tag
         || rest.keep_tagged.as_ref() != Some(&choose.tag)
-        || rest.order != crate::effects::consult_helpers::LibraryBottomOrder::Random
         || rest.player != look_at_top.player
         || grant.tag != choose.tag
         || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
     {
+        return None;
+    }
+
+    let singleton_complement = matches!(look_at_top.count.unhinted(), Value::Fixed(2))
+        && choose.count.is_single()
+        && rest.order == crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses;
+    let randomly_ordered_remainder =
+        rest.order == crate::effects::consult_helpers::LibraryBottomOrder::Random;
+    if !singleton_complement && !randomly_ordered_remainder {
         return None;
     }
 
@@ -3121,6 +3137,17 @@ pub(super) fn describe_look_at_top_choose_exile_face_down_rest_bottom_then_play_
     if singular_count {
         return None;
     }
+
+    if singleton_complement {
+        if grant.player != PlayerFilter::You || !grant.allow_land {
+            return None;
+        }
+        let mana_clause = grant.mana_spend_cast_clause("that spell")?;
+        return Some(format!(
+            "Look at the top {count_text} {noun} of {owner} library. Exile one of them face down and put the other on the bottom of that library. You may play the exiled card for as long as it remains exiled, and {mana_clause}"
+        ));
+    }
+
     let player = describe_player_filter(&grant.player);
     let verb = if grant.allow_land { "play" } else { "cast" };
     let mana_sentence = if grant.allow_any_color_for_cast {

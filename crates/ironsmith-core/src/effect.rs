@@ -248,6 +248,7 @@ pub struct ScheduleDelayedTriggerEffect<E> {
     pub one_shot: bool,
     pub start_next_turn: bool,
     pub until_end_of_turn: bool,
+    pub until_end_of_combat: bool,
     pub watch_ability_source: bool,
     pub target_choices: Vec<ChooseSpec>,
     pub target_tag: Option<crate::tag::TagKey>,
@@ -269,6 +270,7 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
             one_shot,
             start_next_turn: false,
             until_end_of_turn: false,
+            until_end_of_combat: false,
             watch_ability_source: false,
             target_choices,
             target_tag: None,
@@ -303,6 +305,12 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
 
     pub fn until_end_of_turn(mut self) -> Self {
         self.until_end_of_turn = true;
+        self
+    }
+
+    pub fn until_end_of_combat(mut self) -> Self {
+        self.until_end_of_combat = true;
+        self.until_end_of_turn = false;
         self
     }
 
@@ -1128,6 +1136,25 @@ pub struct SearchLibrarySlot {
     pub optional: bool,
 }
 
+/// Oracle-facing noun used to refer back to the single card found by a
+/// library search. This is presentation-only metadata; the searched object is
+/// still identified by the effect itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SearchResultReferenceSurface {
+    #[default]
+    ThatCard,
+    TheCard,
+}
+
+impl SearchResultReferenceSurface {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ThatCard => "that card",
+            Self::TheCard => "the card",
+        }
+    }
+}
+
 impl SearchLibrarySlot {
     pub fn required(filter: ObjectFilter) -> Self {
         Self {
@@ -1153,6 +1180,7 @@ pub struct SearchLibraryEffect {
     pub reveal: bool,
     pub search_mode: SearchSelectionMode,
     pub library_position_from_top: Option<Value>,
+    pub result_reference_surface: SearchResultReferenceSurface,
 }
 
 impl SearchLibraryEffect {
@@ -1171,6 +1199,7 @@ impl SearchLibraryEffect {
             reveal,
             search_mode: SearchSelectionMode::Exact,
             library_position_from_top: None,
+            result_reference_surface: SearchResultReferenceSurface::ThatCard,
         }
     }
 
@@ -1181,6 +1210,11 @@ impl SearchLibraryEffect {
 
     pub fn with_library_position_from_top(mut self, position: Value) -> Self {
         self.library_position_from_top = Some(position);
+        self
+    }
+
+    pub fn with_result_reference_surface(mut self, surface: SearchResultReferenceSurface) -> Self {
+        self.result_reference_surface = surface;
         self
     }
 
@@ -1972,6 +2006,10 @@ pub struct ReturnAllToBattlefieldEffect {
     pub tapped: bool,
     pub face_down: bool,
     pub battlefield_controller: BattlefieldController,
+    /// Whether the oracle text explicitly named the battlefield controller.
+    /// This affects presentation only; `battlefield_controller` remains the
+    /// executable controller choice.
+    pub controller_surface_explicit: bool,
     pub verb_surface: MoveToZoneVerbSurface,
 }
 
@@ -1982,17 +2020,26 @@ impl ReturnAllToBattlefieldEffect {
             tapped,
             face_down: false,
             battlefield_controller: BattlefieldController::Owner,
+            controller_surface_explicit: false,
             verb_surface: MoveToZoneVerbSurface::Return,
         }
     }
 
     pub fn under_owner_control(mut self) -> Self {
         self.battlefield_controller = BattlefieldController::Owner;
+        self.controller_surface_explicit = true;
         self
     }
 
     pub fn under_you_control(mut self) -> Self {
         self.battlefield_controller = BattlefieldController::You;
+        self.controller_surface_explicit = true;
+        self
+    }
+
+    pub fn under_you_control_implicitly(mut self) -> Self {
+        self.battlefield_controller = BattlefieldController::You;
+        self.controller_surface_explicit = false;
         self
     }
 

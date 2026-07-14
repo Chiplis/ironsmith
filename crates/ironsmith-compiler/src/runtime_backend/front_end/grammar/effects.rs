@@ -1458,6 +1458,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 ChoiceCount::exactly(1),
                 None,
                 Some(Value::Fixed(1)),
+                crate::effect::SearchResultReferenceSurface::ThatCard,
                 false,
             )],
         }]));
@@ -1999,6 +2000,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             count,
             count_value.clone(),
             library_position_from_top,
+            effect_routing.result_reference_surface,
             battlefield_tapped,
         )]
     };

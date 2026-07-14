@@ -141,8 +141,7 @@ fn move_to_zone_lowering_preserves_oracle_verb_and_explicit_actor() {
             false,
             None,
         )
-        .with_move_to_zone_verb_surface(verb_surface)
-        else {
+        .with_move_to_zone_verb_surface(verb_surface) else {
             unreachable!("move constructor must produce a subject-verb AST")
         };
         subject_verb.subject.player = player;
@@ -1331,6 +1330,44 @@ fn praetors_grasp_search_exile_uses_source_exiled_permission_provenance() {
         .expect("searched exiled card should receive a play permission");
     assert_eq!(grant.tag.as_str(), crate::tag::SOURCE_EXILED_TAG);
     assert_ne!(grant.tag, searched_tag);
+}
+
+#[test]
+fn optional_exile_from_another_players_hand_does_not_use_controller_hand_imprint() {
+    let mut filter = ObjectFilter::nonland().in_zone(Zone::Hand);
+    filter.owner = Some(PlayerFilter::target_opponent());
+    let ast = EffectAst::MayByPlayer {
+        player: PlayerAst::You,
+        effects: vec![EffectAst::subject_verb_exile(
+            TargetAst::Object(filter, None, None),
+            false,
+        )],
+    };
+
+    let (compiled, _) = compile_effect(&ast, &mut EffectLoweringContext::new())
+        .expect("optional opponent-hand exile should lower");
+    assert!(
+        compiled.iter().all(|effect| effect
+            .downcast_ref::<crate::effects::cards::ImprintFromHandEffect>()
+            .is_none()),
+        "controller-hand-only imprint must not lower an opponent-hand choice: {compiled:#?}"
+    );
+    let may = compiled
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
+        .expect("opponent-hand exile should retain its optional branch");
+    assert!(
+        may.effects.iter().any(|effect| effect
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .is_some()),
+        "optional branch must choose from the referenced hand: {may:#?}"
+    );
+    assert!(
+        may.effects.iter().any(|effect| effect
+            .downcast_ref::<crate::effects::ExileEffect>()
+            .is_some()),
+        "optional branch must exile the chosen card: {may:#?}"
+    );
 }
 
 #[test]

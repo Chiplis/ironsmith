@@ -76,6 +76,48 @@ fn adjacency_and_explicit_lists_keep_distinct_type_semantics() {
 }
 
 #[test]
+fn abuelos_awakening_preserves_non_aura_on_only_the_enchantment_arm() {
+    let filter = parse("artifact or non-Aura enchantment card from your graveyard");
+
+    assert_eq!(filter.zone, Some(Zone::Graveyard));
+    assert_eq!(filter.owner, Some(PlayerFilter::You));
+    assert!(filter.card_types.is_empty());
+    assert!(filter.excluded_subtypes.is_empty());
+    assert_eq!(filter.any_of.len(), 2);
+    assert_eq!(filter.any_of[0].card_types, [CardType::Artifact]);
+    assert!(filter.any_of[0].excluded_subtypes.is_empty());
+    assert_eq!(filter.any_of[1].card_types, [CardType::Enchantment]);
+    assert_eq!(filter.any_of[1].excluded_subtypes, [Subtype::Aura]);
+}
+
+#[test]
+fn absorbing_man_preserves_branch_local_exclusion_in_a_three_type_union() {
+    let filter = parse("artifact, non-Aura enchantment, or land");
+
+    assert_eq!(filter.zone, Some(Zone::Battlefield));
+    assert!(filter.card_types.is_empty());
+    assert!(filter.excluded_subtypes.is_empty());
+    assert_eq!(filter.any_of.len(), 3);
+    assert_eq!(filter.any_of[0].card_types, [CardType::Artifact]);
+    assert_eq!(filter.any_of[1].card_types, [CardType::Enchantment]);
+    assert_eq!(filter.any_of[1].excluded_subtypes, [Subtype::Aura]);
+    assert_eq!(filter.any_of[2].card_types, [CardType::Land]);
+}
+
+#[test]
+fn dance_of_the_manse_preserves_branch_local_exclusion_for_and_or() {
+    let filter = parse("artifact and/or non-Aura enchantment cards from your graveyard");
+
+    assert_eq!(
+        filter.union_connective(),
+        ObjectFilterUnionConnective::AndOr
+    );
+    assert_eq!(filter.any_of.len(), 2);
+    assert!(filter.any_of[0].excluded_subtypes.is_empty());
+    assert_eq!(filter.any_of[1].excluded_subtypes, [Subtype::Aura]);
+}
+
+#[test]
 fn face_state_named_atoms_and_split_non_are_typed() {
     let filter = parse("face down non artifact creature of chosen type");
     assert_eq!(filter.face_down, Some(true));

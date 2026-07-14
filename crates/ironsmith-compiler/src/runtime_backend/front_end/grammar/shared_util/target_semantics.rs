@@ -101,6 +101,15 @@ pub(crate) fn parse_target_phrase_inner(
         ));
     }
 
+    // `each` is a set quantifier rather than part of the object filter. Let
+    // the ordinary target-head parser see a following `other` so it can retain
+    // the source-exclusion bit (for example, "each other creature").
+    if tokens.first().and_then(OwnedLexToken::as_word) == Some("each")
+        && tokens.get(1).and_then(OwnedLexToken::as_word) == Some("other")
+    {
+        return parse_target_phrase_inner(&tokens[1..]);
+    }
+
     if let Some(dynamic) = parse_dynamic_target_count_prefix(tokens) {
         let target = parse_target_phrase_inner(dynamic.target_tokens)?;
         return Ok(TargetAst::WithCountValue(
@@ -880,6 +889,15 @@ mod tests {
         assert_eq!(filter.sticker, Some(KeywordActionKind::ArtSticker));
         assert!(filter.tagged_constraints.is_empty());
         assert!(it_span.is_none());
+    }
+
+    #[test]
+    fn each_other_object_preserves_source_exclusion() {
+        let TargetAst::Object(filter, _, _) = parse("each other creature") else {
+            panic!("expected object filter");
+        };
+        assert!(filter.other);
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
     }
 
     #[test]

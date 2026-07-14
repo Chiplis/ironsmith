@@ -234,6 +234,114 @@ pub(super) fn graveyard_exile_count_followup_keeps_its_sentence_boundary() {
 }
 
 #[test]
+pub(super) fn exile_play_permission_and_additional_land_keep_printed_sentences() {
+    assert_oracle_card_parses_strict("Sword of Forge and Frontier");
+    let definition = parse_oracle_card_definition("Sword of Forge and Frontier");
+    let compiled = compiled_text_lines(&definition).join("\n");
+    assert!(
+        compiled.contains(
+            "exile the top two cards of your library. You may play those cards this turn. You may play an additional land this turn"
+        ),
+        "{compiled}"
+    );
+}
+
+#[test]
+pub(super) fn two_card_hidden_exile_choice_keeps_its_complement_and_permission_link() {
+    assert_oracle_card_parses_strict("Siphon Insight");
+    let definition = parse_oracle_card_definition("Siphon Insight");
+    let compiled = compiled_text_lines(&definition).join("\n");
+    assert!(
+        compiled.contains(
+            "Look at the top two cards of target opponent's library. Exile one of them face down and put the other on the bottom of that library. You may play the exiled card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell"
+        ),
+        "{compiled}"
+    );
+}
+
+#[test]
+pub(super) fn optional_hand_exile_keeps_its_permission_and_this_way_tax_linked() {
+    assert_oracle_card_parses_strict("Elite Spellbinder");
+    let definition = parse_oracle_card_definition("Elite Spellbinder");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Elite Spellbinder must have its enters trigger");
+    let effects = triggered.effects.flattened_default_effects();
+    assert!(
+        !effects.iter().any(|effect| effect
+            .downcast_ref::<crate::effects::cards::ImprintFromHandEffect>()
+            .is_some()),
+        "an opponent-hand exile must not use the controller-hand-only imprint executor: {effects:#?}"
+    );
+    let may = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
+        .expect("opponent-hand exile must remain optional");
+    let [choose_effect, exile_effect] = may.effects.as_slice() else {
+        panic!("optional opponent-hand exile must be a linked choose/exile pair: {may:#?}");
+    };
+    let choose = choose_effect
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("optional exile must choose a card");
+    let exile_spec = if let Some(exile) = exile_effect.downcast_ref::<crate::effects::ExileEffect>()
+    {
+        assert!(!exile.face_down);
+        &exile.spec
+    } else if let Some(exile) = exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        assert_eq!(exile.zone, Zone::Exile);
+        assert!(!exile.enters_face_down);
+        &exile.target
+    } else {
+        panic!("optional exile must exile the chosen card: {exile_effect:#?}");
+    };
+    assert_eq!(choose.chooser, PlayerFilter::You);
+    assert_eq!(choose.zone, Some(Zone::Hand));
+    assert!(matches!(
+        &choose.filter.owner,
+        Some(PlayerFilter::Target(_))
+    ));
+    assert!(matches!(exile_spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag));
+
+    let compiled = compiled_text_lines(&definition);
+    assert!(
+        compiled.iter().any(|line| line
+            == "When this creature enters, look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it. A spell cast this way costs {2} more to cast."),
+        "{compiled:#?}"
+    );
+}
+
+#[test]
+pub(super) fn discard_redraw_mana_value_ladder_keeps_distinct_linked_choices() {
+    assert_oracle_card_parses_strict("Queen Kayla bin-Kroog");
+    let definition = parse_oracle_card_definition("Queen Kayla bin-Kroog");
+    let compiled = compiled_text_lines(&definition).join("\n");
+    assert!(
+        compiled.contains(
+            "Discard all the cards in your hand, then draw that many cards. You may choose an artifact or creature card with mana value 1 you discarded this way, then do the same for artifact or creature cards with mana values 2 and 3. Return those cards to the battlefield"
+        ),
+        "{compiled}"
+    );
+}
+
+#[test]
+pub(super) fn next_spell_grant_keeps_the_spells_cast_origin() {
+    assert_oracle_card_parses_strict("Narset Transcendent");
+    let definition = parse_oracle_card_definition("Narset Transcendent");
+    let compiled = compiled_text_lines(&definition).join("\n");
+    assert!(
+        compiled.contains(
+            "When you next cast an instant or sorcery spell from your hand this turn, it gains rebound"
+        ),
+        "{compiled}"
+    );
+}
+
+#[test]
 pub(super) fn targeted_graveyard_card_collection_stays_plural_through_aggregate_and_move() {
     assert_oracle_card_parses_strict("Command the Dreadhorde");
     let definition = parse_oracle_card_definition("Command the Dreadhorde");
@@ -250,5 +358,34 @@ pub(super) fn targeted_graveyard_card_collection_stays_plural_through_aggregate_
     assert!(
         compiled.contains("Put them onto the battlefield under your control"),
         "{compiled}"
+    );
+}
+
+#[test]
+pub(super) fn each_opponents_top_card_keeps_hidden_collection_and_play_permission() {
+    assert_oracle_card_parses_strict("Mindleecher");
+    let definition = parse_oracle_card_definition("Mindleecher");
+    let raw = format!("{definition:#?}");
+    assert!(
+        raw.contains("ForPlayersEffect")
+            && raw.contains("chooser: You")
+            && raw.contains("top_only: true")
+            && raw.contains("face_down: true")
+            && raw.contains("GrantPlayTaggedEffect"),
+        "Mindleecher must deterministically exile each opponent's top card into one hidden permission collection: {raw}"
+    );
+    let compiled = compiled_text_lines(&definition);
+    assert!(
+        compiled.iter().any(|line| line
+            == "Whenever this creature mutates, exile the top card of each opponent's library face down. You may look at and play those cards for as long as they remain exiled."),
+        "{compiled:#?}"
+    );
+}
+
+#[test]
+pub(super) fn mass_exile_deploy_and_return_keeps_one_linked_collection_program() {
+    assert_compiled_clause(
+        "Worlds Within Worlds",
+        "Exile all creatures. Each player may put any number of creature cards from their hand onto the battlefield. Then put all cards exiled this way into their owners' hands. Exile Worlds Within Worlds.",
     );
 }

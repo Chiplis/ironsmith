@@ -86,6 +86,130 @@ fn parse_destroy_opponent_creature_that_was_dealt_damage_this_turn() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_damage_targets_that_were_dealt_damage_this_turn() {
+    for (name, text) in [
+        (
+            "Crushing Pain",
+            "Crushing Pain deals 6 damage to target creature that was dealt damage this turn.",
+        ),
+        (
+            "Inflame",
+            "Inflame deals 2 damage to each creature dealt damage this turn.",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .parse_text(text)
+            .expect("damage-history target should parse");
+        let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effect"));
+        assert!(
+            debug.contains("was_dealt_damage_this_turn: true"),
+            "expected dealt-damage-this-turn filter for {name}, got {debug}"
+        );
+        let rendered = unprocessed_compiled_lines(&def).join("\n");
+        assert!(
+            rendered.contains("dealt damage this turn"),
+            "expected duration-bearing damage-history surface for {name}, got {rendered}"
+        );
+        if name == "Inflame" {
+            assert!(
+                rendered.contains("each creature dealt damage this turn")
+                    && !rendered.contains("each creature that was dealt damage this turn"),
+                "expected compact mass-damage history surface for Inflame, got {rendered}"
+            );
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_copy_duration_before_unmodeled_exception_tail() {
+    for (name, text) in [
+        (
+            "Impossible Man",
+            "{2}{U}: Impossible Man becomes a copy of another target permanent until end of turn, except his name is Impossible Man.",
+        ),
+        (
+            "Hall of Mirrors",
+            "Choose target creature you control. Each other creature you control becomes a copy of that creature until end of turn, except it isn't legendary.",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .parse_text(text)
+            .expect("copy duration before exception should parse");
+        let debug = format!("{def:?}");
+        assert!(
+            debug.contains("CopyOf"),
+            "expected copy effect for {name}, got {debug}"
+        );
+        assert!(
+            debug.contains("until: EndOfTurn"),
+            "expected end-of-turn copy duration for {name}, got {debug}"
+        );
+        let rendered = unprocessed_compiled_lines(&def).join("\n");
+        assert!(
+            rendered.contains("until end of turn"),
+            "expected duration-bearing copy surface for {name}, got {rendered}"
+        );
+        if name == "Hall of Mirrors" {
+            assert!(debug.contains("RemoveSupertypes"), "{debug}");
+            assert!(
+                rendered.contains("except it isn't legendary") && !rendered.contains("For each"),
+                "expected one plural copy clause with its nonlegendary exception, got {rendered}"
+            );
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_composite_copy_exception_characteristics() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Hulkling, Young Avenger")
+        .parse_text(
+            "Whenever you cast a noncreature spell, Hulkling becomes a copy of up to one other target creature until end of turn, except his name is Hulkling, Young Avenger, he's 4/4, and he has flying and this ability.",
+        )
+        .expect("composite copy exception should parse");
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CopyOf")
+            && debug.contains("SetPowerToughness")
+            && debug.contains("AddAbility"),
+        "expected typed copy/name/PT/ability modifications, got {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("until end of turn")
+            && rendered.contains("it's 4/4")
+            && rendered.contains("it has flying and this ability"),
+        "expected all composite copy-exception characteristics, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_copy_filter_excluding_the_chosen_creature() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Chosen Copy Probe")
+        .parse_text(
+            "Choose target creature you control. Each creature you control other than the chosen creature becomes a copy of that creature until end of turn, except it isn't legendary.",
+        )
+        .expect("chosen-creature exclusion should parse");
+    let debug = format!("{def:#?}");
+    let compact_debug = debug.split_whitespace().collect::<String>();
+    assert!(
+        compact_debug.contains("IsNotTaggedObject")
+            && !compact_debug.contains("excluded_card_types:[Creature]"),
+        "expected an identity exclusion rather than a creature-type negation, got {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("creatures you control other than the chosen creature")
+            && rendered.contains("except it isn't legendary")
+            && !rendered.contains("For each"),
+        "expected a single chosen-exclusion copy clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_mindculling_draw_then_target_opponent_discards() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mindculling Variant")
         .parse_text("You draw two cards and target opponent discards two cards.")

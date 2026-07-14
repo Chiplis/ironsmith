@@ -56,10 +56,11 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
         .map(|line| substitute_spell_caster_source_reference(&line, def))
         .map(|line| substitute_kicked_draw_source_reference(&line, def))
         .collect();
-    compact_post_substitution_surface_lines(lines)
+    let lines = compact_post_substitution_surface_lines(lines)
         .into_iter()
         .map(normalize_scored_compiled_line)
-        .collect()
+        .collect();
+    prefix_attraction_visit_surface(def, lines)
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
@@ -71,10 +72,21 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
         })
         .map(|line| substitute_spell_caster_source_reference(&line, def))
         .collect();
-    compact_post_substitution_surface_lines(lines)
+    let lines = compact_post_substitution_surface_lines(lines)
         .into_iter()
         .map(normalize_unprocessed_compiled_line)
-        .collect()
+        .collect();
+    prefix_attraction_visit_surface(def, lines)
+}
+
+fn prefix_attraction_visit_surface(def: &CardDefinition, mut lines: Vec<String>) -> Vec<String> {
+    if def.card.subtypes.contains(&Subtype::Attraction)
+        && let Some(line) = lines.iter_mut().find(|line| !line.trim().is_empty())
+        && !line.starts_with("Visit — ")
+    {
+        *line = format!("Visit — {line}");
+    }
+    lines
 }
 
 /// Render a single ability using the same surface renderer as compiled oracle text.
@@ -1050,9 +1062,9 @@ fn finalize_ast_surface_line(line: String) -> String {
         "Target creature an opponent controls or enchantment",
         "Target creature or enchantment an opponent controls",
     );
-    if !line
-        .to_ascii_lowercase()
-        .contains("reveal the top card of your library")
+    let lower_line = line.to_ascii_lowercase();
+    if !lower_line.contains("reveal the top card of your library")
+        && !lower_line.contains("the exiled card")
     {
         line = line.replace(
             "lose life equal to its mana value",

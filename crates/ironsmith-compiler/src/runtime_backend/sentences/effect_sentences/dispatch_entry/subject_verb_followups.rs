@@ -1050,6 +1050,119 @@ fn pre_rule_exile_this_way_followup(
     Ok(Some(PreParseFollowupResult::Plan(plan)))
 }
 
+fn tagged_may_battlefield_move(effect: &EffectAst) -> Option<TagKey> {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::MoveToZone {
+                    target: TargetAst::Tagged(tag, _),
+                    zone: Zone::Battlefield,
+                    ..
+                }
+                | SubjectVerbActionAst::MayMoveToZone {
+                    target: TargetAst::Tagged(tag, _),
+                    zone: Zone::Battlefield,
+                },
+            ..
+        }) => Some(tag.clone()),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::MoveToZone {
+                    target: TargetAst::Object(filter, _, _),
+                    zone: Zone::Battlefield,
+                    ..
+                }
+                | SubjectVerbActionAst::MayMoveToZone {
+                    target: TargetAst::Object(filter, _, _),
+                    zone: Zone::Battlefield,
+                },
+            ..
+        }) => filter
+            .tagged_constraints
+            .iter()
+            .find(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+            .map(|constraint| constraint.tag.clone()),
+        EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. }
+            if effects.len() == 1 =>
+        {
+            tagged_may_battlefield_move(&effects[0])
+        }
+        _ => None,
+    }
+}
+
+/// Attach "If you don't put it onto the battlefield" to the immediately
+/// preceding optional tagged move.  The fallback happens both when the move's
+/// object gate is false and when the player declines the move, so it must be
+/// represented inside the existing conditional rather than as an unrelated
+/// battlefield-state test.
+fn pre_rule_declined_tagged_battlefield_move_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let Some((condition_tokens, fallback_tokens)) =
+        grammar::split_lexed_once_on_delimiter(sentence_tokens, TokenKind::Comma)
+    else {
+        return Ok(None);
+    };
+    let condition_words = crate::runtime_backend::token_word_refs(condition_tokens);
+    if condition_words.len() < 7
+        || condition_words.first().copied() != Some("if")
+        || condition_words.get(1).copied() != Some("you")
+        || !condition_words
+            .get(2)
+            .is_some_and(|word| matches!(*word, "dont" | "don't"))
+        || condition_words.get(3).copied() != Some("put")
+        || !(condition_words
+            .windows(2)
+            .any(|window| window == ["onto", "battlefield"])
+            || condition_words
+                .windows(3)
+                .any(|window| window == ["onto", "the", "battlefield"]))
+    {
+        return Ok(None);
+    }
+
+    let Some(tag) = state.effects.last().and_then(|effect| match effect {
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } if if_false.is_empty() && if_true.len() == 1 => tagged_may_battlefield_move(&if_true[0]),
+        _ => None,
+    }) else {
+        return Ok(None);
+    };
+
+    let fallback_tokens = trim_commas(fallback_tokens);
+    let mut fallback = parse_effect_sentence_lexed(&fallback_tokens)?;
+    if fallback.is_empty() {
+        return Ok(None);
+    }
+    let explicit_target = TargetAst::Tagged(tag, span_from_tokens(condition_tokens));
+    replace_it_target_in_effects(&mut fallback, &explicit_target);
+
+    let Some(EffectAst::Conditional {
+        if_true, if_false, ..
+    }) = state.effects.last_mut()
+    else {
+        return Ok(None);
+    };
+    if_true.push(EffectAst::IfResult {
+        predicate: IfResultPredicate::WasDeclined,
+        effects: fallback.clone(),
+    });
+    *if_false = fallback;
+    *state.carried_context = None;
+
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some(
+            "subject-verb verb=Put subject=implicit recognizer=declined-tagged-move-followup",
+        ),
+    }))
+}
+
 fn pre_rule_when_milled_this_way_followup(
     _state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -1617,6 +1730,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         run: pre_rule_return_source_exiled_cards_if_source_sacrificed,
     },
     SubjectVerbFollowupRuleDef {
+        id: "declined-tagged-battlefield-move",
+        priority: 54,
+        heads: &["if"],
+        run: pre_rule_declined_tagged_battlefield_move_followup,
+    },
+    SubjectVerbFollowupRuleDef {
         id: "milled-this-way",
         priority: 55,
         heads: &["when"],
@@ -1789,5 +1908,23 @@ mod copy_cast_followup_tests {
             cast_debug.contains("without_paying_mana_cost: true"),
             "{debug}"
         );
+    }
+}
+
+#[cfg(test)]
+mod declined_move_followup_tests {
+    use super::*;
+
+    #[test]
+    fn source_exiled_move_and_decline_fallback_stay_one_conditional() {
+        let lexed = lex_line(
+            "You may put the exiled card onto the battlefield if it's a creature card. If you don't put it onto the battlefield, put it into its owner's hand.",
+            0,
+        )
+        .expect("source-exiled move should lex");
+        let parsed = parse_effect_sentences_lexed(&lexed)
+            .expect("source-exiled move and decline fallback should parse");
+
+        assert_eq!(parsed.len(), 1, "{parsed:#?}");
     }
 }

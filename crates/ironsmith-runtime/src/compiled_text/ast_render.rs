@@ -3845,9 +3845,9 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         .abilities
         .iter()
         .any(ability_has_begin_on_battlefield_pregame);
-    let render_spell_cost_modifiers_before_spell = spell_like_card
+    let render_leading_spell_abilities = spell_like_card
         && def.abilities.iter().any(|ability| {
-            ability_is_this_spell_cost_modifier(ability)
+            ability_precedes_spell_resolution(ability)
                 && !ability_is_rendered_with_alternative_cast(def, ability)
         });
     let push_abilities = |output: &mut Vec<String>| {
@@ -3870,9 +3870,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
-            if render_spell_cost_modifiers_before_spell
-                && ability_is_this_spell_cost_modifier(ability)
-            {
+            if render_leading_spell_abilities && ability_precedes_spell_resolution(ability) {
                 ability_idx += 1;
                 continue;
             }
@@ -4132,9 +4130,9 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     if !spell_like_card {
         push_abilities(&mut out);
     }
-    if render_spell_cost_modifiers_before_spell {
+    if render_leading_spell_abilities {
         for (idx, ability) in def.abilities.iter().enumerate() {
-            if !ability_is_this_spell_cost_modifier(ability) {
+            if !ability_precedes_spell_resolution(ability) {
                 continue;
             }
             if ability_is_rendered_with_alternative_cast(def, ability) {
@@ -4973,6 +4971,18 @@ fn ability_is_this_spell_cost_modifier(ability: &Ability) -> bool {
             .is_some()
 }
 
+fn ability_precedes_spell_resolution(ability: &Ability) -> bool {
+    if ability_is_this_spell_cost_modifier(ability) {
+        return true;
+    }
+    matches!(
+        &ability.kind,
+        AbilityKind::Static(static_ability)
+            if static_ability.id()
+                == crate::static_abilities::StaticAbilityId::MakeColorless
+    )
+}
+
 fn is_choose_background_spell_effect(spell_effects: &crate::ResolutionProgram) -> bool {
     let [effect] = spell_effects.flattened_default_effects() else {
         return false;
@@ -5212,6 +5222,22 @@ mod self_replacement_rendering_tests {
 #[cfg(test)]
 mod keyword_surface_merge_tests {
     use super::*;
+
+    #[test]
+    fn parameterized_keyword_marker_stays_separate_from_intrinsic_keyword() {
+        let merged = merge_adjacent_keyword_surface_lines(vec![
+            "Static ability 0: Mutate {4}{B}".to_string(),
+            "Static ability 1: flying".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "Static ability 0: Mutate {4}{B}".to_string(),
+                "Static ability 1: flying".to_string(),
+            ]
+        );
+    }
 
     #[test]
     fn adjacent_singular_protection_grants_keep_has_and_compact_colors() {

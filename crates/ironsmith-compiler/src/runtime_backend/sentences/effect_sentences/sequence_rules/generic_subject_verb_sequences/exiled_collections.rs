@@ -96,6 +96,87 @@ fn contains_word_phrase(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
     words.windows(phrase.len()).any(|window| window == phrase)
 }
 
+fn has_owner_hands_destination(tokens: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(tokens);
+    words.windows(3).any(|window| {
+        window[0] == "their" && matches!(window[1], "owners" | "owners'") && window[2] == "hands"
+    })
+}
+
+/// Preserves the collection provenance in a four-step sequence of the form
+/// "exile ...; each player may put ...; put all cards exiled this way into
+/// their owners' hands; exile this spell". Parsing the middle instruction in
+/// isolation updates the ordinary last-object tag, so the later "exiled this
+/// way" reference must be bound to the first instruction explicitly.
+pub(crate) fn parse_exile_each_player_put_return_exiled_then_exile_source(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = sentences[sentence_idx].lowered();
+    let second_tokens = sentences[sentence_idx + 1].lowered();
+    let third_tokens = sentences[sentence_idx + 2].lowered();
+    let fourth_tokens = sentences[sentence_idx + 3].lowered();
+
+    if !contains_word_phrase(second_tokens, &["each", "player", "may", "put"])
+        || !contains_word_phrase(second_tokens, &["any", "number", "of"])
+        || !contains_word_phrase(second_tokens, &["from", "their", "hand"])
+        || !contains_word_phrase(second_tokens, &["onto", "the", "battlefield"])
+        || !contains_word_phrase(third_tokens, &["all", "cards", "exiled", "this", "way"])
+        || !has_owner_hands_destination(third_tokens)
+    {
+        return Ok(None);
+    }
+
+    let fourth_words = parser_token_word_refs(fourth_tokens);
+    if !fourth_words.starts_with(&["exile", "this"]) {
+        return Ok(None);
+    }
+
+    let Ok(mut first_effects) = effect_sentences::parse_effect_sentence_lexed(first_tokens) else {
+        return Ok(None);
+    };
+    let exiled_tag = helper_tag_for_tokens(first_tokens, "exiled");
+    if !tag_first_exile_in_effects(&mut first_effects, &exiled_tag) {
+        return Ok(None);
+    }
+
+    let Ok(second_effects) = effect_sentences::parse_effect_sentence_lexed(second_tokens) else {
+        return Ok(None);
+    };
+    if !matches!(second_effects.as_slice(), [EffectAst::ForEachPlayer { .. }]) {
+        return Ok(None);
+    }
+
+    let Ok(fourth_effects) = effect_sentences::parse_effect_sentence_lexed(fourth_tokens) else {
+        return Ok(None);
+    };
+    if !matches!(
+        fourth_effects.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Exile {
+                target: TargetAst::Source(_),
+                ..
+            },
+            ..
+        })]
+    ) {
+        return Ok(None);
+    }
+
+    let mut effects = first_effects;
+    effects.extend(second_effects);
+    effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(exiled_tag, None),
+        Zone::Hand,
+        false,
+        ReturnControllerAst::Preserve,
+        false,
+        None,
+    ));
+    effects.extend(fourth_effects);
+    Ok(Some(effects))
+}
+
 /// Composes "exile the top N ...; put <count/filter> from among them onto the
 /// battlefield" while keeping the selection scoped to the exact exiled set.
 pub(crate) fn parse_exile_top_then_put_from_among_onto_battlefield(
@@ -122,6 +203,7 @@ pub(crate) fn parse_exile_top_then_put_from_among_onto_battlefield(
         mut filter,
         aggregate_constraint,
         destination,
+        controller,
         tapped,
         attacking,
         _attack_target_player,
@@ -162,11 +244,6 @@ pub(crate) fn parse_exile_top_then_put_from_among_onto_battlefield(
         });
     }
 
-    let controller = if contains_word_phrase(second, &["under", "your", "control"]) {
-        ReturnControllerAst::You
-    } else {
-        ReturnControllerAst::Preserve
-    };
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag,
         effects: vec![EffectAst::subject_verb_put_onto_battlefield(

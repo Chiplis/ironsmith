@@ -55,6 +55,84 @@ fn plain_permanent_type_change<'a>(
     Some(apply)
 }
 
+/// Render the common mill/return/type-setting pipeline as the three Oracle
+/// sentences represented by its object tags. The tags prove that the return
+/// consumes exactly the milled collection and that the animation consumes
+/// exactly the returned permanents.
+pub(super) fn describe_milled_creatures_returned_then_animated(
+    effects: &[Effect],
+) -> Option<String> {
+    let [mill_players_effect, return_effect, animate_effect] = effects else {
+        return None;
+    };
+
+    let mill_players = unwrap_render_wrappers(mill_players_effect)
+        .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if mill_players.filter != PlayerFilter::Opponent
+        || mill_players.effects.len() != 1
+        || mill_players.starting_with_controller
+        || mill_players.stop_after_first_happened
+    {
+        return None;
+    }
+    let mill_tag = outer_object_tag(&mill_players.effects[0])?;
+    let mill = unwrap_render_wrappers(&mill_players.effects[0])
+        .downcast_ref::<crate::effects::MillEffect>()?;
+    if mill.player != PlayerFilter::IteratedPlayer {
+        return None;
+    }
+
+    let returned_tag = outer_object_tag(return_effect)?;
+    let returned = unwrap_render_wrappers(return_effect)
+        .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    // The tagged constraint identifies the source collection. Lowering may
+    // normalize a return effect's filter to its destination battlefield zone,
+    // while older producers retain the source graveyard zone.
+    if !matches!(
+        returned.filter.zone,
+        Some(Zone::Graveyard | Zone::Battlefield)
+    ) || returned.filter.card_types.as_slice() != [CardType::Creature]
+        || !returned.face_down
+        || returned.battlefield_controller != crate::effects::BattlefieldController::You
+        || !returned.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == *mill_tag
+        })
+    {
+        return None;
+    }
+
+    let animation = unwrap_render_wrappers(animate_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if animation.until != Until::Forever
+        || !animation
+            .target_spec
+            .as_ref()
+            .is_some_and(|spec| choose_spec_is_exact_tag(spec, returned_tag))
+        || !matches!(
+            &animation.modification,
+            Some(crate::continuous::Modification::AddCardTypes(card_types))
+                if card_types.contains(&CardType::Artifact)
+                    && card_types.contains(&CardType::Creature)
+        )
+    {
+        return None;
+    }
+
+    let sentence = |effect: &Effect| {
+        describe_effect(effect)
+            .trim()
+            .trim_end_matches('.')
+            .to_string()
+    };
+    Some(format!(
+        "{}. {}. {}",
+        sentence(mill_players_effect),
+        sentence(return_effect),
+        sentence(animate_effect)
+    ))
+}
+
 /// Render a death-trigger return followed by an exact, permanent type reset.
 ///
 /// The generated object tags are part of the proof here: the type-setting

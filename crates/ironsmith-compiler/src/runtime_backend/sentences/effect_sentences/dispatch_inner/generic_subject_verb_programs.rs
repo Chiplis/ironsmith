@@ -2766,7 +2766,7 @@ const EXILE_FACE_DOWN_REST_BOTTOM_PATTERN: effect_grammar::EffectSequence<'stati
     effect_grammar::EffectSequence::new(&[
         effect_grammar::EffectSequence::word("put"),
         effect_grammar::EffectSequence::optional(OPTIONAL_THE_PATTERN_ATOMS),
-        effect_grammar::EffectSequence::word("rest"),
+        effect_grammar::EffectSequence::any_word(&["rest", "other"]),
         effect_grammar::EffectSequence::any_word(&["on", "onto"]),
         effect_grammar::EffectSequence::optional(OPTIONAL_THE_PATTERN_ATOMS),
         effect_grammar::EffectSequence::word("bottom"),
@@ -2787,7 +2787,7 @@ const EXILE_FACE_DOWN_REST_ANY_ORDER_PATTERN: effect_grammar::EffectSequence<'st
         effect_grammar::EffectCaptureKind::OneOfPhrase(&[&["any", "order"]]),
     )]);
 
-fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
+pub(crate) fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let sentence_tokens = trim_commas(tokens);
@@ -2824,6 +2824,12 @@ fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     {
         return None;
     }
+    let singleton_remainder = matches!(count.unhinted(), Value::Fixed(2))
+        && exile_count.min == 1
+        && exile_count.max == Some(1)
+        && !exile_count.dynamic_x
+        && !exile_count.up_to_x
+        && !exile_count.random;
     let bottom_order = if EXILE_FACE_DOWN_REST_RANDOM_ORDER_PATTERN
         .locate_in(remainder_clause)
         .is_some()
@@ -2833,6 +2839,12 @@ fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
         .locate_in(remainder_clause)
         .is_some()
     {
+        crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
+    } else if singleton_remainder {
+        // Ordering a one-card complement is meaningless, so Oracle omits an
+        // order clause ("put the other on the bottom of that library").  The
+        // runtime still uses the ordinary chooser-order primitive; with one
+        // card it has exactly one legal ordering.
         crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
     } else {
         return None;
@@ -2908,6 +2920,24 @@ mod generic_subject_verb_program_tests {
             debug.matches("player: TargetOpponent").count() >= 2,
             "{debug}"
         );
+    }
+
+    #[test]
+    fn two_card_face_down_partition_accepts_the_single_other_without_order_text() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Look at the top two cards of target opponent's library. Exile one of them face down and put the other on the bottom of that library.",
+            0,
+        )
+        .expect("two-card face-down partition should lex");
+        let effects =
+            parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(&tokens)
+                .expect("two-card face-down partition should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("LookAtTopCards"), "{debug}");
+        assert!(debug.contains("ChooseObjects"), "{debug}");
+        assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
+        assert!(debug.matches("player: TargetOpponent").count() >= 2, "{debug}");
     }
 
     #[test]

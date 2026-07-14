@@ -227,6 +227,7 @@ fn bind_implicit_choose_chooser(effects: &mut [EffectAst], chooser: PlayerAst) {
             EffectAst::ChooseObjects { player, .. }
             | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
             | EffectAst::ChooseObjectsBottomOfLibrary { player, .. }
+            | EffectAst::ChooseObjectsTopOfLibrary { player, .. }
             | EffectAst::ChooseObjectsAcrossZones { player, .. }
             | EffectAst::ChooseTaggedObjectsInZone { player, .. }
                 if matches!(*player, PlayerAst::Implicit) =>

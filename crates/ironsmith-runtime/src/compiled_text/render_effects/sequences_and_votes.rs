@@ -2908,7 +2908,7 @@ pub(super) fn describe_source_exile_with_counters_pair(
 
 pub(super) fn value_is_source_exiled_mana_value(value: &Value) -> bool {
     matches!(
-        value,
+        value.unhinted(),
         Value::ManaValueOf(spec)
             if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
     )
@@ -3022,6 +3022,9 @@ pub(super) fn describe_library_consult_selection_with_cards(filter: &ObjectFilte
     display_filter.zone = None;
     if filter.zone == Some(Zone::Battlefield) && display_filter == ObjectFilter::default() {
         return "a permanent card".to_string();
+    }
+    if filter_explicitly_selects_permanent_cards(&display_filter) {
+        return describe_single_search_filter_in_zone(&display_filter, Zone::Library);
     }
     let mut selection = display_filter.description();
     if display_filter.card_types.is_empty()
@@ -3192,13 +3195,19 @@ pub(super) fn describe_return_all_to_battlefield_effect(
         && return_all.filter.card_types[0] == CardType::Creature
         && return_all.filter.subtypes.is_empty()
     {
-        "creature cards exiled with this enchantment".to_string()
+        // The source-linked exile tag is shared by creatures, artifacts,
+        // enchantments, and other permanents. The effect itself has no source
+        // type context, so claiming a specific permanent type here can change
+        // the meaning (for example, a creature source rendered as an
+        // enchantment). Keep the reference type-neutral.
+        "creature cards exiled with this card".to_string()
     } else {
         describe_for_each_filter(&return_all.filter)
     };
     filter_text = filter_text
         .replace("permanent card exiled", "permanent cards exiled")
         .replace("card exiled", "cards exiled")
+        .replace("card milled", "cards milled")
         .replace(" card in your graveyard", " cards from your graveyard");
     let controller_suffix = match return_all.battlefield_controller {
         crate::effects::BattlefieldController::Preserve
@@ -3209,6 +3218,7 @@ pub(super) fn describe_return_all_to_battlefield_effect(
                 " under their owners' control"
             }
         }
+        crate::effects::BattlefieldController::You if !return_all.controller_surface_explicit => "",
         crate::effects::BattlefieldController::You => " under your control",
     };
     let face_down_suffix = if return_all.face_down {

@@ -354,6 +354,22 @@ fn parse_drawn_this_turn_shape(words: &[&str]) -> Option<usize> {
     Some(words.len().saturating_sub(input.len()))
 }
 
+fn parse_was_dealt_damage_this_turn_shape(words: &[&str]) -> Option<usize> {
+    const PHRASES: &[&[&str]] = &[
+        &["that", "was", "dealt", "damage", "this", "turn"],
+        &["that", "were", "dealt", "damage", "this", "turn"],
+        &["was", "dealt", "damage", "this", "turn"],
+        &["were", "dealt", "damage", "this", "turn"],
+        // Oracle sometimes elides "was" after a quantified object, as in
+        // "each creature dealt damage this turn" (Inflame).
+        &["dealt", "damage", "this", "turn"],
+    ];
+    PHRASES
+        .iter()
+        .find(|phrase| words.starts_with(phrase))
+        .map(|phrase| phrase.len())
+}
+
 impl SpellFilterComparisonAxis {
     pub(super) fn as_str(self) -> &'static str {
         match self {
@@ -960,6 +976,57 @@ pub(super) fn try_apply_drawn_this_turn_clause(
     true
 }
 
+pub(super) fn try_apply_was_dealt_damage_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, consumed)) = all_words.iter().enumerate().find_map(|(idx, _)| {
+        let consumed = parse_was_dealt_damage_this_turn_shape(&all_words[idx..])?;
+        // "that dealt damage this turn" is active voice and needs a distinct
+        // history fact; do not flatten it into "was dealt damage" merely
+        // because its suffix begins with the same words.
+        if all_words[idx..].starts_with(&["dealt", "damage", "this", "turn"])
+            && idx > 0
+            && all_words[idx - 1] == "that"
+        {
+            return None;
+        }
+        Some((idx, consumed))
+    }) else {
+        return false;
+    };
+
+    filter.was_dealt_damage_this_turn = true;
+    all_words.drain(word_start..word_start + consumed);
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &["that", "was", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "were", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["was", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["were", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+        ],
+    );
+    true
+}
+
 pub(super) fn push_it_tagged_object_constraint(filter: &mut ObjectFilter) {
     filter.tagged_constraints.push(TaggedObjectConstraint {
         tag: TagKey::from(IT_TAG),
@@ -1299,5 +1366,36 @@ mod tests {
             parse_drawn_this_turn_words(&["drawn", "last", "turn"]),
             None
         );
+    }
+
+    #[test]
+    fn applies_was_dealt_damage_history_without_conflating_active_voice() {
+        for mut words in [
+            vec![
+                "target", "creature", "that", "was", "dealt", "damage", "this", "turn",
+            ],
+            vec!["each", "creature", "dealt", "damage", "this", "turn"],
+        ] {
+            let mut filter = ObjectFilter::default();
+            let mut tokens = Vec::new();
+            assert!(try_apply_was_dealt_damage_this_turn_clause(
+                &mut filter,
+                &mut words,
+                &mut tokens,
+            ));
+            assert!(filter.was_dealt_damage_this_turn);
+        }
+
+        let mut active_words = vec![
+            "target", "creature", "that", "dealt", "damage", "this", "turn",
+        ];
+        let mut active_filter = ObjectFilter::default();
+        let mut tokens = Vec::new();
+        assert!(!try_apply_was_dealt_damage_this_turn_clause(
+            &mut active_filter,
+            &mut active_words,
+            &mut tokens,
+        ));
+        assert!(!active_filter.was_dealt_damage_this_turn);
     }
 }

@@ -1512,6 +1512,8 @@ pub(super) fn resolve_value_with_context(
             .and_then(|o| o.toughness())
             .unwrap_or(0),
 
+        Value::SourceMutationCount => ctx.game.mutation_count(source) as i32,
+
         Value::PowerOf(spec) => object_for_value_spec(spec, ctx, source)
             .and_then(|object| object.power())
             .unwrap_or(0),
@@ -2107,10 +2109,7 @@ fn add_ability_from_counter(
 }
 
 #[cfg(test)]
-pub(super) fn add_abilities_from_counters(
-    object: &Object,
-    chars: &mut CalculatedCharacteristics,
-) {
+pub(super) fn add_abilities_from_counters(object: &Object, chars: &mut CalculatedCharacteristics) {
     for &counter_type in object.counters.keys() {
         add_ability_from_counter(object, counter_type, chars);
     }
@@ -2137,13 +2136,13 @@ pub(super) fn ability_counter_timestamps(
             })
         })
         .collect();
-    counters.sort_by(|(left_timestamp, left_counter), (right_timestamp, right_counter)| {
-        left_timestamp.cmp(right_timestamp).then_with(|| {
-            left_counter
-                .description()
-                .cmp(&right_counter.description())
-        })
-    });
+    counters.sort_by(
+        |(left_timestamp, left_counter), (right_timestamp, right_counter)| {
+            left_timestamp
+                .cmp(right_timestamp)
+                .then_with(|| left_counter.description().cmp(&right_counter.description()))
+        },
+    );
     counters
 }
 

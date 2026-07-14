@@ -200,6 +200,10 @@ pub(super) fn describe_structural_hideaway_keyword(
 pub(super) fn describe_look_exile_one_rest_bottom_cast_else_hand(
     effects: &[&Effect],
 ) -> Option<String> {
+    if let Some(gonti) = describe_target_opponent_look_exile_one_rest_bottom_cast(effects) {
+        return Some(gonti);
+    }
+
     let [
         look_effect,
         choose_effect,
@@ -284,6 +288,85 @@ pub(super) fn describe_look_exile_one_rest_bottom_cast_else_hand(
     let condition_text = describe_exiled_card_cast_condition(filter)?;
     Some(format!(
         "Look at the top {count_text} {noun} of your library. Exile one of them face down and put the rest on the bottom of your library in a random order. You may cast the exiled card without paying its mana cost if {condition_text}. If you don't, put that card into your hand"
+    ))
+}
+
+/// Preserve the collection boundaries in the Gonti-style look/partition/play
+/// program. Every clause is justified by an explicit tag edge: the choice is
+/// drawn from the looked collection, the exile and permission share the
+/// choice tag, and the bottom action is the looked collection minus that tag.
+pub(super) fn describe_target_opponent_look_exile_one_rest_bottom_cast(
+    effects: &[&Effect],
+) -> Option<String> {
+    let [
+        target_effect,
+        look_effect,
+        choose_effect,
+        exile_effect,
+        rest_effect,
+        grant_effect,
+    ] = effects
+    else {
+        return None;
+    };
+    let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile =
+        unwrap_basic_tag_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
+    let rest =
+        rest_effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+
+    let targets_opponent = matches!(
+        &target.target,
+        ChooseSpec::Target(inner)
+            if matches!(inner.as_ref(), ChooseSpec::Player(PlayerFilter::Opponent))
+    );
+    let looks_at_target_opponent = matches!(
+        &look.player,
+        PlayerFilter::Target(inner) if inner.as_ref() == &PlayerFilter::Opponent
+    );
+    let mut untagged_filter = choose.filter.clone();
+    untagged_filter.zone = None;
+    untagged_filter.tagged_constraints.clear();
+    let exact_looked_choice = choose.filter.zone == Some(Zone::Library)
+        && choose.filter.tagged_constraints.len() == 1
+        && choose.filter.tagged_constraints[0].tag == look.tag
+        && choose.filter.tagged_constraints[0].relation
+            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        && untagged_filter == ObjectFilter::default();
+
+    if !targets_opponent
+        || !looks_at_target_opponent
+        || look.reveal
+        || !choose.count.is_single()
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.additional_zones.is_empty()
+        || choose.is_search
+        || !exact_looked_choice
+        || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || !exile.face_down
+        || rest.tag != look.tag
+        || rest.keep_tagged.as_ref() != Some(&choose.tag)
+        || rest.player != look.player
+        || rest.order != LibraryBottomOrder::Random
+        || grant.tag != choose.tag
+        || grant.player != PlayerFilter::You
+        || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
+        || grant.allow_land
+        || grant.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::AnyType
+        || grant.while_on_top_of_library
+        || grant.filter.is_some()
+        || grant.cast_pool_is_plural
+    {
+        return None;
+    }
+
+    let (count_text, noun, where_clause) = describe_look_count_and_noun(&look.count);
+    Some(format!(
+        "Look at the top {count_text} {noun} of target opponent's library{where_clause}, exile one of them face down, then put the rest on the bottom of that library in a random order. You may cast that card for as long as it remains exiled, and mana of any type can be spent to cast that spell"
     ))
 }
 
@@ -746,6 +829,206 @@ pub(super) fn describe_for_players_may_search_library_then_shuffle(
         "{subject} may {search_text}. Then {} who searched their library this way shuffles",
         lowercase_first(subject)
     ))
+}
+
+fn tagged_library_partition_filter(
+    filter: &ObjectFilter,
+    included_tag: &crate::TagKey,
+    excluded_tag: Option<&crate::TagKey>,
+    owner_tag: Option<&crate::TagKey>,
+) -> bool {
+    let owner_matches = filter.owner.as_ref().is_some_and(|owner| {
+        owner == &PlayerFilter::IteratedPlayer
+            || owner_tag.is_some_and(|expected_tag| {
+                matches!(
+                    owner,
+                    PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag))
+                        | PlayerFilter::AliasedOwnerOf(crate::filter::ObjectRef::Tagged(tag))
+                        if tag == expected_tag
+                )
+            })
+    });
+    if filter.zone != Some(Zone::Library)
+        || !owner_matches
+        || filter.tagged_constraints.len() != 1 + usize::from(excluded_tag.is_some())
+        || !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == *included_tag
+        })
+        || excluded_tag.is_some_and(|tag| {
+            !filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                    && constraint.tag == *tag
+            })
+        })
+    {
+        return false;
+    }
+
+    let mut remainder = filter.clone();
+    remainder.zone = None;
+    remainder.owner = None;
+    remainder.tagged_constraints.clear();
+    remainder == ObjectFilter::default()
+}
+
+fn iterated_player_or_owner_of_tag(player: &PlayerFilter, expected_tag: &crate::TagKey) -> bool {
+    player == &PlayerFilter::IteratedPlayer
+        || matches!(
+            player,
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag))
+                | PlayerFilter::AliasedOwnerOf(crate::filter::ObjectRef::Tagged(tag))
+                if tag == expected_tag
+        )
+}
+
+/// Render an optional per-player library search whose result is partitioned
+/// between two battlefield controllers. Keeping this as one structural bundle
+/// mirrors the runtime program: each iterated player chooses, partitions only
+/// the cards they found, and shuffles only after accepting the search.
+fn describe_for_players_optional_search_battlefield_partition_with_followups(
+    for_players: &crate::effects::ForPlayersEffect,
+    sibling_followups: &[Effect],
+) -> Option<String> {
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    let (may_effect, nested_followups) = for_players.effects.split_first()?;
+    let may = unwrap_basic_tag_wrappers(may_effect).downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider != Some(PlayerFilter::IteratedPlayer) {
+        return None;
+    }
+
+    let mut effects = Vec::new();
+    for effect in &may.effects {
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            effects.extend(sequence.effects.iter());
+        } else {
+            effects.push(effect);
+        }
+    }
+    // Sentence-level lowering may keep the optional search inside `May` while
+    // leaving its correlated partition and shuffle as sibling effects in the
+    // same iterated-player program. They still share explicit collection tags,
+    // so treating those siblings as one rendering bundle does not infer any
+    // relationship that the runtime model has not preserved.
+    effects.extend(nested_followups.iter());
+    effects.extend(sibling_followups.iter());
+    let [
+        search_effect,
+        capture_effect,
+        choose_effect,
+        chosen_move_effect,
+        remainder_move_effect,
+        shuffle_effect,
+    ] = effects.as_slice()
+    else {
+        return None;
+    };
+
+    let search = search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let capture = capture_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let chosen_move = unwrap_basic_tag_wrappers(chosen_move_effect)
+        .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    let remainder_move = unwrap_basic_tag_wrappers(remainder_move_effect)
+        .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    let shuffle = if let Some(shuffle) =
+        shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+    {
+        shuffle
+    } else {
+        let conditional = shuffle_effect.downcast_ref::<crate::effects::IfEffect>()?;
+        let [shuffle] = conditional.then.as_slice() else {
+            return None;
+        };
+        let shuffle = shuffle.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+        let correlated = remainder_move_effect
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .is_some_and(|with_id| with_id.id == conditional.condition);
+        if !correlated
+            || conditional.predicate != EffectPredicate::Happened
+            || !conditional.else_.is_empty()
+        {
+            return None;
+        }
+        shuffle
+    };
+
+    if !search.is_search
+        || search.chooser != PlayerFilter::IteratedPlayer
+        || choose_search_zones(search).as_deref() != Some(&[Zone::Library])
+        || search.filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || capture.zone != Some(Zone::Library)
+        || !capture.additional_zones.is_empty()
+        || !tagged_library_partition_filter(&capture.filter, &search.tag, None, None)
+        || !iterated_player_or_owner_of_tag(&choose.chooser, &search.tag)
+        || choose_search_zones(choose).as_deref() != Some(&[Zone::Library])
+        || !exact_count(&choose.count, 1)
+        || !tagged_library_partition_filter(&choose.filter, &capture.tag, None, Some(&search.tag))
+        || !chosen_move.tapped
+        || chosen_move.face_down
+        || chosen_move.verb_surface != ironsmith_core::MoveToZoneVerbSurface::Put
+        || chosen_move.battlefield_controller != crate::effects::BattlefieldController::You
+        || !tagged_library_partition_filter(
+            &chosen_move.filter,
+            &choose.tag,
+            None,
+            Some(&search.tag),
+        )
+        || !remainder_move.tapped
+        || remainder_move.face_down
+        || remainder_move.verb_surface != ironsmith_core::MoveToZoneVerbSurface::Put
+        || remainder_move.battlefield_controller != crate::effects::BattlefieldController::Owner
+        || !tagged_library_partition_filter(
+            &remainder_move.filter,
+            &capture.tag,
+            Some(&choose.tag),
+            Some(&choose.tag),
+        )
+        || shuffle.player != PlayerFilter::IteratedPlayer
+    {
+        return None;
+    }
+
+    let mut selection_filter = search.filter.clone();
+    selection_filter.zone = None;
+    selection_filter.owner = None;
+    let selection_noun = if selection_filter == ObjectFilter::default() {
+        "card".to_string()
+    } else {
+        describe_nonbattlefield_card_filter_without_zone(&selection_filter, Zone::Library)
+    };
+    let selection = if search.count.is_single() {
+        with_indefinite_article(&selection_noun)
+    } else {
+        format!(
+            "{} {}",
+            describe_choice_count(&search.count),
+            pluralize_noun_phrase(&selection_noun)
+        )
+    };
+
+    Some(format!(
+        "{subject} may search their library for {selection}. They each put one of those cards onto the battlefield tapped under your control and the rest onto the battlefield tapped under their control. Then each player who searched their library this way shuffles"
+    ))
+}
+
+pub(super) fn describe_for_players_optional_search_battlefield_partition(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    describe_for_players_optional_search_battlefield_partition_with_followups(for_players, &[])
+}
+
+/// Sentence lowering can place only the optional search inside the player
+/// loop while keeping its tag-correlated partition and shuffle as siblings.
+pub(super) fn describe_optional_search_battlefield_partition_effects(
+    effects: &[Effect],
+) -> Option<String> {
+    let (for_players_effect, followups) = effects.split_first()?;
+    let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    describe_for_players_optional_search_battlefield_partition_with_followups(
+        for_players,
+        followups,
+    )
 }
 
 pub(super) fn describe_for_players_search_library_then_shuffle(
@@ -2710,9 +2993,151 @@ pub(super) fn is_creature_card_match_filter(filter: &ObjectFilter) -> bool {
         && filter.excluded_card_types.is_empty()
 }
 
+fn consult_match_move_to_zone<'a>(
+    effect: &'a Effect,
+    consult: &crate::effects::ConsultTopOfLibraryEffect,
+) -> Option<&'a crate::effects::MoveToZoneEffect> {
+    let effect = unwrap_basic_tag_wrappers(effect);
+    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        return matches!(
+            move_to_zone.target.base(),
+            ChooseSpec::Tagged(tag) if tag == &consult.match_tag
+        )
+        .then_some(move_to_zone);
+    }
+
+    let for_each = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if for_each.tag != consult.match_tag {
+        return None;
+    }
+    let nested = if let [sequence] = for_each.effects.as_slice()
+        && let Some(sequence) =
+            unwrap_basic_tag_wrappers(sequence).downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        sequence.effects.as_slice()
+    } else {
+        for_each.effects.as_slice()
+    };
+    let [move_effect] = nested else {
+        return None;
+    };
+    let move_to_zone = unwrap_basic_tag_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    (matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+        || matches!(
+            move_to_zone.target.base(),
+            ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"
+        ))
+    .then_some(move_to_zone)
+}
+
+/// Render reveal-until programs as collection moves rather than exposing the
+/// implementation's per-object loop. The all/match/remainder tags prove which
+/// revealed cards move to the primary destination and which go to the bottom.
+fn describe_consult_reveal_move_matches_then_bottom(effects: &[&Effect]) -> Option<String> {
+    let [consult_effect, move_effect, remainder_effect] = effects else {
+        return None;
+    };
+    let consult = unwrap_basic_tag_wrappers(consult_effect)
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    let move_uses_iteration = unwrap_basic_tag_wrappers(move_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+        .is_some();
+    let consult_produces_multiple_matches = matches!(
+        &consult.stop_rule,
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(count))
+            if *count > 1
+    );
+    if !move_uses_iteration && !consult_produces_multiple_matches {
+        // Direct singular moves already have established renderers that retain
+        // their surrounding optionality, pronouns, and sentence boundaries.
+        // This compactor exists for an actual matched collection or for the
+        // runtime's per-match iteration scaffolding; claiming an ordinary
+        // singular move here would discard useful surface information.
+        return None;
+    }
+    let move_to_zone = consult_match_move_to_zone(move_effect, consult)?;
+    let remainder = unwrap_basic_tag_wrappers(remainder_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+
+    if consult.player != PlayerFilter::You
+        || consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
+        || consult.max_exposed.is_some()
+        || !matches!(move_to_zone.zone, Zone::Hand | Zone::Battlefield)
+        || move_to_zone.to_top
+        || move_to_zone.library_order.is_some()
+        || move_to_zone
+            .actor_surface
+            .as_ref()
+            .is_some_and(|actor| actor != &PlayerFilter::You)
+        || move_to_zone
+            .destination_player_surface
+            .as_ref()
+            .is_some_and(|player| player != &PlayerFilter::You)
+        || move_to_zone.destination_player_reference_surface.is_some()
+        || move_to_zone.exiled_with_source_surface.is_some()
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.attack_target_mode.is_some()
+        || move_to_zone.enters_face_down
+        || move_to_zone.transfer_exiled_with_source_links
+        || remainder.tag != consult.all_tag
+        || remainder.keep_tagged.as_ref() != Some(&consult.match_tag)
+        || remainder.player != consult.player
+    {
+        return None;
+    }
+
+    let mut selection =
+        describe_search_selection_with_cards(&consult.filter.description()).to_string();
+    if let Some(shorter) = selection.strip_suffix(" than it") {
+        selection = shorter.to_string();
+    }
+    let (stop_text, matched_reference, singular) = match &consult.stop_rule {
+        crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+        | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
+            (with_indefinite_article(&selection), "it".to_string(), true)
+        }
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(count))
+            if *count > 1 =>
+        {
+            let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
+            let plural_selection = pluralize_noun_phrase(strip_leading_article(&selection));
+            (
+                format!("{count_text} {plural_selection}"),
+                format!("the {plural_selection} revealed this way"),
+                false,
+            )
+        }
+        _ => return None,
+    };
+    let order_text = match remainder.order {
+        LibraryBottomOrder::Random => " in a random order",
+        LibraryBottomOrder::ChooserChooses => " in any order",
+    };
+
+    match move_to_zone.zone {
+        Zone::Hand if !singular => Some(format!(
+            "Reveal cards from the top of your library until you reveal {stop_text}. Put {matched_reference} into your hand, then put the rest of the revealed cards on the bottom of your library{order_text}"
+        )),
+        Zone::Hand => Some(format!(
+            "Reveal cards from the top of your library until you reveal {stop_text}. Put {matched_reference} into your hand and the rest on the bottom of your library{order_text}"
+        )),
+        Zone::Battlefield => Some(format!(
+            "Reveal cards from the top of your library until you reveal {stop_text}, put {matched_reference} onto the battlefield, then put the rest on the bottom of your library{order_text}"
+        )),
+        _ => None,
+    }
+}
+
 pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
     effects: &[&Effect],
 ) -> Option<String> {
+    if let Some(partition) = describe_consult_reveal_move_matches_then_bottom(effects) {
+        return Some(partition);
+    }
+
     fn unwrap_effect(effect: &Effect) -> &Effect {
         if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
             return unwrap_effect(&tagged.effect);
@@ -2726,8 +3151,53 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
         effect
     }
 
-    let [exile_effect, consult_effect, move_effect, shuffle_effect] = effects else {
-        return None;
+    let (exile_effect, consult_effect, move_effect, shuffle_effect, at_next_end_step): (
+        &Effect,
+        &Effect,
+        &Effect,
+        &Effect,
+        bool,
+    ) = match effects {
+        [exile_effect, consult_effect, move_effect, shuffle_effect] => (
+            exile_effect,
+            consult_effect,
+            move_effect,
+            shuffle_effect,
+            false,
+        ),
+        [exile_effect, schedule_effect] => {
+            let schedule = unwrap_effect(schedule_effect)
+                .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+            let end_step = schedule
+                .trigger
+                .downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>()?;
+            if !schedule.one_shot
+                || schedule.start_next_turn
+                || schedule.until_end_of_turn
+                || schedule.until_end_of_combat
+                || schedule.watch_ability_source
+                || !schedule.target_objects.is_empty()
+                || schedule.target_tag.is_some()
+                || schedule.target_filter.is_some()
+                || schedule.controller != PlayerFilter::You
+                || end_step.player != PlayerFilter::Any
+            {
+                return None;
+            }
+            let [consult_effect, move_effect, shuffle_effect] =
+                schedule.effects.flattened_default_effects()
+            else {
+                return None;
+            };
+            (
+                *exile_effect,
+                consult_effect,
+                move_effect,
+                shuffle_effect,
+                true,
+            )
+        }
+        _ => return None,
     };
     let exile = unwrap_effect(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
     if exile.face_down
@@ -2808,7 +3278,11 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
         return None;
     }
 
-    Some("Exile all creatures you control, then reveal cards from the top of your library until you reveal that many creature cards. Put all creature cards revealed this way onto the battlefield, then shuffle the rest of the revealed cards into your library".to_string())
+    if at_next_end_step {
+        Some("Exile all creatures you control. At the beginning of the next end step, reveal cards from the top of your library until you reveal that many creature cards, put all creature cards revealed this way onto the battlefield, then shuffle the rest of the revealed cards into your library".to_string())
+    } else {
+        Some("Exile all creatures you control, then reveal cards from the top of your library until you reveal that many creature cards. Put all creature cards revealed this way onto the battlefield, then shuffle the rest of the revealed cards into your library".to_string())
+    }
 }
 
 pub(super) fn move_revealed_remainder_to_hand(
@@ -3605,8 +4079,8 @@ pub(super) fn describe_for_players_simple_iterated_action(
             if subject == "You" { "your" } else { "their" }
         ));
     }
-    if let Some(move_to_zone) = unwrap_basic_tag_wrappers(effect)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    if let Some(move_to_zone) =
+        unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
     {
         let targets_iterated_player = match move_to_zone.target.base() {
             ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {

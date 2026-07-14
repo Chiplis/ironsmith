@@ -438,7 +438,12 @@ fn pluralize_noun_phrase(phrase: &str) -> String {
             let after_ok = after_pos >= phrase.len()
                 || phrase.as_bytes()[after_pos] == b' '
                 || phrase.as_bytes()[after_pos] == b'.';
-            if before_ok && after_ok {
+            if before_ok
+                && after_ok
+                && best_match
+                    .as_ref()
+                    .is_none_or(|(best_pos, _, _)| pos > *best_pos)
+            {
                 best_match = Some((pos, singular, plural));
             }
             search_start = after_pos;

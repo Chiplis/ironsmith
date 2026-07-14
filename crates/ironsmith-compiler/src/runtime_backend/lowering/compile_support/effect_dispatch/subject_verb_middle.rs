@@ -70,9 +70,7 @@ pub(super) fn compile_subject_verb_middle(
         } => {
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            if *all_matches
-                && let ChooseSpec::Object(filter) = &spec
-            {
+            if *all_matches && let ChooseSpec::Object(filter) = &spec {
                 spec = ChooseSpec::All(filter.clone());
             }
             let player_filter =
@@ -721,17 +719,37 @@ pub(super) fn compile_subject_verb_middle(
             controller,
             verb_surface,
         } => {
-            let return_all = crate::effects::ReturnAllToBattlefieldEffect::new(
-                resolve_it_tag(filter, &current_reference_env(ctx))?,
-                *tapped,
-            )
-            .with_verb_surface(*verb_surface);
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let refers_to_milled_cards =
+                resolved_filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                        && crate::runtime_backend::util::is_sentence_helper_tag(
+                            constraint.tag.as_str(),
+                            "milled",
+                        )
+                });
+            if resolved_filter.zone == Some(Zone::Battlefield) && refers_to_milled_cards {
+                // A tagged mill result is a graveyard snapshot. Some "cards
+                // milled this way" subject shapes inherit the destination
+                // battlefield zone while parsing the return action; restore
+                // the provenance before runtime filtering.
+                resolved_filter.zone = Some(Zone::Graveyard);
+            }
+            let return_all =
+                crate::effects::ReturnAllToBattlefieldEffect::new(resolved_filter, *tapped)
+                    .with_verb_surface(*verb_surface);
             let return_all = if *face_down {
                 return_all.face_down()
             } else {
                 return_all
             };
             let return_all = match controller {
+                ReturnControllerAst::Preserve
+                    if *verb_surface == ironsmith_core::MoveToZoneVerbSurface::Put
+                        && matches!(player, PlayerAst::Implicit | PlayerAst::You) =>
+                {
+                    return_all.under_you_control_implicitly()
+                }
                 ReturnControllerAst::Preserve | ReturnControllerAst::Owner => {
                     return_all.under_owner_control()
                 }
@@ -764,8 +782,25 @@ pub(super) fn compile_subject_verb_middle(
             attached_to,
             all,
         } => {
-            let (mut spec, mut choices) =
-                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            // Inside an each-player reveal sequence, a bare "it" can arrive
+            // from the generic subject parser as `Source`. Once a revealed
+            // object tag exists, moving the source into every iterated
+            // player's zone is not a coherent interpretation; the antecedent
+            // is the card that player just revealed. Preserve that object
+            // identity for both execution and compiled text.
+            let revealed_target = if ctx.iterated_player
+                && matches!(target, TargetAst::Source(_))
+                && let Some(revealed_tag) = ctx.last_revealed_tag.as_deref()
+            {
+                Some(ChooseSpec::Tagged(TagKey::from(revealed_tag)))
+            } else {
+                None
+            };
+            let (mut spec, mut choices) = if let Some(spec) = revealed_target {
+                (spec, Vec::new())
+            } else {
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?
+            };
             let resolved_library_order = match library_order {
                 None => None,
                 Some(crate::cards::builders::LibraryBottomOrderAst::Random) => {
@@ -1559,6 +1594,9 @@ pub(super) fn compile_subject_verb_middle(
             name_override,
             name_override_surface,
             add_supertypes,
+            remove_supertypes,
+            granted_abilities,
+            set_base_power_toughness,
         } => {
             let refs = current_reference_env(ctx);
             let (target_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
@@ -1568,7 +1606,9 @@ pub(super) fn compile_subject_verb_middle(
                 push_choice(&mut choices, choice);
             }
 
-            let effect = Effect::new(crate::effects::ApplyContinuousEffect::with_spec_runtime(
+            let granted_modifications =
+                lower_granted_ability_grant_modifications(granted_abilities)?;
+            let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
                 target_spec.clone(),
                 crate::effects::continuous::RuntimeModification::CopyOf {
                     source: source_spec,
@@ -1578,7 +1618,27 @@ pub(super) fn compile_subject_verb_middle(
                     add_supertypes: add_supertypes.clone(),
                 },
                 duration.clone(),
-            ));
+            );
+            if !remove_supertypes.is_empty() {
+                apply = apply.with_additional_modification(
+                    crate::continuous::Modification::RemoveSupertypes(remove_supertypes.clone()),
+                );
+            }
+            if let Some((power, toughness)) = set_base_power_toughness {
+                apply = apply
+                    .with_additional_modification(
+                        crate::continuous::Modification::SetPowerToughness {
+                            power: bind_iterated_value_to_choose_spec(power, &target_spec),
+                            toughness: bind_iterated_value_to_choose_spec(toughness, &target_spec),
+                            sublayer: crate::continuous::PtSublayer::Setting,
+                        },
+                    )
+                    .resolve_set_pt_values_at_resolution();
+            }
+            for modification in granted_modifications {
+                apply = apply.with_additional_modification(modification);
+            }
+            let effect = Effect::new(apply);
             let effect = tag_object_target_effect(effect, &target_spec, ctx, "copied");
             Ok((vec![effect], choices))
         }
@@ -1916,6 +1976,7 @@ pub(super) fn compile_subject_verb_middle(
             count,
             count_value,
             library_position_from_top,
+            result_reference_surface,
             tapped,
         } => {
             let (chooser_filter, chooser_choices) = if matches!(*chooser, PlayerAst::Implicit)
@@ -1962,6 +2023,8 @@ pub(super) fn compile_subject_verb_middle(
                 if let Some(position) = library_position_from_top.clone() {
                     search_effect = search_effect.with_library_position_from_top(position);
                 }
+                search_effect =
+                    search_effect.with_result_reference_surface(*result_reference_surface);
                 let mut effect = Effect::new(search_effect);
                 if ctx.auto_tag_object_targets {
                     let tag = ctx.next_tag("searched");

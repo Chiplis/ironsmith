@@ -189,6 +189,30 @@ pub(crate) fn coordinated_tap_then_next_untap(tokens: &[OwnedLexToken]) -> bool 
         && words[untap_idx + 1..].contains(&"step")
 }
 
+/// Records that the clause contains a real top-level effect conjunction.
+///
+/// The chain splitter already rejects non-effect uses of `and` (card-type
+/// lists, quoted abilities, shared subjects, and similar shapes). Keeping
+/// this small surface fact next to that grammar lets the sentence layer
+/// preserve one printed Oracle clause without inferring coordination from
+/// the lowered effects. A `then` chain is sequential even when another
+/// conjunction also appears in the sentence.
+pub(crate) fn coordinated_effect_chain_leading_duration(tokens: &[OwnedLexToken]) -> Option<bool> {
+    let mut inside_quotes = false;
+    for token in tokens {
+        if token.kind == TokenKind::Quote {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if !inside_quotes && token.is_word("then") {
+            return None;
+        }
+    }
+
+    (super::chain_splitting::split_effect_chain_on_and_tokens(tokens, true).len() > 1)
+        .then(|| parse_carry_duration_prefix_tokens(tokens).is_some())
+}
+
 pub(crate) fn parse_choose_each_basic_land_type_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,

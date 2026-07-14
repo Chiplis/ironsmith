@@ -3292,6 +3292,22 @@ pub(super) fn lonis_keeps_the_target_opponent_as_the_revealed_library_owner()
         "the remainder must use the already-selected opponent, not create another target: {remainder:#?}"
     );
 
+    let battlefield_move = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ForEachTaggedEffect>())
+        .and_then(|for_each| {
+            for_each
+                .effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<crate::effects::MoveToZoneEffect>())
+        })
+        .expect("the chosen permanent should move to the battlefield");
+    assert_eq!(
+        battlefield_move.battlefield_controller,
+        crate::effects::BattlefieldController::You,
+        "the explicit controller clause must survive looked-card lowering: {battlefield_move:#?}"
+    );
+
     Ok(())
 }
 

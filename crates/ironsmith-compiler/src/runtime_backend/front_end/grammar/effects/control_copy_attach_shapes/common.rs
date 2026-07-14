@@ -115,7 +115,7 @@ pub(crate) fn parse_destination_player_reference_surface(
     None
 }
 
-fn explicitly_names_object_owner(tokens: &[OwnedLexToken]) -> bool {
+pub(crate) fn explicitly_names_object_owner(tokens: &[OwnedLexToken]) -> bool {
     ["owner", "owners", "owner's", "owners'"]
         .iter()
         .any(|word| primitives::contains_word(tokens, word))
@@ -153,11 +153,7 @@ pub(crate) fn is_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
 pub(crate) fn is_plural_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
     permission_shapes::exact_tokens_any(
         trim_lexed_commas(tokens),
-        &[
-            &["them"],
-            &["those", "cards"],
-            &["the", "exiled", "cards"],
-        ],
+        &[&["them"], &["those", "cards"], &["the", "exiled", "cards"]],
     )
 }
 

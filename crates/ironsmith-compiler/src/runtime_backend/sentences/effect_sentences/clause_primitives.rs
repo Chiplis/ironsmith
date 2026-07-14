@@ -1041,14 +1041,22 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             .first()
             .is_some_and(|word| *word == "each")
     {
-        let tapped_idx = shape
-            .source_tokens
-            .iter()
-            .position(|token| token.as_word() == Some("tapped"))
-            .ok_or_else(|| {
-                CardTextError::ParseError("missing tapped-this-way source qualifier".to_string())
-            })?;
-        let mut filter = parse_object_filter(&shape.source_tokens[1..tapped_idx], false)?;
+        let source_words = TokenWordView::new(shape.source_tokens).to_word_refs();
+        let filter_tokens = if source_words.starts_with(&["each", "of", "those"])
+            && shape.source_tokens.len() > 3
+        {
+            &shape.source_tokens[3..]
+        } else {
+            let tapped_idx = shape
+                .source_tokens
+                .iter()
+                .position(|token| token.as_word() == Some("tapped"))
+                .ok_or_else(|| {
+                    CardTextError::ParseError("missing tagged-set source qualifier".to_string())
+                })?;
+            &shape.source_tokens[1..tapped_idx]
+        };
+        let mut filter = parse_object_filter(filter_tokens, false)?;
         if filter.zone.is_none() {
             filter.zone = Some(Zone::Battlefield);
         }

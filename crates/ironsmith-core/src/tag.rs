@@ -21,6 +21,9 @@ pub const EXPLOITER_TAG: &str = "exploiter";
 /// Runtime tag for cards seen by a surveil action this turn.
 pub const SURVEILLED_THIS_TURN_TAG: &str = "__surveilled_this_turn__";
 
+/// The complete set of attackers captured by a group attack trigger.
+pub const ATTACKING_GROUP_TAG: &str = "__attacking_group__";
+
 /// Dynamic tag key used by the tagging system.
 ///
 /// Using an owned key instead of `&'static str` enables tags built at runtime

@@ -548,13 +548,15 @@ pub(crate) fn clone_return_effect_with_subtype(
             } => {
                 let mut cloned_filter = filter.clone();
                 cloned_filter.subtypes = vec![subtype];
-                Some(EffectAst::subject_verb_return_all_to_battlefield(
-                    cloned_filter,
-                    *tapped,
-                    *face_down,
-                    *controller,
+                Some(
+                    EffectAst::subject_verb_return_all_to_battlefield(
+                        cloned_filter,
+                        *tapped,
+                        *face_down,
+                        *controller,
+                    )
+                    .with_move_to_zone_verb_surface(*verb_surface),
                 )
-                .with_move_to_zone_verb_surface(*verb_surface))
             }
             _ => None,
         },

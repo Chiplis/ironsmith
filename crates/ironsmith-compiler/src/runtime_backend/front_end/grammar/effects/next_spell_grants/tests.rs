@@ -28,6 +28,23 @@ fn parses_standard_pair_and_when_surfaces() {
     )
     .unwrap();
     assert!(parse_next_spell_grant_tokens(&when).unwrap().is_some());
+
+    let from_hand = lex_line(
+        "When you next cast an instant or sorcery spell from your hand this turn, it gains rebound.",
+        0,
+    )
+    .unwrap();
+    let parsed = parse_next_spell_grant_tokens(&from_hand).unwrap().unwrap();
+    assert_eq!(parsed.filters.len(), 1);
+    assert_eq!(parsed.filters[0].zone, Some(crate::zone::Zone::Hand));
+    assert_eq!(
+        parsed.filters[0].stack_kind,
+        Some(crate::filter::StackObjectKind::Spell)
+    );
+    assert_eq!(
+        parsed.filters[0].cast_by,
+        Some(crate::target::PlayerFilter::You)
+    );
 }
 
 #[test]

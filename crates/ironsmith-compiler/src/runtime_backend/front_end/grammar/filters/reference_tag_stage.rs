@@ -17,6 +17,14 @@ const OR_WORD: &str = "or";
 const UNTIL_WORD: &str = "until";
 const OTHER_OR_ANOTHER_WORDS: &[&str] = &["other", "another"];
 const OTHER_THAN_PREFIX: &[&str] = &["other", "than"];
+const CHOSEN_OBJECT_EXCLUSION_PHRASES: &[&[&str]] = &[
+    &["other", "than", "the", "chosen", "creature"],
+    &["other", "than", "chosen", "creature"],
+    &["other", "than", "the", "chosen", "permanent"],
+    &["other", "than", "chosen", "permanent"],
+    &["other", "than", "the", "chosen", "object"],
+    &["other", "than", "chosen", "object"],
+];
 const SELF_REFERENCE_WORDS: &[&str] = &["this", "it", "them"];
 const OBJECT_REFERENCE_NOUN_WORDS: &[&str] = &[
     "artifact",
@@ -498,6 +506,7 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint_lexed(
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     let mut filter = parse_object_filter_lexed(tokens, other)?;
+    super::simple::preserve_branch_scoped_card_type_union(&mut filter, tokens, other);
     apply_chosen_type_domain(&mut filter, tokens);
     Ok(filter)
 }
@@ -734,6 +743,34 @@ pub(super) fn parse_object_filter_inner(
         base_tokens = head_tokens;
     }
 
+    // A chosen-object exclusion is an identity relation to the preceding
+    // choice. Do not let the generic "other than <type>" pass reinterpret
+    // the final noun as an excluded card type (for example, as
+    // "noncreature creature").
+    let base_words = parser_token_word_refs(&base_tokens);
+    if let Some(exclusion) =
+        parse_phrase_choice_anywhere(&base_words, CHOSEN_OBJECT_EXCLUSION_PHRASES)
+    {
+        let start = token_index_after_word_prefix(&base_tokens, exclusion.span.start)
+            .unwrap_or(base_tokens.len());
+        let end = token_index_after_word_prefix(&base_tokens, exclusion.span.end)
+            .unwrap_or(base_tokens.len());
+        if start < end {
+            let chosen_kind = exclusion.phrase.last().copied().unwrap_or("object");
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+            // `source_surface` is inert unless `source`/`other` is set, so it
+            // can carry the explicit chosen-object wording through lowering
+            // without changing the runtime filter.
+            filter.source_surface = Some(crate::target::SourceReferenceSurface::FullName(format!(
+                "the chosen {chosen_kind}"
+            )));
+            base_tokens.drain(start..end);
+        }
+    }
+
     // "other than <source>" marks an exclusion, not an additional type
     // selector. Keep "other" and capture the source surface when available.
     let mut idx = 0usize;
@@ -935,11 +972,8 @@ pub(super) fn parse_object_filter_inner(
     // branches above intentionally return early, but a qualified shape needs
     // to continue through the ordinary relation parser below.
     let ability_words = non_article_parser_word_refs(&base_tokens);
-    if parse_phrase_choice_anywhere(
-        &ability_words,
-        ACTIVATED_OR_TRIGGERED_ABILITY_PHRASES,
-    )
-    .is_some()
+    if parse_phrase_choice_anywhere(&ability_words, ACTIVATED_OR_TRIGGERED_ABILITY_PHRASES)
+        .is_some()
     {
         let mut triggered = ObjectFilter::ability();
         triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
@@ -1027,6 +1061,11 @@ pub(super) fn parse_object_filter_inner(
     );
 
     try_apply_drawn_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
+
+    // Preserve damage history in ordinary object selectors such as "target
+    // creature that was dealt damage this turn". This is a runtime legality
+    // constraint, not disposable surface text.
+    try_apply_was_dealt_damage_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
     if parse_phrase_choice_anywhere(
         &non_article_parser_word_refs(&segment_tokens),

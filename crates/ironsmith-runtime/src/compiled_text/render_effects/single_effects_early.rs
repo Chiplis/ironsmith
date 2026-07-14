@@ -241,6 +241,9 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
         }
         Value::SourcePower => Some("this creature's power".to_string()),
         Value::SourceToughness => Some("this creature's toughness".to_string()),
+        Value::SourceMutationCount => {
+            Some("the number of times this creature has mutated".to_string())
+        }
         Value::PowerOf(spec) => Some(describe_dynamic_counter_basis(spec, "power")),
         Value::ToughnessOf(spec) => Some(describe_dynamic_counter_basis(spec, "toughness")),
         Value::ManaValueOf(spec) => Some(describe_dynamic_counter_basis(spec, "mana value")),
@@ -2271,13 +2274,12 @@ pub(crate) fn describe_search_choose_for_each(
             };
         }
         SearchDestination::LibraryTop => {
-            let move_reference = if choose.count.max == Some(1)
-                && choose.filter.has_explicit_card_noun()
-            {
-                "the card"
-            } else {
-                pronoun
-            };
+            let move_reference =
+                if choose.count.max == Some(1) && choose.filter.has_explicit_card_noun() {
+                    "the card"
+                } else {
+                    pronoun
+                };
             text = if shuffle.is_some() && shuffle_before_move {
                 format!(
                     "Search {search_origin} for {}{}, then {} and put {} on top of {} library",

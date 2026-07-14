@@ -23,6 +23,7 @@ pub struct ScheduleDelayedTriggerEffect {
     pub one_shot: bool,
     pub start_next_turn: bool,
     pub until_end_of_turn: bool,
+    pub until_end_of_combat: bool,
     pub watch_ability_source: bool,
     pub target_objects: Vec<crate::ids::ObjectId>,
     pub target_tag: Option<TagKey>,
@@ -44,6 +45,7 @@ impl ScheduleDelayedTriggerEffect {
             one_shot,
             start_next_turn: false,
             until_end_of_turn: false,
+            until_end_of_combat: false,
             watch_ability_source: false,
             target_objects,
             target_tag: None,
@@ -65,6 +67,7 @@ impl ScheduleDelayedTriggerEffect {
             one_shot,
             start_next_turn: false,
             until_end_of_turn: false,
+            until_end_of_combat: false,
             watch_ability_source: false,
             target_objects: Vec::new(),
             target_tag: Some(target_tag.into()),
@@ -85,6 +88,12 @@ impl ScheduleDelayedTriggerEffect {
 
     pub fn until_end_of_turn(mut self) -> Self {
         self.until_end_of_turn = true;
+        self
+    }
+
+    pub fn until_end_of_combat(mut self) -> Self {
+        self.until_end_of_combat = true;
+        self.until_end_of_turn = false;
         self
     }
 
@@ -163,6 +172,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 } else {
                     None
                 })
+                .with_expires_at_end_of_combat(self.until_end_of_combat)
                 .with_tagged_objects(delayed_tagged_objects);
                 queue_delayed_from_template(
                     game,
@@ -196,6 +206,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         } else {
             None
         })
+        .with_expires_at_end_of_combat(self.until_end_of_combat)
         .with_tagged_objects(tagged_objects);
         queue_delayed_from_template(
             game,

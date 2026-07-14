@@ -108,3 +108,18 @@ fn parses_destroy_unless_target_color_sets_differ() {
         conditions::TargetSetPredicateAst::DifferentColorSets
     );
 }
+
+#[test]
+fn parses_not_chosen_this_way_as_the_complement_set() {
+    let tokens = lex_line("each creature not chosen this way", 0).unwrap();
+    let DestroyClauseKind::All(DestroyAllShape::ChosenThisWay {
+        filter_tokens,
+        relation,
+    }) = parse_destroy_clause_shape(&tokens).kind
+    else {
+        panic!("expected tagged destroy-all complement");
+    };
+
+    assert_eq!(words(filter_tokens), vec!["creature"]);
+    assert_eq!(relation, TaggedDestroyRelation::ExceptMatching);
+}

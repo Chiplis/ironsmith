@@ -197,6 +197,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
             normalize_effects_vec(if_false);
         }
         EffectAst::TrailingUnless { effects, .. }
+        | EffectAst::SourceSentence { effects }
         | EffectAst::UnlessPays { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }

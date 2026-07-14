@@ -423,6 +423,9 @@ fn describe_coordinated_joint_player_sacrifices(effects: &[Effect]) -> Option<St
     let other_object = other
         .strip_prefix("that player sacrifices ")
         .or_else(|| other.strip_prefix("target opponent sacrifices "))?;
+    let other_object = other_object
+        .strip_suffix(" of their choice")
+        .unwrap_or(other_object);
     if object != other_object {
         return None;
     }
@@ -1245,6 +1248,33 @@ fn describe_coordinated_copy_all_stack_sets(effects: &[Effect]) -> Option<String
     Some(format!("Copy {first}, then copy {second}"))
 }
 
+/// Preserve the one proven generic coordinated family whose lowering needs a
+/// redundant target-only prelude for target collection. Other coordinated
+/// programs deliberately fall through to the established effect-list
+/// renderer, where their structural bundle compactors remain visible.
+fn describe_coordinated_gain_life_and_suspect(effects: &[Effect]) -> Option<String> {
+    let [target_effect, gain_effect, suspect_effect] = effects else {
+        return None;
+    };
+    let target_only = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let gain = gain_effect.downcast_ref::<crate::effects::GainLifeEffect>()?;
+    let suspect = structural_unwrap_render_wrappers(suspect_effect)
+        .downcast_ref::<crate::effects::SuspectEffect>()?;
+    if gain.player != ChooseSpec::Player(PlayerFilter::You)
+        || !target_specs_select_same_objects(&target_only.target, &suspect.target)
+    {
+        return None;
+    }
+
+    let gain = describe_effect(gain_effect);
+    let suspect = describe_effect(suspect_effect);
+    Some(format!(
+        "{} and {}",
+        gain.trim().trim_end_matches('.'),
+        lowercase_first(suspect.trim().trim_end_matches('.'))
+    ))
+}
+
 pub(super) fn describe_coordinated_sequence(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
@@ -1329,6 +1359,14 @@ pub(super) fn describe_coordinated_sequence(
         .or_else(|| describe_coordinated_same_action(&sequence.effects, "Tap", "Tap"))
         .or_else(|| describe_coordinated_same_action(&sequence.effects, "Untap", "Untap"))
         .or_else(|| describe_coordinated_pt_modifiers(&sequence.effects, leading_duration))
+        .or_else(|| {
+            matches!(
+                sequence.surface,
+                ironsmith_core::SequenceSurface::Coordinated
+            )
+            .then(|| describe_coordinated_gain_life_and_suspect(&sequence.effects))
+            .flatten()
+        })
 }
 
 #[cfg(test)]
@@ -1371,6 +1409,43 @@ mod coordinated_sequence_tests {
         assert_eq!(
             describe_effect(&sequence),
             "Copy all spells you control, then copy all other activated and triggered abilities you control"
+        );
+    }
+
+    #[test]
+    fn coordinated_gain_life_and_suspect_ignore_redundant_target_declaration() {
+        let target = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().controlled_by(PlayerFilter::Opponent),
+        ))
+        .with_count(ChoiceCount::up_to(1));
+        let sequence = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+            Effect::new(crate::effects::TargetOnlyEffect::new(target.clone())),
+            Effect::gain_life(Value::Fixed(3)),
+            Effect::suspect(target).tag("suspected_0"),
+        ]));
+
+        assert_eq!(
+            describe_effect(&sequence),
+            "You gain 3 life and suspect up to one target creature an opponent controls"
+        );
+    }
+
+    #[test]
+    fn unrelated_coordinated_bundle_keeps_effect_list_fallback() {
+        let battlefield = Effect::new(crate::effects::ReturnToHandEffect::all(
+            ObjectFilter::creature().in_zone(Zone::Battlefield),
+        ));
+        let graveyards = Effect::new(crate::effects::ReturnToHandEffect::all(
+            ObjectFilter::creature().in_zone(Zone::Graveyard),
+        ));
+        let sequence = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+            battlefield,
+            graveyards,
+        ]));
+
+        assert_eq!(
+            describe_effect(&sequence),
+            "Return all creatures on the battlefield and all creature cards in graveyards to their owners' hands"
         );
     }
 
@@ -5169,6 +5244,16 @@ pub(super) fn describe_next_spell_delayed_trigger(
             .replace(
                 ". You may choose new targets for the copy",
                 ". You may choose new targets for the copies",
+            );
+    } else {
+        delayed_text = delayed_text
+            .replace(
+                "copy that spell. You may choose new targets for the copy",
+                "copy it and you may choose new targets for the copy",
+            )
+            .replace(
+                "copy that spell or ability. You may choose new targets for the copy",
+                "copy it and you may choose new targets for the copy",
             );
     }
     if additional {

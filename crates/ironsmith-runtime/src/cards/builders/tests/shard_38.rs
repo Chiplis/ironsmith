@@ -115,3 +115,61 @@ pub(super) fn sacrificed_this_way_predicates_survive_source_effects() {
         }
     }
 }
+#[test]
+pub(super) fn graven_dominator_preserves_haunt_linkage_and_other_creature_scope() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Graven Dominator")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nHaunt\nWhen this creature enters or the creature it haunts dies, each other creature has base power and toughness 1/1 until end of turn.",
+        )
+        .expect("Graven Dominator should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(rendered.lines().any(|line| line == "Haunt"), "{rendered}");
+    assert!(
+        rendered.contains(
+            "When this creature enters or the creature it haunts dies, each other creature has base power and toughness 1/1 until end of turn"
+        ),
+        "{rendered}"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Triggered(triggered)
+                if triggered.effects.segments.iter().any(|segment| segment
+                    .default_effects
+                    .iter()
+                    .any(|effect| effect
+                        .downcast_ref::<crate::effects::HauntExileEffect>()
+                        .is_some()))
+        )),
+        "{def:#?}"
+    );
+}
+
+#[test]
+pub(super) fn living_inferno_reuses_every_distributed_damage_target_as_a_source() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Living Inferno")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: This creature deals damage equal to its power divided as you choose among any number of target creatures. Each of those creatures deals damage equal to its power to this creature.",
+        )
+        .expect("Living Inferno should parse");
+    let debug = format!("{def:#?}");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+
+    assert!(debug.contains("DealDistributedDamageEffect"), "{debug}");
+    assert!(debug.contains("ForEachObject"), "{debug}");
+    assert!(debug.contains("IsTaggedObject"), "{debug}");
+    assert!(
+        rendered.contains(
+            "deals damage equal to its power divided as you choose among any number of target creatures"
+        ),
+        "{rendered}"
+    );
+    assert!(
+        rendered
+            .contains("Each of those creatures deals damage equal to its power to this creature"),
+        "{rendered}"
+    );
+}

@@ -15,9 +15,7 @@ pub(crate) fn parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_
             Some(Value::X),
         );
         return Some(match shape.group {
-            effect_grammar::EachPlayerExileGroup::Player => {
-                EffectAst::ForEachPlayer { effects }
-            }
+            effect_grammar::EachPlayerExileGroup::Player => EffectAst::ForEachPlayer { effects },
             effect_grammar::EachPlayerExileGroup::Opponent => {
                 EffectAst::ForEachOpponent { effects }
             }

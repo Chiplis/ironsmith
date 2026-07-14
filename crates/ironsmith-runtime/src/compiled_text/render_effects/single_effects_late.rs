@@ -235,6 +235,48 @@ fn describe_next_turn_upkeep_delayed_instruction(
     format!("At the beginning of the next turn's upkeep, {delayed_text}")
 }
 
+fn describe_restart_game(restart: &crate::effects::RestartGameEffect) -> String {
+    let Some(spec) = &restart.cards_left_in_exile else {
+        return "Restart the game".to_string();
+    };
+
+    let objects = if let ChooseSpec::All(filter) = spec.base() {
+        let mut residual = filter.clone();
+        residual.zone = None;
+        residual.card_types.clear();
+        residual
+            .excluded_subtypes
+            .retain(|subtype| *subtype != Subtype::Aura);
+        residual.tagged_constraints.retain(|constraint| {
+            constraint.tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+                || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        });
+        residual.set_explicit_card_noun(false);
+        if card_types_are_permanent_card_types(&filter.card_types)
+            && filter.excluded_subtypes.contains(&Subtype::Aura)
+            && residual == ObjectFilter::default()
+        {
+            "all non-Aura permanent cards".to_string()
+        } else {
+            let mut printable = filter.clone();
+            printable.zone = None;
+            printable.tagged_constraints.retain(|constraint| {
+                constraint.tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+                    || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            });
+            describe_choose_spec(&ChooseSpec::All(printable))
+        }
+    } else {
+        describe_choose_spec(spec)
+    };
+    let source = restart
+        .source_surface
+        .as_ref()
+        .map(crate::target::SourceReferenceSurface::display_text)
+        .unwrap_or_else(|| "this source".to_string());
+    format!("Restart the game, leaving in exile {objects} exiled with {source}")
+}
+
 pub(crate) fn describe_effect_impl(effect: &Effect) -> String {
     include!("effect_impl/early.rs");
     include!("effect_impl/late.rs")
@@ -881,6 +923,11 @@ pub(super) fn describe_structured_ward_cost(cost: &crate::cost::TotalCost) -> St
 }
 
 pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(myriad) = describe_myriad_keyword(triggered)
+    {
+        return Some(myriad);
+    }
     if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(hideaway) = describe_structural_hideaway_keyword(triggered)
     {

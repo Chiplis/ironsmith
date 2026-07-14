@@ -8,6 +8,9 @@ use crate::object::CounterType;
 use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken};
 use crate::runtime_backend::grammar::{leaf, primitives};
 
+use super::super::control_copy_attach_shapes::{
+    BattlefieldControllerShape, parse_battlefield_controller_prefix,
+};
 use super::super::sequence_pairs::{
     contains_sequence_phrase, contains_sequence_word, finish_sequence_words, seek_sequence_phrase,
     sequence_any_phrase, sequence_phrase, starts_sequence,
@@ -21,6 +24,7 @@ pub(crate) enum LookedMoveDestinationShape {
         tapped: bool,
         attacking: bool,
         attacks_that_player: bool,
+        controller: Option<BattlefieldControllerShape>,
     },
 }
 
@@ -168,11 +172,19 @@ pub(crate) fn parse_looked_move_action_shape(
             return None;
         }
         let attacking = contains_sequence_word(tail, "attacking");
+        let controller = tail.iter().enumerate().find_map(|(index, token)| {
+            token
+                .is_word("under")
+                .then(|| parse_battlefield_controller_prefix(&tail[index..]))
+                .flatten()
+                .map(|shape| shape.controller)
+        });
         LookedMoveDestinationShape::Battlefield {
             tapped,
             attacking,
             attacks_that_player: attacking
                 && contains_sequence_phrase(tail, &[&["attacking", "that", "player"]]),
+            controller,
         }
     };
     Some(LookedMoveActionShape {
@@ -502,6 +514,24 @@ mod tests {
         assert!(matches!(
             shape.destination,
             LookedMoveDestinationShape::Battlefield { tapped: true, .. }
+        ));
+    }
+
+    #[test]
+    fn parses_explicit_looked_card_battlefield_controller() {
+        let tokens = lex_line(
+            "a nonland permanent card with mana value X or less from among them onto the battlefield under your control",
+            0,
+        )
+        .unwrap();
+        let shape = parse_looked_move_action_shape(&tokens).expect("looked-card move shape");
+
+        assert!(matches!(
+            shape.destination,
+            LookedMoveDestinationShape::Battlefield {
+                controller: Some(BattlefieldControllerShape::You),
+                ..
+            }
         ));
     }
 }

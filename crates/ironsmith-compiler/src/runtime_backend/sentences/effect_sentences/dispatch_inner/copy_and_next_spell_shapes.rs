@@ -27,6 +27,7 @@ pub(crate) fn parse_delayed_next_combat_phase_this_turn_sentence(
         trigger: TriggerSpec::BeginningOfCombat(PlayerFilter::Any),
         effects: delayed_effects,
         one_shot: true,
+        until_end_of_combat: false,
         attach_to_previous_ability: false,
     }]))
 }
@@ -275,6 +276,7 @@ fn parse_next_cast_spell_or_loyalty_delayed_sentence(
         trigger,
         effects: delayed_effects,
         one_shot: true,
+        until_end_of_combat: false,
         attach_to_previous_ability: shape.references_previous_creature,
     }]))
 }
@@ -328,6 +330,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
                     trigger: TriggerSpec::AttacksAndIsntBlocked(trigger_filter),
                     effects: delayed_effects,
                     one_shot: true,
+                    until_end_of_combat: false,
                     attach_to_previous_ability: shape.references_previous_creature,
                 },
             ]));
@@ -340,6 +343,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
                 trigger,
                 effects: delayed_effects,
                 one_shot: false,
+                until_end_of_combat: false,
                 attach_to_previous_ability: shape.references_previous_creature,
             }]));
         }
@@ -355,6 +359,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             trigger,
             effects: delayed_effects,
             one_shot,
+            until_end_of_combat: false,
             attach_to_previous_ability: shape.references_previous_creature,
         }]));
     }
@@ -404,6 +409,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         trigger,
         effects: delayed_effects,
         one_shot,
+        until_end_of_combat: false,
         attach_to_previous_ability: shape.references_previous_creature,
     }]))
 }

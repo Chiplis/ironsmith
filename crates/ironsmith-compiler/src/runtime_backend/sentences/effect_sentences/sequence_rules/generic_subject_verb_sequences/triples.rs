@@ -22,8 +22,8 @@ use crate::runtime_backend::front_end::grammar::sentence_markers::{
 };
 use crate::runtime_backend::front_end::lexer::OwnedLexToken;
 use crate::runtime_backend::grammar::effects::{
-    looked_card_shapes as looked_grammar, sequence_quad_shapes as quad_grammar,
-    triple_sequence_shapes as triple_grammar,
+    control_copy_attach_shapes::BattlefieldControllerShape, looked_card_shapes as looked_grammar,
+    sequence_quad_shapes as quad_grammar, triple_sequence_shapes as triple_grammar,
 };
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::util::{
@@ -1537,6 +1537,7 @@ pub(crate) fn parse_top_cards_one_hand_then_matching_to_zone_rest_graveyard(
         mut matching_filter,
         aggregate_constraint,
         destination,
+        controller,
         tapped,
         attacking,
         attack_target_player,
@@ -1616,7 +1617,7 @@ pub(crate) fn parse_top_cards_one_hand_then_matching_to_zone_rest_graveyard(
                 TargetAst::Tagged(matching_tag, None),
                 destination,
                 false,
-                ReturnControllerAst::Preserve,
+                controller,
                 tapped,
                 attacking,
                 attack_target_player,
@@ -1762,6 +1763,7 @@ pub(crate) fn parse_counted_from_looked_cards_action(
     ObjectFilter,
     Option<crate::effect::ChoiceAggregateConstraint>,
     Zone,
+    ReturnControllerAst,
     bool,
     bool,
     Option<PlayerAst>,
@@ -1776,14 +1778,26 @@ pub(crate) fn parse_counted_from_looked_cards_action(
     effect_sentences::normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let (zone, tapped, attacking, attack_target_player) = match shape.destination {
-        triple_grammar::LookedMoveDestinationShape::Hand => (Zone::Hand, false, false, None),
+    let (zone, controller, tapped, attacking, attack_target_player) = match shape.destination {
+        triple_grammar::LookedMoveDestinationShape::Hand => (
+            Zone::Hand,
+            ReturnControllerAst::Preserve,
+            false,
+            false,
+            None,
+        ),
         triple_grammar::LookedMoveDestinationShape::Battlefield {
             tapped,
             attacking,
             attacks_that_player,
+            controller,
         } => (
             Zone::Battlefield,
+            match controller {
+                Some(BattlefieldControllerShape::You) => ReturnControllerAst::You,
+                Some(BattlefieldControllerShape::Owner) => ReturnControllerAst::Owner,
+                None => ReturnControllerAst::Preserve,
+            },
             tapped,
             attacking,
             attacks_that_player.then_some(PlayerAst::Defending),
@@ -1795,6 +1809,7 @@ pub(crate) fn parse_counted_from_looked_cards_action(
         filter,
         aggregate_constraint,
         zone,
+        controller,
         tapped,
         attacking,
         attack_target_player,
@@ -1960,6 +1975,7 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         filter,
         aggregate_constraint,
         zone,
+        controller,
         tapped,
         attacking,
         attack_target_player,
@@ -2034,7 +2050,7 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
         zone,
         false,
-        crate::cards::builders::ReturnControllerAst::Preserve,
+        controller,
         tapped,
         attacking,
         attack_target_player,
